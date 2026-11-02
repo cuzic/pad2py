@@ -26,25 +26,36 @@ def test_captured_automation_id_can_relocate_element_in_same_run(notepad_window)
 
 
 def _launch_notepad_and_find_window(timeout_s: float = 15.0):
-    """conftest.notepad_window と同じ方式(タイトルベース検索)でNotepadを起動・検出する。
+    """conftest.notepad_window と同じ方式でNotepadを起動・検出する(詳細はそちらのdocstring参照)。
 
-    pywinautoのApplication.start()+top_window()はプロセスID基準の検索のため、
-    Windows 11以降のNotepadでは "No windows for that process could be found" で
-    失敗することがCI検証で判明している。Desktop().window()(単数形、WindowSpecification
-    を返す)を使うことでこれを回避し、かつ .wait()/.child_window() も使えるようにする
-    (.windows() 複数形が返す生のUIAWrapperにはこれらのメソッドが無い)。
+    Desktop().windows(title_re=...) (複数形、visible_only=False)で確実に検出し、
+    見つかったウィンドウのhandleで Desktop().window(handle=...) に包み直すことで、
+    .wait()/.child_window() が使えるWindowSpecificationを可視性フィルタに
+    左右されずに得る。
     """
     import subprocess
+    import time
 
     from pywinauto import Desktop
 
     proc = subprocess.Popen(["notepad.exe"])
-    window = Desktop(backend="uia").window(title_re=".*Notepad.*")
-    try:
-        window.wait("visible", timeout=timeout_s)
-    except Exception:
+    deadline = time.time() + timeout_s
+    raw_window = None
+    while time.time() < deadline:
+        time.sleep(0.5)
+        try:
+            candidates = Desktop(backend="uia").windows(title_re=".*Notepad.*")
+        except Exception:
+            candidates = []
+        if candidates:
+            raw_window = candidates[0]
+            break
+
+    if raw_window is None:
         proc.terminate()
         raise RuntimeError("Notepadウィンドウをタイムアウト内に検出できなかった")
+
+    window = Desktop(backend="uia").window(handle=raw_window.handle)
     return proc, window
 
 
