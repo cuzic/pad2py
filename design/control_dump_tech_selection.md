@@ -1,6 +1,8 @@
 # 制御dumpスクリプト 技術選定
 
 > **2026-11-02 改訂**: GitHub Actions (`windows-latest`) 実機でのCI検証(8ラウンドの反復修正、最終結果 33 passed / 3 skipped)で得られた知見を反映した。検証の経緯と根拠は [`design/ci_verification_findings.md`](ci_verification_findings.md) を参照。本改訂での変更点は「2.3 ウィンドウ特定方式」「3の表の訂正」「5のリスク表への追加」「6(新設: 生成コードへの反映)」。
+>
+> **2026-11-02 追記**: 別プロジェクト `~/rust-nicola`(Windows実機CIでのIME/ウィンドウ操作の先行事例)の知見を反映した。「2.4 ウィンドウ発見方式のさらなる改善(rust-nicola知見)」を新設。
 
 ## 1. 設計上の制約(前提)
 
@@ -58,6 +60,16 @@ PAD側の「Run Python script」は呼び出しごとに新規インタプリタ
 
 さらに、発見直後は対象ウィンドウの内部コントロールツリー(テキスト編集領域等)がまだ完全に構築されていない場合があることも実機検証で判明した(間欠的に再現)。**ウィンドウを返す前に`descendants()`の件数が数回連続で変化しなくなるまで短時間(目安5秒)ポーリングする「安定化待ち」を標準の手順に含める**。
 
+### 2.4 ウィンドウ発見方式のさらなる改善(rust-nicola知見)
+
+別プロジェクト `~/rust-nicola`(Windows実機CIでのIME/キーボード制御・UIAutomation操作の先行事例、`tools/e2e/wt/wt_vocab.py`)には、2.3節よりもさらに頑健な3つの手法が実装・実運用されている。これらはPAD変換プロジェクトの制御dumpスクリプトおよびコード生成テンプレートの両方に取り込むべき改善である。
+
+**(a) 「起動前後のスナップショット差分」によるウィンドウ発見** — `rust-nicola`はWindows Terminal(パッケージ化アプリ)を制御する際、タイトル文字列の推測ではなく、`EnumWindows`+クラス名フィルタで**起動前の全ウィンドウ一覧を記録**し、起動後に**新規に現れたウィンドウを差分で取得**する(`before = {w["hwnd"] for w in windows()}` → 起動 → `new = [w for w in windows() if w["hwnd"] not in before]`)。この方式は、プロセスIDがウィンドウ所有プロセスと一致しない問題(2.3節)も、タイトル文字列が動的・ローカライズされていて事前に分からない問題も、**両方を同時に回避する**。PADアクション側は対象アプリの正確な起動後タイトルを事前に知らないことが多いため、**本プロジェクトでもこの「差分方式」を既定のウィンドウ発見アルゴリズムとし、タイトル/クラス名による絞り込みは複数の新規ウィンドウを区別する際の補助条件として使う**設計に改める。
+
+**(b) `AttachThreadInput`による前面化の確実化** — `SetForegroundWindow`は呼び出し元スレッドが前景スレッドと異なる場合にOSによって無視されることがあるが、`rust-nicola`は`AttachThreadInput`で呼び出し元スレッドを現在の前景スレッドに一時的にアタッチしてから`SetForegroundWindow`を呼ぶ、という定番の回避策を実装している(`wt_vocab.py::foreground()`)。pywinautoの`.set_focus()`がこの回避策を内部で行っているかは不明なため、**制御dumpスクリプトおよび生成コードの「ウィンドウを前面化する」処理は、pywinautoの`.set_focus()`に加えてこのフォールバックを明示的に実装する**ことを推奨する。
+
+**(c) UIA操作をPowerShell(.NET `UIAutomationClient`)に委譲する選択肢** — 本プロジェクトの実機検証で`comtypes`経由の`AddFocusChangedEventHandler`呼び出しがCOMシグネチャの誤り(`(cacheRequest, handler)`の2引数を要するのに1引数しか渡していなかった)で失敗した(知見5、`ci_verification_findings.md`参照)。`rust-nicola`はPython+comtypesでのUIA直接操作を避け、UIAツリー読み取り(`uia_text()`)やスクリーンショット取得をPowerShellスクリプトにサブプロセスとして委譲し、.NETの型安全な`System.Windows.Automation`名前空間を使っている。.NETのUIAバインディングはCOMシグネチャをラップ済みで引数ミスが起きにくいため、**`dump_daemon`のUIA3 Rawフォールバック・イベント購読部分についても、Python+comtypesでの実装を継続するか、PowerShellサブプロセス委譲に置き換えるかを、A6の安定性が今後問題になった場合の代替案として検討の余地を残す**(現時点ではA6は修正済みで実機検証もPASSしているため、即時の変更は不要)。
+
 ## 3. 常駐デーモンの技術スタック
 
 | 役割 | 採用技術 | 理由 |
@@ -109,23 +121,32 @@ def do_capture(action_id: str, flow_name: str):
 
 本ドキュメントは制御dumpスクリプト(キャプチャ側)の技術選定が主題だが、2.3節で確定した「ウィンドウ特定方式」は、**PAD→Python変換後に出力される側のPythonコード(変換の最終成果物)にも同じ問題が起こりうる**という点で、コードジェネレータのテンプレート設計そのものに影響する。
 
-具体的には、PADの「ウィンドウを探す」「アプリを起動」系アクションをpywinautoコードへ変換する際、ナイーブに`Application(backend="uia").start(path)` → `app.top_window()`というテンプレートを生成すると、本検証で確認したのと同じ`RuntimeError: No windows for that process could be found`が生成コードの実行時に発生しうる。したがって、**コード生成テンプレートの既定実装は次の形に固定する**べきである。
+具体的には、PADの「ウィンドウを探す」「アプリを起動」系アクションをpywinautoコードへ変換する際、ナイーブに`Application(backend="uia").start(path)` → `app.top_window()`というテンプレートを生成すると、本検証で確認したのと同じ`RuntimeError: No windows for that process could be found`が生成コードの実行時に発生しうる。したがって、**コード生成テンプレートの既定実装は次の形に固定する**べきである(2.4節のrust-nicola知見(a)を踏まえ、タイトルの事前推測が不要な「起動前後の差分」方式を既定とする)。
 
 ```python
-# 生成コードの既定テンプレート(ウィンドウ発見部分)
+# 生成コードの既定テンプレート(ウィンドウ発見部分)。タイトル文字列を事前に知らなくても動く。
 import subprocess, time
 from pywinauto import Desktop
 
+def _snapshot_handles():
+    return {w.handle for w in Desktop(backend="uia").windows()}
+
+before = _snapshot_handles()
 proc = subprocess.Popen([exe_path])
 window = None
 for _ in range(60):
     time.sleep(0.5)
-    candidates = Desktop(backend="uia").windows(title_re=title_pattern)
-    if candidates:
-        window = Desktop(backend="uia").window(handle=candidates[0].handle)
-        break
+    new_handles = _snapshot_handles() - before
+    if new_handles:
+        # 複数の新規ウィンドウが現れた場合は、既知のタイトル/クラス名パターンで絞り込む
+        candidates = [h for h in new_handles
+                      if title_pattern is None or title_pattern.search(
+                          Desktop(backend="uia").window(handle=h).window_text())]
+        if candidates:
+            window = Desktop(backend="uia").window(handle=candidates[0])
+            break
 if window is None:
-    raise RuntimeError(f"ウィンドウが見つかりませんでした: {title_pattern}")
+    raise RuntimeError(f"ウィンドウが見つかりませんでした: exe={exe_path}")
 window.wait("exists", timeout=10)
 ```
 
