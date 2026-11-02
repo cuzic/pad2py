@@ -26,6 +26,10 @@ def notepad_window():
     よって、まず(2)の方式で確実に検出し、見つかったウィンドウのhandleで
     Desktop().window(handle=...) に包み直すことで、.wait()等が使える
     WindowSpecificationを可視性フィルタに左右されずに得る。
+    4. ウィンドウが見つかった直後はまだ内部コントロールツリー(テキスト編集領域等)が
+       完全に構築されていない場合があり、直後にdump_uia_treeすると要素が少ない状態の
+       スナップショットになることがある(実行によって再現する間欠的な事象)。
+       子要素数が安定するまで短く待ってから返す。
     """
     if sys.platform != "win32":
         pytest.skip("Windows専用のフィクスチャ")
@@ -51,6 +55,20 @@ def notepad_window():
         pytest.fail("Notepadウィンドウをタイムアウト内に検出できなかった")
 
     window = Desktop(backend="uia").window(handle=raw_window.handle)
+
+    # 内部コントロールツリーが構築され切るまで、子要素数が増え続けていないことを
+    # 確認してから返す(最大5秒)。
+    previous_count = -1
+    for _ in range(25):
+        try:
+            current_count = len(window.descendants())
+        except Exception:
+            current_count = previous_count
+        if current_count == previous_count and current_count > 1:
+            break
+        previous_count = current_count
+        time.sleep(0.2)
+
     try:
         yield window
     finally:
