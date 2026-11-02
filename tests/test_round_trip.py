@@ -30,34 +30,28 @@ def _launch_notepad_and_find_window(timeout_s: float = 15.0):
 
     pywinautoのApplication.start()+top_window()はプロセスID基準の検索のため、
     Windows 11以降のNotepadでは "No windows for that process could be found" で
-    失敗することがCI検証で判明している。タイトルベースのDesktop検索はこれを回避する。
+    失敗することがCI検証で判明している。Desktop().window()(単数形、WindowSpecification
+    を返す)を使うことでこれを回避し、かつ .wait()/.child_window() も使えるようにする
+    (.windows() 複数形が返す生のUIAWrapperにはこれらのメソッドが無い)。
     """
     import subprocess
-    import time
 
     from pywinauto import Desktop
 
     proc = subprocess.Popen(["notepad.exe"])
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        time.sleep(0.5)
-        try:
-            candidates = Desktop(backend="uia").windows(title_re=".*Notepad.*")
-        except Exception:
-            candidates = []
-        if candidates:
-            return proc, candidates[0]
-    proc.terminate()
-    raise RuntimeError("Notepadウィンドウをタイムアウト内に検出できなかった")
+    window = Desktop(backend="uia").window(title_re=".*Notepad.*")
+    try:
+        window.wait("visible", timeout=timeout_s)
+    except Exception:
+        proc.terminate()
+        raise RuntimeError("Notepadウィンドウをタイムアウト内に検出できなかった")
+    return proc, window
 
 
 def test_captured_selector_survives_process_restart(tmp_path) -> None:
     """E2: プロセスを再起動(ウィンドウハンドルが変わる)しても、AutomationId/ControlType
     ベースのcriteriaで同じ要素を再検出できるか。"""
-    from dump_daemon.uia_capture import dump_uia_tree, find_first_with_automation_id
-
     proc1, window1 = _launch_notepad_and_find_window()
-    window1.wait("visible", timeout=10)
     tree = dump_uia_tree(window1)
     target = find_first_with_automation_id(tree)
     handle1 = window1.handle
@@ -67,7 +61,6 @@ def test_captured_selector_survives_process_restart(tmp_path) -> None:
         pytest.skip("AutomationIdを持つ要素が見つからなかった(UI構成依存)")
 
     proc2, window2 = _launch_notepad_and_find_window()
-    window2.wait("visible", timeout=10)
     try:
         assert window2.handle != handle1, "ウィンドウハンドルが再利用されてしまい、この検証の前提が崩れている"
         relocated = window2.child_window(
