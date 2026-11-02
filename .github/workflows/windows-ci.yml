@@ -21,7 +21,7 @@ jobs:
         run: uv sync --all-groups
 
       - name: Run verification tests
-        run: uv run pytest -v --junitxml=test-results.xml
+        run: uv run pytest -v -s -rA --junitxml=test-results.xml
 
       - name: Upload test results
         if: always()
