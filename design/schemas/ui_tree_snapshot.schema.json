@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pad2py.local/schemas/ui_tree_snapshot.schema.json",
+  "title": "UI Element Tree Snapshot",
+  "description": "常駐デーモンが1回のキャプチャで取得するUIAツリーのダンプ。ir_trace.schema.json の ScreenStateRef.ui_tree_ref から参照される。",
+  "type": "object",
+  "required": ["captured_at", "root"],
+  "properties": {
+    "captured_at": { "type": "string", "format": "date-time" },
+    "capture_mode": {
+      "enum": ["UIA", "UIA3Raw", "MSAA"],
+      "description": "pywinauto(uiaバックエンド)で取得できた場合は 'UIA'。仮想化リストやElectronアプリでcomtypes直叩きのRawViewにフォールバックした場合は 'UIA3Raw'。"
+    },
+    "root": { "$ref": "#/$defs/UIElementNode" }
+  },
+  "$defs": {
+    "UIElementNode": {
+      "type": "object",
+      "required": ["element_id", "control_type"],
+      "properties": {
+        "element_id": {
+          "type": "string",
+          "description": "この要素への安定参照キー。AutomationId + 階層パスのハッシュ、またはツリー内連番。candidates側からこのIDで参照される。"
+        },
+        "name": { "type": ["string", "null"] },
+        "automation_id": { "type": ["string", "null"] },
+        "control_type": { "type": "string" },
+        "class_name": { "type": ["string", "null"] },
+        "framework_id": {
+          "type": ["string", "null"],
+          "description": "Win32 / WPF / WinForm / Chromium 等。バックエンド選択の判断に使う。"
+        },
+        "bounding_rect": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "[left, top, right, bottom]"
+        },
+        "is_enabled": { "type": ["boolean", "null"] },
+        "is_visible": { "type": ["boolean", "null"] },
+        "process_name": { "type": ["string", "null"] },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UIElementNode" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+[project]
+name = "pad2py"
+version = "0.1.0"
+description = "Power Automate Desktop flow to pywinauto/pyautogui Python converter"
+requires-python = ">=3.10"
+dependencies = [
+    "pywinauto>=0.6.8",
+    "comtypes>=1.4.0",
+    "mss>=9.0.0",
+    "pywin32>=306; sys_platform == 'win32'",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "jsonschema>=4.23.0",
+    "psutil>=6.0.0",
+    "pillow>=10.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dump_daemon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

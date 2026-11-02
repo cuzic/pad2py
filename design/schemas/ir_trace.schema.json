@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pad2py.local/schemas/ir_trace.schema.json",
+  "title": "PAD2Py Semantic IR Trace",
+  "description": "PADの1回の実行トレース(アクション列+各アクションの前後画面状態)を表す中間表現。",
+  "type": "object",
+  "required": ["schema_version", "trace_id", "flow_meta", "actions"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "このトレース(1回分の実行記録)を一意に識別するID。複数トレース比較(フェーズ2)で各トレースを区別するために使う。"
+    },
+    "flow_meta": {
+      "$ref": "#/$defs/FlowMeta"
+    },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ActionRecord" }
+    }
+  },
+  "$defs": {
+    "FlowMeta": {
+      "type": "object",
+      "required": ["flow_name", "captured_at"],
+      "properties": {
+        "flow_name": { "type": "string" },
+        "pad_version": { "type": ["string", "null"] },
+        "power_fx_enabled": {
+          "type": "boolean",
+          "description": "Power Fx有効フローは変数の型モデル・配列インデックスが異なるため、パーサー分岐のフラグとして保持する。"
+        },
+        "machine_id": { "type": ["string", "null"] },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "source_dsl_path": {
+          "type": ["string", "null"],
+          "description": "PADの『コピー&ペースト』DSLテキストを保存したファイルへの相対パス参照。"
+        },
+        "iteration_label": {
+          "type": ["string", "null"],
+          "description": "複数トレース比較用。例: 'page_1', 'page_2', 'page_last' のように同一操作の何回目かを示すラベル。"
+        }
+      }
+    },
+    "ActionRecord": {
+      "type": "object",
+      "required": ["action_uid", "sequence_index", "action_type", "timestamp"],
+      "properties": {
+        "action_uid": {
+          "type": "string",
+          "description": "PAD側で付与したラベル、またはDSL上の行番号から生成した一意キー。アクティブマーカーの action_id と対応する。"
+        },
+        "sequence_index": { "type": "integer", "minimum": 0 },
+        "action_type": {
+          "type": "string",
+          "description": "PAD DSLの 'Namespace.Module.Action' 形式のアクションID(例: 'Mouse and keyboard.SendKeys')。"
+        },
+        "block": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/ControlBlockMarker" }
+          ],
+          "description": "If/Loop/Switch等の制御構造の開始・終了を示すマーカー。通常のアクション行ではnull。"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "PADアクションの名前付きパラメータ。値はリテラルまたは '%Var%' 形式の変数参照文字列。"
+        },
+        "output_var": { "type": ["string", "null"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": ["number", "null"] },
+        "target_element": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/TargetElement" }
+          ]
+        },
+        "screen_state_before": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/ScreenStateRef" }
+          ]
+        },
+        "screen_state_after": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/ScreenStateRef" }
+          ]
+        },
+        "raw_source": {
+          "type": ["string", "null"],
+          "description": "元のPADクリップボードDSL行そのもの。パース不能/変換不能時にTODOコメントへ埋め込むためのフォールバック用途。"
+        }
+      }
+    },
+    "ControlBlockMarker": {
+      "type": "object",
+      "required": ["block_kind", "block_id"],
+      "properties": {
+        "block_kind": {
+          "enum": ["If", "ElseIf", "Else", "EndIf", "Loop", "LoopForEach", "EndLoop", "Switch", "Case", "EndSwitch"]
+        },
+        "block_id": { "type": "string" },
+        "parent_block_id": { "type": ["string", "null"] },
+        "condition_expr": {
+          "type": ["string", "null"],
+          "description": "If/Switchの条件式(PAD DSL上の生テキスト)。Loopの場合はコレクション式。"
+        }
+      }
+    },
+    "TargetElement": {
+      "type": "object",
+      "required": ["selector_raw"],
+      "properties": {
+        "selector_raw": {
+          "type": "string",
+          "description": "PADのブラケット記法セレクタ文字列(例: \":desktop > window[Name=\\\"...\\\"] > ...\")。"
+        },
+        "capture_mode": {
+          "enum": ["UIA", "UIA3Raw", "MSAA"]
+        },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CandidateElement" }
+        }
+      }
+    },
+    "CandidateElement": {
+      "type": "object",
+      "required": ["element_ref", "is_target"],
+      "properties": {
+        "element_ref": {
+          "type": "string",
+          "description": "対応する screen_state の ui_tree_ref ファイル内における安定要素ID(UIElementNode.element_id)への参照。"
+        },
+        "is_target": {
+          "type": "boolean",
+          "description": "このアクションが実際に操作した要素かどうか。false のものは『他の候補(誤認識しうる要素)』として記録し、セレクタのあいまい性判断に使う。"
+        },
+        "attributes": {
+          "type": "object",
+          "properties": {
+            "name": { "type": ["string", "null"] },
+            "automation_id": { "type": ["string", "null"] },
+            "control_type": { "type": ["string", "null"] },
+            "class_name": { "type": ["string", "null"] },
+            "process_name": { "type": ["string", "null"] },
+            "bounding_rect": {
+              "type": ["array", "null"],
+              "items": { "type": "number" },
+              "minItems": 4,
+              "maxItems": 4,
+              "description": "[left, top, right, bottom]"
+            }
+          }
+        }
+      }
+    },
+    "ScreenStateRef": {
+      "type": "object",
+      "properties": {
+        "ui_tree_ref": {
+          "type": ["string", "null"],
+          "description": "ui_tree_snapshot.schema.json に準拠するファイルへの相対パス(例: 'ui_trees/000012.json')。"
+        },
+        "screenshot_ref": {
+          "type": ["string", "null"],
+          "description": "PNGファイルへの相対パス(例: 'screenshots/000012.png')。"
+        },
+        "alt_text": {
+          "type": ["string", "null"],
+          "description": "軽量な状態要約(例: 'Notepad - Untitled, フォーカス: テキストエリア')。LLM送信時のトークン節約用の代替表現。"
+        },
+        "active_window": {
+          "type": "object",
+          "properties": {
+            "title": { "type": ["string", "null"] },
+            "process_name": { "type": ["string", "null"] },
+            "handle": { "type": ["integer", "null"] }
+          }
+        },
+        "captured_via": {
+          "enum": ["active_marker", "passive_event", "poll"],
+          "description": "このスナップショットがアクティブマーカー・パッシブイベント・ポーリングのいずれで取得されたか。"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+name: Windows CI - control dump script feasibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run verification tests
+        run: uv run pytest -v --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          if-no-files-found: ignore
+
+      - name: Upload capture evidence (screenshots / UI trees)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-evidence
+          path: "**/capture_output/**"
+          if-no-files-found: ignore

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+capture_output/
+test-results.xml
+*.egg-info/
