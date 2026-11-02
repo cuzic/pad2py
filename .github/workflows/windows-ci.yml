@@ -21,6 +21,8 @@ jobs:
         run: uv sync --all-groups
 
       - name: Run verification tests
+        env:
+          PYTHONUTF8: "1"
         run: uv run pytest -v -s -rA --junitxml=test-results.xml
 
       - name: Upload test results

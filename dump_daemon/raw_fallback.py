@@ -60,7 +60,10 @@ def register_focus_changed_handler(callback: Callable[[Any], None]) -> tuple[Any
             callback(sender)
 
     handler = _FocusHandler()
-    uia.AddFocusChangedEventHandler(handler)
+    # IUIAutomation::AddFocusChangedEventHandler の実シグネチャは
+    # (cacheRequest, handler) の2引数。cacheRequest は省略可能(NULL)だが、
+    # comtypesの生成コードでは明示的に渡す必要がある。
+    uia.AddFocusChangedEventHandler(None, handler)
     return uia, handler
 
 
