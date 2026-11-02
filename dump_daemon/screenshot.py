@@ -16,7 +16,7 @@ def capture_region(save_path: Path, region: tuple[int, int, int, int] | None = N
     import mss
     import mss.tools
 
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         if region is None:
             monitor = sct.monitors[1]
         else:

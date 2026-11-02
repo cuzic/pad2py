@@ -25,30 +25,48 @@ def test_captured_automation_id_can_relocate_element_in_same_run(notepad_window)
     )
 
 
+def _launch_notepad_and_find_window(timeout_s: float = 15.0):
+    """conftest.notepad_window と同じ方式(タイトルベース検索)でNotepadを起動・検出する。
+
+    pywinautoのApplication.start()+top_window()はプロセスID基準の検索のため、
+    Windows 11以降のNotepadでは "No windows for that process could be found" で
+    失敗することがCI検証で判明している。タイトルベースのDesktop検索はこれを回避する。
+    """
+    import subprocess
+    import time
+
+    from pywinauto import Desktop
+
+    proc = subprocess.Popen(["notepad.exe"])
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        time.sleep(0.5)
+        try:
+            candidates = Desktop(backend="uia").windows(title_re=".*Notepad.*")
+        except Exception:
+            candidates = []
+        if candidates:
+            return proc, candidates[0]
+    proc.terminate()
+    raise RuntimeError("Notepadウィンドウをタイムアウト内に検出できなかった")
+
+
 def test_captured_selector_survives_process_restart(tmp_path) -> None:
     """E2: プロセスを再起動(ウィンドウハンドルが変わる)しても、AutomationId/ControlType
     ベースのcriteriaで同じ要素を再検出できるか。"""
-    import time
-
-    from pywinauto.application import Application
-
     from dump_daemon.uia_capture import dump_uia_tree, find_first_with_automation_id
 
-    app1 = Application(backend="uia").start("notepad.exe")
-    time.sleep(1)
-    window1 = app1.top_window()
+    proc1, window1 = _launch_notepad_and_find_window()
     window1.wait("visible", timeout=10)
     tree = dump_uia_tree(window1)
     target = find_first_with_automation_id(tree)
     handle1 = window1.handle
-    app1.kill()
+    proc1.terminate()
 
     if target is None:
         pytest.skip("AutomationIdを持つ要素が見つからなかった(UI構成依存)")
 
-    app2 = Application(backend="uia").start("notepad.exe")
-    time.sleep(1)
-    window2 = app2.top_window()
+    proc2, window2 = _launch_notepad_and_find_window()
     window2.wait("visible", timeout=10)
     try:
         assert window2.handle != handle1, "ウィンドウハンドルが再利用されてしまい、この検証の前提が崩れている"
@@ -59,4 +77,4 @@ def test_captured_selector_survives_process_restart(tmp_path) -> None:
             "プロセス再起動後、ハンドルに依存しないcriteriaで要素を再検出できなかった"
         )
     finally:
-        app2.kill()
+        proc2.terminate()

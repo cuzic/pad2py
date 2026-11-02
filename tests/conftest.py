@@ -16,11 +16,31 @@ def notepad_window():
     if sys.platform != "win32":
         pytest.skip("Windows専用のフィクスチャ")
 
-    from pywinauto.application import Application
+    import subprocess
 
-    app = Application(backend="uia").start("notepad.exe")
-    time.sleep(1)
-    window = app.top_window()
+    from pywinauto import Desktop
+
+    # CI検証で判明した知見: pywinauto の Application.start()+top_window() は
+    # 起動元プロセスIDでウィンドウを検索するが、Windows 11以降のNotepadは
+    # 起動元プロセスとウィンドウ所有プロセスが一致しない場合があり
+    # "No windows for that process could be found" で失敗する。
+    # そのため本番のdump_daemon._get_foreground_window()と同じ、
+    # タイトルベースでDesktopから検索する方式に統一する。
+    proc = subprocess.Popen(["notepad.exe"])
+    window = None
+    for _ in range(30):
+        time.sleep(0.5)
+        try:
+            candidates = Desktop(backend="uia").windows(title_re=".*Notepad.*")
+        except Exception:
+            candidates = []
+        if candidates:
+            window = candidates[0]
+            break
+    if window is None:
+        proc.terminate()
+        pytest.fail("Notepadウィンドウをタイムアウト内に検出できなかった")
+
     window.wait("visible", timeout=10)
     try:
         yield window
@@ -30,6 +50,6 @@ def notepad_window():
         except Exception:
             pass
         try:
-            app.kill()
+            proc.terminate()
         except Exception:
             pass
