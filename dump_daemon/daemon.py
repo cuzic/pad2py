@@ -8,7 +8,7 @@ HTTP POSTで叩くと、即座にレスポンスを返しつつ、重い処理(U
 from __future__ import annotations
 
 import json
-import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +45,10 @@ def _do_capture(action_id: str, flow_name: str) -> None:
     idx = _capture_count
     _capture_count += 1
 
-    ts = time.time()
+    # ir_trace.schema.json / ui_tree_snapshot.schema.json は timestamp を
+    # format: date-time (ISO 8601文字列) で要求するため、UNIX epoch floatではなく
+    # ISO文字列として記録する。
+    ts = datetime.now(timezone.utc).isoformat()
     window = _get_foreground_window()
     tree = dump_uia_tree(window) if window is not None else None
 
