@@ -1369,3 +1369,34 @@ def test_wait_action_record_parsed_from_real_wait_for_service_capture() -> None:
     assert rec.action_id == "Services.WaitForService.Started"
     assert rec.params["Service"] == "Spooler"
     assert rec.timeout_seconds is None
+
+
+def test_build_block_tree_handles_real_wait_for_window_become_focused_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見50の追記(実機検証済み): 知見50本文で「他の3選択肢は
+    # 未検証」としていた「Wait for window to」の残り——うち`Close`は別ティックで確認済み
+    # (`ToClose`)。今回「Become focused」を確認した。action_idは予測通り
+    # `UIAutomation.WaitForWindow.ToBecomeFocused`(`WindowMode`列挙値のパターン通り)。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_become_focused.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToBecomeFocused"
+    tree = build_block_tree(records)
+    assert len(tree) > 0
+
+
+def test_build_block_tree_handles_real_wait_for_window_lose_focus_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見50の追記(実機検証済み): 「Lose focus」も確認し、
+    # これで「Wait for window to」の4択(Open/Close/Become focused/Lose focus)全てが
+    # 実機確認済みになった。action_idは予測通り`UIAutomation.WaitForWindow.ToLoseFocus`。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_lose_focus.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToLoseFocus"
+    tree = build_block_tree(records)
+    assert len(tree) > 0
