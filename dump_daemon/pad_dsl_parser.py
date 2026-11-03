@@ -25,13 +25,19 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   丸括弧で囲まれる**——同じ「First operand/Operator/Second operand」ダイアログ形状でも
   アクションの種類によってDSL表現が異なる例)
 
+- `ELSE IF <operand1> <operator> <operand2> THEN` / `ELSE`(実機検証で
+  `IF ... THEN` / `ELSE IF ... THEN` / `ELSE` / `END` の形を確認)。**重要**:
+  `IF`/`ELSE IF`/`ELSE`は同じindent深さの**1つの構文**であり、`END`は
+  個々のアームにではなく構文全体に1つだけ対応する(`IF`単体がネストしたブロックを
+  開くわけではない)。`build_block_tree()`は`ConditionalNode(arms)`としてこれを表現する。
 - `build_block_tree()`: `indent`情報を使って、フラットな`list[Record]`から
-  `IfRecord`/`LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`とその本体(対応する
-  `END`までの間、1段深い`indent`を持つレコード列)を`BlockNode(header, body)`として
-  再帰的にグルーピングする後処理(design/dsl_format_findings.md 知見7・9で確認した
-  「ブロック開始行と対応するENDは同じindent、中身だけ+1」というルールに基づく)
+  ブロック木を組み立てる後処理(design/dsl_format_findings.md 知見7・9・11)。
+  `LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`は単純な`BlockNode(header, body)`
+  (本体がindent+1、対応する`END`が同じindentという1:1の構造)。`IfRecord`は
+  `ElseIfRecord`/`ELSE`キーワードが同じindentで後続する限り1つの`ConditionalNode`に
+  まとめ、最後に現れる`END`1つだけを構文全体の終端として消費する。
 
-未対応(今後の実機確認が必要): ELSE/ELSE IF、複合式(AND/OR)。
+未対応(今後の実機確認が必要): 複合式(AND/OR)。
 """
 from __future__ import annotations
 
@@ -79,6 +85,14 @@ class IfRecord:
 
 
 @dataclass
+class ElseIfRecord:
+    operand1: Any
+    operator: str
+    operand2: Any
+    indent: int = 0
+
+
+@dataclass
 class LoopRecord:
     loop_var: str
     start: Any
@@ -113,46 +127,85 @@ Record = (
     | KeywordRecord
     | SetVariableRecord
     | IfRecord
+    | ElseIfRecord
     | LoopRecord
     | LoopForeachRecord
     | LoopWhileRecord
     | RawRecord
 )
 
-_BLOCK_HEADER_TYPES = (IfRecord, LoopRecord, LoopForeachRecord, LoopWhileRecord)
+_SIMPLE_BLOCK_HEADER_TYPES = (LoopRecord, LoopForeachRecord, LoopWhileRecord)
 
 
 @dataclass
 class BlockNode:
-    """ブロック構文(`IF`/`LOOP`系)の開始レコードと、対応する`END`までの本体。"""
+    """単純なブロック構文(`LOOP`系)の開始レコードと、対応する`END`までの本体。"""
 
-    header: IfRecord | LoopRecord | LoopForeachRecord | LoopWhileRecord
-    body: list["Record | BlockNode"] = field(default_factory=list)
+    header: LoopRecord | LoopForeachRecord | LoopWhileRecord
+    body: list["Record | BlockNode | ConditionalNode"] = field(default_factory=list)
 
 
-def build_block_tree(records: list[Record]) -> list["Record | BlockNode"]:
+@dataclass
+class ConditionalNode:
+    """`IF`/`ELSE IF`*/`ELSE`?/`END`全体を1つの構文単位として表す。
+
+    各アームは`(header, body)`のタプル。`header`は`IfRecord`(先頭のみ)、
+    `ElseIfRecord`(0個以上)、または`KeywordRecord(name="ELSE")`(末尾に最大1個)。
+    `END`は個々のアームにではなく構文全体に1つだけ対応するため、`ConditionalNode`は
+    単一の`body`ではなく`arms`のリストを持つ。
+    """
+
+    arms: list[tuple["IfRecord | ElseIfRecord | KeywordRecord", list["Record | BlockNode | ConditionalNode"]]] = field(
+        default_factory=list
+    )
+
+
+def build_block_tree(records: list[Record]) -> list["Record | BlockNode | ConditionalNode"]:
     """`parse_dsl()`が返すフラットな`indent`付きレコード列から、ブロック木を組み立てる。
 
-    design/dsl_format_findings.md 知見7・9で確認した「ブロック開始行と対応する`END`は
-    同じindent深さ、本体だけがその1段内側(indent+1)」というルールに基づくスタック型の
-    再帰下降パース。対応する`END`が見つからないまま入力が尽きた場合(壊れたデータ等)は、
-    例外を出さずそこまでの本体を返す。
+    design/dsl_format_findings.md 知見7・9・11で確認したルールに基づくスタック型の
+    再帰下降パース:
+    - `LOOP`系はブロック開始行と対応する`END`が同じindent深さ、本体だけがその1段内側。
+    - `IF`/`ELSE IF`/`ELSE`は同じindent深さの1つの構文で、`END`は構文全体に1つだけ。
+    対応する`END`が見つからないまま入力が尽きた場合(壊れたデータ等)は、例外を出さず
+    そこまでの本体を返す。
     """
 
     pos = 0
 
-    def parse_level(level: int) -> list["Record | BlockNode"]:
+    def is_end(rec: Record, level: int) -> bool:
+        return isinstance(rec, KeywordRecord) and rec.name == "END" and rec.indent == level
+
+    def parse_level(level: int) -> list["Record | BlockNode | ConditionalNode"]:
         nonlocal pos
-        body: list[Record | BlockNode] = []
+        body: list[Record | BlockNode | ConditionalNode] = []
         while pos < len(records):
             rec = records[pos]
             if rec.indent < level:
                 break
-            if isinstance(rec, KeywordRecord) and rec.name == "END" and rec.indent == level:
+            if is_end(rec, level):
                 pos += 1
                 return body
             pos += 1
-            if isinstance(rec, _BLOCK_HEADER_TYPES):
+            if isinstance(rec, IfRecord):
+                arms: list[tuple[Any, list[Any]]] = [(rec, parse_level(level + 1))]
+                while pos < len(records):
+                    nxt = records[pos]
+                    if nxt.indent != level:
+                        break
+                    if isinstance(nxt, ElseIfRecord):
+                        pos += 1
+                        arms.append((nxt, parse_level(level + 1)))
+                        continue
+                    if isinstance(nxt, KeywordRecord) and nxt.name == "ELSE":
+                        pos += 1
+                        arms.append((nxt, parse_level(level + 1)))
+                        break
+                    break
+                if pos < len(records) and is_end(records[pos], level):
+                    pos += 1
+                body.append(ConditionalNode(arms=arms))
+            elif isinstance(rec, _SIMPLE_BLOCK_HEADER_TYPES):
                 body.append(BlockNode(header=rec, body=parse_level(level + 1)))
             else:
                 body.append(rec)
@@ -161,7 +214,7 @@ def build_block_tree(records: list[Record]) -> list["Record | BlockNode"]:
     return parse_level(0)
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
-_KNOWN_KEYWORDS = {"WAIT", "END"}
+_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE"}
 
 
 def parse_dsl(text: str) -> list[Record]:
@@ -209,6 +262,14 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
         return SetVariableRecord(
             var_name=tokens[1],
             value=_resolve_value(tokens[3], placeholders),
+            indent=indent,
+        )
+
+    if first == "ELSE" and len(tokens) >= 6 and tokens[1] == "IF" and tokens[-1] == "THEN":
+        return ElseIfRecord(
+            operand1=_resolve_value(tokens[2], placeholders),
+            operator=tokens[3],
+            operand2=_resolve_value(tokens[4], placeholders),
             indent=indent,
         )
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    ConditionalNode,
+    ElseIfRecord,
     IfRecord,
     KeywordRecord,
     LoopForeachRecord,
@@ -210,11 +212,13 @@ def test_build_block_tree_groups_nested_set_variable_under_if() -> None:
     tree = build_block_tree(parse_dsl(NESTED_IF_DSL))
     assert len(tree) == 1
     node = tree[0]
-    assert isinstance(node, BlockNode)
-    assert isinstance(node.header, IfRecord)
-    assert len(node.body) == 1
-    assert isinstance(node.body[0], SetVariableRecord)
-    assert node.body[0].var_name == "InnerVar"
+    assert isinstance(node, ConditionalNode)
+    assert len(node.arms) == 1
+    header, body = node.arms[0]
+    assert isinstance(header, IfRecord)
+    assert len(body) == 1
+    assert isinstance(body[0], SetVariableRecord)
+    assert body[0].var_name == "InnerVar"
 
 
 # 実機でLOOP WHILEをIfブロック内に追加して再キャプチャした生データ(知見9)。
@@ -231,12 +235,72 @@ def test_build_block_tree_handles_loop_nested_inside_if() -> None:
     tree = build_block_tree(parse_dsl(LOOP_WHILE_INSIDE_IF_DSL))
     assert len(tree) == 1
     if_node = tree[0]
-    assert isinstance(if_node, BlockNode)
-    assert isinstance(if_node.header, IfRecord)
-    assert len(if_node.body) == 2
+    assert isinstance(if_node, ConditionalNode)
+    assert len(if_node.arms) == 1
+    header, body = if_node.arms[0]
+    assert isinstance(header, IfRecord)
+    assert len(body) == 2
 
-    set_var, while_node = if_node.body
+    set_var, while_node = body
     assert isinstance(set_var, SetVariableRecord)
     assert isinstance(while_node, BlockNode)
     assert isinstance(while_node.header, LoopWhileRecord)
     assert while_node.body == []
+
+
+# 実機で「Else if」「Else」を追加して再キャプチャした生データ(知見11)。
+# IF/ELSE IF/ELSEは同じindentの1構文で、ENDは1つだけ対応する。
+IF_ELSEIF_ELSE_DSL = (
+    "IF TestVar = $'''hello''' THEN\n"
+    "ELSE IF TestVar = $'''world''' THEN\n"
+    "ELSE\n"
+    "    SET InnerVar TO $'''inside the if block'''\n"
+    "    LOOP WHILE (LoopIndex) < (10)\n"
+    "    END\n"
+    "END"
+)
+
+
+def test_elseif_record_parsed_with_bare_variable_reference_and_string_literal() -> None:
+    records = parse_dsl(IF_ELSEIF_ELSE_DSL)
+    elseif_record = records[1]
+    assert isinstance(elseif_record, ElseIfRecord)
+    assert elseif_record.operand1 == "TestVar"
+    assert elseif_record.operator == "="
+    assert elseif_record.operand2 == "world"
+    assert elseif_record.indent == 0
+
+
+def test_else_parsed_as_bare_keyword() -> None:
+    records = parse_dsl(IF_ELSEIF_ELSE_DSL)
+    else_record = records[2]
+    assert isinstance(else_record, KeywordRecord)
+    assert else_record.name == "ELSE"
+    assert else_record.indent == 0
+
+
+def test_build_block_tree_groups_if_elseif_else_into_one_conditional_node_with_one_end() -> None:
+    tree = build_block_tree(parse_dsl(IF_ELSEIF_ELSE_DSL))
+    # IF/ELSE IF/ELSE/END全体がただ1つのConditionalNodeになり、
+    # 末尾のENDだけが消費されて他に漏れ出さないこと。
+    assert len(tree) == 1
+    node = tree[0]
+    assert isinstance(node, ConditionalNode)
+    assert len(node.arms) == 3
+
+    if_header, if_body = node.arms[0]
+    assert isinstance(if_header, IfRecord)
+    assert if_body == []
+
+    elseif_header, elseif_body = node.arms[1]
+    assert isinstance(elseif_header, ElseIfRecord)
+    assert elseif_body == []
+
+    else_header, else_body = node.arms[2]
+    assert isinstance(else_header, KeywordRecord)
+    assert else_header.name == "ELSE"
+    assert len(else_body) == 2
+    set_var, while_node = else_body
+    assert isinstance(set_var, SetVariableRecord)
+    assert isinstance(while_node, BlockNode)
+    assert isinstance(while_node.header, LoopWhileRecord)
