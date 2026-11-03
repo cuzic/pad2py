@@ -1400,3 +1400,32 @@ def test_build_block_tree_handles_real_wait_for_window_lose_focus_whole_subflow_
     assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToLoseFocus"
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_get_window_parsed_from_real_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見57(実機検証済み): design/robin_language_source_findings.md
+    # が長年「window instanceをPython側でどう表現するか」として持ち越していた`GetWindow`の
+    # 実機DSLを初めて確認した。action_idは`UIAutomation.GetWindow.GetUseTimeout`
+    # (「Get window: Specific window」ダイアログ、`Timeout`パラメータがあるため
+    # `GetUseTimeout`という命名——`Timeout`無しの別モードが存在する可能性を示唆)。
+    # 出力変数は`WindowInstance=> AutomationWindow2`という、知見14で確認済みの
+    # `=>`出力変数構文(`ScriptOutput=>`等と同形式)をそのまま再利用しており、
+    # 既存の汎用output_var/output_vars解析ロジックで無改修で正しくパースできた。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    action_records = [
+        r
+        for r in records
+        if isinstance(r, ActionRecord) and r.action_id == "UIAutomation.GetWindow.GetUseTimeout"
+    ]
+    assert len(action_records) == 1
+    rec = action_records[0]
+    assert rec.params["Control"].path == ("Window 'Untitled - Notepad'",)
+    assert rec.params["BringWindowToFront"] is False
+    assert rec.params["Timeout"] == 5
+    assert rec.output_var == "AutomationWindow2"
+    assert rec.output_vars == {"WindowInstance": "AutomationWindow2"}
+    tree = build_block_tree(records)
+    assert len(tree) > 0

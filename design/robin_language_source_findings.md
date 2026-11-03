@@ -612,7 +612,12 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
   pywinauto APIの特定(架空のAPI名を避けるため保留中)
 - 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
-  どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装
+  どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装 ——
+  `GetWindow`自体の実機DSLは確認済み(design/dsl_format_findings.md 知見57):
+  action_idは`UIAutomation.GetWindow.GetUseTimeout`、出力は`WindowInstance=> <変数名>`という
+  知見14の`=>`出力変数構文の再利用で、無改修でパース可能だった。「window instance」自体は
+  DSL上ただの変数名(`VarRef`)であることが判明し、知見56のpywinautoセレクタ生成と組み合わせた
+  変換の見通しは立ったが、`ByInstanceOrHandle`系アクション自体の実機DSLはまだ未確認のまま
 
 - ~~`ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
   実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認~~ → 完了(design/dsl_format_findings.md

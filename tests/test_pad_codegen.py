@@ -840,3 +840,16 @@ def test_generate_python_chains_all_elements_of_a_multi_element_internal_selecto
     )
     # バグがあった頃の誤った(中間のpane止まりの)式が生成されていないことも確認する。
     assert 'window(title=\'Calculator\').child_window(class_name=\'CalcFrame\'))' not in code
+
+
+def test_generate_python_from_real_get_window_whole_subflow_capture_compiles() -> None:
+    # design/dsl_format_findings.md 知見57: GetWindow(UIAutomation.GetWindow.GetUseTimeout)は
+    # 未対応アクションとして知見38/46と同じ安全なTODOフォールバックに倒れ、架空のウィンドウ
+    # インスタンス変換をでっち上げないことを確認する。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" in code

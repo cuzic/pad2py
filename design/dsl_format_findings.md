@@ -1064,3 +1064,19 @@ Desktop(backend="uia").window(title="Calculator").child_window(class_name="CalcF
 (参考: 中間の`pane`を飛ばして`win.child_window(class_name="Button", title="7")`と直接書いても実機では同じボタンに解決されたが、これはpywinautoの`child_window()`が子孫を再帰的に検索する実装上の性質に依存した挙動であり、PAD自身が明示しているセレクタ構造ではないため、採用せずPADの内部チェーンをそのまま複製する方を選んだ。)
 
 **教訓**: 知見56は「実機で動くことを確認した」ことを謳う機能だったにもかかわらず、実装直後に検証できていたのはたった1つの実例(Notepad、チェーン長1)だけだった。2つ目の独立した実例(電卓、チェーン長2)を試しただけで、実装の前提(「エントリ内のチェーンは常に1要素」)が崩れる具体例が即座に見つかった——本プロジェクトがknowledge 15・26・36・38・46・50で繰り返し学んできた「フィクスチャの多様性不足が隠れたバグを生む」というパターンが、今回は自分自身が数分前に書いたばかりの新機能に対して再現した形になる。
+
+## 57. design/robin_language_source_findings.mdが長年持ち越していた「window instance」の実機DSLを初めて確認——`GetWindow`は`=>`出力変数構文を再利用、無改修で正しくパースできた
+
+design/robin_language_source_findings.mdの「今後の調査候補」に長期間残っていた「`GetWindow`の出力(`ByInstanceOrHandle`系アクションの入力になる『window instance』)をPython側でどう表現するか」という課題に関連し、まず`GetWindow`自体の実機DSLを確認した(これまで一度もキャプチャしたことが無かった)。
+
+Actionsパネルで"Get window"を検索すると「UI automation」>「Windows」カテゴリに見つかった。ダイアログは「Get window:」(ドロップダウン、既定値「Specific window」、他の選択肢は未確認)「UI element:」(UI要素ピッカー)「Bring window to front:」(トグル)「Variables produced: AutomationWindow2」(既定の出力変数名)という構成。既存の「Window 'Untitled - Notepad'」UI要素を選択して保存・単独コピーしたところ:
+
+```
+UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \'Untitled - Notepad\''] BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2
+```
+
+**確認できた事実**: action_idは`UIAutomation.GetWindow.GetUseTimeout`——ダイアログに表示されない`Timeout`パラメータ(既定5)が実際には存在し、その存在がaction_id名(`...GetUseTimeout`)に反映されている(「タイムアウトを使うモード」が暗黙に選ばれている、おそらく他に`Timeout`無しのバリアントが存在することを示唆)。出力変数の束縛は`WindowInstance=> AutomationWindow2`——`WindowInstance`という固定のパラメータ名に対し、知見14で確認済みの`=>`出力変数構文(`ScriptOutput=>`/`ButtonPressed=>`と全く同じ形式)がそのまま使われていた。新しい構文は一切無く、既存の汎用`output_var`/`output_vars`解析ロジック(`ActionRecord`のパラメータ解析ループの一部)で**パーサー・codegenとも一切のコード変更無しで**正しく処理できた(`ActionRecord(action_id='UIAutomation.GetWindow.GetUseTimeout', params={'Control': UiElementRef(...), 'BringWindowToFront': False, 'Timeout': 5}, output_var='AutomationWindow2', output_vars={'WindowInstance': 'AutomationWindow2'})`)。codegenは未対応アクションとして知見38/46と同じ安全なTODOフォールバックに倒れ、架空のウィンドウインスタンス変換をでっち上げることは無い。
+
+**「window instance」問題への示唆**: 今回の実機確認で、「window instance」自体は単なる変数名(`AutomationWindow2`)で、DSL上は他の変数と全く区別が付かないただの`VarRef`になることが分かった——つまり、これを受け取る側(`ByInstanceOrHandle`系アクション、知見27の`ByTitleClass`系とは別系統)のDSLパラメータも、おそらく通常の変数参照としてそのまま出現すると予測される(未確認)。Python側の表現としては、知見56で実証したpywinautoセレクタ生成の仕組みと組み合わせれば、`AutomationWindow2 = Desktop(backend="uia").window(title="Untitled - Notepad")`のような代入文として変換できる可能性が見えてきたが、`BringWindowToFront: True`の場合の正確な意味論(`.set_focus()`相当か)・`Timeout`無しモードの構文・`ByInstanceOrHandle`系アクションの実機DSLは、いずれも未検証のため、今回は実装せず文書化のみに留めた。
+
+**未検証のまま残る項目**: 「Get window」ドロップダウンの他の選択肢(「Specific window」以外に何があるか、「All windows」「Active window」のようなものが予測される)・`Timeout`無しモードの構文・`BringWindowToFront: True`時の挙動・`ByInstanceOrHandle`系アクション(`CloseWindowByInstanceOrHandle`等)の実機DSLは、いずれも未確認のまま持ち越し。
