@@ -12,6 +12,8 @@ PAD Desktop は .NET(WPF)アプリケーションであり、「コピーとし�
 2. WinRM(`pywinrm`)経由で、PAD実機VM(`pad2py-pad-host`)の `C:\Program Files (x86)\Power Automate Desktop\Microsoft.Flow.RPA.Desktop.Robin.Language.dll`(578,888バイト)をBase64エンコードで取得。
 3. `ilspycmd -p -o <outdir> Robin.Language.dll` でC#ソースに逆コンパイル(291ファイル生成)。
 4. `grep`で`"THEN"`等のDSL特有文字列をキーに、関連クラスを特定して読み込んだ。
+5. (後続のティックで)同じ手法で`Microsoft.Flow.RPA.Desktop.Modules.UIAutomation.Actions.dll`
+   (197ファイル)と`Modules.MouseAndKeyboard.Actions.dll`も取得・逆コンパイルした。
 
 **注記**: 逆コンパイルした.NETアセンブリはPAD(Microsoft製品)の著作物であり、このリポジトリには一切コミットしていない(サンドボックスのスクラッチ領域のみに保持)。本ドキュメントは確認した事実(クラス名・文字列リテラル・シリアライズロジックの要旨)を独自の言葉で要約したものであり、デコンパイルされたコード自体の転載は行っていない。相互運用性の調査目的で、自分のライセンスで導入した自分のPADインストールを対象にしている。
 
@@ -401,8 +403,50 @@ SWITCH自身が実機で実際にこのインデント規則で出力される�
 未確認)。安易な部分対応は誤った意味論を生成する恐れが大きいため、`pad_dsl_parser.py`の
 モジュールdocstringに確定した構文を明記した上で、別タスクとして持ち越す。
 
+## UI要素セレクタ(「By window UI element」モード)の文字列フォーマットを解明
+
+research_notesの調査時点から「本格的なUIA要素セレクタの文法がまだ未解明」としていた、
+PADの**UI要素セレクタ**(`Click`/`Get text`等のUI automationアクションで「By window UI element」
+モードを選んだ際に使う、個々のボタン・テキストボックス等を特定する仕組み)の文字列フォーマットを、
+`Microsoft.Flow.RPA.Desktop.Modules.UIAutomation.Actions.dll`と、その依存先SDK
+(`Microsoft.Flow.RPA.Desktop.Modules.SDK.Extended.Controls`名前空間)から確認した。
+
+`ClickElementInWindow`(`UIAutomation.Actions`の`Click`アクション)は`[InputArgument(Name = "Element")]`
+として`UIControl`型の`Control`プロパティを持つ。`UIControl : Control : BaseControl`で、
+実体は`Selectors`(`IList<Selector>`)というリスト。`BaseControl.ToString()`/
+`Selector.ToString(bool isRoot)`/`SelectorElement.ToString()`/`SelectorAttribute.ToString()`を
+辿ると、**CSS属性セレクタに似た独自記法**であることが確定した:
+
+- 要素間は` > `(子孫方向への結合子)で連結。ルート要素には`:desktop >`が前置される
+  (`Selector.CreateSelectorString()`)。
+- 各要素は`Tag`(エスケープされた識別子)+属性列。属性は:
+  - `[name]` — 属性の存在チェック(`Operator.None`)
+  - `[name="value"]` — 完全一致(`Operator.EqualTo`、記号`=`)
+  - `[name!="value"]` — 不一致(`NotEqualTo`、`!=`)
+  - `[name*="value"]` — 部分一致(`Contains`、`*=`)
+  - `[name^="value"]` — 前方一致(`StartsWith`、`^=`)
+  - `[name$="value"]` — 後方一致(`EndsWith`、`$=`)
+  - `[name@="value"]` — 正規表現一致(`RegexMatch`、`@=`——他の演算子にはない記号で、
+    CSS標準の属性セレクタ演算子を独自拡張したものと分かる)
+  - `:eq(N)` — 序数(何番目の要素か、`IsOrdinal`属性用)
+  - `:disabled` — 無効化状態チェック
+- 値の`%VarName%`部分は`Selector.GetExpressionsRobin()`(`VisualRegexExpression`/
+  `CustomRegexExpression`で抽出)経由でRobinランタイムに変数参照として伝わる——つまり
+  セレクタ文字列の内部に`%VarName%`マーカーを埋め込める(他の文字列パラメータと同じ
+  インターポレーション形式がセレクタ内部でも使える)。
+
+**未確定点(今回は実装せず、文書化のみ)**: このセレクタ文字列が実際にDSLの`ActionRecord`
+パラメータ行上で**どう直列化されるか**(`Control: $'''...'''`のように素のセレクタ文字列が
+そのままテキスト値として埋め込まれるのか、それとも「コントロールリポジトリ」内の名前/IDへの
+参照になるのか)はまだ確認できていない——`UIControl`自体が`IEvaluatableContext`を実装している
+形跡は無く(`InputArgument.Expression`が要求する型とどう橋渡しされるかが未確認)、SDK側の
+別のアダプタ/ラッパークラスを経由している可能性がある。実機でのDSL出力例も一つも無いため、
+パーサー/codegenへの実装はまだ時期尚早と判断した。
+
 ## 今後の調査候補(未着手)
 
+- UI要素セレクタが実際のDSLテキスト上でどう直列化されるか(本セクション参照——セレクタ文字列の
+  フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認)
 - `SWITCH`/`CASE`/`DEFAULT`(構造はANTLR文法から類推実装済み——本セクション参照)の実機検証
 - `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
   および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
