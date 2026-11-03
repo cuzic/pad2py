@@ -245,3 +245,13 @@ def test_generate_python_leaves_send_mouse_click_as_todo_for_unverified_click_ty
     code = generate_python(tree)
     assert "# TODO: map PAD action: MouseAndKeyboard.SendMouseClick.Click" in code
     assert "pyautogui.click" not in code
+
+
+def test_generate_python_raises_clearly_for_contains_function_condition() -> None:
+    # Containsはパーサー側では正しく構造化できる(design/dsl_format_findings.md 知見18-2の
+    # バグ修正後)が、Pythonへの変換方法はまだ未検証なので、codegenは架空の変換をでっち上げず
+    # はっきり失敗すること。
+    dsl = "IF Contains(InnerVar, $'''nested''', False) THEN\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match="Contains"):
+        generate_python(tree)
