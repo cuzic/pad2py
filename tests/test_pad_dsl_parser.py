@@ -1353,3 +1353,19 @@ def test_if_action_record_parsed_from_real_if_service_capture() -> None:
     rec = if_action_records[0]
     assert rec.action_id == "Services.IfService.IsRunning"
     assert rec.params["Service"] == "Spooler"
+
+
+def test_wait_action_record_parsed_from_real_wait_for_service_capture() -> None:
+    # design/dsl_format_findings.md 知見50の追記(実機検証済み): 「Wait for service」は
+    # `WaitForWindowAction`と対になる`[WaitAction]`カテゴリのもう一つの構文で、知見50で
+    # 確立した汎用`WAIT (...)`パーサーをそのまま再利用できた。「If service」(知見54)と
+    # 同じく`Services.*`名前空間(`Services.WaitForService.Started`)。単一行のアクションで
+    # `If window`/`If service`とは異なり対応する`End`は自動挿入されない(ブロック開始構文
+    # ではない、WaitActionRecord全般と同じ)ことも実機確認した。
+    records = parse_dsl("WAIT (Services.WaitForService.Started Service: $'''Spooler''')")
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    rec = wait_records[0]
+    assert rec.action_id == "Services.WaitForService.Started"
+    assert rec.params["Service"] == "Spooler"
+    assert rec.timeout_seconds is None
