@@ -829,9 +829,32 @@ def test_ui_element_reference_with_space_in_name_parsed_as_single_token() -> Non
     record = records[0]
     assert isinstance(record, ActionRecord)
     assert record.action_id == "UIAutomation.Click.Click"
-    assert record.params["Element"] == UiElementRef(name="Start Button")
+    assert record.params["Element"] == UiElementRef(path=("Start Button",))
+    assert record.params["Element"].name == "Start Button"
     assert record.params["ClickType"] == EnumRef("UIAutomation.ClickType.LeftClick")
     assert record.params["OffsetX"] == 0
+
+
+def test_ui_element_reference_with_nested_path_and_escaped_quotes() -> None:
+    # design/dsl_format_findings.md 知見46(実機検証済み): 対象要素が別ウィンドウの子孫の
+    # 場合、`appmask['<祖先>']['<対象>']`のように`['...']`が複数連なり、各セグメントの
+    # 表示名自体が持つ`'`は`\'`でエスケープされる。メモ帳のテキスト編集領域を
+    # UI要素ピッカーで選んで実機キャプチャした生データそのもの。
+    dsl = (
+        "UIAutomation.Click.Click "
+        "Element: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "ClickType: UIAutomation.ClickType.LeftClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 0 OffsetY: 0"
+    )
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, ActionRecord)
+    element = record.params["Element"]
+    assert isinstance(element, UiElementRef)
+    assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
+    assert element.name == "Document 'Text Editor'"
 
 
 def test_on_block_error_wraps_block_node_with_next_action_in_handler_body() -> None:
@@ -987,3 +1010,53 @@ def test_build_block_tree_does_not_crash_on_real_whole_subflow_capture_with_nest
     )
     tree = build_block_tree(parse_dsl(text))
     assert len(tree) > 0
+
+
+def test_ui_element_ref_name_property_returns_leaf_segment() -> None:
+    ref = UiElementRef(path=("Window 'Untitled - Notepad'", "Document 'Text Editor'"))
+    assert ref.name == "Document 'Text Editor'"
+
+
+def test_parse_control_repository_extracts_full_attributes_for_ordinary_notepad_control() -> None:
+    # design/dsl_format_findings.md 知見46(実機検証済み): appmask['<祖先>']['<対象>']の
+    # ようなネストしたパスで参照される、Windowsタスクバーの特殊ケースではない「ふつうの」
+    # UI要素(メモ帳のテキスト編集領域)の`Attributes`配列が実際にどう埋まるかを初めて確認
+    # できた実機生データ。各要素は`{Ignore, IsOrdinal, IsDisabledAttribute, Name, Operation,
+    # Value}`という形で、`Ignore: false`のものだけがセレクタの実際の絞り込み条件として
+    # 使われる(例: Windowは`Name`+`Process`、Documentは`Class`のみ)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt").read_text(
+        encoding="utf-8"
+    )
+
+    repository = parse_control_repository(text)
+
+    entries = repository["appmask"]
+    assert set(entries.keys()) == {"Window 'Untitled - Notepad'", "Document 'Text Editor'"}
+
+    window_entry = entries["Window 'Untitled - Notepad'"]
+    assert window_entry.element_type_name == "Window"
+    (window_part,) = window_entry.selectors[0]
+    active_window_attrs = {a["Name"]: a["Value"] for a in window_part.attributes if not a["Ignore"]}
+    assert active_window_attrs == {"Name": "Untitled - Notepad", "Process": "notepad"}
+
+    document_entry = entries["Document 'Text Editor'"]
+    assert document_entry.element_type_name == "Document"
+    (document_part,) = document_entry.selectors[0]
+    active_document_attrs = {a["Name"]: a["Value"] for a in document_part.attributes if not a["Ignore"]}
+    assert active_document_attrs == {"Class": "Edit"}
+
+
+def test_parse_dsl_resolves_nested_ui_element_path_from_real_notepad_capture() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    click_records = [
+        r
+        for r in records
+        if isinstance(r, ActionRecord) and r.action_id == "UIAutomation.Click.Click"
+    ]
+    assert len(click_records) == 1
+    element = click_records[0].params["Element"]
+    assert isinstance(element, UiElementRef)
+    assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")

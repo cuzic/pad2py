@@ -40,7 +40,7 @@ PADのUI automationアクション(`Click UI element in window`等)は、DSLク�
 
 しかし知見44で判明した通り、**対象アクションを含む範囲を一括選択してコピーすると、クリップボードテキストの末尾にUI要素リポジトリ全体(`# [ControlRepository][PowerAutomateDesktop]`セクション)がJSONとして同梱される**。`pad_dsl_parser.py`の`parse_control_repository()`でこれをパースでき、`parse_dsl()`自身もこのセクションを自動的に読み飛ばすため、一括コピーしたテキストをそのまま`pad2py`に渡しても壊れない。**変換したいアクションは、単体ではなく周囲を含めてまとめてコピーすることを推奨する**(個別コピーだと今でもセレクタ無しのTODOになる)。
 
-ただし今回実機確認できたセレクタの実例は、Windowsタスクバーの「Start Button」というPAD独自の特殊な予約済み擬似セレクタ(`:startbutton`)のみで、一般的なアプリ内コントロールの`Attributes`配列の中身はまだ未確認(知見44)。そのため`pad_codegen.py`は現時点では`parse_control_repository()`の結果を実際のpywinautoセレクタ生成には使っておらず、UI要素アクションは引き続き参照先の表示名を含む`# TODO`コメントとして出力する(`_ui_element_hint()`)。でっち上げたセレクタ文字列を埋め込むことは無い。
+知見46で、一般的なアプリ内コントロール(メモ帳のテキスト編集領域)の`Attributes`配列の中身も実機確認できた(`Class`/`Name`/`Process`等、pywinautoの`class_name`/`title`等にほぼ1対1対応する語彙)。対象が別ウィンドウの子孫の場合は`appmask['<祖先>']['<対象>']`のように`['...']`セグメントが複数連なる(`UiElementRef.path`で保持)。ただし確証を持てる実例がまだ2件のみのため、`pad_codegen.py`は現時点では`parse_control_repository()`の結果を実際のpywinautoセレクタ生成には使っておらず、UI要素アクションは引き続き参照パス(`appmask['...']['...']`の各表示名)を含む`# TODO`コメントとして出力する(`_ui_element_hint()`)。でっち上げたセレクタ文字列を埋め込むことは無い。
 
 ## 主要ドキュメント
 
@@ -48,7 +48,7 @@ PADのUI automationアクション(`Click UI element in window`等)は、DSLク�
 | --- | --- |
 | [design/control_dump_tech_selection.md](design/control_dump_tech_selection.md) | 制御dumpスクリプトの技術選定・アーキテクチャ |
 | [design/ci_verification_findings.md](design/ci_verification_findings.md) | GitHub Actions・実機GCP VM双方での検証知見(知見1〜11) |
-| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜43: SET/IF/LOOP系・ネスト構造・UI automationアクションのpywinauto/pyautoguiマッピング・複数出力のバグ修正・文字列エスケープのバグ修正・複数行コメント対応(実機検証済み)・SWITCH/CASE対応(実機検証で構造を訂正)・IN/NOT IN対応・UI要素セレクタの文字列フォーマット解明・Focus/Close window対応・WaitActionカテゴリ発見・ON ERRORブロックの実機検証(構造を訂正)・名前付きケース/複数アーム対応(パーサーバグを修正)・REPEAT ACTION対応・UI要素参照`appmask[...]`の発見(パーサーバグを修正)・PAD「Inspect UI elements」ピッカーで取得したUI要素のPublic Attributes完全一覧・BLOCK/ON BLOCK ERROR/NEXT ACTIONの実機検証とパーサー/codegen実装・THROW ERRORの実機検証・UI要素セレクタ取得の非2FA経路を全て潰し2FA解消が前提条件と確定・2FA承認後クラウド保存に成功するも個人MSAはPower Platformメーカーポータルにアクセス不可と判明(前提の訂正)まで) |
+| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜46: SET/IF/LOOP系・ネスト構造・UI automationアクションのpywinauto/pyautoguiマッピング・複数出力のバグ修正・文字列エスケープのバグ修正・複数行コメント対応(実機検証済み)・SWITCH/CASE対応(実機検証で構造を訂正)・IN/NOT IN対応・UI要素セレクタの文字列フォーマット解明・Focus/Close window対応・WaitActionカテゴリ発見・ON ERRORブロックの実機検証(構造を訂正)・名前付きケース/複数アーム対応(パーサーバグを修正)・REPEAT ACTION対応・UI要素参照`appmask[...]`の発見(パーサーバグを修正)・PAD「Inspect UI elements」ピッカーで取得したUI要素のPublic Attributes完全一覧・BLOCK/ON BLOCK ERROR/NEXT ACTIONの実機検証とパーサー/codegen実装・THROW ERRORの実機検証・UI要素セレクタ取得の非2FA経路を全て潰し2FA解消が前提条件と確定・2FA承認後クラウド保存に成功するも個人MSAはPower Platformメーカーポータルにアクセス不可と判明(前提の訂正)・一括コピーでUI要素リポジトリJSON(実セレクタ)を発見(本プロジェクト最大の発見)・ネストしたBLOCKのON BLOCK ERRORインデント不一致を発見・UI要素参照の複数階層連結とふつうのコントロールのAttributes語彙を確認(パーサーバグを修正)まで) |
 | [design/robin_language_source_findings.md](design/robin_language_source_findings.md) | PAD実機の内部DLL(Robin Language)を逆コンパイルして文法を一次ソースで裏付けた知見 |
 | [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
 | [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |

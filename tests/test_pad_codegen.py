@@ -557,3 +557,18 @@ def test_generate_python_from_real_whole_subflow_capture_compiles() -> None:
     assert "ControlRepositorySymbols" not in code
     assert "appmask" not in code
     assert "UI element: 'Start Button'" in code
+
+
+def test_generate_python_shows_full_path_for_nested_ui_element_reference() -> None:
+    # design/dsl_format_findings.md 知見46: appmask['<祖先>']['<対象>']のような複数セグメント
+    # の参照(メモ帳のテキスト編集領域、実機キャプチャ)では、TODOコメントに祖先から対象
+    # までのフルパスを表示し、でっち上げたセレクタは埋め込まない。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "ControlRepositorySymbols" not in code
+    assert "appmask" not in code
+    assert "\"Window 'Untitled - Notepad'\" > \"Document 'Text Editor'\"" in code
