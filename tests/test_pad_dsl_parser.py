@@ -8,6 +8,8 @@ from __future__ import annotations
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    CaseDefaultRecord,
+    CaseRecord,
     CommentRecord,
     ConditionalNode,
     ElseIfFunctionRecord,
@@ -20,6 +22,8 @@ from dump_daemon.pad_dsl_parser import (
     LoopWhileRecord,
     EnumRef,
     SetVariableRecord,
+    SwitchNode,
+    SwitchRecord,
     VarRef,
     build_block_tree,
     parse_dsl,
@@ -559,3 +563,60 @@ def test_multiline_comment_does_not_corrupt_string_literal_masking() -> None:
     assert records[0].text == "looks like $'''a string''' but is not "
     assert isinstance(records[1], SetVariableRecord)
     assert records[1].value == "real"
+
+
+def test_switch_case_default_parsed_as_dedicated_records() -> None:
+    # design/robin_language_source_findings.md: ANTLR生成パーサー(Language.cs)の
+    # Small_statementContextで、switch_statement/case_statement/case_defaultが
+    # if_statement/elseif_statement/else_statementと文法上並列であることを確認した
+    # (実機での出力例は未確認)。
+    dsl = "SWITCH TestVar\nCASE $'''a'''\nDEFAULT"
+    records = parse_dsl(dsl)
+    assert len(records) == 3
+    assert isinstance(records[0], SwitchRecord)
+    assert records[0].expression == VarRef("TestVar")
+    assert isinstance(records[1], CaseRecord)
+    assert records[1].value == "a"
+    assert isinstance(records[2], CaseDefaultRecord)
+
+
+def test_build_block_tree_groups_switch_case_default_into_one_switch_node() -> None:
+    # IF/ELSE IF/ELSEと同じ理由(文法上の並列性)で、SWITCH/CASE/DEFAULTも1つの
+    # SwitchNodeにまとめ、ENDは構文全体に1つだけ対応させる(類推による未検証の前提——
+    # pad_dsl_parser.pyのモジュールdocstring参照)。
+    dsl = (
+        "SWITCH TestVar\n"
+        "CASE $'''a'''\n"
+        "    WAIT 1\n"
+        "CASE $'''b'''\n"
+        "    WAIT 2\n"
+        "DEFAULT\n"
+        "    WAIT 3\n"
+        "END\n"
+        "WAIT 9"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 2
+    switch_node = tree[0]
+    assert isinstance(switch_node, SwitchNode)
+    assert switch_node.expression == VarRef("TestVar")
+    assert len(switch_node.arms) == 3
+    case_a, case_b, default = switch_node.arms
+    assert isinstance(case_a[0], CaseRecord) and case_a[0].value == "a"
+    assert case_a[1] == [KeywordRecord(name="WAIT", args=["1"], indent=1)]
+    assert isinstance(case_b[0], CaseRecord) and case_b[0].value == "b"
+    assert case_b[1] == [KeywordRecord(name="WAIT", args=["2"], indent=1)]
+    assert isinstance(default[0], CaseDefaultRecord)
+    assert default[1] == [KeywordRecord(name="WAIT", args=["3"], indent=1)]
+    # SwitchNode自体のENDを正しく消費し、後続の兄弟要素を切り捨てていないこと
+    # (知見15と同種の回帰——LOOP系ブロックで一度発覚したバグと同じ形)。
+    assert tree[1] == KeywordRecord(name="WAIT", args=["9"], indent=0)
+
+
+def test_build_block_tree_handles_switch_with_no_default() -> None:
+    dsl = "SWITCH TestVar\nCASE $'''a'''\n    WAIT 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 1
+    switch_node = tree[0]
+    assert isinstance(switch_node, SwitchNode)
+    assert len(switch_node.arms) == 1

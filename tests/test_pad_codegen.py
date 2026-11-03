@@ -377,3 +377,31 @@ def test_generate_python_splits_multiline_comment_into_one_hash_line_per_line() 
     compile(code, "<generated>", "exec")
     assert "# line one" in code
     assert "# line two" in code
+
+
+def test_generate_python_renders_switch_case_default_as_if_elif_else() -> None:
+    # design/robin_language_source_findings.mdの類推に基づく実装(SWITCH自身の
+    # インデント/比較セマンティクスは実機未検証)。SwitchNodeに対する唯一の
+    # codegenテスト——生成結果が実際にPythonとして正しく動くこと(構文だけでなく
+    # 実行結果も)をeval/execで確認する。
+    dsl = (
+        "SET Result TO $'''none'''\n"
+        "SWITCH TestVar\n"
+        "CASE $'''a'''\n"
+        "    SET Result TO $'''matched a'''\n"
+        "CASE $'''b'''\n"
+        "    SET Result TO $'''matched b'''\n"
+        "DEFAULT\n"
+        "    SET Result TO $'''matched default'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "if TestVar == 'a':" in code
+    assert "elif TestVar == 'b':" in code
+    assert "else:" in code
+
+    namespace: dict[str, object] = {"TestVar": "b"}
+    exec(code, namespace)
+    assert namespace["Result"] == "matched b"
