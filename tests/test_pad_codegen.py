@@ -874,3 +874,14 @@ def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_co
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "# TODO: map PAD action: UIAutomation.GetWindow.GetForegroundWindow" in code
+
+
+def test_generate_python_from_real_if_image_exists_on_screen_capture_raises() -> None:
+    # design/dsl_format_findings.md 知見58: 「If image」(UIAutomation.IfImage.ExistsOnScreen)も
+    # 知見54のIfActionRecord/NotImplementedErrorフォールバックをそのまま再利用でき、
+    # コード変更は不要だった——画像マッチングのPython対応(pyautogui.locateOnScreen等)は
+    # 実機検証が無いため、架空の変換をでっち上げずはっきり失敗させる。
+    text = (FIXTURES_DIR / "if_image_exists_on_screen.txt").read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    with pytest.raises(NotImplementedError, match="UIAutomation.IfImage.ExistsOnScreen"):
+        generate_python(tree)

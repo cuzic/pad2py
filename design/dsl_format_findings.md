@@ -1000,7 +1000,7 @@ IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN
 
 **重要な発見**: これまでの`[ConditionAction]`/`[WaitAction]`の実機キャプチャは`UIAutomation.*`名前空間ばかりだったが、「If service」は初めて見る**`Services.*`という別の名前空間**だった(`Services.IfService.IsRunning`)。UI要素を伴わないアクションのため、単独コピーでは`# [ControlRepository][PowerAutomateDesktop]`ブロックが付かないことも確認できた(知見44の「全選択時のみ付く」という理解と整合)。Service nameはUI要素参照(`appmask[...]`)ではなく、通常のプレースホルダ文字列(`$'''Spooler'''`)として渡される——既存の汎用パーサー/codegenロジックのまま、**一切のコード変更無しで**正しく処理できた。
 
-**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If image」の実機DSL表現・「If service」の他の選択肢(「Is running」以外に何があるか、知見50/54の`Is open`/`Isn't open`のようなペアが存在すると予測される)は、いずれも未確認のまま持ち越し。
+**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If service」の他の選択肢(「Is running」以外に何があるか、知見50/54の`Is open`/`Isn't open`のようなペアが存在すると予測される)は、いずれも未確認のまま持ち越し。~~「If image」の実機DSL表現~~ → 完了(知見58)。
 
 ## 55. 【重大なパーサーバグ修正】変数のドット付きプロパティアクセス(`VariableTrailer`)が`EnumRef`に誤分類され文字列リテラルへすり替わるバグを発見・修正
 
@@ -1098,3 +1098,23 @@ UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInst
 ```
 
 **新発見**: これまでの全captureは`<Param>=> <変数名>`という`=>`出力変数束縛を**高々1個**しか持たなかったが、今回初めて**1つのアクションが2個の`=>`束縛を同時に持つ**実例に遭遇した(`WindowTitle=> WindowTitle2`と`WindowInstance=> AutomationWindow2`)。パーサーを確認したところ、`SetVariableRecord`(`ActionRecord`)の`output_var`フィールドには元々「後方互換のため最後に見つかったものを保持するだけ」という設計意図のコメントが既に書かれており、複数の`=>`束縛を正しく扱うための`output_vars`(複数キー対応の辞書)という仕組みも既に実装済みだった——つまり今回の実例は、過去のどこかのティックで「将来複数出力があるかもしれない」と見越して設計されていた仕組みが、初めて実際のデータで裏付けられた形になる。**一切のコード変更無しで**`output_vars == {"WindowTitle": "WindowTitle2", "WindowInstance": "AutomationWindow2"}`、`output_var == "AutomationWindow2"`(最後に見つかったもの)として正しくパースできることを確認した。
+
+## 58. 【新発見】`[ConditionAction]`カテゴリの最後の未検証項目「If image」を実機確認——知見44以来ずっと空だった`imgrepo`シンボルの初の実データ、角括弧リスト構文も初確認
+
+知見54で「If image」の実機DSLが「未検証のまま残る項目」として持ち越されていた最後の1つを確認した。Actionsパネルで"If image"を検索すると「UI automation」カテゴリに直接見つかった(「If window」等とは違いサブカテゴリ無し)。ダイアログは「If image: exists」(ドロップダウン、他の選択肢は未確認)「Image」(画像選択欄、「Select image(s)」→「Capture image」で画面の矩形範囲をドラッグ選択してキャプチャする)「Search for image on: Entire screen」「Search Mode: Search whole screen or foreground window」「Find all images in the list」(トグル)「Tolerance: 10」という構成。
+
+Notepadのタイトルバー付近を画面キャプチャで選択し(「Image captured successfully」ダイアログでデフォルト名「Image」のまま確定)、保存・単独コピーしたところ:
+
+```
+IF (UIAutomation.IfImage.ExistsOnScreen Images: [imgrepo['Image']] FindAllImages: False Tolerance: 10 SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy) THEN
+```
+
+**確認できた事実**:
+- action_idは`UIAutomation.IfImage.ExistsOnScreen`——知見54で確立した`IF (<ActionId> ...) THEN`構文をそのまま再利用しており、「If window」はこのアクション単体で対応する`End`も自動挿入される(=ブロック開始構文)ことも実機確認した(知見54の他の`[ConditionAction]`群と同じ)。
+- **知見44で発見した`# [ControlRepository][PowerAutomateDesktop]`セクションの`ImageRepositorySymbol`(シンボル名`imgrepo`)に、初めて実データが入った実例を確認できた**。これまでの全captureでは`"ImageRepositorySymbol": {"Repository": "{\"Folders\": [], \"Images\": [], \"Version\": 1}", ...}`のように常に空だったが、今回`"Images"`配列に実際のスクリーンショットPNG(Base64)を含むエントリ(`Id`/`Name`/`Screenshot`等)が1件入った。
+- **新しい構文: 角括弧で囲んだリストリテラル**。`Images: [imgrepo['Image']]`——`appmask['...']`が単体の名前参照として裸で出現するのとは異なり、`imgrepo['Image']`全体が`[...]`で囲まれている。「Find all images in the list」トグル(複数の画像候補を同時に検索する機能)の存在から、複数要素をカンマ区切りで保持できるリストリテラル構文(`[imgrepo['A'], imgrepo['B']]`のような形)だと推測されるが、複数要素の実例は未確認。
+- `SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy`という、ダイアログのどの項目にも対応しない隠しパラメータも実機確認できた(知見57の`GetWindow`の`Timeout`と同種の、UIに出ないがDSLには現れるパラメータ)。
+
+**パーサーの挙動**: 現在のパーサーは`appmask[...]`専用の`UiElementRef`抽出ロジックしか持たず、`imgrepo[...]`の角括弧リスト構文は未対応のため、`[imgrepo['Image']]`全体が不透明な`VarRef(name="[imgrepo['Image']]")`としてテキストのまま保持される——構造化はされないが、データを失わず、クラッシュもしない安全なフォールバックであることを確認した。codegenは知見54の`IfActionRecord`の`NotImplementedError`フォールバックをそのまま再利用でき、**一切のコード変更無しで**安全に失敗することを確認した(画像マッチングは`pyautogui.locateOnScreen`等への対応が考えられるが、実機検証が無いため架空の変換はでっち上げない)。
+
+**未検証のまま残る項目**: 「If image」ドロップダウンの他の選択肢(「exists」以外に「doesn't exist」等が予測される)・複数画像をリストに含めた場合の実際の区切り文字・`imgrepo[...]`の角括弧リスト構文の専用パーサー対応・`ImageRepositorySymbol`の`parse_control_repository()`での構造化(現状`ControlRepositorySymbols`のみ対応、`ImageRepositorySymbol`は未対応)は、いずれも未確認・未実装のまま持ち越し。
