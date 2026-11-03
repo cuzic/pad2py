@@ -371,3 +371,27 @@ def test_build_block_tree_handles_if_nested_inside_if_arm() -> None:
     assert isinstance(inner_header, IfRecord)
     assert inner_header.operand1 == VarRef("InnerVar")
     assert inner_body == []
+
+
+# 回帰テスト: LOOP系ブロックが自分自身の閉じENDを消費せず、呼び出し元の
+# while ループがそのENDを「呼び出し元自身の終端」と誤認して後続の兄弟要素を
+# 黙って切り捨てるバグがあった(2つ以上のLOOP系ブロックが同じ深さで連続する場合にのみ
+# 顕在化するため、これまでのフィクスチャ——末尾に1個だけLOOPがあるもの——では
+# 見逃されていた)。
+TWO_SIBLING_LOOPS_WITH_TRAILING_ACTION_DSL = (
+    "LOOP FOREACH CurrentItem IN TestVar\nEND\n"
+    "LOOP LoopIndex FROM 1 TO 3 STEP 1\nEND\n"
+    "WAIT 1"
+)
+
+
+def test_build_block_tree_does_not_drop_siblings_after_a_simple_loop_block() -> None:
+    tree = build_block_tree(parse_dsl(TWO_SIBLING_LOOPS_WITH_TRAILING_ACTION_DSL))
+    assert len(tree) == 3
+    foreach_node, loop_node, wait_record = tree
+    assert isinstance(foreach_node, BlockNode)
+    assert isinstance(foreach_node.header, LoopForeachRecord)
+    assert isinstance(loop_node, BlockNode)
+    assert isinstance(loop_node.header, LoopRecord)
+    assert isinstance(wait_record, KeywordRecord)
+    assert wait_record.name == "WAIT"

@@ -250,7 +250,14 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                     pos += 1
                 body.append(ConditionalNode(arms=arms))
             elif isinstance(rec, _SIMPLE_BLOCK_HEADER_TYPES):
-                body.append(BlockNode(header=rec, body=parse_level(level + 1)))
+                block_body = parse_level(level + 1)
+                # parse_level(level + 1)はこのブロック自身の閉じENDを消費できない
+                # (そのENDのindentはlevelであり、level + 1ではないため)。ここで明示的に
+                # 消費しないと、呼び出し元のwhileループがこのENDを「呼び出し元自身の終端」と
+                # 誤認し、後続の兄弟要素を黙って切り捨ててしまう(実データで発覚したバグ)。
+                if pos < len(records) and is_end(records[pos], level):
+                    pos += 1
+                body.append(BlockNode(header=rec, body=block_body))
             else:
                 body.append(rec)
         return body
