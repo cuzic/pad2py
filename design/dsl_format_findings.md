@@ -417,3 +417,17 @@ UIAutomation.ResizeWindow.ResizeByTitleClass Title: $'''Power Automate | g1g2_te
 予想通り、知見24の`Set window state`(`UIAutomation.SetWindowState.SetStateByTitleClass Title: ... Class: ...`)と全く同じ`Title`/`Class`パラメータ構成パターンがそのまま横展開されており、`Windows`サブカテゴリの各アクションはおそらく共通の「Find window mode」基盤実装を共有していると推測できる(複数アクションでパターンの一貫性を確認できたのは初めて——これまでの知見19-23は逆に「一貫しない」ことの確認が多かった)。
 
 `pad_codegen.py`では、3アクション共通の`_window_lookup_expr(node)`ヘルパーを新設し(`Title`/`Class`からの`Desktop(backend='uia').window(title=...)`式組み立てを共通化)、`UIAutomation.MoveWindow.MoveByTitleClass` → `.move_window(x=, y=)`、`UIAutomation.ResizeWindow.ResizeByTitleClass` → `.move_window(width=, height=)`(pywinautoの`move_window()`は幅/高さのみ指定すれば現在位置を保ったままリサイズできる)を追加した。知見24と同じガード(`Window class`併用は未検証のためTODO)を3アクションで共有している。
+
+## 26. パーサーの重大バグ発見: 1アクションが複数の出力変数を持つ場合、後の束縛が前の束縛をサイレントに上書きしていた
+
+「Focus window」(知見25と同じByTitleClassパターンの5件目——予想通りの結果だったため詳細は割愛)に続けて「Get window」を実機で追加した。「Get window:」ドロップダウンには「Foreground window」「Specific window」「UI element」の3モードがあり、「Foreground window」を選ぶとウィンドウセレクタ不要で、design/dsl_format_findings.md知見24-25のByTitleClass系とはまた別の、セレクタすら要らない最もシンプルなモードだと分かった。保存・再コピーしたところ:
+
+```
+UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInstance=> AutomationWindow
+```
+
+**ここで重大なバグを発見した**: このアクションは`WindowTitle=> WindowTitle`と`WindowInstance=> AutomationWindow`という**2つの出力束縛**を持つ。これまでの全アクション(Display message、RunPythonScript等)は出力が1個だけだったため気づかなかったが、`ActionRecord.output_var`は単一の`str | None`フィールドしかなく、`_parse_line()`のパラメータ走査ループは`=>`トークンに遭遇するたびに`record.output_var = tokens[i + 1]`と**無条件に上書き**していた。つまりこの例では、1個目の束縛(`WindowTitle=> WindowTitle`)の情報が**完全に、サイレントに失われ**、`output_var`には2個目の`AutomationWindow`だけが残っていた(実際に`parse_dsl()`で検証して再現を確認した)。
+
+知見18-2(Contains)や知見15(LOOP自身の閉じEND消費)と同種の「クラッシュせず静かにデータを失う」バグで、今回は**単体テストのフィクスチャが複数出力を持つアクションを一度も含んでいなかった**ため長らく見逃されていた——知見15の教訓(「検証対象が末尾に来る」偏り)と同じ構造の「フィクスチャの多様性不足」によるカバレッジの穴。
+
+**修正**: `ActionRecord`に`output_vars: dict[str, str]`(パラメータ名→変数名)フィールドを追加し、`=>`に遭遇するたびに**全ての**束縛をここへ記録するようにした。既存の`output_var`フィールドは後方互換のため残し(最後に見つかった束縛を保持する、という従来の——意図せず生まれていた——挙動をそのまま踏襲)、複数出力がありうるアクションでは`output_vars`を参照する設計とした。既存の単一出力アクション全てに対しても`output_vars`が正しく(1エントリの辞書として)埋まることをテストで確認し、新たに2出力の`Get window`を使った回帰テストを追加した。`pad_codegen.py`側は今回`GetWindow`アクション自体を変換対象に追加していない(複数出力の扱い方の設計は別途必要)ため、変更は不要だった。
