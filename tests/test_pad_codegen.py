@@ -358,6 +358,35 @@ def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None
     assert "Desktop(" not in code
 
 
+def test_generate_python_maps_focus_window_to_pywinauto_set_focus() -> None:
+    # design/dsl_format_findings.md 知見27(実機確認済み)・
+    # design/robin_language_source_findings.md(FocusWindowByTitleClassSelectorのソースで
+    # action_idの構成要素を確認)。
+    dsl = "UIAutomation.FocusWindow.FocusByTitleClass Title: $'''Notepad''' Class: $'''''' "
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "Desktop(backend='uia').window(title='Notepad').set_focus()" in code
+
+
+def test_generate_python_maps_close_window_to_pywinauto_close() -> None:
+    # design/robin_language_source_findings.md——CloseWindowByTitleClassSelectorのソースから
+    # 他のByTitleClass系アクションと同じパターンだと確認(action_id自体は実機未確認)。
+    dsl = "UIAutomation.CloseWindow.CloseByTitleClass Title: $'''Notepad''' Class: $'''''' "
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "Desktop(backend='uia').window(title='Notepad').close()" in code
+
+
+def test_generate_python_leaves_focus_window_as_todo_when_class_is_used() -> None:
+    dsl = "UIAutomation.FocusWindow.FocusByTitleClass Title: $'''Notepad''' Class: $'''Notepad''' "
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: UIAutomation.FocusWindow.FocusByTitleClass" in code
+    assert "Desktop(" not in code
+
+
 def test_generate_python_renders_comment_record_as_python_comment() -> None:
     # CommentRecord追加後、codegenがクラッシュせず正しくPythonコメントへ変換すること
     # (design/robin_language_source_findings.mdで構文を確認、未対応のままだと
