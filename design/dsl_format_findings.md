@@ -592,3 +592,5 @@ END
 `REPEAT ACTION`はアーム本体の末尾に追加される、通常の文と変わらない2トークンのベアキーワードだった——design/robin_language_source_findings.mdで`RepeatActionStatement.ToString()`から確認していた構文そのまま。`EXIT LOOP`/`NEXT LOOP`と同じ扱いができるため、`pad_dsl_parser.py`の`_KNOWN_KEYWORDS`に`"REPEAT"`を追加するだけで対応できた(`"NEXT"`は`NEXT LOOP`で既に登録済みのため、`NEXT ACTION`——ソース上`NextActionStatement.ToString()`が同じ`"NEXT ACTION"`を返す——も追加実装無しで対応できる見込み)。
 
 「Go to label」オプションは今回は未検証のまま持ち越し(おそらくPADの「Label」/「Go to label」アクションと連動する、別の構文が必要になると推測される)。
+
+**追加確認**: 「Exception handling mode」を既定の「Go to next action」に戻して再キャプチャしたところ、`REPEAT ACTION`はおろか**いかなるトークンも出力されなかった**(アーム本体は`SET NewVar2 TO ...`だけに戻った)。つまり「Go to next action」(既定の「次のアクションへ進む」という通常のフロー)は明示的な`NEXT ACTION`トークンを伴わない——`REPEAT ACTION`は非既定の選択をした場合にのみ現れる、という理解で確定した。`pad_dsl_parser.py`は元々この状態(本体にREPEAT/NEXTが無い)も問題なく扱えるため、コード変更は不要。
