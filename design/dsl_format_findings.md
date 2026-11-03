@@ -1089,4 +1089,12 @@ UIAutomation.CloseWindow.CloseByInstanceOrHandle WindowInstance: AutomationWindo
 
 design/robin_language_source_findings.mdが予測していた`CloseWindowByInstanceOrHandle`という命名パターンがそのまま実機で確認できた(action_id: `UIAutomation.CloseWindow.CloseByInstanceOrHandle`)。より重要な点として、**`WindowInstance`パラメータは引用符もUI要素参照の角括弧も付かない、完全に裸の変数参照**(`VarRef(name='AutomationWindow2')`)だった——知見57本文で立てた仮説(「window instanceは単なる変数名としてDSLに現れる」)が的中し、既存の汎用パラメータ解析ロジックで**一切のコード変更無しで**正しくパースできることを確認した。これで`GetWindow`(知見57本文)→`AutomationWindow2`という変数→`CloseWindow`(by instance)という、window instanceの生成から消費までの実機DSLの流れが一通り確認できたことになる。
 
-**未検証のまま残る項目(追加)**: `BringWindowToFront: True`時の挙動・`Timeout`無しモードの構文・他の`ByInstanceOrHandle`系アクション(`SetWindowStateByInstanceOrHandle`等、知見27の`ByTitleClass`系に並ぶと予測される仲間)の実機DSLは、いずれも未確認のまま持ち越し。
+**未検証のまま残る項目(追加)**: `BringWindowToFront: True`時の挙動・他の`ByInstanceOrHandle`系アクション(`SetWindowStateByInstanceOrHandle`等、知見27の`ByTitleClass`系に並ぶと予測される仲間)の実機DSLは、いずれも未確認のまま持ち越し。
+
+**さらに追記(別ティック・「Get window」ドロップダウンの全選択肢を確認)**: 「Get window:」ドロップダウンの全選択肢を確認したところ、「Specific window」(知見57本文で確認済み)「Foreground window」の2択だけだった(「All windows」「Active window」のような予測は外れ)。「Foreground window」を選ぶと、ダイアログの「Variables produced」欄に`WindowTitle2`と`AutomationWindow2`という**2つ**の変数名が表示された。保存・単独コピーしたところ:
+
+```
+UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2
+```
+
+**新発見**: これまでの全captureは`<Param>=> <変数名>`という`=>`出力変数束縛を**高々1個**しか持たなかったが、今回初めて**1つのアクションが2個の`=>`束縛を同時に持つ**実例に遭遇した(`WindowTitle=> WindowTitle2`と`WindowInstance=> AutomationWindow2`)。パーサーを確認したところ、`SetVariableRecord`(`ActionRecord`)の`output_var`フィールドには元々「後方互換のため最後に見つかったものを保持するだけ」という設計意図のコメントが既に書かれており、複数の`=>`束縛を正しく扱うための`output_vars`(複数キー対応の辞書)という仕組みも既に実装済みだった——つまり今回の実例は、過去のどこかのティックで「将来複数出力があるかもしれない」と見越して設計されていた仕組みが、初めて実際のデータで裏付けられた形になる。**一切のコード変更無しで**`output_vars == {"WindowTitle": "WindowTitle2", "WindowInstance": "AutomationWindow2"}`、`output_var == "AutomationWindow2"`(最後に見つかったもの)として正しくパースできることを確認した。

@@ -863,3 +863,14 @@ def test_generate_python_from_real_close_window_by_instance_handle_capture_compi
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "# TODO: map PAD action: UIAutomation.CloseWindow.CloseByInstanceOrHandle" in code
+
+
+def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles() -> None:
+    # design/dsl_format_findings.md 知見57の追記: 2つの`=>`出力変数束縛を持つ
+    # GetForegroundWindowも、未対応アクションとして安全なTODOフォールバックに倒れ、
+    # 架空の変数代入をでっち上げないことを確認する。
+    dsl = "UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.GetWindow.GetForegroundWindow" in code
