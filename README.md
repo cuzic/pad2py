@@ -11,7 +11,8 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
   - `raw_fallback.py` — comtypes経由のUIA3 Rawフォールバック
   - `trace_compare.py` — 複数トレース比較(ループ本体・ループ変数抽出)
   - `clipwire_client.py` — clipwire(対話的セッション内実行デーモン)のHTTPクライアント
-  - `pad_dsl_parser.py` — PADクリップボードDSLのパーサー(実データで検証済み)
+  - `pad_dsl_parser.py` — PADクリップボードDSLのパーサー(実データで検証済み)。SET/IF+ELSE IF+ELSE(ネスト対応)/LOOP(カウント・FOREACH・WHILE)/EXIT・NEXT LOOPを`indent`情報付きのフラットな`Record`列に変換し、`build_block_tree()`で`BlockNode`/`ConditionalNode`の木構造に組み立てる
+  - `pad_codegen.py` — `build_block_tree()`の出力からPythonソースを生成する最小限のコードジェネレーター(プロトタイプ)。未対応のアクションは架空のAPI呼び出しをでっち上げず`# TODO`コメントを出力する
   - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
 
@@ -21,7 +22,7 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
 | --- | --- |
 | [design/control_dump_tech_selection.md](design/control_dump_tech_selection.md) | 制御dumpスクリプトの技術選定・アーキテクチャ |
 | [design/ci_verification_findings.md](design/ci_verification_findings.md) | GitHub Actions・実機GCP VM双方での検証知見(知見1〜11) |
-| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認 |
+| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜15: SET/IF/LOOP系・ネスト構造・Pythonコード生成の試作まで) |
 | [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
 | [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |
 | [design/schemas/](design/schemas/) | IR/UIツリーのJSON Schema |
