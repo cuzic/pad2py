@@ -62,8 +62,8 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
 演算子は実機検証済みの6つの比較演算子(`=`/`<>`/`>`/`>=`/`<`/`<=`、design/dsl_format_findings.md
-知見18)のみ`_OPERATOR_MAP`に登録している。未知の演算子に遭遇した場合は、誤った意味論を
-生成しないよう`ValueError`を送出する。
+知見18)と、ソース確認済み(実機未確認)の`IN`/`NOT IN`のみ`_OPERATOR_MAP`に登録している。
+未知の演算子に遭遇した場合は、誤った意味論を生成しないよう`ValueError`を送出する。
 
 `Contains`等のテキスト演算子は中置記法ではなく`FunctionName(operand1, operand2, caseFlag)`
 という別の構文(知見18-2)で、パーサー(`pad_dsl_parser.py`)側は`IfFunctionRecord`/
@@ -100,7 +100,11 @@ from .pad_dsl_parser import (
 
 INDENT = "    "
 
-# 実機検証済みの演算子のみ(design/dsl_format_findings.md 知見6・9)。
+# 実機検証済みの6つ(design/dsl_format_findings.md 知見6・9)に加え、`IN`/`NOT IN`は
+# design/robin_language_source_findings.md——`ComparisonOperatorExtensions`のソースで
+# DSL上の文字列表現が確定しており、Pythonの`in`/`not in`はPADの「コレクションに含まれるか」
+# という意味とそのまま対応する自然な写像のため追加した(実機でどのUI経由で使われるかは
+# まだ未確認)。
 _OPERATOR_MAP = {
     "=": "==",
     "<>": "!=",
@@ -108,6 +112,8 @@ _OPERATOR_MAP = {
     ">=": ">=",
     "<": "<",
     "<=": "<=",
+    "IN": "in",
+    "NOT IN": "not in",
 }
 
 # MouseAndKeyboard.PressReleaseKey.*のBoolパラメータ名 → pyautoguiのキー名。

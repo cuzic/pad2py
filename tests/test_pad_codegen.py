@@ -405,3 +405,14 @@ def test_generate_python_renders_switch_case_default_as_if_elif_else() -> None:
     namespace: dict[str, object] = {"TestVar": "b"}
     exec(code, namespace)
     assert namespace["Result"] == "matched b"
+
+
+def test_generate_python_renders_not_in_operator_as_python_not_in() -> None:
+    # design/robin_language_source_findings.md: IN/NOT INのDSL表現はComparisonOperatorExtensions
+    # のソースで確定しており、Pythonのin/not inは意味的にそのまま対応するため_OPERATOR_MAPに
+    # 追加した(実機でどのUI経由で使われるかは未確認)。
+    dsl = "IF TestVar NOT IN $'''list''' THEN\n    WAIT 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "if TestVar not in 'list':" in code
