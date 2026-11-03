@@ -159,3 +159,25 @@ END
 - `IF`の中に`LOOP WHILE`(本体は空)がネストする、知見9で実機キャプチャした実際のケースで、2階層のネストが正しく組み立てられること
 
 これで、IR設計(design/control_dump_tech_selection.md)が目指していた「複数トレースからページ送りループ・条件分岐を再現する」ための**構文木レベルの土台**が、実機検証済みの文法の範囲(SET/IF/LOOP系3種)でひとまず完成した。未対応: `ELSE`/`ELSE IF`(ブロック木への組み込み方が未設計)、構文エラー(対応する`END`が無いデータ)に対するより堅牢なエラー報告。
+
+## 11. `ELSE IF`/`ELSE`: `IF`とは別ブロックではなく、同じ構文の追加アーム(重要な設計訂正)
+
+知見10の`build_block_tree()`は「`IfRecord`は単独でブロックを開き、自分専用の`END`を持つ」という前提で実装していたが、実機で「Else if」(`TestVar = 'world'`)と「Else」を`IF`の後に追加して再コピーしたところ、この前提が誤りだと判明した:
+
+```
+IF TestVar = $'''hello''' THEN
+ELSE IF TestVar = $'''world''' THEN
+ELSE
+    SET InnerVar TO $'''inside the if block'''
+    LOOP WHILE (LoopIndex) < (10)
+    END
+END
+```
+
+重要な発見:
+
+1. **`IF`/`ELSE IF`/`ELSE`は全て同じindent深さ(この例では0)の、1つの構文の異なる「アーム」である**。`IF`自体はネストしたブロックを単独で開かない——`ELSE IF`や`ELSE`が同じindentで後続する限り、それらは兄弟アームであり、ネストした子ではない。
+2. **`END`は個々のアームにではなく、構文全体(`IF`...`ELSE IF`*...`ELSE`?)にちょうど1つだけ対応する**。この例では`IF`アームも`ELSE IF`アームも本体が空(条件式を書いただけで中身を追加しなかったため)で、最後の`ELSE`アームだけが本体(`SET`+`LOOP WHILE`)を持つが、`END`は全体で1個のみ。
+3. `ELSE IF`は`ELSE`と`IF`という2つの別トークンの組み合わせ(`tokens[0]="ELSE"`, `tokens[1]="IF"`)であり、その後は通常の`IF`と同じ`<operand1> <operator> <operand2> THEN`が続く。`ELSE`単体(条件なし)はオペランドを持たないベアキーワード。
+
+これは「同じUIダイアログ形状でもDSL表現が違う」(知見6・9)とは別種の訂正で、**ブロック境界の認識そのものを誤っていた**ケース。`build_block_tree()`を書き直し、`ElseIfRecord`を新設、`ConditionalNode(arms: list[(header, body)])`という専用のノード型を導入して、`IfRecord`を見つけたら同じindentで`ElseIfRecord`/`ELSE`キーワードが続く限りアームとして回収し、最後に現れる`END`1つだけを消費するように修正した(`LOOP`系は従来通り「開始行=対応する`END`が1:1」の単純な`BlockNode`のまま)。`tests/test_pad_dsl_parser.py`に実データで検証済み。
