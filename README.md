@@ -5,9 +5,32 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
 ## 構成
 
 - `research_notes/`, `reports/` — deep research による技術調査結果(フロー形式、アクションマッピング、セレクタ対応、トランスパイラ設計、画面状態IR、複数トレース統合、LLM活用方式)
-- `design/` — アーキテクチャ設計(制御dumpスクリプトの技術選定、IRのJSON Schema草案)、および`ci_verification_findings.md`(実機検証で得られた知見)
-- `dump_daemon/` — 制御dumpスクリプトのプロトタイプ実装(UIAツリー走査、スクリーンショット、常駐デーモン、複数トレース比較、comtypes経由のUIA3 Rawフォールバック)
+- `design/` — アーキテクチャ設計・実機検証knowledge一式(下記「主要ドキュメント」参照)
+- `dump_daemon/` — 制御dumpスクリプトのプロトタイプ実装
+  - `uia_capture.py` / `screenshot.py` / `daemon.py` — UIAツリー走査・スクリーンショット・常駐HTTPデーモン
+  - `raw_fallback.py` — comtypes経由のUIA3 Rawフォールバック
+  - `trace_compare.py` — 複数トレース比較(ループ本体・ループ変数抽出)
+  - `clipwire_client.py` — clipwire(対話的セッション内実行デーモン)のHTTPクライアント
+  - `pad_dsl_parser.py` — PADクリップボードDSLのパーサー(実データで検証済み)
+  - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
+
+## 主要ドキュメント
+
+| ドキュメント | 内容 |
+| --- | --- |
+| [design/control_dump_tech_selection.md](design/control_dump_tech_selection.md) | 制御dumpスクリプトの技術選定・アーキテクチャ |
+| [design/ci_verification_findings.md](design/ci_verification_findings.md) | GitHub Actions・実機GCP VM双方での検証知見(知見1〜11) |
+| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認 |
+| [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
+| [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |
+| [design/schemas/](design/schemas/) | IR/UIツリーのJSON Schema |
+
+## G1/G2検証: PAD実機での動作確認(成功)
+
+GCP上のWindows VM(`pad2py-pad-host`)にPower Automate Desktopをインストール・サインインし、実際のフロー(Display message → Run Python script → Wait → Run Python script)を作成・実行して、`dump_daemon`の`/capture`エンドポイントへのマーカー同期が機能することを確認した。自動化は`clipwire`(対話的RDPセッション内で動くリモート実行デーモン、`~/powershell-clipd`)経由でpywinautoを駆動して行った。詳細は[design/g1_g2_verification_result.md](design/g1_g2_verification_result.md)。
+
+**運用上の注意**: GUI操作・スクリーンショットを伴う自動化(clipwire経由であっても)は、**RDPクライアントが実際に接続中であること**に依存する(知見11)。セッションが切断されると`click_input()`やスクリーンショットが失敗する。
 
 ## CI検証の位置づけ
 
