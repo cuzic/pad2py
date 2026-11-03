@@ -27,6 +27,7 @@ from dump_daemon.pad_dsl_parser import (
     SetVariableRecord,
     SwitchNode,
     SwitchRecord,
+    UiElementRef,
     VarRef,
     build_block_tree,
     parse_dsl,
@@ -801,3 +802,26 @@ def test_repeat_action_parsed_as_keyword_record_inside_on_error_arm() -> None:
     assert named_header.case_name == "RunPythonScriptError"
     assert len(named_body) == 2
     assert named_body[1] == KeywordRecord(name="REPEAT", args=["ACTION"], indent=0)
+
+
+def test_ui_element_reference_with_space_in_name_parsed_as_single_token() -> None:
+    # 実機で「Click UI element in window」にUI要素ピッカーで「Start Button」(Windowsの
+    # スタートボタン)を選んでキャプチャした生データ(design/dsl_format_findings.md 知見38)。
+    # **重要な発見**: UI要素セレクタの実体(CSS風セレクタ文字列)はパラメータ値に直接現れず、
+    # `appmask['<表示名>']`という名前参照になる。表示名に空白を含む(`'Start Button'`)ため、
+    # `$'''...'''`と同じくマスキングしないと`line.split()`で2トークンに割れてデータが
+    # 破損する(自分で書いたテストで発覚・修正済みのバグ)。
+    dsl = (
+        "UIAutomation.Click.Click Element: appmask['Start Button'] "
+        "ClickType: UIAutomation.ClickType.LeftClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 0 OffsetY: 0"
+    )
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, ActionRecord)
+    assert record.action_id == "UIAutomation.Click.Click"
+    assert record.params["Element"] == UiElementRef(name="Start Button")
+    assert record.params["ClickType"] == EnumRef("UIAutomation.ClickType.LeftClick")
+    assert record.params["OffsetX"] == 0

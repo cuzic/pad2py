@@ -53,11 +53,14 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   `LOOP`系ブロックの本体内に通常のリーフとして現れるため、`build_block_tree()`に
   特別な対応は不要)
 - 値の種別区別: `$'''...'''`由来の文字列リテラル、裸の数値トークン(`int`/`float`)、
-  `Namespace.Enum.Value`形式の列挙値(`EnumRef`)、それ以外の裸トークン(`VarRef`——変数参照)
-  を区別して返す。例えば`IF TestVar = $'''hello''' THEN`では`TestVar`は`VarRef("TestVar")`、
-  `hello`はPython文字列`"hello"`になる。コード生成時に「変数名としてそのまま出力するか」
-  「文字列リテラルとして`repr()`するか」を判別するために必須の区別(両者とも字面上は
-  識別子のように見えうるため、プレースホルダ経由かどうかでしか判別できない)。
+  `Namespace.Enum.Value`形式の列挙値(`EnumRef`)、`appmask['<表示名>']`形式のUI要素
+  リポジトリ参照(`UiElementRef`——**実機検証済み** design/dsl_format_findings.md 知見38。
+  表示名に空白を含みうるため`$'''...'''`と同じくマスキングしてから行分割する)、
+  それ以外の裸トークン(`VarRef`——変数参照)を区別して返す。例えば`IF TestVar = $'''hello''' THEN`
+  では`TestVar`は`VarRef("TestVar")`、`hello`はPython文字列`"hello"`になる。コード生成時に
+  「変数名としてそのまま出力するか」「文字列リテラルとして`repr()`するか」を判別するために
+  必須の区別(両者とも字面上は識別子のように見えうるため、プレースホルダ経由かどうかでしか
+  判別できない)。
 
 - `IF <FuncName>(<arg1>, <arg2>, ...) THEN` / `ELSE IF <FuncName>(...) THEN` 形式の
   関数呼び出し条件(design/dsl_format_findings.md 知見18-2。`Contains`等のテキスト演算子は
@@ -121,6 +124,11 @@ _STRING_RE = re.compile(r"\$'''(.*?)'''", re.DOTALL)
 _ESCAPE_RE = re.compile(r"\\\\|\\\"|\\'")
 _COMMENT_RE = re.compile(r"/#((?:\\#/|\\\\|(?!#/).)*)#/", re.DOTALL)
 _COMMENT_ESCAPE_RE = re.compile(r"\\(#/|\\)")
+# design/dsl_format_findings.md 知見38(実機検証済み)——UI要素セレクタの実体(SelectorElement等の
+# CSS風セレクタ文字列)はActionRecordのパラメータ値に直接は現れず、「UI要素」リポジトリへの
+# 名前参照`appmask['<表示名>']`として埋め込まれる。表示名に空白を含みうる(`'Start Button'`等)ため、
+# `$'''...'''`と同じくマスキングしてから行分割する必要がある。
+_UI_ELEMENT_RE = re.compile(r"appmask\['([^']*)'\]")
 
 
 def _unescape(raw: str) -> str:
@@ -171,6 +179,20 @@ class EnumRef:
     """
 
     value: str
+
+
+@dataclass(frozen=True)
+class UiElementRef:
+    """`appmask['<表示名>']`形式のUI要素リポジトリ参照(**実機検証済み**——
+    design/dsl_format_findings.md 知見38)。`Click UI element in window`のような
+    「By window UI element」系アクションの`Element`パラメータに現れる。選択済みUI要素の
+    CSS風セレクタ文字列(`SelectorElement`等、design/robin_language_source_findings.md参照)
+    自体はこの参照の先(UI要素リポジトリ側)にあり、ActionRecordのパラメータ値には
+    **表示名への参照だけ**が直接埋め込まれる——以前の調査で解明したセレクタ文字列の
+    フォーマットは、リポジトリ内部の格納形式であり、DSLテキスト上の直接の値ではなかった。
+    """
+
+    name: str
 
 
 _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
@@ -558,10 +580,17 @@ def parse_dsl(text: str) -> list[Record]:
         placeholders[key] = m.group(1)
         return key
 
+    def _stash_ui_element(m: re.Match[str]) -> str:
+        key = f"\x00UIE{len(placeholders)}\x00"
+        placeholders[key] = m.group(1)
+        return key
+
     # コメントを先に退避する(本文中に`$'''`等が含まれていても文字列リテラルとして
-    # 誤認されないようにするため)。
+    # 誤認されないようにするため)。UI要素参照(`appmask['<表示名>']`)も表示名に空白を
+    # 含みうるため同様に退避する。
     masked = _COMMENT_RE.sub(_stash_comment, text)
     masked = _STRING_RE.sub(_stash_string, masked)
+    masked = _UI_ELEMENT_RE.sub(_stash_ui_element, masked)
 
     records: list[Record] = []
     for raw_line in masked.split("\n"):
@@ -603,6 +632,8 @@ def _merge_not_in(tokens: list[str]) -> list[str]:
 
 
 def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
+    if token.startswith("\x00UIE") and token in placeholders:
+        return UiElementRef(placeholders[token])
     if token in placeholders:
         return _unescape(placeholders[token])
     if token == "True":

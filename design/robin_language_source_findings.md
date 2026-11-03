@@ -460,6 +460,14 @@ PADの**UI要素セレクタ**(`Click`/`Get text`等のUI automationアクショ
 には存在せず(おそらく`Modules.UIAutomation.Common.dll`で定義)、追跡には更なるDLL取得が必要——
 深追いするより、実機でのDSL出力例を1つ取得する方が効率的と判断し、このスレッドはここで一旦停止する。
 
+> **【解決】実機検証により「名前/IDへの参照」の予測が正しかったと確定した**(design/dsl_format_findings.md
+> 知見38)。「Click UI element in window」アクションにUI要素ピッカーでWindowsのスタートボタンを
+> 選んでキャプチャしたところ、`Element: appmask['Start Button']`という形で、
+> **UI要素リポジトリ内のエントリへの表示名参照**であることが確定した——本セクションで解明した
+> CSS風セレクタ文字列(`[name="value"]`等)は、DSLクリップボードテキストには直接現れず、
+> リポジトリ内部の格納形式(おそらく`.msapp`等の別ファイル/別部分に保存されている)である
+> ことが判明した。`IControlRepositoryItem`というインターフェース名からの推測は正しかった。
+
 ## `[Action]`/`[ConditionAction]`属性でaction_idの構成要素とConditionActionカテゴリを確認
 
 アクションクラス自身の属性(`[Action(Category = "Windows", Order = ..., Id = "FocusWindow")]`等)から、

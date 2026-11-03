@@ -17,8 +17,12 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   ウィンドウを特定し、取得したオブジェクトに対してメソッド呼び出しを行うという構造が
   pywinautoの`Desktop().window(...)`の設計とそのまま対応するため。
 - 同カテゴリの要素レベル操作(Click UI element in window等、UIA要素セレクタが必要な
-  もの)もpywinauto対応になる見込みだが、セレクタ自体のDSL表現(`By window UI element`
-  モード)がまだ未解明のため本モジュールは未対応。
+  もの)もpywinauto対応になる見込みだが、**DSLテキスト上のパラメータ値はUI要素リポジトリへの
+  名前参照`appmask['<表示名>']`でしかなく、実際のセレクタ文字列(CSS風、design/robin_language_source_findings.md
+  参照)自体はクリップボードコピーのDSLテキストには含まれない**(design/dsl_format_findings.md
+  知見38で実機確認済み)。セレクタの実体を得るには、PAD側の「UI要素」リポジトリを別の経路
+  (.msappやフローパッケージのXML/JSON、あるいはPAD自体のAPI)で取得する必要があり、
+  本モジュールはまだこの参照自体の解析(`UiElementRef`)までしか対応していない。
 
 対応範囲:
 - `SetVariableRecord` → 代入文
