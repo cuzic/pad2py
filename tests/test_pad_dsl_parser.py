@@ -1390,6 +1390,22 @@ def test_if_action_record_parsed_from_real_if_service_capture() -> None:
     assert rec.params["Service"] == "Spooler"
 
 
+def test_if_service_dropdown_has_five_options_not_full_negation_pairs() -> None:
+    # design/dsl_format_findings.md 知見54の追記(実機検証済み): 「If service」ドロップダウンの
+    # 全選択肢を確認したところ、「Is stopped」「Is installed」「Isn't installed」
+    # 「Is running」「Is paused」の**5択**だった。知見50/54の`Is open`/`Isn't open`のような
+    # 完全な肯定/否定ペアが全選択肢に存在するという予測は外れ、「installed」だけが
+    # 肯定/否定ペアを持ち、running/stopped/pausedは否定形が無い非対称な構成だった。
+    # 「Is stopped」を選んで実機確認したところ、予測通り`Services.IfService.IsStopped`
+    # という命名パターンだった(`IsRunning`と対になる形)。
+    records = parse_dsl("IF (Services.IfService.IsStopped Service: $'''Spooler''') THEN\nEND")
+    if_action_records = [r for r in records if isinstance(r, IfActionRecord)]
+    assert len(if_action_records) == 1
+    rec = if_action_records[0]
+    assert rec.action_id == "Services.IfService.IsStopped"
+    assert rec.params["Service"] == "Spooler"
+
+
 def test_wait_action_record_parsed_from_real_wait_for_service_capture() -> None:
     # design/dsl_format_findings.md 知見50の追記(実機検証済み): 「Wait for service」は
     # `WaitForWindowAction`と対になる`[WaitAction]`カテゴリのもう一つの構文で、知見50で
