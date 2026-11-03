@@ -50,12 +50,15 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`(知見23。Control/Alt/Shift/Winのうち
   ちょうど1つだけ`True`の場合のみ変換し、0個または複数同時`True`(未検証)は`# TODO`のまま)
 - `ActionRecord`(`UIAutomation.SetWindowState.SetStateByTitleClass`/
-  `UIAutomation.MoveWindow.MoveByTitleClass`/`UIAutomation.ResizeWindow.ResizeByTitleClass`) →
+  `UIAutomation.MoveWindow.MoveByTitleClass`/`UIAutomation.ResizeWindow.ResizeByTitleClass`/
+  `UIAutomation.FocusWindow.FocusByTitleClass`/`UIAutomation.CloseWindow.CloseByTitleClass`) →
   `Desktop(backend='uia').window(title=...)`に対する`.maximize()/.minimize()/.restore()`
-  (知見24)・`.move_window(x=, y=)`(知見25)・`.move_window(width=, height=)`(知見25)。
-  いずれも共通ヘルパー`_window_lookup_expr()`経由で、`Window class`を併用しない
-  (空文字列の)場合のみ変換し、クラス名併用(未検証)は`# TODO`のまま。`import pyautogui`
-  と同様、使用時のみ`from pywinauto import Desktop`を先頭に出力する)
+  (知見24)・`.move_window(x=, y=)`(知見25)・`.move_window(width=, height=)`(知見25)・
+  `.set_focus()`(知見27、実機確認済み)・`.close()`(design/robin_language_source_findings.md——
+  `CloseWindowByTitleClassSelector`のソースから他4つと同じパターンだと確認、action_id自体は
+  実機未確認でパターンからの推論)。いずれも共通ヘルパー`_window_lookup_expr()`経由で、
+  `Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証)は`# TODO`のまま。
+  `import pyautogui`と同様、使用時のみ`from pywinauto import Desktop`を先頭に出力する)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
   `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
@@ -386,6 +389,20 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             return [
                 f"{prefix}{window_expr}.move_window(width={render_value(width)}, height={render_value(height)})"
             ]
+    if node.action_id == "UIAutomation.FocusWindow.FocusByTitleClass":
+        # design/dsl_format_findings.md 知見27(実機確認済み、SetWindowState等と同じ
+        # ByTitleClassパターン)・design/robin_language_source_findings.md
+        # (FocusWindowByTitleClassSelectorのソースでaction_idの構成要素を確認)。
+        window_expr = _window_lookup_expr(node)
+        if window_expr:
+            return [f"{prefix}{window_expr}.set_focus()"]
+    if node.action_id == "UIAutomation.CloseWindow.CloseByTitleClass":
+        # design/robin_language_source_findings.md——CloseWindowByTitleClassSelectorの
+        # ソースから、他の4つのByTitleClass系アクションと全く同じパターンだと確認した
+        # (action_id自体は実機未確認、パターンからの推論)。
+        window_expr = _window_lookup_expr(node)
+        if window_expr:
+            return [f"{prefix}{window_expr}.close()"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]
 
 

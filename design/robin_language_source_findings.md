@@ -443,10 +443,46 @@ PADの**UI要素セレクタ**(`Click`/`Get text`等のUI automationアクショ
 別のアダプタ/ラッパークラスを経由している可能性がある。実機でのDSL出力例も一つも無いため、
 パーサー/codegenへの実装はまだ時期尚早と判断した。
 
+**このティックでの追加調査**: `UIControl`→DSL直列化の橋渡しを探して`Modules.SDK.Extended.Converters`
+名前空間(`EncryptableObjectTypeConverter`等)を確認したが、`UIControl`専用のコンバータは
+見当たらなかった。`IControlRepositoryItem`(`AsUIControl()`/`AsWebControl()`)という
+インターフェースも見つけ、「UI要素」が名前付きリポジトリとして管理される可能性を示唆しているが、
+確証には至らなかった。`UIAutomationActionBase`(基底クラス)は`Modules.UIAutomation.Actions.dll`
+には存在せず(おそらく`Modules.UIAutomation.Common.dll`で定義)、追跡には更なるDLL取得が必要——
+深追いするより、実機でのDSL出力例を1つ取得する方が効率的と判断し、このスレッドはここで一旦停止する。
+
+## `[Action]`/`[ConditionAction]`属性でaction_idの構成要素とConditionActionカテゴリを確認
+
+アクションクラス自身の属性(`[Action(Category = "Windows", Order = ..., Id = "FocusWindow")]`等)から、
+`action_id`の構成要素(モジュール接頭辞+`Id`+`ActionSelector.UseName()`)が確定的に分かることを
+確認した。例: `FocusWindowBase`の`[Action(Category = "Windows", Id = "FocusWindow")]` +
+`FocusWindowByTitleClassSelector`の`UseName("FocusByTitleClass")` → 
+`UIAutomation.FocusWindow.FocusByTitleClass`(design/dsl_format_findings.md 知見27で実機確認済みの
+形と一致)。同じ方法で`CloseWindowBase`(`Id = "CloseWindow"`)+`CloseWindowByTitleClassSelector`
+(`UseName("CloseByTitleClass")`)から`UIAutomation.CloseWindow.CloseByTitleClass`を導出し、
+他の4つのByTitleClass系アクションと全く同じ`Title`/`Class`パターンだったため、`pad_codegen.py`に
+`.set_focus()`(FocusWindow)・`.close()`(CloseWindow)への変換を追加した
+(CloseWindowは実機未確認、パターンからの推論)。
+
+**重要な副発見**: `IfWindowAction`(`IsFocusedByTitleClassSelector`等4つのセレクタが対象にする
+共通クラス)には`[Action]`ではなく**`[ConditionAction(ResultPropertyName = "Result", Id = "IfWindow")]`**
+という別の属性が付いている。これは design/dsl_format_findings.md 知見18-2 で発見した
+`Contains`系と同じ「`IfFunctionRecord`形式(`IF <Name>(args...) THEN`)で使われる関数呼び出し条件」
+のカテゴリだと判断できる——`IsFocusedByTitleClass`/`IsNotFocusedByTitleClass`/`IsOpenByTitleClass`/
+`IsNotOpenByTitleClass`は、独立したアクション行ではなく`IF IsFocusedByTitleClass(Title, Class,
+InstantCheck) THEN`のような条件式として現れると推測される(`Show()`順序はTitle→Class→
+InstantCheckで確定)。ただし`Contains`自体も実機確認は1例のみでPython変換方法を未確定のままに
+しているのと同じ理由(確証が無いまま複数の「関数条件ファミリー」に同じ形を当てはめるのは危険)で、
+今回はパーサー/codegenへの実装は見送り、発見の記録のみとした。
+
 ## 今後の調査候補(未着手)
 
+- `ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
+  実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認、および`Contains`を含む
+  「関数呼び出し条件ファミリー」群のPython変換方法の検討
 - UI要素セレクタが実際のDSLテキスト上でどう直列化されるか(本セクション参照——セレクタ文字列の
-  フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認)
+  フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認。
+  `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)
 - `SWITCH`/`CASE`/`DEFAULT`(構造はANTLR文法から類推実装済み——本セクション参照)の実機検証
 - `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
   および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
