@@ -356,3 +356,15 @@ MouseAndKeyboard.SendMouseClick.Click ClickType: MouseAndKeyboard.MouseClickType
 ここでも知見20の謎(デフォルト値省略の不統一)に新しいデータ点が加わったが、**今回も単純な規則には収束しなかった**: Bool型トグルの`Move mouse`(off、未変更)は一切出力されない一方、Enum型の`ClickType`は既定値でも出力される(知見20のMoveMouseの`RelativeTo`/`MovementStyle`と同じ傾向)。しかし知見19の「Send keys」では、同じくBool型だった`SendTextAsHardwareKeys`(off、未変更)は出力されていた——つまり「Bool型だから省略される」という単純な説明も成り立たない。今回の3アクション分のデータだけでは一貫した規則を特定できておらず、**「アクションごと・フィールドごとに個別に実機確認するしかない」というのが現時点での結論**。この問題自体を体系的に解明するには、より多くのアクションでの横断的な調査が必要で、今後の課題として残す。
 
 `pad_codegen.py`に`MouseAndKeyboard.SendMouseClick.Click` → `pyautogui.click()`の変換を追加した(知見19・20と同じ方針で、実機検証済みの`ClickType: LeftClick`のときだけ変換し、残り7種のクリック種別は`# TODO`のまま)。`MillisecondsDelay`が0でなければクリック前に`time.sleep(ms/1000)`を挿入する。これで`pyautogui`ベースのマウス操作(移動→クリック)が一通り組めるようになった。
+
+## 22. 知見18-2のバグを修正: `Contains`系の関数呼び出し条件を正しく構造化
+
+知見18-2で発覚した「`Contains(InnerVar, $'''nested''', False)`のような関数呼び出し構文の`IF`を、パーサーがクラッシュせずサイレントに壊れたデータへ変換してしまう」というバグを修正した。
+
+`_FUNC_COND_RE`(`^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$`)で行全体を先にマッチさせ、マッチした場合は`IfFunctionRecord(function_name, args)`/`ElseIfFunctionRecord(function_name, args)`として構造化するようにした(既存の中置記法用の`IF`/`ELSE IF`判定より前に、`_parse_line()`の先頭でこのチェックを行う)。引数はカンマ区切りで分割し、各引数を既存の`_resolve_value()`に通すため、`VarRef`/文字列リテラル/`True`・`False`等の型区別もそのまま適用される(今回の例では`args = [VarRef("InnerVar"), "nested", False]`)。
+
+`build_block_tree()`も、`IfRecord`/`ElseIfRecord`を判定していた箇所を`_IF_HEADER_TYPES = (IfRecord, IfFunctionRecord)`/`_ELSEIF_HEADER_TYPES = (ElseIfRecord, ElseIfFunctionRecord)`に一般化し、関数呼び出し条件も通常の`IfRecord`と同様に`ConditionalNode`のアームとして正しく扱われるようにした(コード変更はこの型タプルの置き換えのみで、ロジック自体は変更不要——知見14のネストIF確認時と同様、既存の再帰設計が素直に拡張できた)。
+
+`pad_codegen.py`側は、`Contains`をどのPython式に変換すべきかまだ未検証(`in`演算子で素直に対応できそうだが、大文字小文字の扱い(第3引数の真偽フラグ)や、`Does not contain`/`Starts with`等の兄弟演算子の意味論を含めて実機で裏を取っていない)なため、関数呼び出し条件のアームに遭遇すると架空の変換をでっち上げず明示的に`NotImplementedError`を送出するようにした——知見15・18でも採用した「パーサーは正しく構造化するが、意味の分からない変換はコード生成側で明示的に拒否する」という一貫した設計方針。
+
+**教訓**: 「新しいDSL構文は既存の判定ロジックの"前"に専用の正規表現検出を割り込ませる」という設計で、比較的小さな変更で直せた。`build_block_tree()`側も、直接`isinstance(rec, IfRecord)`/`isinstance(nxt, ElseIfRecord)`としていた箇所を`_IF_HEADER_TYPES`/`_ELSEIF_HEADER_TYPES`という型タプル判定に一般化するだけで済み、ブロック木構築の再帰ロジック自体には一切手を入れずに新しいレコード型を取り込めた——「型で分岐する箇所をタプルにまとめておく」という小さな一般化が、後から種類を増やすコストを大きく下げる好例。

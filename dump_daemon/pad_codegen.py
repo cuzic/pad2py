@@ -36,10 +36,15 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
 演算子は実機検証済みの6つの比較演算子(`=`/`<>`/`>`/`>=`/`<`/`<=`、design/dsl_format_findings.md
-知見18)のみ`_OPERATOR_MAP`に登録している。`Contains`等のテキスト演算子は中置記法ではなく
-`FunctionName(operand1, operand2, caseFlag)`という別の構文であり(知見18-2)、パーサー
-(`pad_dsl_parser.py`)がまだこれを正しく構造化できないため、本モジュールでも未対応。
-未知の演算子に遭遇した場合は、誤った意味論を生成しないよう`ValueError`を送出する。
+知見18)のみ`_OPERATOR_MAP`に登録している。未知の演算子に遭遇した場合は、誤った意味論を
+生成しないよう`ValueError`を送出する。
+
+`Contains`等のテキスト演算子は中置記法ではなく`FunctionName(operand1, operand2, caseFlag)`
+という別の構文(知見18-2)で、パーサー(`pad_dsl_parser.py`)側は`IfFunctionRecord`/
+`ElseIfFunctionRecord`として正しく構造化できるようになったが、本モジュールはまだこれを
+Pythonの意味論に変換する方法を決めていない(`Contains`系は2引数+真偽フラグ、`Is empty`系は
+引数の個数が異なると推測され、確証が無い)。`ConditionalNode`のアームにこれらが含まれる場合、
+誤った変換をでっち上げないよう明示的に`NotImplementedError`を送出する。
 """
 from __future__ import annotations
 
@@ -49,8 +54,10 @@ from .pad_dsl_parser import (
     ActionRecord,
     BlockNode,
     ConditionalNode,
+    ElseIfFunctionRecord,
     ElseIfRecord,
     EnumRef,
+    IfFunctionRecord,
     IfRecord,
     KeywordRecord,
     LoopForeachRecord,
@@ -181,6 +188,14 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             lines.append(f"{prefix}elif {render_condition(header.operand1, header.operator, header.operand2)}:")
         elif isinstance(header, KeywordRecord) and header.name == "ELSE":
             lines.append(f"{prefix}else:")
+        elif isinstance(header, (IfFunctionRecord, ElseIfFunctionRecord)):
+            # Contains等の関数呼び出し条件(design/dsl_format_findings.md 知見18-2)。
+            # Pythonへの変換方法がまだ未検証のため、誤った意味論をでっち上げるより
+            # はっきり失敗させる。
+            raise NotImplementedError(
+                f"Function-call condition {header.function_name}(...) is not yet supported "
+                "by codegen; its Python semantics haven't been verified on real PAD."
+            )
         else:
             raise TypeError(f"Unexpected conditional arm header: {header!r}")
         lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])

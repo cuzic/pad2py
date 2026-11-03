@@ -48,6 +48,16 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   「文字列リテラルとして`repr()`するか」を判別するために必須の区別(両者とも字面上は
   識別子のように見えうるため、プレースホルダ経由かどうかでしか判別できない)。
 
+- `IF <FuncName>(<arg1>, <arg2>, ...) THEN` / `ELSE IF <FuncName>(...) THEN` 形式の
+  関数呼び出し条件(design/dsl_format_findings.md 知見18-2。`Contains`等のテキスト演算子は
+  `<operand1> <operator> <operand2>`という中置記法ではなく、この別構文になる。実機検証は
+  `Contains(InnerVar, $'''nested''', False) THEN`のみ。`IfFunctionRecord`/
+  `ElseIfFunctionRecord`として構造化するが、`build_block_tree()`は`IfRecord`/`ElseIfRecord`
+  と同様にこれらも`ConditionalNode`のアームとして扱う。`pad_codegen.py`はまだこの形の
+  Python変換方法が未検証のため、遭遇すると明示的に例外を送出する——`Contains`系は
+  2引数+真偽フラグ、`Is empty`系は引数の個数が異なると推測されるが未確認であり、
+  安易に同じ形式だと仮定しない)
+
 未対応(今後の実機確認が必要): 複合式(AND/OR)。
 """
 from __future__ import annotations
@@ -92,6 +102,7 @@ class EnumRef:
 _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _INT_RE = re.compile(r"-?\d+")
 _FLOAT_RE = re.compile(r"-?\d+\.\d+")
+_FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$")
 
 
 @dataclass
@@ -133,6 +144,22 @@ class ElseIfRecord:
 
 
 @dataclass
+class IfFunctionRecord:
+    """`IF Contains(a, b, False) THEN`のような関数呼び出し形式の条件(知見18-2)。"""
+
+    function_name: str
+    args: list[Any]
+    indent: int = 0
+
+
+@dataclass
+class ElseIfFunctionRecord:
+    function_name: str
+    args: list[Any]
+    indent: int = 0
+
+
+@dataclass
 class LoopRecord:
     loop_var: str
     start: Any
@@ -168,6 +195,8 @@ Record = (
     | SetVariableRecord
     | IfRecord
     | ElseIfRecord
+    | IfFunctionRecord
+    | ElseIfFunctionRecord
     | LoopRecord
     | LoopForeachRecord
     | LoopWhileRecord
@@ -185,17 +214,19 @@ class BlockNode:
     body: list[Node] = field(default_factory=list)
 
 
-ConditionalArmHeader = IfRecord | ElseIfRecord | KeywordRecord
+ConditionalArmHeader = IfRecord | ElseIfRecord | IfFunctionRecord | ElseIfFunctionRecord | KeywordRecord
+_IF_HEADER_TYPES = (IfRecord, IfFunctionRecord)
+_ELSEIF_HEADER_TYPES = (ElseIfRecord, ElseIfFunctionRecord)
 
 
 @dataclass
 class ConditionalNode:
     """`IF`/`ELSE IF`*/`ELSE`?/`END`全体を1つの構文単位として表す。
 
-    各アームは`(header, body)`のタプル。`header`は`IfRecord`(先頭のみ)、
-    `ElseIfRecord`(0個以上)、または`KeywordRecord(name="ELSE")`(末尾に最大1個)。
-    `END`は個々のアームにではなく構文全体に1つだけ対応するため、`ConditionalNode`は
-    単一の`body`ではなく`arms`のリストを持つ。
+    各アームは`(header, body)`のタプル。`header`は`IfRecord`/`IfFunctionRecord`(先頭のみ)、
+    `ElseIfRecord`/`ElseIfFunctionRecord`(0個以上)、または`KeywordRecord(name="ELSE")`
+    (末尾に最大1個)。`END`は個々のアームにではなく構文全体に1つだけ対応するため、
+    `ConditionalNode`は単一の`body`ではなく`arms`のリストを持つ。
     """
 
     arms: list[tuple[ConditionalArmHeader, list[Node]]] = field(default_factory=list)
@@ -231,13 +262,13 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                 pos += 1
                 return body
             pos += 1
-            if isinstance(rec, IfRecord):
+            if isinstance(rec, _IF_HEADER_TYPES):
                 arms: list[tuple[ConditionalArmHeader, list[Node]]] = [(rec, parse_level(level + 1))]
                 while pos < len(records):
                     nxt = records[pos]
                     if nxt.indent != level:
                         break
-                    if isinstance(nxt, ElseIfRecord):
+                    if isinstance(nxt, _ELSEIF_HEADER_TYPES):
                         pos += 1
                         arms.append((nxt, parse_level(level + 1)))
                         continue
@@ -313,6 +344,14 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
 
 
 def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
+    func_match = _FUNC_COND_RE.match(line)
+    if func_match:
+        keyword, func_name, args_str = func_match.groups()
+        args = [_resolve_value(a.strip(), placeholders) for a in args_str.split(",")]
+        if keyword == "IF":
+            return IfFunctionRecord(function_name=func_name, args=args, indent=indent)
+        return ElseIfFunctionRecord(function_name=func_name, args=args, indent=indent)
+
     tokens = line.split()
     first = tokens[0]
 

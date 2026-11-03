@@ -9,7 +9,9 @@ from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
     ConditionalNode,
+    ElseIfFunctionRecord,
     ElseIfRecord,
+    IfFunctionRecord,
     IfRecord,
     KeywordRecord,
     LoopForeachRecord,
@@ -410,3 +412,42 @@ def test_set_variable_with_mixed_text_and_variable_markers_stays_a_plain_string(
     record = records[0]
     assert isinstance(record, SetVariableRecord)
     assert record.value == "Hello %TestVar% world, LoopIndex is %LoopIndex%"
+
+
+# 実機で「If」のOperatorを「Contains」に切り替えて再キャプチャした生データ(知見18-2)。
+# 中置記法ではなく関数呼び出し構文になる。
+CONTAINS_IF_DSL = "IF Contains(InnerVar, $'''nested''', False) THEN\nEND"
+
+
+def test_contains_parsed_as_function_record_not_silently_corrupted() -> None:
+    # 修正前はoperatorフィールドに未解決のプレースホルダキーが漏れ出す等、
+    # クラッシュせず壊れたデータをサイレントに返していた(知見18-2で発覚したバグ)。
+    records = parse_dsl(CONTAINS_IF_DSL)
+    assert len(records) == 2
+    func_record, end_record = records
+    assert isinstance(func_record, IfFunctionRecord)
+    assert func_record.function_name == "Contains"
+    assert func_record.args == [VarRef("InnerVar"), "nested", False]
+    assert func_record.indent == 0
+    assert isinstance(end_record, KeywordRecord)
+    assert end_record.name == "END"
+
+
+def test_build_block_tree_treats_if_function_record_as_conditional_arm() -> None:
+    tree = build_block_tree(parse_dsl(CONTAINS_IF_DSL))
+    assert len(tree) == 1
+    node = tree[0]
+    assert isinstance(node, ConditionalNode)
+    assert len(node.arms) == 1
+    header, body = node.arms[0]
+    assert isinstance(header, IfFunctionRecord)
+    assert body == []
+
+
+def test_elseif_contains_parsed_as_function_record() -> None:
+    dsl = "IF TestVar = $'''hello''' THEN\nELSE IF Contains(InnerVar, $'''nested''', False) THEN\nEND"
+    records = parse_dsl(dsl)
+    elseif_record = records[1]
+    assert isinstance(elseif_record, ElseIfFunctionRecord)
+    assert elseif_record.function_name == "Contains"
+    assert elseif_record.args == [VarRef("InnerVar"), "nested", False]
