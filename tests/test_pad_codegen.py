@@ -315,3 +315,44 @@ def test_generate_python_leaves_set_window_state_as_todo_when_class_is_used() ->
     code = generate_python(tree)
     assert "# TODO: map PAD action: UIAutomation.SetWindowState.SetStateByTitleClass" in code
     assert "Desktop(" not in code
+
+
+# 実機で「Move window」「Resize window」(いずれもFind window mode=By title and/or class,
+# Window title="Power Automate | g1g2_test"(自動補完), Window class=空のまま)を
+# 追加して再キャプチャした生データ(知見25)。
+MOVE_WINDOW_DSL = (
+    "UIAutomation.MoveWindow.MoveByTitleClass "
+    "Title: $'''Power Automate | g1g2_test''' Class: $'''''' X: 100 Y: 50"
+)
+RESIZE_WINDOW_DSL = (
+    "UIAutomation.ResizeWindow.ResizeByTitleClass "
+    "Title: $'''Power Automate | g1g2_test''' Class: $'''''' Width: 1024 Height: 768"
+)
+
+
+def test_generate_python_maps_move_window_to_pywinauto_move_window() -> None:
+    tree = build_block_tree(parse_dsl(MOVE_WINDOW_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from pywinauto import Desktop" in code
+    assert (
+        "Desktop(backend='uia').window(title='Power Automate | g1g2_test').move_window(x=100, y=50)" in code
+    )
+
+
+def test_generate_python_maps_resize_window_to_pywinauto_move_window() -> None:
+    tree = build_block_tree(parse_dsl(RESIZE_WINDOW_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Desktop(backend='uia').window(title='Power Automate | g1g2_test')"
+        ".move_window(width=1024, height=768)" in code
+    )
+
+
+def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None:
+    dsl = "UIAutomation.MoveWindow.MoveByTitleClass Title: $'''Notepad''' Class: $'''Notepad''' X: 0 Y: 0"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: UIAutomation.MoveWindow.MoveByTitleClass" in code
+    assert "Desktop(" not in code
