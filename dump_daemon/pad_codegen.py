@@ -46,11 +46,13 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `ActionRecord`(`MouseAndKeyboard.PressReleaseKey.PressKey`/`...ReleaseKey`) →
   `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`(知見23。Control/Alt/Shift/Winのうち
   ちょうど1つだけ`True`の場合のみ変換し、0個または複数同時`True`(未検証)は`# TODO`のまま)
-- `ActionRecord`(`UIAutomation.SetWindowState.SetStateByTitleClass`) →
-  `Desktop(backend='uia').window(title=...).maximize()/minimize()/restore()`(知見24。
-  `Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証)は
-  `# TODO`のまま。`import pyautogui`と同様、使用時のみ`from pywinauto import Desktop`を
-  先頭に出力する)
+- `ActionRecord`(`UIAutomation.SetWindowState.SetStateByTitleClass`/
+  `UIAutomation.MoveWindow.MoveByTitleClass`/`UIAutomation.ResizeWindow.ResizeByTitleClass`) →
+  `Desktop(backend='uia').window(title=...)`に対する`.maximize()/.minimize()/.restore()`
+  (知見24)・`.move_window(x=, y=)`(知見25)・`.move_window(width=, height=)`(知見25)。
+  いずれも共通ヘルパー`_window_lookup_expr()`経由で、`Window class`を併用しない
+  (空文字列の)場合のみ変換し、クラス名併用(未検証)は`# TODO`のまま。`import pyautogui`
+  と同様、使用時のみ`from pywinauto import Desktop`を先頭に出力する)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
   `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
@@ -327,17 +329,37 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             func = "keyDown" if node.action_id.endswith("PressKey") else "keyUp"
             return [f"{prefix}pyautogui.{func}({pyautogui_key!r})"]
     if node.action_id == "UIAutomation.SetWindowState.SetStateByTitleClass":
-        title = node.params.get("Title")
-        window_class = node.params.get("Class")
+        window_expr = _window_lookup_expr(node)
         state = node.params.get("State")
-        # "Window class"を併用した組み合わせは未検証のため、Titleのみ(Classが空文字列)の
-        # ときだけ変換する(design/dsl_format_findings.md 知見24)。
-        if (
-            isinstance(title, str)
-            and window_class == ""
-            and isinstance(state, EnumRef)
-            and state.value in _WINDOW_STATE_TO_PYWINAUTO_METHOD
-        ):
+        if window_expr and isinstance(state, EnumRef) and state.value in _WINDOW_STATE_TO_PYWINAUTO_METHOD:
             method = _WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
-            return [f"{prefix}Desktop(backend='uia').window(title={render_value(title)}).{method}()"]
+            return [f"{prefix}{window_expr}.{method}()"]
+    if node.action_id == "UIAutomation.MoveWindow.MoveByTitleClass":
+        window_expr = _window_lookup_expr(node)
+        x = node.params.get("X")
+        y = node.params.get("Y")
+        if window_expr and isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            return [f"{prefix}{window_expr}.move_window(x={render_value(x)}, y={render_value(y)})"]
+    if node.action_id == "UIAutomation.ResizeWindow.ResizeByTitleClass":
+        window_expr = _window_lookup_expr(node)
+        width = node.params.get("Width")
+        height = node.params.get("Height")
+        if window_expr and isinstance(width, (int, float)) and isinstance(height, (int, float)):
+            return [
+                f"{prefix}{window_expr}.move_window(width={render_value(width)}, height={render_value(height)})"
+            ]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]
+
+
+def _window_lookup_expr(node: ActionRecord) -> str | None:
+    """`Title`/`Class`パラメータから`Desktop(backend='uia').window(title=...)`式を組み立てる。
+
+    `Window class`を併用した組み合わせ(知見24で未検証のまま)では`None`を返し、
+    呼び出し元に架空の変換をさせない。`Title`/`Class`の両方を持つ`UIAutomation.*ByTitleClass`
+    系アクション(SetWindowState/MoveWindow/ResizeWindow)で共通して使うヘルパー。
+    """
+    title = node.params.get("Title")
+    window_class = node.params.get("Class")
+    if isinstance(title, str) and window_class == "":
+        return f"Desktop(backend='uia').window(title={render_value(title)})"
+    return None

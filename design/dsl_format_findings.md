@@ -404,3 +404,16 @@ UIAutomation.SetWindowState.SetStateByTitleClass Title: $'''Power Automate | g1g
 `pad_codegen.py`に`UIAutomation.SetWindowState.SetStateByTitleClass` → `Desktop(backend='uia').window(title=...).maximize()/minimize()/restore()`の変換を追加した(`pyautogui`と同様、使用時のみ`from pywinauto import Desktop`をファイル先頭に出力するよう`generate_python()`を拡張)。知見19-23と同じ方針で、`Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証——`Desktop().window(title=..., class_name=...)`になるのか等)は`# TODO`のままにする。
 
 これは**初めて「アクション名のテキスト指定でウィンドウを特定する」実機データが取れた**という点で重要——本格的なUIA要素セレクタ(`By window UI element`モードで使われる、ボタンやテキストボックス等の個別要素を特定する仕組み)の文法はまだ未解明だが、ウィンドウ単位の操作であれば、セレクタピッカーを介さずタイトル文字列ベースで十分実用的に変換できる可能性が見えた。
+
+## 25. 「Move window」「Resize window」——同じ`ByTitleClass`パターンが横展開できることを確認
+
+ユーザーから「1ティックあたりの作業量を増やせないか」と要望があったため、1回のPAD往復(コピー&ペースト)で複数アクションをまとめて検証する運用に切り替えた。「Move window」「Resize window」(いずれも`UI automation > Windows`カテゴリ、知見24の`Set window state`と同じサブカテゴリ)を同じフローに続けて追加し、どちらもFind window mode=By title and/or class、Window title="Power Automate"(自動補完で"Power Automate | g1g2_test"に)、Window classは空のまま、Position X=100/Y=50(Move window)、Width=1024/Height=768(Resize window)として保存し、1回のコピーでまとめて確認した:
+
+```
+UIAutomation.MoveWindow.MoveByTitleClass Title: $'''Power Automate | g1g2_test''' Class: $'''''' X: 100 Y: 50
+UIAutomation.ResizeWindow.ResizeByTitleClass Title: $'''Power Automate | g1g2_test''' Class: $'''''' Width: 1024 Height: 768
+```
+
+予想通り、知見24の`Set window state`(`UIAutomation.SetWindowState.SetStateByTitleClass Title: ... Class: ...`)と全く同じ`Title`/`Class`パラメータ構成パターンがそのまま横展開されており、`Windows`サブカテゴリの各アクションはおそらく共通の「Find window mode」基盤実装を共有していると推測できる(複数アクションでパターンの一貫性を確認できたのは初めて——これまでの知見19-23は逆に「一貫しない」ことの確認が多かった)。
+
+`pad_codegen.py`では、3アクション共通の`_window_lookup_expr(node)`ヘルパーを新設し(`Title`/`Class`からの`Desktop(backend='uia').window(title=...)`式組み立てを共通化)、`UIAutomation.MoveWindow.MoveByTitleClass` → `.move_window(x=, y=)`、`UIAutomation.ResizeWindow.ResizeByTitleClass` → `.move_window(width=, height=)`(pywinautoの`move_window()`は幅/高さのみ指定すれば現在位置を保ったままリサイズできる)を追加した。知見24と同じガード(`Window class`併用は未検証のためTODO)を3アクションで共有している。
