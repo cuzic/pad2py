@@ -696,3 +696,66 @@ with an organizational account.
 **意義**: これは単なる「このティックで見つからなかった」というネガティブな知見ではなく、**プロジェクトの前提そのものに関わる構造的な発見**である。research_notes/の初期調査(`01_flow_file_format.md`)が述べる「フローはDataverseの`workflow`テーブルの`clientdata`列に格納される」という説明は、**組織(Entra ID テナント)に紐づいたDataverse環境を持つ場合の話**であり、`cuzic@hotmail.com`のような**個人用Microsoftアカウント単体でのPAD利用**では、そもそもメーカーポータル自体にアクセスできない——つまりDataverseの`workflow`テーブルを直接覗くという調査経路も、個人アカウントでは成立しない可能性が高い。個人アカウントでのPower Automate Desktop利用が、組織向けとは異なる(簡素化された、Dataverseを介さない)バックエンドに保存されている可能性があり、これは本プロジェクトが前提としてきた「フロー定義の格納場所」の理解そのものを見直す必要があることを意味する。
 
 **今後の調査候補**: (a) 個人向けPower Automateには別の消費者向けポータル面(モバイルアプリ等)が存在する可能性があり、そちらでのフロー閲覧・UI要素リポジトリ参照を試す、(b) 組織アカウント(`rosettaworks`/`seera-networks`等、ユーザーが実際に保有する組織アカウント)でPADにサインインし直してフローを作成・保存すれば、Dataverseベースの経路(メーカーポータル・Dataverse Web API)が使えるようになる可能性がある(ただし今回捕まえた「LoopTest」フロー自体は個人アカウント側にあるため、この経路では別フローでの再検証になる)、(c) そもそも個人アカウントでのPAD利用は本プロジェクトが実際にターゲットとするユーザー層(典型的なPAD個人利用者)の大半を占めると推測されるため、「組織アカウントなら解決する」では実用上の解決にならない可能性が高く、UI要素セレクタ問題の長期的な解決策としては「v1スコープからUI要素アクションを除外し、要素名付きTODOとして出力する」という代替方針の優先度が相対的に上がった。
+
+> **【劇的な訂正】知見44で、本知見の前提だった「クラウド保存/Dataverseアクセスが唯一の経路」という理解そのものが誤りだったと判明した——クラウドを一切介さない、クリップボードコピーだけで済む経路が存在した。**
+
+## 44. 【本プロジェクト最大の発見】複数アクションを一括選択してコピーすると、クリップボードに実際のUI要素セレクタ(JSON)がまるごと含まれることが判明——知見38・39・42・43の「取得不能」という結論を覆す
+
+知見43までの結論(UI要素セレクタの実体はDSLクリップボードテキストに含まれず、取得にはクラウド保存+組織アカウントが必要)を受けて、「一歩下がって大局的に考える」中で浮上した別の課題――「複数アクションの一括コピーがこれまで一度も試されていない(知見1の最初期の4アクション検証以降、常に1〜4個を手作業で個別にコピーしてきた)」――を検証するため、`LoopTest`サブフロー全体(8アクション、`Loop`・`On block error`・`Click UI element in window`・複数行コメントを含む)をキャンバス内で**Ctrl+A(全選択)→Ctrl+C(コピー)**した。
+
+得られたクリップボードテキストは、知見1-43で見てきた「DSLテキスト1本」ではなく、**2つのセクションから成っていた**:
+
+1. 通常のDSLテキスト(`LOOP ... END`等、これまで確認してきた文法そのまま)
+2. **区切り行`# [ControlRepositorySymbols` 以降に続く、生のJSONブロック**:
+
+```json
+# [ControlRepository][PowerAutomateDesktop]
+
+{
+  "ControlRepositorySymbols": [
+    {
+      "IgnoreImagesOnSerialization": false,
+      "Repository": "{\r\n  \"Screens\": [\r\n    {\r\n      \"Controls\": [],\r\n      ...
+        \"ElementTypeName\": \"Start Button\",\r\n      \"Name\": \"Start Button\",\r\n
+        \"SelectorCount\": 1,\r\n      \"Selectors\": [\r\n        {\r\n
+          \"Elements\": [\r\n            {\r\n              \"Attributes\": [],\r\n
+              \"CustomValue\": \":startbutton\",\r\n              \"Name\": \"Start Button\",\r\n
+              \"Tag\": \"startbutton\"\r\n            }\r\n          ],\r\n ...
+      \"ScreenshotPath\": \"controlRepo-screenshots\\\\b75b5751-....png\"\r\n    }\r\n  ],\r\n  \"Version\": 1\r\n}",
+      "ImportMetadata": { "DisplayName": "Local computer", "Type": "Local", "DesktopType": "local" },
+      "Name": "appmask"
+    }
+  ],
+  "ImageRepositorySymbol": { "Repository": "{...}", "Name": "imgrepo" },
+  "ConnectionReferences": []
+}
+```
+
+(実際の生データは`tests/fixtures/`に保存予定。`Repository`フィールド自体が**文字列化されたJSON**(二重にエンコードされている)である点に注意。)
+
+**意義**: 知見38で発見した`appmask['<表示名>']`という名前参照の`appmask`が、まさにこの`"Name": "appmask"`というリポジトリシンボルを指していることが構造的に確定した。これまで「名前参照先の実体はDSLテキストに含まれない」と結論していたが、それは**1〜4個程度のアクションだけを個別にコピーしていたから**であり、**フロー(またはサブフロー)のアクション群を一括選択してコピーすれば、参照先のUI要素リポジトリ全体(`ControlRepositorySymbols`)がクリップボードに同梱される**という事実を見落としていた。知見39・42・43で追求した「PADデザイナーUI上に閲覧経路が無い」「ローカルにキャッシュされない」「個人アカウントはクラウドポータルにアクセスできない」という調査は、**どれも的外れな方向への探索だった**——正解は終始クリップボードの中にあり、単に十分な範囲を一括選択していなかっただけだった(知見15・26・36と同系統の「少数サンプルでの検証がもっと単純な事実を覆い隠していた」というパターンが、プロジェクト最大の未解決課題についても繰り返されていたことになる)。
+
+**今回捕まえたセレクタの中身についての注記**: 今回の実例(Windowsタスクバーの「Start Button」)は、`Attributes: []`(空)で`CustomValue: ":startbutton"`という**PAD独自の特殊ショートタグ**(OS標準のスタートボタンを指す予約済みの擬似セレクタ)を使っており、通常のUIA属性ベースのセレクタ(知見39で確認した`automationText`/`class`/`controlName`等のPublic Attributes)ではなかった。これは「要素固有の特殊ケース」である可能性が高く、**一般的なアプリ内コントロール(例: メモ帳のボタンやテキストボックス)の`Attributes`配列が実際にどう埋まるか(知見39のPublic Attributesがそのままキー名として使われるのか等)は、まだ別の実例で確認できていない**——このティックで2つ目の`Click UI element`アクションをNotepad上のコントロールに対して追加しようとしたが、Actionsパネルからのドラッグ&ドロップ操作がこのセッションのsynthetic input(win32api経由のマウスイベント)では認識されず、アクションを追加できなかった(「On block error」の時は成功したドラッグ手法が、今回は再現しなかった——原因未調査)。次のティックでの優先課題とする。
+
+**次のアクション(実装済み)**: `pad_dsl_parser.py`に`parse_control_repository()`を追加した。`parse_dsl()`も、この区切り行以降をDSLレコード列から自動的に除外するよう修正済み(除外しないと、一括コピーしたテキストを渡した途端にJSON各行が`RawRecord`の山になって出力が壊れてしまう——`pad2py` CLIに渡す入力が今後「個別コピー」から「一括コピー」に変わっても壊れないようにするための必須の修正)。`pad_codegen.py`側での実際のpywinautoセレクタ生成への配線は、`Attributes`配列の一般形が未確認のため引き続き見送っている。
+
+## 45. 【知見44の副産物・新発見】`BLOCK`が`LOOP`等にネストすると、`ON BLOCK ERROR`のインデントがBLOCK自身の深さと食い違う——知見40の「ENDは1つだけ共有」という結論はトップレベル限定だったと判明
+
+知見44の一括コピーで得た生データを`pad_dsl_parser.py`に通したところ、`LOOP`本体にネストした`BLOCK`(`On block error`を含む)を含む区間で、期待通りにパースできないことが分かった。該当箇所の生テキスト(indent個数を併記):
+
+```
+7  (indent0) LOOP LoopIndex2 FROM 1 TO 3 STEP 1
+8  (indent1)     Scripting.RunPythonScript.RunPythonScript ...
+9  (indent1)     BLOCK 
+10 (indent0) ON BLOCK ERROR
+11 (indent0) (空行)
+12 (indent0) END
+13 (indent1)     END
+14 (indent1)     UIAutomation.Click.Click Element: appmask['Start Button'] ...
+```
+
+`BLOCK`自身は期待通りindent1(LOOPの本体として1段深い)で出力されているが、続く`ON BLOCK ERROR`・その(空の)本体・対応する`END`(12行目)は**indent0**——`BLOCK`自身よりも浅いindent(LOOPと同じ深さ)で出力されている。その後、`BLOCK`自身を閉じるはずの**もう1つの`END`**(13行目)がindent1で別途出力されている。
+
+これは知見40(同種の構造をトップレベル、つまり両方ともindent0の状態でしか実機確認していなかった)で導いた「`BLOCK`と`ON BLOCK ERROR`は1つの`END`を共有する」という結論と矛盾する。indentが一致しないため、トップレベルでは区別のつかなかった「`BLOCK`自身を閉じる`END`」と「`ON BLOCK ERROR`を閉じる`END`」が、ネストした場合は実は**別々の2つの`END`**であり、知見40の「共有」という理解は**たまたま`BLOCK`と`ON BLOCK ERROR`が同じindentで両方とも閉じていたために1つに見えていただけ**だった可能性が高い——あるいは、`ON BLOCK ERROR`のインデント計算自体がPAD側のシリアライザのバグで、本来`BLOCK`と同じ深さになるべきところが常に(文脈に依存せず)誤った深さで出力されている、という可能性もある。いずれが正しいかは今回の1例だけでは判別できない。
+
+**パーサーの挙動(現状維持、意図的に未修正)**: `build_block_tree()`の既存ロジックは、`ON BLOCK ERROR`のindentが直前の`BLOCK`ヘッダーのindentと**完全一致**する場合だけそれを保護対象として紐付ける仕様のため、今回のようにindentが食い違う実例では「孤立した`ON BLOCK ERROR`」として扱われ、直前の兄弟ノード(今回のケースではLOOP全体)を`GuardedNode`でラップしてしまう——意図より広い範囲を`try`/`except`で包んでしまうが、クラッシュはせず、構文的に正しいPythonを生成し続ける(`compile()`は成功する)。取り残された13行目の`END`は`# TODO: unmapped keyword: END`という無害なコメントとして出力される。たった1つの(それも特殊ケースの)実例から場当たり的な「indent不一致でも直前のBLOCKに紐付け直す」という特殊処理を追加すると、確認していない別のケースで誤ってON BLOCK ERRORを紐付けてしまう恐れがあるため、**意図的にパーサーは変更せず**、既知の未解決の構造的な曖昧さとして記録するに留める。`tests/fixtures/looptest_whole_subflow_with_control_repository.txt`(実機生データそのもの)に対する回帰テストで、最低限「クラッシュせず`compile()`可能なPythonを生成する」ことだけは保証する。
