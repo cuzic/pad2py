@@ -1162,5 +1162,28 @@ def test_build_block_tree_handles_real_wait_for_window_to_close_whole_subflow_ca
     assert len(wait_records) == 1
     assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToClose"
     assert "FocusWindow" not in wait_records[0].params
+
+
+def test_build_block_tree_handles_real_wait_for_window_content_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見52(実機検証済み): 「Wait for window content」は
+    # 「Wait for window」(知見50)とは別のAction(別のツールチップ・別のダイアログ構成)だが、
+    # DSL上は同じ`WAIT (<ActionId> ...)`構文を再利用し、action_idが
+    # `UIAutomation.WaitForWindowContent.WindowToContainElement`になるだけだった——
+    # 既存の汎用パーサー/codegenロジックのまま、コード変更無しで正しく処理できた。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert (
+        wait_records[0].action_id
+        == "UIAutomation.WaitForWindowContent.WindowToContainElement"
+    )
+    assert wait_records[0].timeout_seconds is None
+    element = wait_records[0].params["Element"]
+    assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
+    tree = build_block_tree(records)
+    assert len(tree) > 0
     tree = build_block_tree(records)
     assert len(tree) > 0

@@ -590,7 +590,11 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   (パーサーバグを修正)。~~`ToClose`バリアント~~ → 完了:`UIAutomation.WaitForWindow.ToClose`、
   `FocusWindow`パラメータ自体が存在しない。`ToBecomeFocusedByTitleClass`相当・
   `ToLoseFocus`の2バリアント、`FocusWindow: True`表記、「Wait for service」の構文は
-  未検証のまま
+  未検証のまま。**新発見**(design/dsl_format_findings.md 知見52): 「Wait for window」とは
+  別物の「Wait for window content」という新アクションが存在し、action_idは
+  `UIAutomation.WaitForWindowContent.WindowToContainElement`——DSL構文自体は`WAIT (...)`を
+  そのまま再利用しており、パーサー/codegenとも無改修で正しく処理できた。「Wait until window」
+  ドロップダウンの他の選択肢・「Check UI element state」トグルは未検証のまま持ち越し
 - ~~`LOOP X FROM start TO end STEP step`のrangeが両端を含むかどうかの実機検証~~ → 完了
   (design/dsl_format_findings.md 知見51): 実機でLoopIndexの実行回数をファイルへの書き込み
   バイト数として確認し、「1 TO 3」が2回(X=1,2)しか実行されないと判明——`end`を含まない、
