@@ -128,6 +128,21 @@ def test_cli_handles_real_goto_label_whole_subflow_capture(tmp_path) -> None:
     compile(code, "<generated>", "exec")
 
 
+def test_cli_handles_real_wait_for_window_whole_subflow_capture(tmp_path) -> None:
+    # design/dsl_format_findings.md 知見50: `WAIT (<ActionId> ...) FOR <秒数>`構文を含む
+    # 実機の一括コピー生データをCLIにそのまま渡しても、compileできるPythonを生成することを
+    # 確認する。
+    fixture = FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt"
+    output_path = tmp_path / "out.py"
+
+    exit_code = main([str(fixture), "-o", str(output_path)])
+
+    assert exit_code == 0
+    code = output_path.read_text(encoding="utf-8")
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" in code
+    compile(code, "<generated>", "exec")
+
+
 class _FakeStdin:
     """`monkeypatch.setattr(sys, "stdin", ...)`用の最小限のread()だけ持つスタブ。"""
 

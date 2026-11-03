@@ -256,6 +256,11 @@ _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _INT_RE = re.compile(r"-?\d+")
 _FLOAT_RE = re.compile(r"-?\d+\.\d+")
 _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$")
+# design/dsl_format_findings.md 知見50(実機検証済み)——`[WaitAction]`カテゴリ(`Wait for window`等)は
+# 単純な`WAIT <seconds>`キーワードとは全く別の構文で、`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`
+# という、丸括弧で囲んだアクション呼び出し風の式を伴う。例:
+# `WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['...'] FocusWindow: False) FOR 5`
+_WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\) FOR (.+)$")
 
 
 @dataclass
@@ -271,6 +276,21 @@ class ActionRecord:
 class KeywordRecord:
     name: str
     args: list[str] = field(default_factory=list)
+    indent: int = 0
+
+
+@dataclass
+class WaitActionRecord:
+    """`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`形式(**実機検証済み**——
+    design/dsl_format_findings.md 知見50)。`[WaitAction]`カテゴリ(`Wait for window`等、
+    design/robin_language_source_findings.mdで事前にソースから発見していたカテゴリ)の
+    実際のDSL表現。単純な`WAIT <seconds>`キーワード(`KeywordRecord`)とは別構文——`ActionRecord`
+    と同じ`Param: Value`形式のパラメータを丸括弧で包み、末尾に`FOR <タイムアウト秒数>`が付く。
+    """
+
+    action_id: str
+    params: dict[str, Any] = field(default_factory=dict)
+    timeout_seconds: Any = None
     indent: int = 0
 
 
@@ -442,6 +462,7 @@ class RawRecord:
 Record = (
     ActionRecord
     | KeywordRecord
+    | WaitActionRecord
     | SetVariableRecord
     | IfRecord
     | ElseIfRecord
@@ -916,6 +937,28 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
         if keyword == "IF":
             return IfFunctionRecord(function_name=func_name, args=args, indent=indent)
         return ElseIfFunctionRecord(function_name=func_name, args=args, indent=indent)
+
+    wait_action_match = _WAIT_ACTION_RE.match(line)
+    if wait_action_match:
+        # design/dsl_format_findings.md 知見50(実機検証済み)。括弧の中身は`ActionRecord`と
+        # 全く同じ`<ActionId> <Param>: <Value> ...`形式なので、既存のパラメータ解析ループを
+        # そのまま再利用する。
+        inner, duration_str = wait_action_match.groups()
+        inner_tokens = inner.split()
+        wait_record = WaitActionRecord(action_id=inner_tokens[0], indent=indent)
+        i = 1
+        while i < len(inner_tokens):
+            tok = inner_tokens[i]
+            if tok.endswith(":"):
+                name = tok[:-1]
+                if i + 1 >= len(inner_tokens):
+                    break
+                wait_record.params[name] = _resolve_value(inner_tokens[i + 1], placeholders)
+                i += 2
+                continue
+            i += 1
+        wait_record.timeout_seconds = _resolve_value(duration_str.strip(), placeholders)
+        return wait_record
 
     tokens = _merge_not_in(line.split())
     first = tokens[0]

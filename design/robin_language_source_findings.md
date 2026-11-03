@@ -581,8 +581,14 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   だった。**「Go to label」も実機検証完了**(知見48)——`Label`アクションが`LABEL <名前>`、
   「Go to label」が本体に`GOTO <名前>`を追加する、同じく2トークンのベアキーワード形式。
   これで`ON ERROR`/`ON BLOCK ERROR`系の未検証項目は全て解消した
-- `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
-  リトライの挙動)とDSL表現の実機検証
+- ~~`WaitForWindowAction`等の`[WaitAction]`カテゴリのDSL表現の実機検証~~ → 完了
+  (design/dsl_format_findings.md 知見50): `WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`
+  という、`WAIT <seconds>`とは全く別の構文だった。`action_id`は予測通り
+  `UIAutomation.WaitForWindow.ToOpen`。タイムアウトは「Fail with timeout error」
+  トグルで初めて設定可能になる(既定5秒)。パーサーに`WaitActionRecord`として実装済み。
+  `ToClose`/`ToBecomeFocusedByTitleClass`/`ToLoseFocus`の3バリアント、
+  `FocusWindow: True`表記、「Fail with timeout error」OFF時の挙動、
+  「Wait for service」の構文は未検証のまま
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
   pywinauto APIの特定(架空のAPI名を避けるため保留中)
 - 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
