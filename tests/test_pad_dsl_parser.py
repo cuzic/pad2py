@@ -1060,3 +1060,28 @@ def test_parse_dsl_resolves_nested_ui_element_path_from_real_notepad_capture() -
     element = click_records[0].params["Element"]
     assert isinstance(element, UiElementRef)
     assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
+
+
+def test_label_and_goto_parsed_as_keyword_records() -> None:
+    # design/dsl_format_findings.md 知見48(実機検証済み): 「Label」アクション(Flow control
+    # カテゴリ)は`LABEL <名前>`という2トークンのベアキーワードを生成し、`ON ERROR`/
+    # `ON BLOCK ERROR`の「Exception handling mode」を「Go to label」にすると、アーム本体に
+    # `GOTO <名前>`が追加される。いずれも`REPEAT ACTION`等と同じ機構でそのまま表現できる。
+    dsl = "LABEL MyLabel\nGOTO MyLabel"
+    records = parse_dsl(dsl)
+    assert records == [
+        KeywordRecord(name="LABEL", args=["MyLabel"], indent=0),
+        KeywordRecord(name="GOTO", args=["MyLabel"], indent=0),
+    ]
+
+
+def test_build_block_tree_handles_real_goto_label_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見48: LABEL/GOTOを含む実機の一括コピー生データ
+    # (Label「MyLabel」+ON BLOCK ERRORのException handling modeを「Go to label」に設定)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    assert KeywordRecord(name="LABEL", args=["MyLabel"], indent=0) in records
+    tree = build_block_tree(records)
+    assert len(tree) > 0

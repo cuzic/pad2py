@@ -572,3 +572,26 @@ def test_generate_python_shows_full_path_for_nested_ui_element_reference() -> No
     assert "ControlRepositorySymbols" not in code
     assert "appmask" not in code
     assert "\"Window 'Untitled - Notepad'\" > \"Document 'Text Editor'\"" in code
+
+
+def test_generate_python_renders_label_as_comment_and_leaves_goto_as_todo() -> None:
+    # design/dsl_format_findings.md 知見48: `LABEL <名前>`はジャンプ先マーカーとして
+    # コメントに残すが、Pythonに`goto`文は無いため`GOTO <名前>`をでっち上げた制御フロー
+    # (例外・whileループへの書き換え等)に変換することはせず、素直に`# TODO`へ倒す。
+    dsl = "LABEL MyLabel\nSET TestVar TO $'''hello'''\nGOTO MyLabel"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# label: MyLabel" in code
+    assert "# TODO: unmapped keyword: GOTO MyLabel" in code
+
+
+def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# label: MyLabel" in code
+    assert "# TODO: unmapped keyword: GOTO MyLabel" in code

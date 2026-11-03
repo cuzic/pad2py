@@ -383,6 +383,12 @@ def _generate_keyword(node: KeywordRecord, indent: int) -> list[str]:
         return [f"{prefix}break"]
     if node.name == "NEXT" and node.args == ["LOOP"]:
         return [f"{prefix}continue"]
+    if node.name == "LABEL" and len(node.args) == 1:
+        # design/dsl_format_findings.md 知見48(実機検証済み)。`LABEL <名前>`自体は単なる
+        # ジャンプ先マーカーで、対応する`GOTO <名前>`がPythonの`goto`文の不在によりどのみち
+        # `# TODO`に倒れる(下のフォールバック)ため、位置が分かるようコメントとして残すだけに
+        # 留める——でっち上げた制御フロー(例外やネストしたwhileへの書き換え)は行わない。
+        return [f"{prefix}# label: {node.args[0]}"]
     return [f"{prefix}# TODO: unmapped keyword: {node.name} {' '.join(node.args)}".rstrip()]
 
 
