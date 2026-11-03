@@ -7,8 +7,14 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 - `WAIT <seconds>` のようなベアキーワード行(action行のパターンに一致しない行は
   種別不明の `raw` レコードとしてそのまま保持し、サイレントに捨てない)
 
-未対応(今後の実機確認が必要): SET/LOOP FOREACH/IF 等の他のキーワード構文、
-`%VarName%` 変数参照の値種別としての明示的な扱い。
+- `SET <VarName> TO <value>` 形式の変数代入(Set variableアクション。実機検証で
+  `SET TestVar TO $'''...'''` の形を確認。`TO` は固定トークン)
+- `IF <operand1> <operator> <operand2> THEN` / `END` 形式の条件分岐(実機検証で
+  `IF TestVar = $'''hello''' THEN` ... `END` の形を確認。変数参照は `%...%` ではなく
+  ベアトークンで表現される)
+
+未対応(今後の実機確認が必要): LOOP FOREACH、ELSE/ELSE IF、複合式(AND/OR)、
+`IF`内のネスト構造の組み立て(現状は行単位のフラットなレコード列のまま)。
 """
 from __future__ import annotations
 
@@ -39,14 +45,27 @@ class KeywordRecord:
 
 
 @dataclass
+class SetVariableRecord:
+    var_name: str
+    value: Any
+
+
+@dataclass
+class IfRecord:
+    operand1: Any
+    operator: str
+    operand2: Any
+
+
+@dataclass
 class RawRecord:
     text: str
 
 
-Record = ActionRecord | KeywordRecord | RawRecord
+Record = ActionRecord | KeywordRecord | SetVariableRecord | IfRecord | RawRecord
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
-_KNOWN_KEYWORDS = {"WAIT"}
+_KNOWN_KEYWORDS = {"WAIT", "END"}
 
 
 def parse_dsl(text: str) -> list[Record]:
@@ -81,6 +100,19 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
 def _parse_line(line: str, placeholders: dict[str, str]) -> Record:
     tokens = line.split()
     first = tokens[0]
+
+    if first == "SET" and len(tokens) >= 4 and tokens[2] == "TO":
+        return SetVariableRecord(
+            var_name=tokens[1],
+            value=_resolve_value(tokens[3], placeholders),
+        )
+
+    if first == "IF" and len(tokens) >= 5 and tokens[-1] == "THEN":
+        return IfRecord(
+            operand1=_resolve_value(tokens[1], placeholders),
+            operator=tokens[2],
+            operand2=_resolve_value(tokens[3], placeholders),
+        )
 
     if first in _KNOWN_KEYWORDS:
         return KeywordRecord(name=first, args=tokens[1:])
