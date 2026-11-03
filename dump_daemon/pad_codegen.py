@@ -215,6 +215,10 @@ def _generate_node(node: Node, indent: int) -> list[str]:
     if isinstance(node, ActionRecord):
         return _generate_action(node, indent)
     if isinstance(node, CommentRecord):
+        # 複数行コメント(`/# ... #/`)はPythonの`#`コメントが1行ずつしか続けられない
+        # ため、埋め込まれた改行ごとに別の`#`行として出力する。
+        if "\n" in node.text:
+            return [f"{prefix}# {line}".rstrip() for line in node.text.split("\n")]
         return [f"{prefix}# {node.text}".rstrip()]
     if isinstance(node, RawRecord):
         return [f"{prefix}# TODO: unparsed DSL line: {node.text}"]

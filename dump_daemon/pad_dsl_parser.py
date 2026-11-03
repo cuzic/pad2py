@@ -6,7 +6,14 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   全ての束縛を`ActionRecord.output_vars`(パラメータ名→変数名の辞書)に保持する。
   `output_var`は後方互換のため最後に見つかったものを保持するだけなので、複数出力が
   ありうるアクションでは`output_vars`を参照すること)
-- `$'''...'''`(複数行可)の文字列リテラル、および `\"`/`\\` のエスケープ解除
+- `$'''...'''`(複数行可)の文字列リテラル、および `\"`/`\'`/`\\` のエスケープ解除、
+  および`%%`→`%`の解除(design/robin_language_source_findings.md——
+  `InterpolatedStringAtom.ToString()`のソースで、リテラル部分は`EscapeForRobin(interpolated: true)`
+  経由で常に`%`が`%%`に二重化されてから出力されることを確認した。`_STRING_RE`が捕捉する
+  `$'''...'''`形式は全て`InterpolatedStringAtom`由来であり、この二重化を必ず受けているため、
+  推測ではなくソース上確定した解除処理。以前は`\'`と`%%`の解除が未実装で、本文中にアポストロフィ
+  (例: `it's`)を含むPADテキストが誤って`it\'s`のままPythonコードに混入するサイレントな
+  バグがあった)
 - `Namespace.Enum.Value` 形式の列挙値、`True`/`False` の真偽値
 - `WAIT <seconds>` のようなベアキーワード行(action行のパターンに一致しない行は
   種別不明の `raw` レコードとしてそのまま保持し、サイレントに捨てない)
@@ -62,14 +69,25 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   2引数+真偽フラグ、`Is empty`系は引数の個数が異なると推測されるが未確認であり、
   安易に同じ形式だと仮定しない)
 
-- `# <comment>` 形式の単一行コメント(design/robin_language_source_findings.md——PAD実機の
-  DLL(`Microsoft.Flow.RPA.Desktop.Robin.Language.dll`)を逆コンパイルし、
-  `CommentStatement.ToString()`のソースコードで文法を直接確認した。複数行コメント
-  (`/# ... #/`)は改行をまたぐため今回は未対応)
+- `# <comment>` 形式の単一行コメント、および `/# ... #/` 形式の複数行コメント
+  (design/robin_language_source_findings.md——`CommentStatement.ToString()`のソースで
+  両方の形式と、複数行側の正確なエスケープ規則(`EscapeRobinComment`: `#/`とバックスラッシュの
+  直前にバックスラッシュを挿入)を確認した。`$'''...'''`の複数行文字列マスキングと同じ手法(DOTALLで
+  先に1トークンに退避してから行分割)を複数行コメントにも適用し、マスキングの順序は
+  コメント→文字列(コメント本文に`$'''`等が含まれていても文字列リテラルとして
+  誤認されないようにするため)。
 
-未対応(今後の実機確認が必要): 複合式(AND/OR)、`SWITCH`/`CASE`構文、複数行コメント、
-`IN`/`NOT IN`演算子(ソースコードでは存在を確認したが、実機でどのUI経由で使えるかは未確認。
-`NOT IN`は2トークンのため現状の`_parse_line`では誤パースする既知のギャップがある)。
+未対応(今後の実機確認が必要): 複合式(AND/OR)、`IN`/`NOT IN`演算子(ソースコードでは
+存在を確認したが、実機でどのUI経由で使えるかは未確認。`NOT IN`は2トークンのため現状の
+`_parse_line`では誤パースする既知のギャップがある)。
+
+`SWITCH <expr>` / `CASE <value>` / `DEFAULT` / `ON ERROR <Case>` / `ON BLOCK ERROR <Case>`
+(design/robin_language_source_findings.md——`SwitchStatement`/`CaseStatement`/
+`CaseDefaultStatement`/`ExceptionCaseStatement`のソースで各ステートメント単体の
+`ToString()`出力は確認済みだが、**ブロックとしてのネスト構造(indent深さの規則)は
+ソース上のBlock/Scopeクラスからは確認できず、実機でのDSL出力例もまだ無い**。IF文の
+ConditionalNode構造のような決め打ちを安易に適用すると誤った意味論を生成する恐れがあるため、
+文単体のパース/コード生成は意図的に未実装のまま(`RawRecord`として保持される)。
 """
 from __future__ import annotations
 
@@ -78,12 +96,26 @@ from dataclasses import dataclass, field
 from typing import Any
 
 _STRING_RE = re.compile(r"\$'''(.*?)'''", re.DOTALL)
-_ESCAPE_RE = re.compile(r'\\\\|\\"')
+_ESCAPE_RE = re.compile(r"\\\\|\\\"|\\'")
+_COMMENT_RE = re.compile(r"/#((?:\\#/|\\\\|(?!#/).)*)#/", re.DOTALL)
+_COMMENT_ESCAPE_RE = re.compile(r"\\(#/|\\)")
 
 
 def _unescape(raw: str) -> str:
-    """DSL文字列リテラル内の `\\"` → `"`、`\\\\` → `\\` を解除する。"""
-    return _ESCAPE_RE.sub(lambda m: '"' if m.group(0) == '\\"' else "\\", raw)
+    """DSL文字列リテラル内の `\\"`→`"`・`\\'`→`'`・`\\\\`→`\\` を解除し、続けて
+    `%%`→`%` を解除する(`InterpolatedStringAtom.ToString()`のソースで確認した
+    `EscapeForRobin(interpolated: true)`の逆操作。順序が重要——先にクォート/
+    バックスラッシュのエスケープを解除し、その後で`%`の二重化を解除する)。
+    """
+    dequoted = _ESCAPE_RE.sub(lambda m: m.group(0)[-1], raw)
+    return dequoted.replace("%%", "%")
+
+
+def _unescape_comment(raw: str) -> str:
+    """複数行コメント(`/# ... #/`)内の `\\#/`→`#/`、`\\\\`→`\\` を解除する
+    (`CommentStatement.ToString()`が呼ぶ`EscapeRobinComment`の逆操作)。
+    """
+    return _COMMENT_ESCAPE_RE.sub(lambda m: m.group(1), raw)
 
 
 @dataclass(frozen=True)
@@ -329,12 +361,20 @@ _KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT"}
 def parse_dsl(text: str) -> list[Record]:
     placeholders: dict[str, str] = {}
 
-    def _stash(m: re.Match[str]) -> str:
+    def _stash_comment(m: re.Match[str]) -> str:
+        key = f"\x00CMT{len(placeholders)}\x00"
+        placeholders[key] = m.group(1)
+        return key
+
+    def _stash_string(m: re.Match[str]) -> str:
         key = f"\x00STR{len(placeholders)}\x00"
         placeholders[key] = m.group(1)
         return key
 
-    masked = _STRING_RE.sub(_stash, text)
+    # コメントを先に退避する(本文中に`$'''`等が含まれていても文字列リテラルとして
+    # 誤認されないようにするため)。
+    masked = _COMMENT_RE.sub(_stash_comment, text)
+    masked = _STRING_RE.sub(_stash_string, masked)
 
     records: list[Record] = []
     for raw_line in masked.split("\n"):
@@ -370,6 +410,12 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
 
 
 def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
+    if line.startswith("\x00CMT") and line in placeholders:
+        # `CommentStatement.ToString()`は常に`"/# " + escaped + "#/"`という形で
+        # `/#`の直後に1文字の空白を固定で挿入する(コメント本文自体が空白で始まる
+        # 場合でも区別なく追加される)。そのためここでは「空白なら剥がす」のような
+        # 条件分岐ではなく、常に先頭1文字をデリミタの一部として取り除く。
+        return CommentRecord(text=_unescape_comment(placeholders[line][1:]), indent=indent)
     if line.startswith("# "):
         return CommentRecord(text=line[2:], indent=indent)
     if line == "#":

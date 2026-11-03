@@ -157,10 +157,79 @@ ShowAll();                                                        // 残り全�
 
 **結論**: design/dsl_format_findings.md 知見19〜21・23で「アクション・フィールドごとに個別確認するしかない」としていた暫定結論は、**今回の`ActionSelector`のソースコード調査により、明確で一貫した規則(判別子は省略・Show/ShowAllは常に出力)に置き換えられた**。今後どのアクションがどのプロパティを省略するかを予測するには、そのアクションの`ActionSelector`サブクラス群(`Prop().ShouldBe()`と`Show()`/`ShowAll()`の宣言)を確認すればよい——UIを1つずつクリックして試行錯誤する必要はなくなった。
 
+## 文字列エスケープの正確な規則(`StringExtensions.cs`で確認——2件のサイレントバグを修正)
+
+`Microsoft.Flow.RPA.Desktop.Robin.Language.Extensions.StringExtensions`を読み、これまで
+実機観察だけに基づいていた`\"`/`\\`エスケープの理解が**不完全だった**ことが判明した:
+
+```csharp
+public static string EscapeForRobin(this string str, bool interpolated)
+{
+    if (interpolated) str = str.Replace("%", "%%");
+    return Regex.Replace(str, "(?=((\")|(')|(\\\\)))", "\\");
+}
+```
+
+つまりエスケープ対象は`"`/`'`/`\`の**3種類**(`"`と`\`の2種類だけではない)。さらに
+`interpolated`(= `$'''...'''`形式、すなわち`InterpolatedStringAtom`由来の値は常に真)の
+場合、クォート類のエスケープより**先に**リテラル`%`が`%%`へ二重化される(`InterpolatedStringAtom.ToString()`
+が各リテラル区間に`EscapeForRobin(interpolated: true)`を適用しているため確認済み)。
+
+`pad_dsl_parser.py`の`_unescape()`は従来`\"`→`"`と`\\`→`\`しか解除しておらず、**`\'`の解除が
+欠落していた**。これはサイレントなバグで、PADのテキストにアポストロフィ(`it's`、`don't`等、
+英語の自動化タスクでは頻出)が含まれるたびに、生成Pythonコードへ不要なバックスラッシュが
+そのまま混入していた(気づかれにくい理由: Pythonコード上で見た目に大きな破綻をしない)。
+同様に`%%`→`%`の解除も欠落していた。両方とも本調査で修正し、回帰テストを追加した
+(`tests/test_pad_dsl_parser.py`の`test_escaped_apostrophe_in_string_literal_is_unescaped`・
+`test_doubled_percent_in_string_literal_is_unescaped`)。
+
+また`StringAtom`(非interpolated、`$`プレフィックス無しの単純な`'...'`/`'''...'''`)という
+別クラスも存在することを確認した。`pad_dsl_parser.py`はこの形式を一切扱っていないが、
+実機でのPADアクションパラメータは(テキスト欄が常に`%Var%`補間に対応しているためか)
+一貫して`InterpolatedStringAtom`(`$`プレフィックス付き)として出力されており、今回の
+調査でも非interpolated形式の実例は一つも確認できなかった。対応未着手だが優先度は低いと判断。
+
+## 複数行コメント(`/# ... #/`)のパーサー対応を実装
+
+`CommentStatement.ToString()`(前セクション参照)のソース通り、`/# ` + `Comment.EscapeRobinComment()` + `#/`
+という形式で実装した。`EscapeRobinComment`は`#/`と`\`の直前にのみ`\`を挿入する
+(`"(?=((#/)|(\\\\)))"`への`Regex.Replace`)ため、本文中に`#/`という2文字が現れる場合に
+限って正しくエスケープ解除できるよう、マスキング用正規表現を単純な非貪欲`.*?`ではなく
+「エスケープされた`#/`・エスケープされた`\`・それ以外の任意の1文字」の繰り返しとして実装した
+(単純な`.*?#/`だと、本文中の`\#/`(エスケープされた`#/`)に含まれる`#/`部分で早期に
+マッチが終端してしまうサイレントバグになることを、自分で書いたテストで発見・修正した)。
+また`/# `の直後に挿入される1文字の空白はデリミタの一部であり、コメント本文そのものでは
+ないため、復号時に無条件で1文字分剥がす処理を実装した(実機でこの複数行形式そのものの
+生成例はまだ確認できていないため、パーサーは対応したが実機未検証のまま)。
+
+## 新発見: `SWITCH`/`CASE`/`DEFAULT`文と`ON ERROR`/`ON BLOCK ERROR`文(構文のみ確認、ブロック構造は未確認)
+
+`Contexts.Statements`配下に以下のクラスも存在することを確認した(いずれも単体の`ToString()`
+出力は確認できたが、**ネスト/ブロック構造を定義するScopeクラスが`Contexts.Blocks`配下には
+見当たらず、indent深さの規則はまだ特定できていない**):
+
+- `SwitchStatement.ToString()` → `"SWITCH " + Expression`(例: `SWITCH TestVar`)
+- `CaseStatement.ToString()` → `"CASE " + SemiEvaluatableContext`(例: `CASE $'''foo'''`)
+- `CaseDefaultStatement.ToString()` → `"DEFAULT"`(固定のベアキーワード、`CASE DEFAULT`ではない)
+- `ExceptionCaseStatement.ToString()` → `Type`が`Statement`なら`"ON ERROR " + Case`、
+  `Block`なら`"ON BLOCK ERROR " + Case`(例: `ON ERROR ErrorCase1`)。`IsUserDefinedErrorCode`が
+  非nullの場合は末尾に` IsUserDefinedErrorCode: <expr>`が追加される。これはPADの各アクション/
+  各アクショングループに設定できる「エラー発生時の動作」(Go to label的な機能)のDSL表現と推測される。
+
+IF文と同じ「複数アームが1つの構文を共有しENDは1つだけ」という構造を安易に適用すると誤った
+indentを生成する恐れがあるため、`build_block_tree()`・`pad_codegen.py`への実装は意図的に
+見送った(`RawRecord`として素通しされる——未対応のアクションと同様、サイレントに壊れるのではなく
+明示的に「未対応」として残る)。
+
 ## 今後の調査候補(未着手)
 
-- `SWITCH`/`CASE`/`CASE DEFAULT`構文の実機検証とパーサー対応
-- `COMMENT`(`# ...` / `/# ... #/`)構文の実機検証とパーサー対応(構文は判明したが実機未確認)
+- `SWITCH`/`CASE`/`CASE DEFAULT`文のブロックネスト構造(indent規則)の特定——`SwitchStatement`等を
+  出力する上位の印字ロジック(Robin.Language.dll内の別クラス、またはPrinter/Formatter相当のもの)
+  をさらに追う必要がある。実機でのDSL出力例が無いため最優先の確認事項。
+- `ON ERROR`/`ON BLOCK ERROR`文がアクション/ブロックとどう結びつくか(前置される1行なのか、
+  それ自体がブロックを開くのか)の特定
 - `In`/`Not in`演算子を実機のどのUI経路で使えるかの特定、および`NOT IN`(2トークン)にパーサーが対応していないギャップの解消
+- `/# ... #/`複数行コメント構文の実機検証(パーサーは対応済みだが実機出力例が無い)
+- `StringAtom`(非interpolated文字列)が実際にどの文脈で出力されるかの特定
 - アクションモジュールDLL群(`Modules.*.Actions.dll`)を対象にした、デフォルト値省略ロジックの追加調査
 - `StatementWithArguments`(`ActionStatement`の基底クラス)の`ToString()`実装を読み、パラメータ行の正確な区切り文字・エスケープルールをさらに裏付けること

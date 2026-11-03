@@ -366,3 +366,14 @@ def test_generate_python_renders_comment_record_as_python_comment() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "# hello comment" in code
+
+
+def test_generate_python_splits_multiline_comment_into_one_hash_line_per_line() -> None:
+    # Pythonの`#`コメントは1行ずつしか続けられないため、`/# ... #/`由来の
+    # 埋め込み改行を含む CommentRecord.text は複数の`#`行に分割する必要がある
+    # (そのまま1つの`# {text}`に入れると改行がコメント終端になりSyntaxErrorになる)。
+    tree = build_block_tree(parse_dsl("/# line one\nline two #/"))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# line one" in code
+    assert "# line two" in code

@@ -499,3 +499,63 @@ def test_comment_does_not_get_mistaken_for_action_or_keyword() -> None:
     assert records[0].text == "WAIT is not a real wait here"
     assert isinstance(records[1], KeywordRecord)
     assert records[1].name == "WAIT"
+
+
+def test_escaped_apostrophe_in_string_literal_is_unescaped() -> None:
+    # design/robin_language_source_findings.md: StringExtensions.EscapeForRobin()が
+    # `"`/`'`/`\`の3種類すべてにバックスラッシュを前置することをソースで確認した。
+    # 以前は`\"`と`\\`しか解除しておらず、アポストロフィを含む英語テキスト
+    # (例: "it's")がPADのDSL上では`it\'s`になるため、バックスラッシュが残留する
+    # サイレントなバグがあった。
+    records = parse_dsl("SET TestVar TO $'''it\\'s a test'''")
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, SetVariableRecord)
+    assert record.value == "it's a test"
+
+
+def test_doubled_percent_in_string_literal_is_unescaped() -> None:
+    # design/robin_language_source_findings.md: InterpolatedStringAtom.ToString()が
+    # リテラル部分を`EscapeForRobin(interpolated: true)`経由で出力し、そこで
+    # `%`が常に`%%`に二重化されることをソースで確認した。`_STRING_RE`が捕捉する
+    # `$'''...'''`は全てこの経路を通るため、解除は推測ではなくソース上確定している。
+    records = parse_dsl("SET TestVar TO $'''100%% done'''")
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, SetVariableRecord)
+    assert record.value == "100% done"
+
+
+def test_multiline_comment_parsed_with_slash_hash_delimiters() -> None:
+    # design/robin_language_source_findings.md: CommentStatement.ToString()が
+    # 改行を含むコメントを`/# ... #/`で囲むことをソースで確認した(実機未確認)。
+    dsl = "/# line one\nline two #/\nWAIT 1"
+    records = parse_dsl(dsl)
+    assert len(records) == 2
+    assert isinstance(records[0], CommentRecord)
+    assert records[0].text == "line one\nline two "
+    assert isinstance(records[1], KeywordRecord)
+    assert records[1].name == "WAIT"
+
+
+def test_multiline_comment_unescapes_escaped_delimiter_and_backslash() -> None:
+    # EscapeRobinComment()は`#/`と`\`の直前に`\`を挿入する。逆変換は
+    # `\#/`→`#/`、`\\`→`\`。
+    dsl = "/# contains \\#/ and \\\\ literally\nsecond line #/"
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, CommentRecord)
+    assert record.text == "contains #/ and \\ literally\nsecond line "
+
+
+def test_multiline_comment_does_not_corrupt_string_literal_masking() -> None:
+    # コメント本文に`$'''`のような文字列リテラルっぽい文字列が入っていても、
+    # コメントを先にマスキングするため文字列リテラルとして誤認されない。
+    dsl = "/# looks like $'''a string''' but is not #/\nSET TestVar TO $'''real'''"
+    records = parse_dsl(dsl)
+    assert len(records) == 2
+    assert isinstance(records[0], CommentRecord)
+    assert records[0].text == "looks like $'''a string''' but is not "
+    assert isinstance(records[1], SetVariableRecord)
+    assert records[1].value == "real"
