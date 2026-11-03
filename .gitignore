@@ -4,3 +4,7 @@ __pycache__/
 capture_output/
 test-results.xml
 *.egg-info/
+
+# ローカル環境ファイル・セッション管理ファイル(秘密情報を含みうる)
+.env
+.claude/
