@@ -154,7 +154,9 @@ def test_cli_adds_verified_pywinauto_selector_hint_from_control_repository(tmp_p
     # generate_python()へ自動的に橋渡しするようになったため、一括コピーの生データを
     # CLIに渡すだけで(追加の手順無しに)実機検証済みのpywinautoセレクタ提案がTODOコメントに
     # 付くことを確認する——ユーザーが意識する入出力経路(ファイル→CLI→ファイル)そのもの。
-    fixture = FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    # `GetWindow.GetUseTimeout`は「window instance」の表現方法が未解決のため、今も
+    # TODO+ヒントのまま残っている。
+    fixture = FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt"
     output_path = tmp_path / "out.py"
 
     exit_code = main([str(fixture), "-o", str(output_path)])
@@ -163,7 +165,7 @@ def test_cli_adds_verified_pywinauto_selector_hint_from_control_repository(tmp_p
     code = output_path.read_text(encoding="utf-8")
     assert (
         'verified pywinauto selector: Desktop(backend="uia").window(title=\'Untitled - '
-        "Notepad').child_window(class_name='Edit')" in code
+        "Notepad')" in code
     )
     compile(code, "<generated>", "exec")
 

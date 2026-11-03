@@ -805,13 +805,13 @@ def test_generate_python_converts_wait_for_window_to_real_wait_when_timeout_give
     assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
 
 
-def test_generate_python_keeps_wait_for_window_as_todo_when_timeout_is_none() -> None:
+def test_generate_python_converts_wait_for_window_to_unbounded_poll_when_timeout_is_none() -> None:
     # design/dsl_format_findings.md 知見50の追記: 「Fail with timeout error」OFFで
-    # `timeout_seconds`が`None`の場合、PADが実際に無期限に待つのか・内部的な既定値が
-    # あるのかは未確認(公開資料・実機いずれでも確証無し)。pywinauto側の`.wait()`は
-    # timeout省略時に有限のデフォルトにフォールバックしてしまい、PADの実際の挙動と
-    # 食い違う(異なる時間で待ちが終わる)恐れがあるため、でっち上げたタイムアウト値を
-    # 埋め込まず安全なTODOのままにする——セレクタが解決できる場合でも変換しない。
+    # `timeout_seconds`が`None`の場合、PADは50ミリ秒間隔で無期限にポーリングを続け、
+    # タイムアウトによる失敗が一切発生しない(条件が満たされるかフロー自体がキャンセル
+    # されるまで待ち続ける)ことが確認できている。この意味論をでっち上げた有限タイムアウト
+    # 値(pywinautoの`.wait()`任せ)に丸めず、同じ`while`+`time.sleep(0.05)`ポーリングとして
+    # 再現する。
     text = (
         FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_no_timeout.txt"
     ).read_text(encoding="utf-8")
@@ -819,8 +819,12 @@ def test_generate_python_keeps_wait_for_window_as_todo_when_timeout_is_none() ->
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
     compile(code, "<generated>", "exec")
-    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen (timeout: none)" in code
-    assert ".wait(" not in code
+    assert (
+        "while not Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists():"
+        in code
+    )
+    assert "    time.sleep(0.05)" in code
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
 
 
 def test_generate_python_from_real_whole_subflow_capture_compiles() -> None:
@@ -974,16 +978,19 @@ def test_generate_python_adds_verified_pywinauto_selector_hint_when_repository_g
     # 渡された場合はTODOコメントに検証済みのpywinautoセレクタ式を提案として付記する
     # ようにした——あくまでコメント内の提案であり、生成される実行コード自体を変えることは
     # 無い(でっち上げたセレクタで動くコードを出力することは無い、という方針は維持)。
-    text = (
-        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
-    ).read_text(encoding="utf-8")
+    # `GetWindow.GetUseTimeout`は「window instance」の表現方法が未解決のため、今も
+    # TODO+ヒントのまま残っている(Click.Click/WaitActionは既に実コード化済みなので
+    # このテストの対象には使えない)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
     tree = build_block_tree(parse_dsl(text))
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
     compile(code, "<generated>", "exec")
     assert (
         'verified pywinauto selector: Desktop(backend="uia").window(title=\'Untitled - '
-        "Notepad\').child_window(class_name='Edit')" in code
+        "Notepad')" in code
     )
 
 
