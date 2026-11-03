@@ -1118,3 +1118,17 @@ IF (UIAutomation.IfImage.ExistsOnScreen Images: [imgrepo['Image']] FindAllImages
 **パーサーの挙動**: 現在のパーサーは`appmask[...]`専用の`UiElementRef`抽出ロジックしか持たず、`imgrepo[...]`の角括弧リスト構文は未対応のため、`[imgrepo['Image']]`全体が不透明な`VarRef(name="[imgrepo['Image']]")`としてテキストのまま保持される——構造化はされないが、データを失わず、クラッシュもしない安全なフォールバックであることを確認した。codegenは知見54の`IfActionRecord`の`NotImplementedError`フォールバックをそのまま再利用でき、**一切のコード変更無しで**安全に失敗することを確認した(画像マッチングは`pyautogui.locateOnScreen`等への対応が考えられるが、実機検証が無いため架空の変換はでっち上げない)。
 
 **未検証のまま残る項目**: 「If image」ドロップダウンの他の選択肢(「exists」以外に「doesn't exist」等が予測される)・複数画像をリストに含めた場合の実際の区切り文字・`imgrepo[...]`の角括弧リスト構文の専用パーサー対応・`ImageRepositorySymbol`の`parse_control_repository()`での構造化(現状`ControlRepositorySymbols`のみ対応、`ImageRepositorySymbol`は未対応)は、いずれも未確認・未実装のまま持ち越し。
+
+## 59. 知見55の`VariableTrailer`で最後に残っていた「Slice構文」を実機確認——Pythonのスライス構文`[start:end]`と字面上完全に一致
+
+知見55で`.Name`トレーラ・`[Index]`添字アクセスを実機確認した際、「Slice構文・0始まりか1始まりかは未確認のまま持ち越し」としていた最後の項目を確認した。「Set variable」のValue欄に`%InnerVar[0:2]%`という式を入力・保存・単独コピーしたところ:
+
+```
+SET NewVar3 TO InnerVar[0:2]
+```
+
+**確認できた事実**: 予測通り、Pythonのスライス構文と全く同じ`[start:end]`という形式(コロン区切り)だった。保存直後のアクションカードのプレビュー表示では`[0:2]`部分が見た目上省略され「InnerVar」とだけ表示されたが、これは表示上の省略に過ぎず、一括コピーしたDSLテキストには`[0:2]`が正しく残っていることを確認した(表示上の省略に実データが引きずられていないか、紛らわしい挙動だったため明記しておく)。`[Index]`添字アクセス(知見55)と同様、ドットを含まないため`_ENUM_REF_RE`にはマッチせず、既存の`VarRef`フォールバックでそのまま保持され、codegenも`InnerVar[0:2]`という構文的に正しいPythonのスライス式を**偶然にも**生成できることを確認した——一切のコード変更は不要だった。
+
+これで知見55が「未検証のまま持ち越し」としていた`VariableTrailer`の3形態(`.Name`/`[Index]`/Slice)全てが実機確認済みになった。
+
+**未検証のまま残る項目**: `start`/`end`が0始まりか1始まりか・終端を含むか含まないか(知見51のLOOP range確認と同種の、実機実行による値の読み取りが必要な検証)は、いずれも実機未確認のまま持ち越し——今回確認できたのはあくまで構文の字面のみで、意味論(実際にどの文字が返るか)はまだ検証していない。

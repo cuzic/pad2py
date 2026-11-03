@@ -128,6 +128,22 @@ def test_set_variable_with_index_trailer_resolved_as_varref() -> None:
     assert set_var.value == VarRef("InnerVar[0]")
 
 
+def test_set_variable_with_slice_trailer_resolved_as_varref() -> None:
+    # design/dsl_format_findings.md 知見55の追記(実機検証済み): `VariableTrailer`の
+    # 「Slice構文」(`.Name`/`[Index]`と並んで未検証のまま持ち越していた最後の1つ)も実機確認した。
+    # `%InnerVar[0:2]%`という式を入力・保存・単独コピーしたところ`SET NewVar3 TO InnerVar[0:2]`
+    # というDSLが得られ、予測通りPythonのスライス構文と全く同じ`[start:end]`形式だった
+    # (キャンバスのカード表示では`[0:2]`部分が見た目上省略されるが、これは表示上の省略に
+    # 過ぎず、一括コピーしたDSLには正しく残っていることを確認した)。`[0]`の添字アクセス同様、
+    # ドットを含まないため`_ENUM_REF_RE`にはマッチせず、修正前から既に`VarRef`としてそのまま
+    # 保持され、codegenも`InnerVar[0:2]`という有効なPythonのスライス式を生成できていた
+    # (start/endが0始まりか1始まりか、終端を含むかどうかの正確な意味論は未検証のまま)。
+    records = parse_dsl("SET NewVar3 TO InnerVar[0:2]")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert set_var.value == VarRef("InnerVar[0:2]")
+
+
 def test_enum_ref_still_recognized_for_known_three_segment_values() -> None:
     # design/dsl_format_findings.md 知見55: EnumRef判定を3セグメント限定にした後も、
     # これまでに実機確認済みの全EnumRef値(例: Display.DefaultButton.Button1)は
