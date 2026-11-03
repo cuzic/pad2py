@@ -1,0 +1,1 @@
+UIAutomation.CloseWindow.CloseByInstanceOrHandle WindowInstance: AutomationWindow2

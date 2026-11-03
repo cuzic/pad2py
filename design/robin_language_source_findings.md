@@ -611,13 +611,19 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   仮定していた「両端を含む」(`range(start, end+1, step)`)は誤りで、修正済み
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
   pywinauto APIの特定(架空のAPI名を避けるため保留中)
-- 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
-  どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装 ——
-  `GetWindow`自体の実機DSLは確認済み(design/dsl_format_findings.md 知見57):
-  action_idは`UIAutomation.GetWindow.GetUseTimeout`、出力は`WindowInstance=> <変数名>`という
-  知見14の`=>`出力変数構文の再利用で、無改修でパース可能だった。「window instance」自体は
-  DSL上ただの変数名(`VarRef`)であることが判明し、知見56のpywinautoセレクタ生成と組み合わせた
-  変換の見通しは立ったが、`ByInstanceOrHandle`系アクション自体の実機DSLはまだ未確認のまま
+- ~~「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
+  どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装~~ →
+  `GetWindow`・`CloseWindow`(by instance)とも実機DSLを確認済み(design/dsl_format_findings.md
+  知見57): `GetWindow`のaction_idは`UIAutomation.GetWindow.GetUseTimeout`、出力は
+  `WindowInstance=> <変数名>`という知見14の`=>`出力変数構文の再利用。`CloseWindow`の
+  「Find window mode」ドロップダウンには予測通り3択(UI element/instance-handle/title-class)
+  あり、「By window instance/handle」で`UIAutomation.CloseWindow.CloseByInstanceOrHandle
+  WindowInstance: <変数名>`という、引用符もUI要素参照も付かない**裸の変数参照**を確認した
+  (いずれも既存の汎用パーサーで無改修でパース可能)。知見56のpywinautoセレクタ生成と
+  組み合わせた実際の変換実装(`GetWindow`→`win = Desktop(...).window(...)`、
+  `CloseWindow`→`win.close()`)はまだ見送っており、他の`ByInstanceOrHandle`系アクション
+  (`SetWindowStateByInstanceOrHandle`等)の実機DSL・`Timeout`無しモード・
+  `BringWindowToFront: True`時の挙動は未確認のまま持ち越し
 
 - ~~`ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
   実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認~~ → 完了(design/dsl_format_findings.md

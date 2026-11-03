@@ -1079,4 +1079,14 @@ UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \'Untitled - Notep
 
 **「window instance」問題への示唆**: 今回の実機確認で、「window instance」自体は単なる変数名(`AutomationWindow2`)で、DSL上は他の変数と全く区別が付かないただの`VarRef`になることが分かった——つまり、これを受け取る側(`ByInstanceOrHandle`系アクション、知見27の`ByTitleClass`系とは別系統)のDSLパラメータも、おそらく通常の変数参照としてそのまま出現すると予測される(未確認)。Python側の表現としては、知見56で実証したpywinautoセレクタ生成の仕組みと組み合わせれば、`AutomationWindow2 = Desktop(backend="uia").window(title="Untitled - Notepad")`のような代入文として変換できる可能性が見えてきたが、`BringWindowToFront: True`の場合の正確な意味論(`.set_focus()`相当か)・`Timeout`無しモードの構文・`ByInstanceOrHandle`系アクションの実機DSLは、いずれも未検証のため、今回は実装せず文書化のみに留めた。
 
-**未検証のまま残る項目**: 「Get window」ドロップダウンの他の選択肢(「Specific window」以外に何があるか、「All windows」「Active window」のようなものが予測される)・`Timeout`無しモードの構文・`BringWindowToFront: True`時の挙動・`ByInstanceOrHandle`系アクション(`CloseWindowByInstanceOrHandle`等)の実機DSLは、いずれも未確認のまま持ち越し。
+**未検証のまま残る項目**: 「Get window」ドロップダウンの他の選択肢(「Specific window」以外に何があるか、「All windows」「Active window」のようなものが予測される)・`Timeout`無しモードの構文・`BringWindowToFront: True`時の挙動は、いずれも未確認のまま持ち越し。
+
+**追記(別ティック・`ByInstanceOrHandle`系を確認)**: 「Close window」アクションの「Find window mode」ドロップダウンを確認したところ、「By window UI element」「By window instance/handle」「By title and/or class」の3択だった(「By title and/or class」が知見27で確認済みの`ByTitleClass`系に対応)。「By window instance/handle」を選ぶと「Window instance:」という入力欄(ツールチップ「The instance or handle of the window to close」)が現れ、ここに`%AutomationWindow2%`という式を直接入力・保存・単独コピーしたところ:
+
+```
+UIAutomation.CloseWindow.CloseByInstanceOrHandle WindowInstance: AutomationWindow2
+```
+
+design/robin_language_source_findings.mdが予測していた`CloseWindowByInstanceOrHandle`という命名パターンがそのまま実機で確認できた(action_id: `UIAutomation.CloseWindow.CloseByInstanceOrHandle`)。より重要な点として、**`WindowInstance`パラメータは引用符もUI要素参照の角括弧も付かない、完全に裸の変数参照**(`VarRef(name='AutomationWindow2')`)だった——知見57本文で立てた仮説(「window instanceは単なる変数名としてDSLに現れる」)が的中し、既存の汎用パラメータ解析ロジックで**一切のコード変更無しで**正しくパースできることを確認した。これで`GetWindow`(知見57本文)→`AutomationWindow2`という変数→`CloseWindow`(by instance)という、window instanceの生成から消費までの実機DSLの流れが一通り確認できたことになる。
+
+**未検証のまま残る項目(追加)**: `BringWindowToFront: True`時の挙動・`Timeout`無しモードの構文・他の`ByInstanceOrHandle`系アクション(`SetWindowStateByInstanceOrHandle`等、知見27の`ByTitleClass`系に並ぶと予測される仲間)の実機DSLは、いずれも未確認のまま持ち越し。
