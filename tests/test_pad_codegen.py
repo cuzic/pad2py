@@ -500,3 +500,18 @@ def test_generate_python_renders_on_block_error_as_try_except_with_pass_body() -
     assert "    pass" in code
     assert "except Exception:" in code
     assert "# TODO: unmapped keyword: NEXT ACTION" in code
+
+
+def test_generate_python_renders_throw_error_as_todo_without_fabricating_raise() -> None:
+    # design/dsl_format_findings.md 知見41(実機検証済み): 「Throw error」を選んだ
+    # `ON BLOCK ERROR`本体の`THROW ERROR`はPythonの`raise`に素直に対応しそうに見えるが、
+    # 何を`raise`すべきか(元の例外の再送出か、固定のエラーメッセージか)が実機未検証のため、
+    # 安易に`raise`をでっち上げず`# TODO`コメントに倒す——`_ensure_nonempty_suite()`
+    # (知見40で発見したバグの修正)のおかげでコメントだけの本体でも`pass`が補われ、
+    # 生成コードはそのまま`compile()`できる。
+    dsl = "BLOCK \nON BLOCK ERROR\nTHROW ERROR\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: unmapped keyword: THROW ERROR" in code
+    assert "raise" not in code

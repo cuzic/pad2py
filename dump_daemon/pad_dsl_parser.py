@@ -655,7 +655,9 @@ _ACTION_ID_RE = _DOTTED_RE
 # "REPEAT"は design/dsl_format_findings.md 知見37(実機検証済み)の`REPEAT ACTION`用。
 # "NEXT"は既存の`NEXT LOOP`と`NEXT ACTION`(同じくON ERRORの本体内で使える——ソース上
 # `NextActionStatement.ToString()`が同じ`"NEXT ACTION"`を返すため、追加の実装は不要)の両方で使われる。
-_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT", "REPEAT"}
+# "THROW"は design/dsl_format_findings.md 知見41(実機検証済み)の`THROW ERROR`用——
+# `ON BLOCK ERROR`の「Throw error」を選ぶと本体に追加される2トークンのベアキーワード。
+_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT", "REPEAT", "THROW"}
 
 
 def parse_dsl(text: str) -> list[Record]:
