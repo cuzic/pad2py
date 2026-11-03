@@ -104,10 +104,12 @@ from .pad_dsl_parser import (
     CaseDefaultRecord,
     CommentRecord,
     ConditionalNode,
+    ElseIfActionRecord,
     ElseIfFunctionRecord,
     ElseIfRecord,
     EnumRef,
     GuardedNode,
+    IfActionRecord,
     IfFunctionRecord,
     IfRecord,
     KeywordRecord,
@@ -310,6 +312,16 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             raise NotImplementedError(
                 f"Function-call condition {header.function_name}(...) is not yet supported "
                 "by codegen; its Python semantics haven't been verified on real PAD."
+            )
+        elif isinstance(header, (IfActionRecord, ElseIfActionRecord)):
+            # 「If window」「If window contains element」等の[ConditionAction]カテゴリ
+            # (design/dsl_format_findings.md 知見54)。対象のUI要素セレクタ自体がDSLから
+            # 取得できない(知見38・46と同じ制約)上、条件式を誤って翻訳すると制御フローが
+            # 丸ごと反転するという、SET文の右辺(知見53)よりもさらに危険な失敗モードになる
+            # ため、でっち上げた真偽値を出力せず、IfFunctionRecordと同じ方針ではっきり失敗させる。
+            raise NotImplementedError(
+                f"Action-call condition {header.action_id}(...) is not yet supported by codegen; "
+                "its Python semantics (and UI element selector) haven't been verified on real PAD."
             )
         else:
             raise TypeError(f"Unexpected conditional arm header: {header!r}")

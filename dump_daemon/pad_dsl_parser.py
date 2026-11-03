@@ -278,6 +278,15 @@ _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN
 # `FOR <秒数>`句は「Fail with timeout error」トグルが有効な場合のみ付与され、無効な場合は
 # `WAIT (...)`のみで終わる(知見50の追記で実機確認済み)——そのため`FOR`句全体を省略可能にしている。
 _WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\)(?: FOR (.+))?$")
+# design/dsl_format_findings.md 知見54(実機検証済み)——`[ConditionAction]`カテゴリ
+# (`If window`/`If window contains element`/`If image`等、design/robin_language_source_findings.md
+# で事前にソースから発見していたカテゴリ)は、知見50の`WAIT (...)`と全く同じ丸括弧パターンを
+# 条件式として再利用する。例:
+# `IF (UIAutomation.IfWindow.IsOpen Window: appmask['...'] InstantCheck: False) THEN`
+# `IfFunctionRecord`(`Contains(a, b) THEN`、知見18-2)とは異なり、丸括弧が`IF`/`ELSE IF`の
+# 直後(関数名の前)から始まり、中身がPAD関数の位置引数ではなく`ActionRecord`と同じ
+# `<ActionId> <Param>: <Value>`形式になる。
+_IF_ACTION_RE = re.compile(r"^(IF|ELSE IF) \((.+)\) THEN$")
 
 
 @dataclass
@@ -347,6 +356,28 @@ class IfFunctionRecord:
 class ElseIfFunctionRecord:
     function_name: str
     args: list[Any]
+    indent: int = 0
+
+
+@dataclass
+class IfActionRecord:
+    """`IF (<ActionId> <Param>: <Value> ...) THEN`形式の条件(design/dsl_format_findings.md
+    知見54で実機確認)。「If window」「If window contains element」「If image」のような
+    `[ConditionAction]`カテゴリ(design/robin_language_source_findings.md参照)のアクションが
+    生成する。知見50の`WaitActionRecord`と全く同じ、丸括弧で包んだ`<ActionId> <Param>: <Value>`
+    形式をそのまま条件式として使う——`IfFunctionRecord`(`Contains(a, b)`のような単純な
+    関数呼び出し形式、知見18-2)とは別の、第3の条件表現パターン。
+    """
+
+    action_id: str
+    params: dict[str, Any] = field(default_factory=dict)
+    indent: int = 0
+
+
+@dataclass
+class ElseIfActionRecord:
+    action_id: str
+    params: dict[str, Any] = field(default_factory=dict)
     indent: int = 0
 
 
@@ -485,6 +516,8 @@ Record = (
     | ElseIfRecord
     | IfFunctionRecord
     | ElseIfFunctionRecord
+    | IfActionRecord
+    | ElseIfActionRecord
     | CommentRecord
     | LoopRecord
     | LoopForeachRecord
@@ -509,9 +542,17 @@ class BlockNode:
     body: list[Node] = field(default_factory=list)
 
 
-ConditionalArmHeader = IfRecord | ElseIfRecord | IfFunctionRecord | ElseIfFunctionRecord | KeywordRecord
-_IF_HEADER_TYPES = (IfRecord, IfFunctionRecord)
-_ELSEIF_HEADER_TYPES = (ElseIfRecord, ElseIfFunctionRecord)
+ConditionalArmHeader = (
+    IfRecord
+    | ElseIfRecord
+    | IfFunctionRecord
+    | ElseIfFunctionRecord
+    | IfActionRecord
+    | ElseIfActionRecord
+    | KeywordRecord
+)
+_IF_HEADER_TYPES = (IfRecord, IfFunctionRecord, IfActionRecord)
+_ELSEIF_HEADER_TYPES = (ElseIfRecord, ElseIfFunctionRecord, ElseIfActionRecord)
 
 
 @dataclass
@@ -963,6 +1004,31 @@ def _render_raw_expr(tokens: list[str], placeholders: dict[str, str | tuple[str,
     return RawExpr(text=" ".join(pieces))
 
 
+def _parse_action_call_body(
+    inner: str, placeholders: dict[str, str | tuple[str, ...]]
+) -> tuple[str, dict[str, Any]]:
+    """`<ActionId> <Param>: <Value> ...`形式(`WAIT (...)`・`IF (...)`共通、知見50・54)を解析する。
+
+    `ActionRecord`のパラメータ解析と同じ考え方で、`<Name>:`の形をしたトークンだけを
+    パラメータ名として扱い、その直後のトークンを値として読む。
+    """
+    inner_tokens = inner.split()
+    action_id = inner_tokens[0]
+    params: dict[str, Any] = {}
+    i = 1
+    while i < len(inner_tokens):
+        tok = inner_tokens[i]
+        if tok.endswith(":"):
+            name = tok[:-1]
+            if i + 1 >= len(inner_tokens):
+                break
+            params[name] = _resolve_value(inner_tokens[i + 1], placeholders)
+            i += 2
+            continue
+        i += 1
+    return action_id, params
+
+
 def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], indent: int = 0) -> Record:
     if line.startswith("\x00CMT") and line in placeholders:
         # `CommentStatement.ToString()`は常に`"/# " + escaped + "#/"`という形で
@@ -988,25 +1054,23 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
     wait_action_match = _WAIT_ACTION_RE.match(line)
     if wait_action_match:
         # design/dsl_format_findings.md 知見50(実機検証済み)。括弧の中身は`ActionRecord`と
-        # 全く同じ`<ActionId> <Param>: <Value> ...`形式なので、既存のパラメータ解析ループを
-        # そのまま再利用する。
+        # 全く同じ`<ActionId> <Param>: <Value> ...`形式なので、共通ヘルパーで解析する。
         inner, duration_str = wait_action_match.groups()
-        inner_tokens = inner.split()
-        wait_record = WaitActionRecord(action_id=inner_tokens[0], indent=indent)
-        i = 1
-        while i < len(inner_tokens):
-            tok = inner_tokens[i]
-            if tok.endswith(":"):
-                name = tok[:-1]
-                if i + 1 >= len(inner_tokens):
-                    break
-                wait_record.params[name] = _resolve_value(inner_tokens[i + 1], placeholders)
-                i += 2
-                continue
-            i += 1
+        action_id, params = _parse_action_call_body(inner, placeholders)
+        wait_record = WaitActionRecord(action_id=action_id, params=params, indent=indent)
         if duration_str is not None:
             wait_record.timeout_seconds = _resolve_value(duration_str.strip(), placeholders)
         return wait_record
+
+    if_action_match = _IF_ACTION_RE.match(line)
+    if if_action_match:
+        # design/dsl_format_findings.md 知見54(実機検証済み)。知見50のWAIT (...)と同じ
+        # 丸括弧パターンを再利用する`[ConditionAction]`カテゴリ用の条件式。
+        keyword, inner = if_action_match.groups()
+        action_id, params = _parse_action_call_body(inner, placeholders)
+        if keyword == "IF":
+            return IfActionRecord(action_id=action_id, params=params, indent=indent)
+        return ElseIfActionRecord(action_id=action_id, params=params, indent=indent)
 
     tokens = _merge_not_in(line.split())
     first = tokens[0]

@@ -946,3 +946,23 @@ SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4
 **codegen側の判断**: PADの演算子優先順位(特に`AND`/`OR`/`XOR`の優先順位がPythonの`and`/`or`と一致するか、`XOR`のPython対応——Pythonに`xor`という論理演算子キーワードは無く`!=`や`^`で代用する場合に境界値で意味論が食い違わないか、`mod`が負数に対してPythonの`%`と同じ挙動かなど)がいずれも実機未検証のため、でっち上げた変換式を出力せず、`# TODO: map PAD compound expression for variable '<var>': <元のPAD式テキスト>`というコメントと`<var> = None`という安全なフォールバック代入の2行を出力するに留めた(知見50の`WaitActionRecord`と同じ「安全側TODOフォールバック」の方針)。
 
 **未検証のまま残る項目**: PADの演算子優先順位の正確な規則(括弧なしで`AND`と`OR`を混在させた場合の評価順序)・`XOR`の正確なPython対応・`mod`の負数での挙動・文字列結合としての`+`との曖昧性、はいずれも実機未確認のまま持ち越し。これらを確認してから初めて、`RawExpr`から実際のPython式への機械的変換(例えば`ast`ベースの小さな式トランスレータ)を実装する価値がある。
+
+## 54. 【新発見・重要なパーサーバグ修正】`[ConditionAction]`カテゴリ(「If window」等)の実機DSLを確認——知見50の`WAIT (...)`と同じ丸括弧構文を条件式として再利用、`IfRecord`への誤パースを修正
+
+design/robin_language_source_findings.mdが「ConditionActionカテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等)が実機で本当にIfFunctionRecord形式のDSLを生成するかの確認」として持ち越していた項目を、知見53の調査中にActionsパネルで偶然見つけた「If window」アクションから実機確認した。
+
+Actionsパネルで"If window"を検索すると、「UI automation」カテゴリに「If window」「If window contains element」が、「Windows services」カテゴリに「If service」が見つかった(design/robin_language_source_findings.mdが予測していた`IfWindowAction`系そのもの)。「If window」をキャンバスに追加すると「Get window: By window UI element」(ドロップダウン)「Window:」(UI要素ピッカー)「Check if window: Is open」(ドロップダウン、他の選択肢は未確認)という構成だった。既存の「Window 'Untitled - Notepad'」UI要素を選択して保存したところ、**PADはこのアクション単体で自動的に対応する`End`も挿入した**(=`IF`/`LOOP`等と同じブロック開始構文であることが構成UIの時点で確定した)。一括コピーした結果:
+
+```
+IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \'Untitled - Notepad\''] InstantCheck: False) THEN
+```
+
+**確認できた事実**: これは知見18-2で確認済みの`IfFunctionRecord`形式(`IF Contains(a, b, False) THEN`——関数名の直後に空白無しで`(`が続き、中身は位置引数のカンマ区切り)とは**全く別の第3の条件表現パターン**だった。実際には知見50の`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`と完全に同型で、`IF`/`THEN`に置き換わっただけ——`IF (<ActionId> <Param>: <Value> ...) THEN`という、`ActionRecord`と同じ`Param: Value`形式のパラメータを丸括弧で包んだ条件式だった。`action_id`は`UIAutomation.IfWindow.IsOpen`、`InstantCheck`という真偽値パラメータ(「Check if window」のドロップダウンには表示されない隠しパラメータ、おそらく即時チェックか待機を伴うかのフラグ)も確認できた。
+
+**発見された重大なパーサーバグ**: 当時この構文に対応する専用の解析ロジックが存在しなかったため、既存の`IfRecord`(固定位置の`operand1 operator operand2`形式)の解析ロジックが誤ってマッチし、`IfRecord(operand1=VarRef('(UIAutomation.IfWindow.IsOpen'), operator='Window:', operand2=VarRef('\x00UIE0\x00)'))`という意味不明な値にパースされてしまっていた——知見50のWAIT文で最初に発生したのと全く同じ「新しい丸括弧構文を既存の固定位置パーサーが誤認識する」というバグパターンの再発だった。
+
+**修正内容**: 新しい正規表現`_IF_ACTION_RE = re.compile(r"^(IF|ELSE IF) \((.+)\) THEN$")`と、新しいレコード型`IfActionRecord`/`ElseIfActionRecord`(`action_id`/`params`)を追加した。`WaitActionRecord`と`IfActionRecord`/`ElseIfActionRecord`で共通のパラメータ解析ロジックを`_parse_action_call_body()`という共通ヘルパーに切り出し、両方から再利用するようにリファクタリングした。`build_block_tree()`の`_IF_HEADER_TYPES`/`_ELSEIF_HEADER_TYPES`にも新しい型を追加し、`IF (...) THEN`が`IfFunctionRecord`や`IfRecord`と同じ条件分岐ブロックのヘッダーとして正しく扱われるようにした。
+
+**codegen側の判断**: 対象UI要素のセレクタ自体がDSLから取得できない(知見38・46と同じ制約)上、条件式の意味論を誤訳すると制御フロー全体(`if`に入るかどうか)が反転するという、知見53の`SET`文の右辺よりもさらに危険な失敗モードになる。そのため、知見18-2の`IfFunctionRecord`と全く同じ方針——でっち上げた真偽値を出力せず`NotImplementedError`を送出してはっきり失敗させる——を踏襲した。
+
+**未検証のまま残る項目**: 「Check if window」ドロップダウンの他の選択肢(「Is open」以外に何があるか、知見50の`WindowMode`列挙値と同様のパターンと予測される)・`InstantCheck`パラメータの正確な意味・「If window contains element」「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
