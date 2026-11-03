@@ -22,7 +22,8 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
 | --- | --- |
 | [design/control_dump_tech_selection.md](design/control_dump_tech_selection.md) | 制御dumpスクリプトの技術選定・アーキテクチャ |
 | [design/ci_verification_findings.md](design/ci_verification_findings.md) | GitHub Actions・実機GCP VM双方での検証知見(知見1〜11) |
-| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜15: SET/IF/LOOP系・ネスト構造・Pythonコード生成の試作まで) |
+| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜26: SET/IF/LOOP系・ネスト構造・UI automationアクションのpywinauto/pyautoguiマッピング・複数出力のバグ修正まで) |
+| [design/robin_language_source_findings.md](design/robin_language_source_findings.md) | PAD実機の内部DLL(Robin Language)を逆コンパイルして文法を一次ソースで裏付けた知見 |
 | [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
 | [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |
 | [design/schemas/](design/schemas/) | IR/UIツリーのJSON Schema |

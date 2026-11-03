@@ -62,7 +62,14 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   2引数+真偽フラグ、`Is empty`系は引数の個数が異なると推測されるが未確認であり、
   安易に同じ形式だと仮定しない)
 
-未対応(今後の実機確認が必要): 複合式(AND/OR)。
+- `# <comment>` 形式の単一行コメント(design/robin_language_source_findings.md——PAD実機の
+  DLL(`Microsoft.Flow.RPA.Desktop.Robin.Language.dll`)を逆コンパイルし、
+  `CommentStatement.ToString()`のソースコードで文法を直接確認した。複数行コメント
+  (`/# ... #/`)は改行をまたぐため今回は未対応)
+
+未対応(今後の実機確認が必要): 複合式(AND/OR)、`SWITCH`/`CASE`構文、複数行コメント、
+`IN`/`NOT IN`演算子(ソースコードでは存在を確認したが、実機でどのUI経由で使えるかは未確認。
+`NOT IN`は2トークンのため現状の`_parse_line`では誤パースする既知のギャップがある)。
 """
 from __future__ import annotations
 
@@ -165,6 +172,19 @@ class ElseIfFunctionRecord:
 
 
 @dataclass
+class CommentRecord:
+    """`# <comment>`形式の単一行コメント(design/robin_language_source_findings.md参照、
+
+    `CommentStatement.ToString()`のソースコードで確認)。複数行コメント
+    (`/# ... #/`)は改行をまたぐため、既存の`$'''...'''`マスキングとの相互作用が
+    未検証であり、今回は意図的に未対応(パーサーは壊れず`RawRecord`として保持する)。
+    """
+
+    text: str
+    indent: int = 0
+
+
+@dataclass
 class LoopRecord:
     loop_var: str
     start: Any
@@ -202,6 +222,7 @@ Record = (
     | ElseIfRecord
     | IfFunctionRecord
     | ElseIfFunctionRecord
+    | CommentRecord
     | LoopRecord
     | LoopForeachRecord
     | LoopWhileRecord
@@ -349,6 +370,11 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
 
 
 def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
+    if line.startswith("# "):
+        return CommentRecord(text=line[2:], indent=indent)
+    if line == "#":
+        return CommentRecord(text="", indent=indent)
+
     func_match = _FUNC_COND_RE.match(line)
     if func_match:
         keyword, func_name, args_str = func_match.groups()

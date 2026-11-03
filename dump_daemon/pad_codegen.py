@@ -76,6 +76,7 @@ import re
 from .pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    CommentRecord,
     ConditionalNode,
     ElseIfFunctionRecord,
     ElseIfRecord,
@@ -213,6 +214,8 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return _generate_keyword(node, indent)
     if isinstance(node, ActionRecord):
         return _generate_action(node, indent)
+    if isinstance(node, CommentRecord):
+        return [f"{prefix}# {node.text}".rstrip()]
     if isinstance(node, RawRecord):
         return [f"{prefix}# TODO: unparsed DSL line: {node.text}"]
     raise TypeError(f"Unsupported node type for codegen: {type(node)!r}")
