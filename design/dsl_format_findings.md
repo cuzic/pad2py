@@ -625,3 +625,29 @@ UIAutomation.Click.Click Element: appmask['Start Button'] ClickType: UIAutomatio
 **追加調査(同ティック内)**: 「保存済み要素の選択UI」側からも探索した。「Click UI element in window」アクションの編集ダイアログで`UI element`欄の右にある3つのアイコン(鉛筆・レイヤー(スタック)・info)をそれぞれクリックしたが、鉛筆とレイヤーアイコンはいずれも目に見える変化を起こさなかった(属性ビューアーもセレクタ編集画面も開かない)。`UI element`欄自体(コンボボックス)をクリックすると、保存済み要素を選び直すためのドロップダウン(「Local computer > Start Button」のツリー + サムネイルプレビュー + Select/Cancel)が開いたが、ここで表示されるのは**サムネイル画像だけ**で、属性やセレクタ文字列は一切表示されなかった。結論として、**PADデザイナーのUIからは、保存済みUI要素リポジトリエントリの内部セレクタ属性を直接閲覧する経路は(今回探索した範囲では)存在しない**——この探索は一旦ここで打ち切り、上記(a)〜(c)の代替経路を今後の課題として持ち越す。
 
 **ローカルファイルストレージの調査(選択肢(c))もこのティックで実施、ネガティブな結果**: WinRM経由で`C:\Users\tomoya_kaw\AppData\Local\Microsoft\Power Automate Desktop`以下を再帰的に調べた。`Designer\Data\<GUID>.settings`というファイルが見つかり、未保存のフローのデザイナー状態(開いているタブ・ブレークポイント・`GraphLayoutETag`)をローカルにキャッシュしていることは確認できたが、中身はUI要素リポジトリとは無関係なJSON(タブ構成のみ)だった。さらに同ディレクトリ配下を`"Start Button"`文字列で再帰grepしたが**一致するファイルは1件も無かった**。これは、今回のPADクラウド接続構成では「UI要素」の実体(セレクタ属性を含む)がローカルにキャッシュされず、クラウド側(フローの保存先)にのみ存在する可能性を示唆している——もしそうなら、このセッションを悩ませている2FA起因のクラウド保存ブロッカー(design/robin_language_source_findings.md等で既出)が解消されない限り、保存済みセレクタの内容を直接確認する手段自体が無い、という結論になる。(b)の`.msapp`ファイル解析も、クラウド保存できていない以上は試せる対象が無い。この行き止まりを記録し、UI要素セレクタの内部格納形式の解明はここで一旦保留とする。
+
+## 40. `ON BLOCK ERROR`の完全な構造と`NEXT ACTION`を実機で確認——`BLOCK`という新構文も発見、パーサー/codegenに実装(知見34・36・37の構造がそのまま再利用できることを確認)
+
+design/robin_language_source_findings.mdで「本体内のどこに置けるか未確認」として持ち越していた`REPEAT ACTION`/`NEXT ACTION`のうち、`NEXT ACTION`の実機未検証分と、同じく構文のみ確認済みだった`ON BLOCK ERROR`の両方を、1回の実機キャプチャで同時に解決できた。
+
+**きっかけ**: 知見34・37で確認した単一アクションの`ON ERROR`の「Exception handling mode」ドロップダウンには`Go to next action`(既定)/`Repeat action`/`Go to label`の3択しかなく、`Go to next action`が既定(トークン無し)のため、どこで`NEXT ACTION`トークンが実際に出力されるのか分からないままだった。Actionsパネルで"Block"を検索すると、Flow control配下に**「On block error」**という単独アクションが見つかった。これをキャンバスへドラッグ&ドロップすると、PADが自動的に**無名の`BLOCK`**(複数アクションをまとめるグループ化構文)でラップした状態になり、「On block error」の設定ダイアログが開く。ここで「Continue flow run」を選ぶと、単一アクションのON ERRORダイアログと同じ「Exception handling mode」ドロップダウンが現れるが、**選択肢が5つ**(`Go to next action`/`Repeat action`/`Go to label`/`Go to beginning of block`/`Go to end of block`)あり、**既定値は`Go to end of block`**だった——単一アクションの場合の既定`Go to next action`とは異なる。つまり「BLOCKレベルでは`Go to next action`は非既定の選択」であり、ここでならトークンが出力されるはずだと推測し、`Go to next action`を選んで保存・コピーしたところ:
+
+```
+BLOCK 
+ON BLOCK ERROR
+NEXT ACTION
+END
+```
+
+(生の改行まで含めると`'BLOCK \nON BLOCK ERROR\nNEXT ACTION\nEND\n\n'`——`BLOCK`行は名前欄が空だったため末尾にスペースのみが残る。全4行とも先頭に空白は無くindent 0で揃っている。)
+
+**構造上の発見**:
+1. `BLOCK`はIF/LOOP等と同じ「ヘッダー+本体(indent+1)+END」の素朴なブロック構文だが、制御フロー上の意味は持たない純粋なグループ化マーカー(今回は空のBLOCKなので本体行は無い)。
+2. `ON BLOCK ERROR`は`ON ERROR`と**完全に同じ構造**(design/robin_language_source_findings.md既出の`ExceptionCaseStatement`/`ExceptionCaseDefaultStatement`が`Type`プロパティで`"ON ERROR"`/`"ON BLOCK ERROR"`のどちらを出すか切り替えているだけ、という予測通り)——本体のindentはヘッダー自身と同じ(知見34の規則がそのまま適用される)、複数アームが区切り無しに連続しうる、末尾の`END`は1つだけ共有。ここでも「保護対象」は直前の単一アクションではなく、直前の`BLOCK`ブロック全体。
+3. `NEXT ACTION`は予測通り`KeywordRecord(name="NEXT", args=["ACTION"])`としてそのまま表現でき、追加のパーサー実装は不要だった(design/robin_language_source_findings.mdの予測が正しかったことが確定)。
+
+**実装**: `pad_dsl_parser.py`に`BlockRecord`(`BLOCK`/`BLOCK <Name>`)・`OnBlockErrorRecord`(`ON BLOCK ERROR`/`ON BLOCK ERROR <CaseName>`)を追加し、`OnErrorArmHeader`を`OnErrorRecord | OnBlockErrorRecord`に拡張、`OnErrorNode`/`GuardedNode`をそのまま再利用(新しいノード型は作らなかった——構造が本当に同一だったため)。`build_block_tree()`に`BlockRecord`用の分岐を追加: 本体を`parse_level(level + 1)`でパースした後、直後に同じlevelの`OnBlockErrorRecord`が続けば`ON ERROR`と同じ「複数アーム+共有END」ロジックでラップして`GuardedNode(node=BlockNode, on_error=OnErrorNode)`にする(続かない場合は素の`BLOCK...END`として扱うフォールバックも用意したが、UIからは「On block error」経由でしかBLOCKを作る手段が無く、この経路は実機未確認のまま)。`pad_codegen.py`では`BlockNode(BlockRecord)`をPython側の制御構文を持たない純粋な本体展開(`try/except`はGuardedNode側が担当)として追加した。
+
+**副産物のバグ修正**: 実装直後に書いた「本体が`NEXT ACTION`だけの`except`節」のテストで`compile()`が`IndentationError`になるのを発見した——`_generate_block_body()`が未対応キーワードを`# TODO`コメント行として出力した場合、その本体は見た目上は非空でもPython構文的には空のsuiteと同じになる(`except:`直後がコメント行だけだと`IndentationError`)、という**既存コードに潜んでいた一般的なバグ**(ON BLOCK ERRORに限らず、`ON ERROR`本体が未知のキーワードだけの場合にも起きていたはず)。全5箇所の`_generate_block_body(...) or [pass]`パターンを、コメント行だけの場合も`pass`を補う`_ensure_nonempty_suite()`ヘルパーに統一して修正した。
+
+**未検証のまま残る拡張**: 名前付き`ON BLOCK ERROR <CaseName>`・名前付きBLOCK(`BLOCK <Name>`)・`ON BLOCK ERROR`を伴わない素の`BLOCK`(UIから作る手段が見つからず)・本体に複数アクションを含む`BLOCK`のindent、はいずれも`ON ERROR`との構造的類推で実装したのみで、実機データでは確認していない。

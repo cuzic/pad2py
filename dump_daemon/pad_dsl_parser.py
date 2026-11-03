@@ -111,8 +111,18 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 直前の文を保護するエラーハンドラで、`OnErrorRecord`/`OnErrorNode`/`GuardedNode`として実装
 済み。名前無しcatch-all・名前付きケース(`ON ERROR <CaseName>`)のいずれも実機確認済みで、
 複数アームが区切り無しに連続しうる(`SwitchNode`のCASE/DEFAULTと同じ構造)。他の全ブロック
-構文と異なり、本体のindentはヘッダー自身と同じ。`ON BLOCK ERROR`・`REPEAT ACTION`/
-`NEXT ACTION`は未実装のまま(`RawRecord`として保持される)。
+構文と異なり、本体のindentはヘッダー自身と同じ。`REPEAT ACTION`は実機検証済み(知見37)。
+
+`BLOCK` [`<Name>`] / `ON BLOCK ERROR [<CaseName>]` / `END`(**実機検証済み**
+design/dsl_format_findings.md 知見40)。PADの「On block error」アクションをフローに追加
+すると、複数アクションをまとめる無名の`BLOCK`で自動的にラップされる。`BlockRecord`/
+`BlockNode`として表現し、`ON BLOCK ERROR`は`ON ERROR`と全く同じ構造(本体がヘッダーと
+同じindent、複数アーム、末尾に共有の`END`)なので`OnErrorNode`/`GuardedNode`をそのまま
+再利用する(保護対象は直前のアクションではなく`BlockNode`全体)。本体内の`NEXT ACTION`も
+実機確認済み(`KeywordRecord(name="NEXT", args=["ACTION"])`としてそのまま表現でき、
+追加実装は不要だった)。名前付きBLOCK・名前付き`ON BLOCK ERROR <CaseName>`・ON BLOCK ERROR
+を伴わない素のBLOCKは、いずれも実機では未確認のまま(既存の確認済みパターンからの類推で
+実装)。
 """
 from __future__ import annotations
 
@@ -344,6 +354,39 @@ class OnErrorRecord:
 
 
 @dataclass
+class BlockRecord:
+    """`BLOCK`(`name=None`)または`BLOCK <Name>`(**実機検証済み**
+    design/dsl_format_findings.md 知見40)。PADの「On block error」アクションをフローに
+    追加すると自動生成される、複数アクションをまとめる無名(または名前付き)のグループ化
+    構文。それ自体はIF/LOOPのような制御フローを持たず、`ON BLOCK ERROR`の保護対象範囲を
+    区切るためだけに存在する(実機ではUI上「On block error」を単独で追加すると、常に
+    このBLOCKで自動的にラップされた状態になる——素のBLOCKをON BLOCK ERROR無しで作る
+    手段はUI上確認できていない)。
+    """
+
+    name: str | None = None
+    indent: int = 0
+
+
+@dataclass
+class OnBlockErrorRecord:
+    """`ON BLOCK ERROR`(`case_name=None`、名前無しcatch-all)または
+    `ON BLOCK ERROR <CaseName>`。**実機検証済み**(design/dsl_format_findings.md 知見40)。
+
+    `OnErrorRecord`の`BLOCK`版——同じ`ExceptionCaseStatement`/`ExceptionCaseDefaultStatement`
+    クラスが`Type`プロパティ(`Statement`か`Block`か)に応じて`"ON ERROR"`/`"ON BLOCK ERROR"`の
+    どちらを出力するかを切り替えているだけ(design/robin_language_source_findings.md)。
+    構造も`OnErrorRecord`と同一: 直前の文(ここでは直前の`BlockRecord`開始ブロック全体)を
+    保護し、本体のindentはヘッダー自身と同じ、複数アームが区切り無しに連続しうる。
+    名前付きケース(`ON BLOCK ERROR <CaseName>`)は`ON ERROR <CaseName>`との類推で実装したが、
+    実機では無名catch-allの形のみ確認済み(未検証の拡張)。
+    """
+
+    case_name: str | None = None
+    indent: int = 0
+
+
+@dataclass
 class RawRecord:
     text: str
     indent: int = 0
@@ -365,6 +408,8 @@ Record = (
     | CaseRecord
     | CaseDefaultRecord
     | OnErrorRecord
+    | BlockRecord
+    | OnBlockErrorRecord
     | RawRecord
 )
 
@@ -373,9 +418,9 @@ _SIMPLE_BLOCK_HEADER_TYPES = (LoopRecord, LoopForeachRecord, LoopWhileRecord)
 
 @dataclass
 class BlockNode:
-    """単純なブロック構文(`LOOP`系)の開始レコードと、対応する`END`までの本体。"""
+    """単純なブロック構文(`LOOP`系/`BLOCK`)の開始レコードと、対応する`END`までの本体。"""
 
-    header: LoopRecord | LoopForeachRecord | LoopWhileRecord
+    header: LoopRecord | LoopForeachRecord | LoopWhileRecord | BlockRecord
     body: list[Node] = field(default_factory=list)
 
 
@@ -416,16 +461,18 @@ class SwitchNode:
     arms: list[tuple[SwitchArmHeader, list[Node]]] = field(default_factory=list)
 
 
-OnErrorArmHeader = OnErrorRecord
+OnErrorArmHeader = OnErrorRecord | OnBlockErrorRecord
 
 
 @dataclass
 class OnErrorNode:
-    """1個以上の`ON ERROR [CaseName]`アームと、それらをまとめて閉じる1つの`END`
-    (実機検証済み——design/dsl_format_findings.md 知見34・36)。`SwitchNode`と同型
-    (`arms: list[tuple[header, body]]`)——複数アームが連続する場合でもアーム間に区切りは無く、
-    末尾に`END`が1つだけ付く。`REPEAT ACTION`/`NEXT ACTION`は実機未検証のため非対応。
-    単独では出現せず、常に`GuardedNode`経由で直前の文に紐付く。
+    """1個以上の`ON ERROR [CaseName]`または`ON BLOCK ERROR [CaseName]`アームと、それらを
+    まとめて閉じる1つの`END`(実機検証済み——design/dsl_format_findings.md 知見34・36・40)。
+    `SwitchNode`と同型(`arms: list[tuple[header, body]]`)——複数アームが連続する場合でも
+    アーム間に区切りは無く、末尾に`END`が1つだけ付く。`REPEAT ACTION`は実機検証済み
+    (知見37)、`NEXT ACTION`は`ON BLOCK ERROR`の本体内で実機確認済み(知見40、`KeywordRecord`
+    として素通しされるだけで特別対応は不要)。単独では出現せず、常に`GuardedNode`経由で
+    直前の文(`ON ERROR`の場合はアクション、`ON BLOCK ERROR`の場合は`BlockNode`)に紐付く。
     """
 
     arms: list[tuple[OnErrorArmHeader, list[Node]]] = field(default_factory=list)
@@ -433,13 +480,15 @@ class OnErrorNode:
 
 @dataclass
 class GuardedNode:
-    """直前の文(`node`)に`ON ERROR`ハンドラ(`on_error`)が紐付いていることを表す。
+    """直前の文(`node`)に`ON ERROR`/`ON BLOCK ERROR`ハンドラ(`on_error`)が紐付いて
+    いることを表す。
 
-    `ON ERROR`はそれ自身が独立した文ではなく、DSL上では直前の文のすぐ後ろ・同じindentに
-    現れてそれを「保護」する(design/robin_language_source_findings.md——
-    `StatementWithArguments.ToStringIgnoreMetadata()`が`ExceptionStatement`を末尾に
-    改行区切りで連結している)。`build_block_tree()`は`ON ERROR`を独立したノードとして
-    bodyに追加せず、直前に追加済みのノードをこれでラップし直す。
+    `ON ERROR`/`ON BLOCK ERROR`はそれ自身が独立した文ではなく、DSL上では直前の文
+    (またはBLOCK)のすぐ後ろ・同じindentに現れてそれを「保護」する
+    (design/robin_language_source_findings.md——`StatementWithArguments.ToStringIgnoreMetadata()`
+    が`ExceptionStatement`を末尾に改行区切りで連結している)。`build_block_tree()`は
+    `ON ERROR`/`ON BLOCK ERROR`を独立したノードとしてbodyに追加せず、直前に追加済みの
+    ノードをこれでラップし直す。
     """
 
     node: Node
@@ -475,7 +524,7 @@ def build_block_tree(records: list[Record]) -> list[Node]:
             rec = records[pos]
             if rec.indent < level:
                 break
-            if stop_at_on_error and isinstance(rec, OnErrorRecord) and rec.indent == level:
+            if stop_at_on_error and isinstance(rec, (OnErrorRecord, OnBlockErrorRecord)) and rec.indent == level:
                 # ON ERRORの各アームの本体をパースしている最中。次のアーム(別の
                 # ON ERROR見出し)に出会ったら、それを自分の本体に取り込まず
                 # 呼び出し元(OnErrorRecordの処理)へ判断を戻す——SwitchNodeのCASE/DEFAULTと
@@ -529,6 +578,30 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                 if pos < len(records) and is_end(records[pos], level):
                     pos += 1
                 body.append(BlockNode(header=rec, body=block_body))
+            elif isinstance(rec, BlockRecord):
+                # 実機検証済み(design/dsl_format_findings.md 知見40): `BLOCK`の本体は
+                # LOOP等と同じくlevel + 1。本体の直後、BLOCK自身と同じlevelに区切り無しで
+                # `ON BLOCK ERROR`が続く場合は、`OnErrorRecord`と全く同じ「複数アーム+
+                # 末尾に1つのEND」構造でこのBLOCK全体を保護するため、GuardedNodeで
+                # ラップし直す(保護対象はBlockNode全体)。この場合、OnErrorRecordと同じく
+                # 最後のアームの本体パース自身がlevelのENDを消費済みなので、ここでの
+                # 明示的な消費は不要。ON BLOCK ERRORが続かない場合(PADのUI上「On block
+                # error」アクション経由でしかBLOCKを作る手段が無く、実機では未確認の経路)は
+                # LOOP等と同じく自身のENDを明示的に消費する。
+                block_body = parse_level(level + 1)
+                block_node: Node = BlockNode(header=rec, body=block_body)
+                if pos < len(records) and isinstance(records[pos], OnBlockErrorRecord) and records[pos].indent == level:
+                    on_block_error_arms: list[tuple[OnErrorArmHeader, list[Node]]] = []
+                    while pos < len(records):
+                        nxt = records[pos]
+                        if nxt.indent != level or not isinstance(nxt, OnBlockErrorRecord):
+                            break
+                        pos += 1
+                        on_block_error_arms.append((nxt, parse_level(level, stop_at_on_error=True)))
+                    block_node = GuardedNode(node=block_node, on_error=OnErrorNode(arms=on_block_error_arms))
+                elif pos < len(records) and is_end(records[pos], level):
+                    pos += 1
+                body.append(block_node)
             elif isinstance(rec, OnErrorRecord):
                 # 実機検証済み(design/dsl_format_findings.md 知見34・36): 各アームの本体は
                 # `ON ERROR`自身と同じlevel。複数アーム(名前付きケース+catch-all等)が
@@ -553,6 +626,24 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                     # ON ERRORが文の先頭(保護対象が無い)という壊れたデータ。
                     # 黙って捨てずraw相当として保持する。
                     body.append(on_error_node)
+            elif isinstance(rec, OnBlockErrorRecord):
+                # BLOCKを伴わない孤立したON BLOCK ERROR(壊れたデータ、または未対応の
+                # 出現パターン)。OnErrorRecordの孤立ケースと同じく、直前のノードがあれば
+                # それをGuardedNodeでラップし直し、無ければ黙って捨てずraw相当として保持する。
+                orphan_arms: list[tuple[OnErrorArmHeader, list[Node]]] = [
+                    (rec, parse_level(level, stop_at_on_error=True))
+                ]
+                while pos < len(records):
+                    nxt = records[pos]
+                    if nxt.indent != level or not isinstance(nxt, OnBlockErrorRecord):
+                        break
+                    pos += 1
+                    orphan_arms.append((nxt, parse_level(level, stop_at_on_error=True)))
+                orphan_node = OnErrorNode(arms=orphan_arms)
+                if body:
+                    body[-1] = GuardedNode(node=body[-1], on_error=orphan_node)
+                else:
+                    body.append(orphan_node)
             else:
                 body.append(rec)
         return body
@@ -752,9 +843,25 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
 
     if first == "ON" and len(tokens) == 3 and tokens[1] == "ERROR":
         # design/dsl_format_findings.md 知見36(実機検証済み、名前付きケース。例:
-        # `ON ERROR RunPythonScriptError`)。`ON BLOCK ERROR`(3トークン目が"ERROR"ではなく
-        # tokens[1]が"BLOCK"になる形)はこの分岐にはマッチせず未対応(実機未確認)のまま。
+        # `ON ERROR RunPythonScriptError`)。
         return OnErrorRecord(case_name=tokens[2], indent=indent)
+
+    if first == "ON" and len(tokens) == 3 and tokens[1] == "BLOCK" and tokens[2] == "ERROR":
+        # design/dsl_format_findings.md 知見40(実機検証済み、名前無しcatch-all)。
+        return OnBlockErrorRecord(case_name=None, indent=indent)
+
+    if first == "ON" and len(tokens) == 4 and tokens[1] == "BLOCK" and tokens[2] == "ERROR":
+        # `ON ERROR <CaseName>`(知見36)との類推による実装。named caseの実機確認は
+        # まだ無い(未検証の拡張)。
+        return OnBlockErrorRecord(case_name=tokens[3], indent=indent)
+
+    if first == "BLOCK" and len(tokens) == 1:
+        # design/dsl_format_findings.md 知見40(実機検証済み、無名BLOCK)。
+        return BlockRecord(name=None, indent=indent)
+
+    if first == "BLOCK" and len(tokens) == 2:
+        # 名前付きBLOCKの実機確認はまだ無い(未検証の拡張)。
+        return BlockRecord(name=tokens[1], indent=indent)
 
     if first in _KNOWN_KEYWORDS:
         return KeywordRecord(name=first, args=tokens[1:], indent=indent)
