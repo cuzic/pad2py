@@ -25,6 +25,9 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `ConditionalNode` → `if`/`elif`/`else`
 - `SwitchNode` → `if`/`elif`/`else`(design/dsl_format_findings.md 知見33で実機確認済みの
   `CASE <operator> <value>`構文通り、`CASE`自身の演算子を`_OPERATOR_MAP`経由で変換する)
+- `GuardedNode`(`ON ERROR`で保護された文) → `try`/`except Exception`(design/dsl_format_findings.md
+  知見34で実機確認済みの「All errors (default)」+「Continue flow run」の組み合わせのみ対応。
+  名前付きエラーケースや「Throw error」のDSL表現は未検証)
 - `BlockNode(LoopRecord)` → `for ... in range(...)`
   (**未検証の前提**: PADの`Start from`〜`End to`は両端を含むと仮定し`range(start, end+1, step)`
   としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
@@ -87,6 +90,7 @@ from .pad_dsl_parser import (
     ElseIfFunctionRecord,
     ElseIfRecord,
     EnumRef,
+    GuardedNode,
     IfFunctionRecord,
     IfRecord,
     KeywordRecord,
@@ -223,6 +227,8 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return _generate_conditional(node, indent)
     if isinstance(node, SwitchNode):
         return _generate_switch(node, indent)
+    if isinstance(node, GuardedNode):
+        return _generate_guarded(node, indent)
     if isinstance(node, BlockNode):
         return _generate_loop_block(node, indent)
     if isinstance(node, KeywordRecord):
@@ -281,6 +287,23 @@ def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
             condition = render_condition(node.expression, operator, header.value)
             lines.append(f"{prefix}{keyword} {condition}:")
         lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+    return lines
+
+
+def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
+    """`GuardedNode`(`ON ERROR`で保護された文) → `try`/`except Exception`。
+
+    design/dsl_format_findings.md 知見34で実機確認したのは「All errors (default)」
+    (名前無しcatch-all)に本体アクションを追加し「Continue flow run」を選んだケースのみ——
+    そのDSL上の意味論(エラーを捕捉してハンドラを実行し、続行する)は`try`/`except`に
+    自然に対応する。「Throw error」を選んだ場合やエラーケース名の違いがDSLテキスト上どう
+    変わるかは未検証のため、`except`節は常に捕捉して継続する前提でのみ変換する。
+    """
+    prefix = INDENT * indent
+    lines = [f"{prefix}try:"]
+    lines.extend(_generate_node(node.node, indent + 1))
+    lines.append(f"{prefix}except Exception:")
+    lines.extend(_generate_block_body(node.on_error.body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
     return lines
 
 

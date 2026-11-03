@@ -547,17 +547,22 @@ END
 名前付きケース(例: 「Directory not found」)やRepeatが絡むと、実際には別のインデント規則に
 なる可能性もゼロではない)
 
-**今回は実装を見送った**(SWITCH同様、「直前のアクションに紐付けて`try`/`except`として
-変換する」という意味論を`build_block_tree()`にどう組み込むかの設計(新しいNode種別が
-「直前の兄弟」をラップする必要がある、今までに無いパターン)にはもう少し検討が必要なため)。
-次のステップとして、確定した構文(ヘッダーと本体が同じindent)に基づいて
-`OnErrorRecord`/`OnErrorNode`を実装する。
+**(後続のティックで実装完了)**: `OnErrorRecord`(`ON ERROR`ベアキーワード)・`OnErrorNode`
+(本体)・`GuardedNode`(直前のノードを`on_error`でラップする新しいNode種別)を
+`pad_dsl_parser.py`に追加した。`build_block_tree()`では、`OnErrorRecord`に遭遇したら
+本体を**同じ`level`で**再帰的にパースする(他のブロック構文と異なり`level + 1`ではない——
+再帰呼び出し自身が同じ`level`の`END`を検出して消費するため、呼び出し元での明示的な
+END消費も不要)。パースした本体を直前に`body`へ追加済みのノードを`GuardedNode`で
+置き換える形でラップし直す。`pad_codegen.py`側は`GuardedNode`を`try`/`except Exception`に
+変換する(「All errors (default)」+「Continue flow run」の組み合わせのみ対応——
+名前付きケースや「Throw error」は未検証のため未対応)。
 
 ## 今後の調査候補(未着手)
 
 - ~~`ON ERROR`/`ON BLOCK ERROR`ブロックの実機検証~~ → 構文(catch-allケースのみ)は完了・
-  ソースの類推が誤りだったと判明・修正済み(本セクション参照)。パーサー/codegenへの実装は
-  まだ未着手——「直前のアクションに紐付ける」という新パターンの設計が必要
+  ソースの類推が誤りだったと判明・修正済み(本セクション参照)。パーサー/codegenへの実装も
+  完了(`OnErrorRecord`/`OnErrorNode`/`GuardedNode`)。名前付きケース・複数ケース・
+  `REPEAT ACTION`/`NEXT ACTION`・「Throw error」の実機検証は未着手のまま持ち越し
 - `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
   リトライの挙動)とDSL表現の実機検証
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な

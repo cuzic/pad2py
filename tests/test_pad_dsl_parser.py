@@ -14,6 +14,7 @@ from dump_daemon.pad_dsl_parser import (
     ConditionalNode,
     ElseIfFunctionRecord,
     ElseIfRecord,
+    GuardedNode,
     IfFunctionRecord,
     IfRecord,
     KeywordRecord,
@@ -21,6 +22,8 @@ from dump_daemon.pad_dsl_parser import (
     LoopRecord,
     LoopWhileRecord,
     EnumRef,
+    OnErrorNode,
+    OnErrorRecord,
     SetVariableRecord,
     SwitchNode,
     SwitchRecord,
@@ -647,3 +650,62 @@ def test_in_operator_parsed_as_single_token_for_loop_while() -> None:
     record = records[0]
     assert isinstance(record, LoopWhileRecord)
     assert record.operator == "IN"
+
+
+# 実機で「Run Python script」の「On error」>「All errors (default)」に`Set variable`を
+# 追加し(Continue flow run)、キャプチャした生データ(design/dsl_format_findings.md 知見34。
+# PythonCodeの中身自体はここでのテスト対象ではないため簡略化してある)。
+REAL_ON_ERROR_DSL = (
+    "Scripting.RunPythonScript.RunPythonScript "
+    "PythonCode: $'''pass''' ScriptOutput=> PythonScriptOutput3\n"
+    "ON ERROR\n"
+    "SET NewVar TO $'''recovered'''\n"
+    "END"
+)
+
+
+def test_on_error_parsed_as_bare_keyword_at_same_indent_as_guarded_action() -> None:
+    records = parse_dsl(REAL_ON_ERROR_DSL)
+    assert len(records) == 4
+    assert isinstance(records[0], ActionRecord)
+    assert isinstance(records[1], OnErrorRecord)
+    assert records[1].indent == records[0].indent
+    assert isinstance(records[2], SetVariableRecord)
+    assert records[2].indent == records[1].indent  # 他のブロック構文と異なり本体は深くならない
+    assert isinstance(records[3], KeywordRecord) and records[3].name == "END"
+
+
+def test_build_block_tree_wraps_preceding_action_in_guarded_node() -> None:
+    # **重要な訂正**: ソース(design/robin_language_source_findings.md の
+    # ExceptionStatementBase.SetLevel())からは「本体はヘッダーより1段深い」と予測していたが、
+    # 実機検証(知見34)で誤りと判明した——本体はON ERRORヘッダーと同じindentだった。
+    tree = build_block_tree(parse_dsl(REAL_ON_ERROR_DSL))
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, ActionRecord)
+    assert guarded.node.action_id == "Scripting.RunPythonScript.RunPythonScript"
+    assert isinstance(guarded.on_error, OnErrorNode)
+    assert len(guarded.on_error.body) == 1
+    set_var = guarded.on_error.body[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert set_var.var_name == "NewVar"
+    assert set_var.value == "recovered"
+
+
+def test_build_block_tree_does_not_drop_siblings_after_on_error_block() -> None:
+    # 知見15・知見33と同種の回帰確認(ブロック構文の後に兄弟要素を切り捨てないこと)。
+    dsl = REAL_ON_ERROR_DSL + "\nWAIT 9"
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 2
+    assert isinstance(tree[0], GuardedNode)
+    assert tree[1] == KeywordRecord(name="WAIT", args=["9"], indent=0)
+
+
+def test_build_block_tree_handles_on_error_with_empty_body() -> None:
+    dsl = "WAIT 1\nON ERROR\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert guarded.on_error.body == []
