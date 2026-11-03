@@ -358,14 +358,24 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             )
         elif isinstance(header, (IfActionRecord, ElseIfActionRecord)):
             # 「If window」「If window contains element」等の[ConditionAction]カテゴリ
-            # (design/dsl_format_findings.md 知見54)。対象のUI要素セレクタ自体がDSLから
-            # 取得できない(知見38・46と同じ制約)上、条件式を誤って翻訳すると制御フローが
-            # 丸ごと反転するという、SET文の右辺(知見53)よりもさらに危険な失敗モードになる
-            # ため、でっち上げた真偽値を出力せず、IfFunctionRecordと同じ方針ではっきり失敗させる。
-            raise NotImplementedError(
-                f"Action-call condition {header.action_id}(...) is not yet supported by codegen; "
-                "its Python semantics (and UI element selector) haven't been verified on real PAD."
-            )
+            # (design/dsl_format_findings.md 知見54)。条件式を誤って翻訳すると制御フローが
+            # 丸ごと反転するという、SET文の右辺(知見53)よりもさらに危険な失敗モードになるため、
+            # 原則でっち上げた真偽値を出力せずはっきり失敗させる。例外は`UIAutomation.IfWindow.*`
+            # (`IfWindowAction`)で、decompileした実装(Microsoft.Flow.RPA.Desktop.Modules.
+            # UIAutomation.Actions.dllのIfWindowAction.Execute())が`IsOpen`/`IsNotOpen`/
+            # `IsFocused`/`IsNotFocused`という4通りの単純な真偽値(否定の有無のみ)で、
+            # 複雑な設定モードを持たないと実際のソースで確認できたため、知見56のセレクタ組み立て
+            # と組み合わせてここだけ変換する。`IfImage`/`IfWindowContains`はソース確認した限りでも
+            # 複数の設定可能なサブモード(画像の一致アルゴリズム・テキスト包含モード等)を持ち、
+            # `IfWindow`ほど単純ではないため、依然としてでっち上げず失敗させる。
+            condition = _render_if_window_condition(header)
+            if condition is None:
+                raise NotImplementedError(
+                    f"Action-call condition {header.action_id}(...) is not yet supported by codegen; "
+                    "its Python semantics (and UI element selector) haven't been verified on real PAD."
+                )
+            keyword = "if" if isinstance(header, IfActionRecord) else "elif"
+            lines.append(f"{prefix}{keyword} {condition}:")
         else:
             raise TypeError(f"Unexpected conditional arm header: {header!r}")
         lines.extend(_ensure_nonempty_suite(_generate_block_body(arm_body, indent + 1), indent + 1))
@@ -729,6 +739,41 @@ def _build_pywinauto_selector_expr(path: tuple[str, ...]) -> str | None:
             else:
                 calls.append(f".child_window({kwargs_str})")
     return "".join(calls)
+
+
+def _render_if_window_condition(header: IfActionRecord | ElseIfActionRecord) -> str | None:
+    """`UIAutomation.IfWindow.*`(`IfWindowAction`、decompile結果は`_generate_conditional()`の
+    コメント参照)の条件式をpywinautoの真偽値式に変換する。セレクタが知見56の仕組みで解決
+    できない場合、または`IfWindow`ファミリー以外(`IfImage`/`IfWindowContains`等、ソース上も
+    `IfWindow`より複雑な複数サブモードを持つと確認済み)の場合は`None`を返し、呼び出し元に
+    安全なフォールバック(`NotImplementedError`)をさせる。
+
+    `IsFocused`/`IsNotFocused`は、decompileしたソース自体には存在チェックが無く直接
+    `IsWindowFocused()`を呼ぶだけだが、ウィンドウが存在しない場合にpywinautoの
+    `wrapper_object()`は例外を投げてしまう(PAD側は「閉じているウィンドウはフォーカスされて
+    いない」という素直な意味でFalseを返すと推測される)。そのため`exists()`を先に確認する
+    防御的な合成式にしている——これは意味論そのものの推測ではなく、クラッシュを避けるための
+    自然な実装上のガードであり、`IsOpen`/`IsNotOpen`(`exists()`の直接確認・否定)は
+    decompile結果そのまま。
+    """
+    if not header.action_id.startswith("UIAutomation.IfWindow."):
+        return None
+    window = header.params.get("Window")
+    if not isinstance(window, UiElementRef):
+        return None
+    selector_expr = _build_pywinauto_selector_expr(window.path)
+    if selector_expr is None:
+        return None
+    mode = header.action_id.rsplit(".", 1)[-1]
+    exists_expr = f"{selector_expr}.exists()"
+    if mode == "IsOpen":
+        return exists_expr
+    if mode == "IsNotOpen":
+        return f"not {exists_expr}"
+    if mode in ("IsFocused", "IsNotFocused"):
+        active_expr = f"({exists_expr} and {selector_expr}.wrapper_object().is_active())"
+        return active_expr if mode == "IsFocused" else f"not {active_expr}"
+    return None
 
 
 def _window_lookup_expr(node: ActionRecord) -> str | None:

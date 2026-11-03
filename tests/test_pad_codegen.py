@@ -317,12 +317,73 @@ def test_generate_python_raises_clearly_for_if_window_action_condition() -> None
 
 
 def test_generate_python_from_real_if_window_whole_subflow_capture_raises() -> None:
+    # repositoryを渡さない場合は、知見56のセレクタ解決ができないため従来通り
+    # NotImplementedErrorのまま(完全に後方互換)。
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
         encoding="utf-8"
     )
     tree = build_block_tree(parse_dsl(text))
     with pytest.raises(NotImplementedError, match="UIAutomation.IfWindow.IsOpen"):
         generate_python(tree)
+
+
+def test_generate_python_converts_if_window_is_open_when_selector_resolves() -> None:
+    # decompileしたIfWindowAction.Execute()(Microsoft.Flow.RPA.Desktop.Modules.
+    # UIAutomation.Actions.dll)のソースで、`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`の
+    # 4通りの単純な真偽値(複雑な設定モード無し)であることを確認できたため、知見56のセレクタ
+    # 組み立てと組み合わせて実行コードを生成するようにした(IfImage/IfWindowContainsは
+    # ソース上も複数の設定可能なサブモードを持ち複雑なため、依然NotImplementedErrorのまま)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "if Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists():" in code
+    assert "NotImplementedError" not in code
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_condition"),
+    [
+        ("IsOpen", "Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists()"),
+        ("IsNotOpen", "not Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists()"),
+        (
+            "IsFocused",
+            "(Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists() and "
+            "Desktop(backend=\"uia\").window(title='Untitled - Notepad').wrapper_object().is_active())",
+        ),
+        (
+            "IsNotFocused",
+            "not (Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists() and "
+            "Desktop(backend=\"uia\").window(title='Untitled - Notepad').wrapper_object().is_active())",
+        ),
+    ],
+)
+def test_generate_python_converts_all_four_if_window_modes(mode: str, expected_condition: str) -> None:
+    # IfWindowAction(decompile結果)の4つのWindowModeそれぞれの変換を確認する。
+    # IsFocused/IsNotFocusedは、ウィンドウが存在しない場合にwrapper_object()が例外を
+    # 投げてしまうのを避けるための防御的なexists()ガードを合成している(_render_if_window_
+    # condition()のコメント参照)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
+        encoding="utf-8"
+    )
+    original_dsl = (
+        "IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN"
+    )
+    modified_dsl = (
+        f"IF (UIAutomation.IfWindow.{mode} Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN"
+    )
+    assert original_dsl in text
+    text = text.replace(original_dsl, modified_dsl)
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert f"if {expected_condition}:" in code
 
 
 def test_generate_python_from_real_if_window_contains_element_whole_subflow_capture_raises() -> None:
