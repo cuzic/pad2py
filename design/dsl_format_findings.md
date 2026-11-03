@@ -920,3 +920,29 @@ WAIT (UIAutomation.WaitForWindowContent.WindowToContainElement Element: appmask[
 **未検証のまま残る項目**: 「Wait until window:」ドロップダウンの他の選択肢(「Contains UI element」以外に何があるか)・「Check UI element state」トグルをONにした場合に追加される設定項目・「Fail with timeout error」ON時のタイムアウト値表記・「UI要素が消える」ケース(Containsの逆、"Does not contain"のような選択肢があるか)は、いずれも実機未確認のまま持ち越し。
 
 **教訓**: 知見50で確立した「action_idに依存しない汎用WaitActionパーサー」という設計判断が、今回の全く別系統の新アクション発見でそのまま活きた——個別のaction_idをハードコードせず、共通の構文パターン(`WAIT (...)`)を抽象化しておいたことで、実機で新しい具体例が見つかってもパーサー/codegenの変更が一切不要という結果になった。これは本プロジェクトが知見36以来重ねてきた「架空のPython APIを決してでっち上げない、TODOへの安全なフォールバックを徹底する」という方針が、未知の新アクションに対しても自動的に安全側に倒れることを示す実例でもある。
+
+## 53. 【重要な訂正・新発見】`AND`/`OR`/`XOR`/`NOT`複合条件・算術式(`+`/`-`/`*`/`/`/`mod`)の実機DSL表現を確認——`SET ... TO`がサイレントに右辺を切り捨てていたパーサーバグを修正
+
+design/robin_language_source_findings.mdがANTLR文法(`Language.cs`の`ExpressionContext`サブクラス群)から「存在するはず」と予測しつつ実機未検証のまま持ち越していた、`AND`/`OR`/`XOR`/`NOT`による複合条件式と`+`/`-`/`*`/`/`/`mod`による算術式を、ついに実機で確認した。
+
+**調査の発端**: 知見49で「標準の『If』アクションのOperatorドロップダウンにはIN/NOT INが無い」と確認済みだったので、今回はその続きとして「If」アクションのダイアログを改めて確認した。ダイアログは「First operand」「Operator」(ドロップダウン)「Second operand」の3項目だけで、複数条件を追加する「+」ボタンや「Group」のような入れ子構造は一切無いことを確認した(Operatorドロップダウンを全スクロールし、16種類——`=`/`<>`/`>`/`>=`/`<`/`<=`/`Contains`/`Does not contain`/`Is empty`/`Is not empty`/`Starts with`/`Does not start with`/`Ends with`/`Does not end with`/`Is blank`/`Is not blank`——で全てであることも確認、robin findingsの「16択」という予測が正しかったと裏付けられた)。
+
+これは「複合条件はIf自身のUIでは組み立てられず、式として直接書くしかない」という仮説を裏付けたため、「Set variable」アクションの「Value」欄に直接`%1 = 1 and 2 = 2 or not 3 = 4%`という式を入力・保存・一括コピーしたところ:
+
+```
+SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4
+```
+
+**確認できた事実**:
+- `AND`/`OR`/`NOT`は小文字で入力しても**大文字に正規化**されて保存される(アクションカードのプレビュー表示でも、ダイアログを再度開いたときの表示でも、一括コピーしたDSLでも、常に大文字`AND`/`OR`/`NOT`)。
+- 括弧も明示的に書けばそのまま保持される:`%(1 = 1 xor 2 = 2) and (3 = 3)%` → `SET NewVar3 TO (1 = 1 XOR 2 = 2) AND (3 = 3)`。`XOR`も同じく大文字に正規化される。
+- 算術演算子`+`/`-`/`*`/`/`はそのまま記号で出力され、`mod`は**小文字のまま正規化されない**(`AND`/`OR`/`XOR`/`NOT`とは異なる挙動):`%1 + 2 * 3 - 4 / 2 mod 3%` → `SET NewVar3 TO 1 + 2 * 3 - 4 / 2 mod 3`。
+- いずれも単純な空白区切りの単一行で直列化されており、新しい構文パターン(`WAIT (...)`のような専用の括弧構文)は不要で、既存の`SET <var> TO <式>`の枠組みのままトークン列が伸びるだけだった。
+
+**発見された重大なパーサーバグ**: この複合式を実際にパースしてみたところ、`pad_dsl_parser.py`の`SET`文パース処理が`tokens[3]`(4番目のトークン、ここでは`"1"`)**1つだけ**を値として読み、`len(tokens) >= 4`という条件(`== 4`ではなく`>= 4`)のまま残りのトークン(`= 1 AND 2 = 2 OR NOT 3 = 4`)を**サイレントに切り捨てていた**ことが判明した。`SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4`が`SetVariableRecord(var_name='NewVar3', value=1)`という、見た目は正常でも意味的には完全に誤ったレコードにパースされてしまう——知見15・26・36・38・46・50と同系統の「気付かれにくいデータ消失バグ」だが、今回は複合式という頻出しうる構文で発生する分、影響範囲が広い。
+
+**修正内容**: `pad_dsl_parser.py`に新しい`RawExpr`マーカー型(`text: str`)を追加し、`SET`文の右辺トークン数が1個なら従来通り`_resolve_value()`で単一値として解決、2個以上なら全トークンを`_stringify_resolved_expr_token()`で個別に可読テキスト化して空白連結した`RawExpr`として保持するよう修正した(`_render_raw_expr()`)。`AND`/`OR`/`NOT`/`XOR`やmodのような裸キーワードは`VarRef`経由でそのまま往復し、プレースホルダ由来の文字列・UI要素参照も可読な形で再構成されるため、3つの実機キャプチャ例全てで元のDSLテキストと完全に一致する`RawExpr.text`が得られることをテストで確認した。
+
+**codegen側の判断**: PADの演算子優先順位(特に`AND`/`OR`/`XOR`の優先順位がPythonの`and`/`or`と一致するか、`XOR`のPython対応——Pythonに`xor`という論理演算子キーワードは無く`!=`や`^`で代用する場合に境界値で意味論が食い違わないか、`mod`が負数に対してPythonの`%`と同じ挙動かなど)がいずれも実機未検証のため、でっち上げた変換式を出力せず、`# TODO: map PAD compound expression for variable '<var>': <元のPAD式テキスト>`というコメントと`<var> = None`という安全なフォールバック代入の2行を出力するに留めた(知見50の`WaitActionRecord`と同じ「安全側TODOフォールバック」の方針)。
+
+**未検証のまま残る項目**: PADの演算子優先順位の正確な規則(括弧なしで`AND`と`OR`を混在させた場合の評価順序)・`XOR`の正確なPython対応・`mod`の負数での挙動・文字列結合としての`+`との曖昧性、はいずれも実機未確認のまま持ち越し。これらを確認してから初めて、`RawExpr`から実際のPython式への機械的変換(例えば`ast`ベースの小さな式トランスレータ)を実装する価値がある。

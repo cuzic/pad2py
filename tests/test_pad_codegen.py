@@ -606,6 +606,22 @@ def test_generate_python_renders_wait_action_as_todo_with_timeout_and_ui_element
     assert "appmask" not in code
 
 
+def test_generate_python_renders_compound_set_variable_expression_as_todo() -> None:
+    # design/dsl_format_findings.md 知見53: `SET ... TO`の右辺が複合式(AND/OR/XOR/NOT・算術式)
+    # になるケース(知見49の続き)。演算子の優先順位やmod/XORの境界値での意味論差異が
+    # PADとPythonで一致する保証がまだ無いため、でっち上げた変換式を出力せず、変数には
+    # 安全な`None`を代入した上でTODOコメントに実際のPAD式テキストを残す。
+    dsl = "SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "# TODO: map PAD compound expression for variable 'NewVar3': "
+        "1 = 1 AND 2 = 2 OR NOT 3 = 4" in code
+    )
+    assert "NewVar3 = None" in code
+
+
 def test_generate_python_from_real_wait_for_window_whole_subflow_capture_compiles() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt").read_text(
         encoding="utf-8"

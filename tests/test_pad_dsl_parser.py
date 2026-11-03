@@ -28,6 +28,7 @@ from dump_daemon.pad_dsl_parser import (
     OnBlockErrorRecord,
     OnErrorNode,
     OnErrorRecord,
+    RawExpr,
     SetVariableRecord,
     SwitchNode,
     SwitchRecord,
@@ -94,6 +95,41 @@ def test_set_variable_parsed_with_unescaped_string_value() -> None:
     assert isinstance(set_var, SetVariableRecord)
     assert set_var.var_name == "TestVar"
     assert set_var.value == 'He said "hello" and used \\ in C:\\temp\\file.txt'
+
+
+def test_set_variable_with_compound_and_or_not_expression_captured_as_raw_expr() -> None:
+    # design/dsl_format_findings.md 知見53(実機検証済み): `SET ... TO`の右辺は単一トークンに
+    # 収まらない複合式になりうる。以前は`tokens[3]`1つだけを読んでいたため、
+    # "SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4"のようなDSLで`= 1 AND 2 = 2 OR NOT 3 = 4`
+    # 部分がサイレントに切り捨てられ、`value`が単なる`1`になっていた(知見15・26・36・38・46・50
+    # と同系統の、気付かれにくいデータ消失バグ)。AND/OR/NOTはPADのダイアログでは小文字で
+    # 入力しても大文字に正規化されて直列化されることも実機確認済み。
+    records = parse_dsl("SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert isinstance(set_var.value, RawExpr)
+    assert set_var.value.text == "1 = 1 AND 2 = 2 OR NOT 3 = 4"
+
+
+def test_set_variable_with_xor_and_parentheses_preserves_parens_in_raw_expr() -> None:
+    # design/dsl_format_findings.md 知見53: 括弧も明示的に書けば保持される
+    # (`XOR`も実機確認済み)。
+    records = parse_dsl("SET NewVar3 TO (1 = 1 XOR 2 = 2) AND (3 = 3)")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert isinstance(set_var.value, RawExpr)
+    assert set_var.value.text == "(1 = 1 XOR 2 = 2) AND (3 = 3)"
+
+
+def test_set_variable_with_arithmetic_expression_keeps_mod_lowercase() -> None:
+    # design/dsl_format_findings.md 知見53: 算術演算子(`+`/`-`/`*`/`/`/`mod`)も複合式として
+    # 実機確認済み。`AND`/`OR`/`NOT`/`XOR`とは異なり、`mod`は小文字のまま正規化されない
+    # (実機で小文字入力したものがそのまま小文字で保存される挙動を確認した)。
+    records = parse_dsl("SET NewVar3 TO 1 + 2 * 3 - 4 / 2 mod 3")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert isinstance(set_var.value, RawExpr)
+    assert set_var.value.text == "1 + 2 * 3 - 4 / 2 mod 3"
 
 
 def test_run_python_script_string_literal_unescaped() -> None:
