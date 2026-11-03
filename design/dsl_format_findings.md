@@ -884,6 +884,15 @@ WAIT (Services.WaitForService.Started Service: $'''Spooler''')
 
 action_idは`Services.WaitForService.Started`——知見54の「If service」(`Services.IfService.IsRunning`)と同じ`Services.*`名前空間で、ドロップダウンの値(`Start`)がそのまま`Started`という過去分詞形でaction_id末尾になるパターン(知見50の`WindowMode`列挙値のパターンと同様)。「Fail with timeout error」がOFFのため`FOR`句は無く、単一行のアクションで`If window`/`If service`とは異なり対応する`End`は自動挿入されない(ブロック開始構文ではない、知見50の`WaitActionRecord`全般と同じ)ことも実機確認した。既存の汎用`WAIT (...)`パーサー/codegenのまま、**一切のコード変更無しで**正しく処理できた。
 
+**最後に残っていた「Wait for window to」の2バリアントも確認(別ティック)**: 「Become focused」「Lose focus」を実機確認し、これで4択(Open/Close/Become focused/Lose focus)全てが出揃った。
+
+```
+WAIT (UIAutomation.WaitForWindow.ToBecomeFocused Window: appmask['Window \'Untitled - Notepad\''])
+WAIT (UIAutomation.WaitForWindow.ToLoseFocus Window: appmask['Window \'Untitled - Notepad\''])
+```
+
+いずれも予測通り`ToBecomeFocused`/`ToLoseFocus`という命名パターンで、「Become focused」を選ぶと「Focus window after it opens」トグル自体がダイアログから消える(知見50の`Close`選択時と同じ、意味的に当然の挙動)ことも確認した。両方とも既存の汎用`WAIT (...)`パーサー/codegenのまま、**一切のコード変更無しで**正しく処理できた——これで`[WaitAction]`カテゴリの`WaitForWindowAction`ファミリーは実機検証が完全に出揃ったことになる。
+
 ## 51. 【知見47の続き・ついに解決】LOOPの範囲は両端を含まない(`end`を含まない)——`pad_codegen.py`の当初の前提(`range(start, end+1, step)`)は誤りだったと実機確認
 
 知見47で「専用のティックが必要」として持ち越していた、`pad_codegen.py`冒頭から一貫して未検証の前提としていた「PADの`LOOP X FROM 1 TO 3 STEP 1`は両端を含むと仮定し`range(start, end+1, step)`としている」という前提を、知見47で見送った方針(a)(`Main`の修正+`Run subflow`追加ではなく、`Main`自身が元から持つ空の`Loop LoopIndex FROM 1 TO 3 STEP 1`を直接使う、より軽い代替案)で実機検証した。

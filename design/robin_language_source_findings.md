@@ -592,8 +592,11 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   トグルで初めて設定可能になる(既定5秒)。パーサーに`WaitActionRecord`として実装済み。
   ~~「Fail with timeout error」OFF時の挙動~~ → 完了:`FOR`句自体がDSLから省略される
   (パーサーバグを修正)。~~`ToClose`バリアント~~ → 完了:`UIAutomation.WaitForWindow.ToClose`、
-  `FocusWindow`パラメータ自体が存在しない。`ToBecomeFocusedByTitleClass`相当・
-  `ToLoseFocus`の2バリアント、`FocusWindow: True`表記は未検証のまま。~~「Wait for service」の構文~~ →
+  `FocusWindow`パラメータ自体が存在しない。~~`Become focused`/`Lose focus`の2バリアント~~ →
+  完了(design/dsl_format_findings.md 知見50追記): 予測通り`UIAutomation.WaitForWindow.ToBecomeFocused`/
+  `ToLoseFocus`——これで「Wait for window to」の4択全てが実機確認済みになった。
+  `FocusWindow: True`表記(「Focus window after it opens」トグルON時)は未検証のまま。
+  ~~「Wait for service」の構文~~ →
   完了(design/dsl_format_findings.md 知見50追記): `Services.WaitForService.Started`
   ——知見54の「If service」(`Services.IfService.IsRunning`)と同じ`Services.*`名前空間。
   単一行アクションで対応する`End`は自動挿入されない。**新発見**(design/dsl_format_findings.md 知見52): 「Wait for window」とは

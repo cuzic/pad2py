@@ -320,6 +320,26 @@ def test_generate_python_renders_wait_for_service_as_todo() -> None:
     assert "# TODO: map PAD wait action: Services.WaitForService.Started (timeout: none)" in code
 
 
+def test_generate_python_from_real_wait_for_window_become_focused_whole_subflow_capture_compiles() -> None:
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_become_focused.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "UIAutomation.WaitForWindow.ToBecomeFocused" in code
+
+
+def test_generate_python_from_real_wait_for_window_lose_focus_whole_subflow_capture_compiles() -> None:
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_lose_focus.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "UIAutomation.WaitForWindow.ToLoseFocus" in code
+
+
 # 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
 # 続けてAction to perform=Releaseに切り替えて再キャプチャした生データ(知見23)。
 PRESS_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False"
