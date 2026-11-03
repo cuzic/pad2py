@@ -117,6 +117,15 @@ mss.exception.ScreenShotError: Windows graphics function failed (no error provid
 
 また、`notepad_window`等のUIAベースのフィクスチャもWinRM経由では軒並みエラーになり(13件)、これも対話的セッション不在による既知の制約と一致する結果だった。結論として、**実機の永続VMでもGitHub Actionsと同じ結論が得られた**: 非GUI作業(依存解決・ファイル配置・設定)はWinRMで十分だが、GUI/UIA依存の作業は対話的セッション内(このプロジェクトでは`clipwire`経由)で実行する必要がある。
 
+## 知見10: dump_daemon本体を対話的セッション内(clipwire経由)で起動し、実キャプチャに成功
+
+`dump_daemon`(`uvicorn dump_daemon.daemon:app`)を、WinRMではなく**clipwireの`/exec`から`Start-Process -WindowStyle Hidden`で起動**した(clipwire自身の子プロセスとして、対話的RDPセッションのウィンドウステーションを継承する形)。起動後、`/capture`エンドポイントをHTTP POSTで叩いたところ、`dump_uia_tree`と`screenshot.py`による**実際のキャプチャが成功**した。
+
+- スクリーンショット: 574KBの非空白PNG(実際のデスクトップ内容を含む)
+- UIツリー: root=`Taskbar`(Pane)、子要素5、総要素数22の実データ
+
+これはGitHub Actionsでの検証(知見1〜8)と、WinRM経由での失敗(知見9)の両方を踏まえた上での**最終的な統合確認**であり、「制御dumpスクリプト本体も対話的セッション内(clipwire)で起動する」という設計が実機で機能することを示す。なお、`_get_foreground_window()`が最初に見つけたウィンドウ(今回はタスクバー)を捉える実装になっており、「本当にフォーカスが当たっているウィンドウ」を正確に特定できているわけではない点は、今後の改善余地として記録しておく(フォーカスウィンドウの特定ロジックの精緻化はフェーズ1のタスク)。
+
 ## 検証不可能な項目(CI環境そのものの構造的制約)
 
 | 項目 | 状態 | 理由 |
