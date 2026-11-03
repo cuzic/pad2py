@@ -8,8 +8,8 @@ design/dsl_format_findings.md 知見53で実機確認した3つのDSLキャプ�
 """
 from __future__ import annotations
 
-from dump_daemon.pad_dsl_parser import EnumRef, UiElementRef, VarRef
-from dump_daemon.pad_expr_parser import (
+from dump_daemon.pad_dsl import EnumRef, UiElementRef, VarRef
+from dump_daemon.pad_expr import (
     Atom,
     BinOp,
     FuncCall,

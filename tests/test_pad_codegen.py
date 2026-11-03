@@ -10,17 +10,17 @@ from pathlib import Path
 
 import pytest
 
+from dump_daemon.control_repository import parse_control_repository
 from dump_daemon.pad_codegen import (
     generate_python,
     render_condition,
     render_text_template,
     render_value,
 )
-from dump_daemon.pad_dsl_parser import (
+from dump_daemon.pad_dsl import (
     EnumRef,
     VarRef,
     build_block_tree,
-    parse_control_repository,
     parse_dsl,
 )
 

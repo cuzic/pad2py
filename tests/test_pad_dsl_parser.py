@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dump_daemon.pad_dsl_parser import (
+from dump_daemon.control_repository import parse_control_repository
+from dump_daemon.pad_dsl import (
     ActionRecord,
     BlockNode,
     BlockRecord,
@@ -37,7 +38,6 @@ from dump_daemon.pad_dsl_parser import (
     VarRef,
     WaitActionRecord,
     build_block_tree,
-    parse_control_repository,
     parse_dsl,
 )
 

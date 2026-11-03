@@ -25,14 +25,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from .control_repository import parse_control_repository
+from .control_repository.types import ControlRepositoryEntry
 from .pad_codegen import generate_python
-from .pad_dsl_parser import (
+from .pad_dsl import (
     ActionRecord,
     BlockNode,
     CaseDefaultRecord,
     CommentRecord,
     ConditionalNode,
-    ControlRepositoryEntry,
     ElseIfActionRecord,
     ElseIfFunctionRecord,
     ElseIfRecord,
@@ -49,7 +50,6 @@ from .pad_dsl_parser import (
     SwitchNode,
     WaitActionRecord,
     build_block_tree,
-    parse_control_repository,
     parse_dsl,
 )
 

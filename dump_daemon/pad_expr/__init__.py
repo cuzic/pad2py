@@ -32,7 +32,7 @@ from typing import Any, Union
 from lark import Lark, Transformer
 from lark.exceptions import LarkError
 
-from .pad_dsl_parser import _resolve_value, _stringify_resolved_expr_token
+from ..pad_dsl.line_parser import _resolve_value, _stringify_resolved_expr_token
 
 _GRAMMAR = r"""
 ?expr: or_expr

@@ -22,8 +22,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from .control_repository import parse_control_repository
 from .pad_codegen import generate_python
-from .pad_dsl_parser import build_block_tree, parse_control_repository, parse_dsl
+from .pad_dsl import build_block_tree, parse_dsl
 
 
 def convert(dsl_text: str) -> str:
