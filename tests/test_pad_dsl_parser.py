@@ -1429,3 +1429,22 @@ def test_get_window_parsed_from_real_whole_subflow_capture() -> None:
     assert rec.output_vars == {"WindowInstance": "AutomationWindow2"}
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_close_window_by_instance_handle_parsed_from_real_capture() -> None:
+    # design/dsl_format_findings.md 知見57の追記(実機検証済み): 「Close window」アクションの
+    # 「Find window mode」ドロップダウンには「By window UI element」「By window instance/handle」
+    # 「By title and/or class」の3択があり(知見27の`ByTitleClass`系はこのうち3番目に対応)、
+    # 「By window instance/handle」を選ぶとaction_idが`UIAutomation.CloseWindow.
+    # CloseByInstanceOrHandle`になった——design/robin_language_source_findings.mdが予測していた
+    # `CloseWindowByInstanceOrHandle`という命名パターンがそのまま実機で確認できた。
+    # `WindowInstance: AutomationWindow2`というパラメータは、知見57本文の仮説通り、
+    # UI要素参照(`appmask[...]`)でも引用符付き文字列でもない**裸の変数参照**だった——
+    # 既存の汎用パラメータ解析ロジックでそのまま`VarRef`として無改修で正しくパースできた。
+    text = (FIXTURES_DIR / "closewindow_by_instance.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 1
+    rec = records[0]
+    assert isinstance(rec, ActionRecord)
+    assert rec.action_id == "UIAutomation.CloseWindow.CloseByInstanceOrHandle"
+    assert rec.params["WindowInstance"] == VarRef("AutomationWindow2")
