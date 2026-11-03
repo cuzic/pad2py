@@ -965,4 +965,6 @@ IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \'Untitled - Notepad\''
 
 **codegen側の判断**: 対象UI要素のセレクタ自体がDSLから取得できない(知見38・46と同じ制約)上、条件式の意味論を誤訳すると制御フロー全体(`if`に入るかどうか)が反転するという、知見53の`SET`文の右辺よりもさらに危険な失敗モードになる。そのため、知見18-2の`IfFunctionRecord`と全く同じ方針——でっち上げた真偽値を出力せず`NotImplementedError`を送出してはっきり失敗させる——を踏襲した。
 
-**未検証のまま残る項目**: 「Check if window」ドロップダウンの他の選択肢(「Is open」以外に何があるか、知見50の`WindowMode`列挙値と同様のパターンと予測される)・`InstantCheck`パラメータの正確な意味・「If window contains element」「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
+**追記(同ティック内)**: 「Check if window」ドロップダウンの全選択肢を確認した。「Is open」「Isn't open」「Is focused」「Isn't focused」の4択で全てだった。「Is focused」を選んで保存・一括コピーしたところ`UIAutomation.IfWindow.IsFocused`、「Isn't open」では`UIAutomation.IfWindow.IsNotOpen`——`InstantCheck`のような共有パラメータで否定を表すのではなく、**4つの選択肢それぞれが別々のaction_id**(`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`、最後の1つは未検証だが命名パターンから確実視)になることを確認した。design/robin_language_source_findings.mdが予測していた`IsFocusedByTitleClass`という名前ではなく、単純な`IsFocused`だった。
+
+**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If window contains element」「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
