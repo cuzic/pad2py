@@ -42,7 +42,7 @@ PADのUI automationアクション(`Click UI element in window`等)は、DSLク�
 
 知見46で、一般的なアプリ内コントロール(メモ帳のテキスト編集領域)の`Attributes`配列の中身も実機確認できた(`Class`/`Name`/`Process`等、pywinautoの`class_name`/`title`等にほぼ1対1対応する語彙)。対象が別ウィンドウの子孫の場合は`appmask['<祖先>']['<対象>']`のように`['...']`セグメントが複数連なる(`UiElementRef.path`で保持)。
 
-知見56で、この`Attributes`データから組み立てたpywinautoセレクタ(`Desktop(backend="uia").window(title=...).child_window(class_name=...)`)が実際に実機の対象要素を一意に特定できることを実行して確認した。これを受けて`pad_codegen.py`は、一括コピーの入力に`# [ControlRepository][PowerAutomateDesktop]`セクションが含まれる場合、UI要素アクションの`# TODO`コメントに検証済みのセレクタ式を**提案として追記する**ようになった(`_build_pywinauto_selector_expr()`)。あくまで`# TODO`コメント内の提案であり、生成される実行コード自体を変えることは無い——リポジトリに情報が無い・使える属性が1つも無い場合は何も付け足さず、でっち上げたセレクタ文字列を埋め込むことは無い(詳細は知見56)。
+知見56で、この`Attributes`データから組み立てたpywinautoセレクタ(`Desktop(backend="uia").window(title=...).child_window(class_name=...)`)が実際に実機の対象要素を一意に特定できることを実行して確認した(1つの`ControlRepositoryEntry`自体が複数階層の内部チェーンを持つ場合——電卓のボタンで実例確認——は各階層をそれぞれ別の`.child_window(...)`として連ねる)。これを受けて`pad_codegen.py`は、一括コピーの入力に`# [ControlRepository][PowerAutomateDesktop]`セクションが含まれる場合、UI要素アクションの`# TODO`コメントに検証済みのセレクタ式を**提案として追記する**ようになった(`_build_pywinauto_selector_expr()`)。あくまで`# TODO`コメント内の提案であり、生成される実行コード自体を変えることは無い——リポジトリに情報が無い・使える属性が1つも無い場合は何も付け足さず、でっち上げたセレクタ文字列を埋め込むことは無い(詳細は知見56)。
 
 ## 主要ドキュメント
 
