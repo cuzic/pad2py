@@ -368,3 +368,23 @@ MouseAndKeyboard.SendMouseClick.Click ClickType: MouseAndKeyboard.MouseClickType
 `pad_codegen.py`側は、`Contains`をどのPython式に変換すべきかまだ未検証(`in`演算子で素直に対応できそうだが、大文字小文字の扱い(第3引数の真偽フラグ)や、`Does not contain`/`Starts with`等の兄弟演算子の意味論を含めて実機で裏を取っていない)なため、関数呼び出し条件のアームに遭遇すると架空の変換をでっち上げず明示的に`NotImplementedError`を送出するようにした——知見15・18でも採用した「パーサーは正しく構造化するが、意味の分からない変換はコード生成側で明示的に拒否する」という一貫した設計方針。
 
 **教訓**: 「新しいDSL構文は既存の判定ロジックの"前"に専用の正規表現検出を割り込ませる」という設計で、比較的小さな変更で直せた。`build_block_tree()`側も、直接`isinstance(rec, IfRecord)`/`isinstance(nxt, ElseIfRecord)`としていた箇所を`_IF_HEADER_TYPES`/`_ELSEIF_HEADER_TYPES`という型タプル判定に一般化するだけで済み、ブロック木構築の再帰ロジック自体には一切手を入れずに新しいレコード型を取り込めた——「型で分岐する箇所をタプルにまとめておく」という小さな一般化が、後から種類を増やすコストを大きく下げる好例。
+
+## 23. 4つ目のUI automationアクション(`Press/release key`)——修飾キーの押下/解放、さらにデフォルト省略の謎が深まる
+
+「Press/release key」(`Mouse and keyboard`カテゴリ)を実機で追加した。このアクションは**Ctrl/Alt/Shift/Winの修飾キーの押下・解放専用**で、通常のキー(Enter等)は扱わない——ダイアログは「Action to perform」(Press/Release)・「Control」「Alt」「Shift」「Win」(各トグル)のみで構成され、押す「キー」自体を指定する欄は存在しない。知見19で保留にしていた「Send keysの特殊キー記法」を解明する手がかりにはならなかった(別アクションであり、キー名の指定欄がそもそも無いため)。
+
+Control=True(他は触らずFalseのまま)、Action to perform=Pressで保存・再コピーしたところ:
+
+```
+MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False
+```
+
+続けてAction to performを「Release」に切り替えて再コピーしたところ、action_id自体が変化した(知見3の「パラメータでアクションIDの末尾が変わる」パターンの再確認):
+
+```
+MouseAndKeyboard.PressReleaseKey.ReleaseKey Control: True Alt: False Shift: False Win: False
+```
+
+ここで**デフォルト値省略の謎(知見19-21)がさらに深まった**: 今回は触っていないAlt/Shift/Win(すべてBool、すべてFalseのまま)が**全部出力された**。知見21の「Send mouse click」ではBool型トグル(`Move mouse`)が省略されたのに対し、今回は同じBool型でも省略されない。3つのアクション(Send keys/Send mouse click/Press release key)で、Bool型フィールドの省略有無がバラバラという結果になり、**「型」だけでも「触ったかどうか」だけでも説明がつかない**ことが確定的になった。今のところ「アクションの実装者がどう設計したか次第」としか言いようがなく、汎用的な予測は諦めて個別確認を続けるしかない。
+
+`pad_codegen.py`に`MouseAndKeyboard.PressReleaseKey.PressKey`/`...ReleaseKey` → `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`の変換を追加した。知見19-21と同じ方針で、Control/Alt/Shift/Winのうち**ちょうど1つだけ**`True`の組み合わせ(今回実機確認した唯一のケース)のときだけ変換し、0個または複数同時`True`(未検証)は`# TODO`のままにする。
