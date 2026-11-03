@@ -475,7 +475,45 @@ InstantCheckで確定)。ただし`Contains`自体も実機確認は1例のみ�
 しているのと同じ理由(確証が無いまま複数の「関数条件ファミリー」に同じ形を当てはめるのは危険)で、
 今回はパーサー/codegenへの実装は見送り、発見の記録のみとした。
 
+## アクション属性に3つ目のカテゴリ`[WaitAction]`を発見、新たなByTitleClass系アクションを確認
+
+`UIAutomation.Actions.dll`内の他のアクションクラスを見て回り、`[Action]`/`[ConditionAction]`に
+続く**3つ目の属性カテゴリ**を発見した:
+
+- `WaitForWindowAction`(`ToBecomeFocusedByTitleClass`等4つのSelectorが対象)には
+  `[WaitAction(ResultPropertyName = "Result", Id = "WaitForWindow")]`が付いている。
+  `ConditionAction`と同じく`Result`プロパティを持つが、`IfWindowAction`と異なり
+  通常の`[Action]`と同じ形(`Output=>`で明示的に出力を束縛できる、独立したアクション行として
+  振る舞う)に見える——おそらく「条件が真になるまでポーリングして待つ」という、
+  タイムアウト・リトライを内包したブロッキング待機アクション固有の属性と推測される
+  (実装は未確認)。`WindowMode`の判別子は`BecomeFocused`/`ToClose`/`ToLoseFocus`/`ToOpen`の
+  4値(`ToBecomeFocusedByTitleClass`等のUseNameと対応)。
+
+新たなByTitleClassパターンの通常`[Action]`も1件確認した: `SetWindowVisibilityBase`
+(`[Action(Category = "Windows", Id = "SetWindowVisibility")]`)+
+`SetWindowVisibilityByTitleClassSelector`(`UseName("SetVisibilityByTitleClass")`、
+`Title`/`Class`/`Visibility`(`Visible`/`Hiddenの2値enum`)を`Show`)から
+`UIAutomation.SetWindowVisibility.SetVisibilityByTitleClass`を導出した。
+**今回はcodegen実装を見送った**——pywinautoに「ウィンドウの表示/非表示切り替え」に対応する
+確実な公開APIメソッド名の心当たりが無く(`.maximize()`/`.minimize()`/`.restore()`/
+`.close()`/`.set_focus()`ほど確信を持てる標準メソッドが無い)、架空のAPI呼び出しを
+でっち上げるリスクを避けた。
+
+また、`CloseWindow`/`FocusWindow`には`ByInstanceOrHandle`という3つ目のFind window mode
+(`WindowInstance: int`のみをShowする、Title/Classを使わない)も存在することを確認した。
+これは design/dsl_format_findings.md 知見26の「Get window」の`WindowInstance=> AutomationWindow`
+出力を後続アクションで再利用する経路だと推測されるが、`pad_codegen.py`は`GetWindow`自体を
+まだ変換対象にしていない(「window instance」というPAD独自の概念をPython側でどう表現するか
+という設計判断が必要)ため、こちらも実装を見送った。
+
 ## 今後の調査候補(未着手)
+
+- `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
+  リトライの挙動)とDSL表現の実機検証
+- `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
+  pywinauto APIの特定(架空のAPI名を避けるため保留中)
+- 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
+  どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装
 
 - `ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
   実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認、および`Contains`を含む
