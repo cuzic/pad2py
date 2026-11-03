@@ -505,7 +505,7 @@ END
 
 2. **`CASE`は演算子を省略しない**: `CASE = $'''a'''`のように、比較演算子(`=`)が明示されていた。design/robin_language_source_findings.mdで`SemiComparison.ToString()`のソースから「演算子はnullableで省略されうる」と確認していた通り、UIの「Operator:」ドロップダウン(既定値「Equal to (=)」)でも明示的に選択できる——バグではなく仕様。
 
-3. **副次的な発見**: `SWITCH`の「Value to check」欄に裸の`TestVar`(`%`で囲まない)と入力したところ、変数参照ではなく**文字列リテラル**`$'''TestVar'''`として直列化された。これはSWITCHの値欄が他の文字列パラメータと同じ`%VarName%`補間規則(知見16)に従う「テキストフィールド」であり、`IF`の「First operand」欄のような純粋な式エディタではないことを意味する(変数を参照したければ`%TestVar%`と入力する必要があった)。
+3. **副次的な発見**: `SWITCH`の「Value to check」欄に裸の`TestVar`(`%`で囲まない)と入力したところ、変数参照ではなく**文字列リテラル**`$'''TestVar'''`として直列化された。これはSWITCHの値欄が他の文字列パラメータと同じ`%VarName%`補間規則(知見16)に従う「テキストフィールド」であり、`IF`の「First operand」欄のような純粋な式エディタではないことを意味する(変数を参照したければ`%TestVar%`と入力する必要があった)。**(後日追加検証)** 実際に「Value to check」欄を`%TestVar%`(純粋な%Var%マーカーのみ)に変更して再キャプチャしたところ、知見16の規則通り`SWITCH TestVar`という裸トークン(VarRef)になることを確認した——既存の`_resolve_value()`は無変更のまま正しく解釈できた。
 
 **修正内容**: `pad_dsl_parser.py`の`build_block_tree()`における`SWITCH`処理を、アーム探索のindent判定を`level`→`level + 1`に、各アームの本体パースを`parse_level(level + 1)`→`parse_level(level + 2)`に修正。`CaseRecord`に`operator: str | None`フィールドを追加し、`CASE <operator> <value>`の3トークン形式を正しくパースするようにした。`pad_codegen.py`の`_generate_switch()`も、ハードコードしていた`==`演算子を`CaseRecord.operator`から`_OPERATOR_MAP`経由で変換するよう修正した。既存のテストフィクスチャ(当初の誤った構造を前提にしていたもの)は実機キャプチャした生データに差し替えた。
 

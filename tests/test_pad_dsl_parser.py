@@ -641,6 +641,18 @@ def test_build_block_tree_handles_switch_with_no_default() -> None:
     assert case_a[1] == [KeywordRecord(name="WAIT", args=["1"], indent=2)]
 
 
+def test_switch_value_entered_as_pure_var_marker_parses_as_bare_var_ref() -> None:
+    # design/dsl_format_findings.md 知見33の「副次的な発見」(「Value to check」欄に裸の
+    # "TestVar"を入力すると文字列リテラルになる)に続けて、今度は"%TestVar%"(純粋な
+    # %Var%マーカーのみ)を入力して実機キャプチャしたところ、知見16と同じ規則通り
+    # `SWITCH TestVar`という裸トークン(VarRef)になることを確認した——既存の
+    # `_resolve_value()`で無変更のまま正しく解釈できることも確認済み。
+    records = parse_dsl("SWITCH TestVar")
+    assert len(records) == 1
+    assert isinstance(records[0], SwitchRecord)
+    assert records[0].expression == VarRef("TestVar")
+
+
 def test_not_in_operator_merged_into_single_token_for_if() -> None:
     # design/robin_language_source_findings.md: ComparisonOperatorExtensions.ToString()の
     # ソースで`NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることを確認した。
