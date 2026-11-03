@@ -12,9 +12,12 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 - `IF <operand1> <operator> <operand2> THEN` / `END` 形式の条件分岐(実機検証で
   `IF TestVar = $'''hello''' THEN` ... `END` の形を確認。変数参照は `%...%` ではなく
   ベアトークンで表現される)
+- ネスト構造は**4スペースインデント**で表現される(実機検証: `IF...THEN`内の
+  アクションは先頭に4スペース)。各レコードは`indent`フィールド(0始まりの深さ)を持つ。
 
 未対応(今後の実機確認が必要): LOOP FOREACH、ELSE/ELSE IF、複合式(AND/OR)、
-`IF`内のネスト構造の組み立て(現状は行単位のフラットなレコード列のまま)。
+インデント情報からの木構造組み立て(現状は`indent`を保持した**フラットな**
+レコード列を返すのみで、`IfRecord`と対応する`END`を自動的にグルーピングしない)。
 """
 from __future__ import annotations
 
@@ -36,18 +39,21 @@ class ActionRecord:
     action_id: str
     params: dict[str, Any] = field(default_factory=dict)
     output_var: str | None = None
+    indent: int = 0
 
 
 @dataclass
 class KeywordRecord:
     name: str
     args: list[str] = field(default_factory=list)
+    indent: int = 0
 
 
 @dataclass
 class SetVariableRecord:
     var_name: str
     value: Any
+    indent: int = 0
 
 
 @dataclass
@@ -55,11 +61,13 @@ class IfRecord:
     operand1: Any
     operator: str
     operand2: Any
+    indent: int = 0
 
 
 @dataclass
 class RawRecord:
     text: str
+    indent: int = 0
 
 
 Record = ActionRecord | KeywordRecord | SetVariableRecord | IfRecord | RawRecord
@@ -79,11 +87,12 @@ def parse_dsl(text: str) -> list[Record]:
     masked = _STRING_RE.sub(_stash, text)
 
     records: list[Record] = []
-    for line in masked.split("\n"):
-        line = line.strip()
-        if not line:
+    for raw_line in masked.split("\n"):
+        if not raw_line.strip():
             continue
-        records.append(_parse_line(line, placeholders))
+        stripped = raw_line.lstrip(" ")
+        indent = (len(raw_line) - len(stripped)) // 4
+        records.append(_parse_line(stripped.rstrip(), placeholders, indent))
     return records
 
 
@@ -97,7 +106,7 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
     return token
 
 
-def _parse_line(line: str, placeholders: dict[str, str]) -> Record:
+def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
     tokens = line.split()
     first = tokens[0]
 
@@ -105,6 +114,7 @@ def _parse_line(line: str, placeholders: dict[str, str]) -> Record:
         return SetVariableRecord(
             var_name=tokens[1],
             value=_resolve_value(tokens[3], placeholders),
+            indent=indent,
         )
 
     if first == "IF" and len(tokens) >= 5 and tokens[-1] == "THEN":
@@ -112,15 +122,16 @@ def _parse_line(line: str, placeholders: dict[str, str]) -> Record:
             operand1=_resolve_value(tokens[1], placeholders),
             operator=tokens[2],
             operand2=_resolve_value(tokens[3], placeholders),
+            indent=indent,
         )
 
     if first in _KNOWN_KEYWORDS:
-        return KeywordRecord(name=first, args=tokens[1:])
+        return KeywordRecord(name=first, args=tokens[1:], indent=indent)
 
     if not _ACTION_ID_RE.match(first):
-        return RawRecord(text=line)
+        return RawRecord(text=line, indent=indent)
 
-    record = ActionRecord(action_id=first)
+    record = ActionRecord(action_id=first, indent=indent)
     i = 1
     while i < len(tokens):
         tok = tokens[i]

@@ -119,3 +119,26 @@ def test_end_parsed_as_bare_keyword() -> None:
     assert isinstance(end_record, KeywordRecord)
     assert end_record.name == "END"
     assert end_record.args == []
+
+
+# Ifブロック内に「Set variable」(InnerVar)を実機で追加して再キャプチャした生データ。
+# 4スペースインデントでネストが表現されている点が今回の検証の核心。
+NESTED_IF_DSL = (
+    "IF TestVar = $'''hello''' THEN\n"
+    "    SET InnerVar TO $'''inside the if block'''\n"
+    "END"
+)
+
+
+def test_nested_set_variable_inside_if_has_indent_one() -> None:
+    records = parse_dsl(NESTED_IF_DSL)
+    assert len(records) == 3
+    if_record, inner_set, end_record = records
+    assert isinstance(if_record, IfRecord)
+    assert if_record.indent == 0
+    assert isinstance(inner_set, SetVariableRecord)
+    assert inner_set.indent == 1
+    assert inner_set.var_name == "InnerVar"
+    assert inner_set.value == "inside the if block"
+    assert isinstance(end_record, KeywordRecord)
+    assert end_record.indent == 0
