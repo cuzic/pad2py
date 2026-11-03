@@ -25,10 +25,13 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   丸括弧で囲まれる**——同じ「First operand/Operator/Second operand」ダイアログ形状でも
   アクションの種類によってDSL表現が異なる例)
 
-未対応(今後の実機確認が必要): ELSE/ELSE IF、複合式(AND/OR)、
-インデント情報からの木構造組み立て(現状は`indent`を保持した**フラットな**
-レコード列を返すのみで、`IfRecord`/`LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`と
-対応する`END`を自動的にグルーピングしない)。
+- `build_block_tree()`: `indent`情報を使って、フラットな`list[Record]`から
+  `IfRecord`/`LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`とその本体(対応する
+  `END`までの間、1段深い`indent`を持つレコード列)を`BlockNode(header, body)`として
+  再帰的にグルーピングする後処理(design/dsl_format_findings.md 知見7・9で確認した
+  「ブロック開始行と対応するENDは同じindent、中身だけ+1」というルールに基づく)
+
+未対応(今後の実機確認が必要): ELSE/ELSE IF、複合式(AND/OR)。
 """
 from __future__ import annotations
 
@@ -115,6 +118,47 @@ Record = (
     | LoopWhileRecord
     | RawRecord
 )
+
+_BLOCK_HEADER_TYPES = (IfRecord, LoopRecord, LoopForeachRecord, LoopWhileRecord)
+
+
+@dataclass
+class BlockNode:
+    """ブロック構文(`IF`/`LOOP`系)の開始レコードと、対応する`END`までの本体。"""
+
+    header: IfRecord | LoopRecord | LoopForeachRecord | LoopWhileRecord
+    body: list["Record | BlockNode"] = field(default_factory=list)
+
+
+def build_block_tree(records: list[Record]) -> list["Record | BlockNode"]:
+    """`parse_dsl()`が返すフラットな`indent`付きレコード列から、ブロック木を組み立てる。
+
+    design/dsl_format_findings.md 知見7・9で確認した「ブロック開始行と対応する`END`は
+    同じindent深さ、本体だけがその1段内側(indent+1)」というルールに基づくスタック型の
+    再帰下降パース。対応する`END`が見つからないまま入力が尽きた場合(壊れたデータ等)は、
+    例外を出さずそこまでの本体を返す。
+    """
+
+    pos = 0
+
+    def parse_level(level: int) -> list["Record | BlockNode"]:
+        nonlocal pos
+        body: list[Record | BlockNode] = []
+        while pos < len(records):
+            rec = records[pos]
+            if rec.indent < level:
+                break
+            if isinstance(rec, KeywordRecord) and rec.name == "END" and rec.indent == level:
+                pos += 1
+                return body
+            pos += 1
+            if isinstance(rec, _BLOCK_HEADER_TYPES):
+                body.append(BlockNode(header=rec, body=parse_level(level + 1)))
+            else:
+                body.append(rec)
+        return body
+
+    return parse_level(0)
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _KNOWN_KEYWORDS = {"WAIT", "END"}

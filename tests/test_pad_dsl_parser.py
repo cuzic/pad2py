@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
+    BlockNode,
     IfRecord,
     KeywordRecord,
     LoopForeachRecord,
     LoopRecord,
     LoopWhileRecord,
     SetVariableRecord,
+    build_block_tree,
     parse_dsl,
 )
 
@@ -194,3 +196,47 @@ def test_loop_while_record_strips_parens_around_operands() -> None:
     assert while_record.operand1 == "LoopIndex"
     assert while_record.operator == "<"
     assert while_record.operand2 == "10"
+
+
+def test_build_block_tree_leaves_flat_records_unchanged() -> None:
+    # REAL_FLOW_DSLにはIF/LOOP等のブロック構文が無いため、木構造化しても
+    # parse_dsl()の結果とそのまま一致するはず。
+    records = parse_dsl(REAL_FLOW_DSL)
+    tree = build_block_tree(records)
+    assert tree == records
+
+
+def test_build_block_tree_groups_nested_set_variable_under_if() -> None:
+    tree = build_block_tree(parse_dsl(NESTED_IF_DSL))
+    assert len(tree) == 1
+    node = tree[0]
+    assert isinstance(node, BlockNode)
+    assert isinstance(node.header, IfRecord)
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SetVariableRecord)
+    assert node.body[0].var_name == "InnerVar"
+
+
+# 実機でLOOP WHILEをIfブロック内に追加して再キャプチャした生データ(知見9)。
+LOOP_WHILE_INSIDE_IF_DSL = (
+    "IF TestVar = $'''hello''' THEN\n"
+    "    SET InnerVar TO $'''inside the if block'''\n"
+    "    LOOP WHILE (LoopIndex) < (10)\n"
+    "    END\n"
+    "END"
+)
+
+
+def test_build_block_tree_handles_loop_nested_inside_if() -> None:
+    tree = build_block_tree(parse_dsl(LOOP_WHILE_INSIDE_IF_DSL))
+    assert len(tree) == 1
+    if_node = tree[0]
+    assert isinstance(if_node, BlockNode)
+    assert isinstance(if_node.header, IfRecord)
+    assert len(if_node.body) == 2
+
+    set_var, while_node = if_node.body
+    assert isinstance(set_var, SetVariableRecord)
+    assert isinstance(while_node, BlockNode)
+    assert isinstance(while_node.header, LoopWhileRecord)
+    assert while_node.body == []
