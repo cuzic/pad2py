@@ -8,6 +8,7 @@ from __future__ import annotations
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    BlockRecord,
     CaseDefaultRecord,
     CaseRecord,
     CommentRecord,
@@ -22,6 +23,7 @@ from dump_daemon.pad_dsl_parser import (
     LoopRecord,
     LoopWhileRecord,
     EnumRef,
+    OnBlockErrorRecord,
     OnErrorNode,
     OnErrorRecord,
     SetVariableRecord,
@@ -825,3 +827,76 @@ def test_ui_element_reference_with_space_in_name_parsed_as_single_token() -> Non
     assert record.params["Element"] == UiElementRef(name="Start Button")
     assert record.params["ClickType"] == EnumRef("UIAutomation.ClickType.LeftClick")
     assert record.params["OffsetX"] == 0
+
+
+def test_on_block_error_wraps_block_node_with_next_action_in_handler_body() -> None:
+    # design/dsl_format_findings.md 知見40(実機検証済み): PADの「On block error」
+    # アクションをフローに追加すると、複数アクションをまとめる無名の`BLOCK`で自動的に
+    # ラップされる。「Exception handling mode」を既定の「Go to end of block」から
+    # 「Go to next action」に変更して実機キャプチャした生データそのもの(本体は空の
+    # BLOCK)。`NEXT ACTION`は既存の`KeywordRecord`機構でそのまま表現できる。
+    dsl = "BLOCK \nON BLOCK ERROR\nNEXT ACTION\nEND"
+    records = parse_dsl(dsl)
+    assert records == [
+        BlockRecord(name=None, indent=0),
+        OnBlockErrorRecord(case_name=None, indent=0),
+        KeywordRecord(name="NEXT", args=["ACTION"], indent=0),
+        KeywordRecord(name="END", args=[], indent=0),
+    ]
+    tree = build_block_tree(records)
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, BlockNode)
+    assert isinstance(guarded.node.header, BlockRecord)
+    assert guarded.node.header.name is None
+    assert guarded.node.body == []
+    assert len(guarded.on_error.arms) == 1
+    header, handler_body = guarded.on_error.arms[0]
+    assert header == OnBlockErrorRecord(case_name=None, indent=0)
+    assert handler_body == [KeywordRecord(name="NEXT", args=["ACTION"], indent=0)]
+
+
+def test_build_block_tree_handles_block_body_action_and_named_multi_arm_on_block_error() -> None:
+    # 実機データでは未確認(BLOCKの本体が空のケースのみ確認済み)だが、`ON ERROR`の
+    # 名前付きケース・複数アーム(知見36)との構造的並列性から類推した拡張部分の
+    # リグレッションテスト。本体アクション(indent+1)・名前付きケース+catch-allの連続
+    # (両方ともON BLOCK ERROR自身と同じindent)・共有の1つのENDが正しく組み立てられることを
+    # 確認する。
+    dsl = (
+        "BLOCK MyGroup\n"
+        "    SET TestVar TO $'''hello'''\n"
+        "ON BLOCK ERROR NamedCase\n"
+        "SET TestVar TO $'''failed'''\n"
+        "ON BLOCK ERROR\n"
+        "SET TestVar TO $'''recovered'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, BlockNode)
+    assert guarded.node.header == BlockRecord(name="MyGroup", indent=0)
+    assert len(guarded.node.body) == 1
+    assert guarded.node.body[0].var_name == "TestVar"
+    assert len(guarded.on_error.arms) == 2
+    assert guarded.on_error.arms[0][0].case_name == "NamedCase"
+    assert guarded.on_error.arms[1][0].case_name is None
+
+
+def test_build_block_tree_does_not_drop_siblings_after_on_block_error_block() -> None:
+    # `_SIMPLE_BLOCK_HEADER_TYPES`で過去に実データから発覚したバグ(終端ENDの誤消費で
+    # 後続の兄弟要素が黙って切り捨てられる)と同種の回帰を防ぐ。BLOCKの直後に別のアクションが
+    # 続く場合でも失われないことを確認する。
+    dsl = (
+        "BLOCK \n"
+        "ON BLOCK ERROR\n"
+        "NEXT ACTION\n"
+        "END\n"
+        "SET AfterVar TO $'''after'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    assert len(tree) == 2
+    assert isinstance(tree[0], GuardedNode)
+    assert tree[1].var_name == "AfterVar"

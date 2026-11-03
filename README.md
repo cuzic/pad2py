@@ -22,7 +22,7 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
 | --- | --- |
 | [design/control_dump_tech_selection.md](design/control_dump_tech_selection.md) | 制御dumpスクリプトの技術選定・アーキテクチャ |
 | [design/ci_verification_findings.md](design/ci_verification_findings.md) | GitHub Actions・実機GCP VM双方での検証知見(知見1〜11) |
-| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜39: SET/IF/LOOP系・ネスト構造・UI automationアクションのpywinauto/pyautoguiマッピング・複数出力のバグ修正・文字列エスケープのバグ修正・複数行コメント対応(実機検証済み)・SWITCH/CASE対応(実機検証で構造を訂正)・IN/NOT IN対応・UI要素セレクタの文字列フォーマット解明・Focus/Close window対応・WaitActionカテゴリ発見・ON ERRORブロックの実機検証(構造を訂正)・名前付きケース/複数アーム対応(パーサーバグを修正)・REPEAT ACTION対応・UI要素参照`appmask[...]`の発見(パーサーバグを修正)・PAD「Inspect UI elements」ピッカーで取得したUI要素のPublic Attributes完全一覧まで) |
+| [design/dsl_format_findings.md](design/dsl_format_findings.md) | PADクリップボードDSLの実データによる文法確認(知見1〜40: SET/IF/LOOP系・ネスト構造・UI automationアクションのpywinauto/pyautoguiマッピング・複数出力のバグ修正・文字列エスケープのバグ修正・複数行コメント対応(実機検証済み)・SWITCH/CASE対応(実機検証で構造を訂正)・IN/NOT IN対応・UI要素セレクタの文字列フォーマット解明・Focus/Close window対応・WaitActionカテゴリ発見・ON ERRORブロックの実機検証(構造を訂正)・名前付きケース/複数アーム対応(パーサーバグを修正)・REPEAT ACTION対応・UI要素参照`appmask[...]`の発見(パーサーバグを修正)・PAD「Inspect UI elements」ピッカーで取得したUI要素のPublic Attributes完全一覧・BLOCK/ON BLOCK ERROR/NEXT ACTIONの実機検証とパーサー/codegen実装まで) |
 | [design/robin_language_source_findings.md](design/robin_language_source_findings.md) | PAD実機の内部DLL(Robin Language)を逆コンパイルして文法を一次ソースで裏付けた知見 |
 | [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
 | [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |

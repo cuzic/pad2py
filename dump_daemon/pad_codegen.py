@@ -38,6 +38,10 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
 - `BlockNode(LoopForeachRecord)` → `for ... in ...`
 - `BlockNode(LoopWhileRecord)` → `while ...`
+- `BlockNode(BlockRecord)`(design/dsl_format_findings.md 知見40で実機確認した`BLOCK`/`END`——
+  PADの「On block error」アクションが自動生成するグループ化構文) → Python側に対応する制御
+  構文は無いので、本体をそのまま現在のインデントに展開するだけ(追加の`if`/`for`等は生成
+  しない)。`ON BLOCK ERROR`による保護は`GuardedNode`の`try`/`except`が担う
 - `KeywordRecord(WAIT)` → `time.sleep(...)`
 - `KeywordRecord(EXIT LOOP)` / `KeywordRecord(NEXT LOOP)` → `break`/`continue`
 - `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身をそのまま展開
@@ -89,6 +93,7 @@ import re
 from .pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    BlockRecord,
     CaseDefaultRecord,
     CommentRecord,
     ConditionalNode,
@@ -224,6 +229,21 @@ def _generate_block_body(nodes: list[Node], indent: int) -> list[str]:
     return lines
 
 
+def _ensure_nonempty_suite(lines: list[str], indent: int) -> list[str]:
+    """Pythonの`except:`/`if:`等の本体として有効になるよう、`pass`を補う。
+
+    `_generate_block_body`は未対応のキーワード/アクションを`# TODO`コメント行として
+    出力することがある(でっち上げたAPI呼び出しを生成しないための意図的な挙動)。
+    その結果、本体が「コメント行だけ」になるケースがあり、これは見た目上は非空でも
+    Pythonの構文的には空の suite と同じで`IndentationError`になる(知見40の
+    `ON BLOCK ERROR`本体が`NEXT ACTION`だけのケースで実際に発覚したバグ)。
+    「実質的な文が1つも無い」場合にだけ`pass`を追加する。
+    """
+    if any(line.strip() and not line.strip().startswith("#") for line in lines):
+        return lines
+    return [*lines, f"{INDENT * indent}pass"]
+
+
 def _generate_node(node: Node, indent: int) -> list[str]:
     prefix = INDENT * indent
     if isinstance(node, SetVariableRecord):
@@ -271,7 +291,7 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             )
         else:
             raise TypeError(f"Unexpected conditional arm header: {header!r}")
-        lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+        lines.extend(_ensure_nonempty_suite(_generate_block_body(arm_body, indent + 1), indent + 1))
     return lines
 
 
@@ -291,12 +311,12 @@ def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
             operator = header.operator if header.operator is not None else "="
             condition = render_condition(node.expression, operator, header.value)
             lines.append(f"{prefix}{keyword} {condition}:")
-        lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+        lines.extend(_ensure_nonempty_suite(_generate_block_body(arm_body, indent + 1), indent + 1))
     return lines
 
 
 def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
-    """`GuardedNode`(`ON ERROR`で保護された文) → `try`/`except Exception`。
+    """`GuardedNode`(`ON ERROR`/`ON BLOCK ERROR`で保護された文) → `try`/`except Exception`。
 
     design/dsl_format_findings.md 知見34で実機確認したのは「All errors (default)」
     (名前無しcatch-all、1アームのみ)に本体アクションを追加し「Continue flow run」を選んだ
@@ -306,7 +326,8 @@ def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
     Pythonのどの例外型に対応するかは分からない**(`RunPythonScriptError`が`OSError`
     相当なのか等、対応表が無い)ため、複数アームや名前付きケースを安易に`except`の
     型指定に変換することはしない——1アームかつ名前無しcatch-allの場合のみ変換し、
-    それ以外は保護対象の文だけ出力して`# TODO`を残す。
+    それ以外は保護対象の文だけ出力して`# TODO`を残す。`node.node`が`BlockNode(BlockRecord)`の
+    場合(知見40の`ON BLOCK ERROR`)も構造は全く同じなので、このロジックをそのまま流用できる。
     """
     prefix = INDENT * indent
     if len(node.on_error.arms) == 1 and node.on_error.arms[0][0].case_name is None:
@@ -314,16 +335,22 @@ def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
         lines = [f"{prefix}try:"]
         lines.extend(_generate_node(node.node, indent + 1))
         lines.append(f"{prefix}except Exception:")
-        lines.extend(_generate_block_body(handler_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+        lines.extend(_ensure_nonempty_suite(_generate_block_body(handler_body, indent + 1), indent + 1))
         return lines
     lines = list(_generate_node(node.node, indent))
-    lines.append(f"{prefix}# TODO: ON ERROR handling not converted (named/multiple error cases)")
+    lines.append(f"{prefix}# TODO: ON ERROR/ON BLOCK ERROR handling not converted (named/multiple error cases)")
     return lines
 
 
 def _generate_loop_block(node: BlockNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     header = node.header
+    if isinstance(header, BlockRecord):
+        # design/dsl_format_findings.md 知見40: BLOCKはPADの「アクショングループ」で、
+        # それ自体はPython側に対応する制御構造を持たない純粋なスコープ区切り。
+        # ON BLOCK ERRORによる保護はGuardedNodeのtry/exceptが担うため、ここでは本体を
+        # 追加のインデント無しでそのまま展開するだけでよい。
+        return _ensure_nonempty_suite(_generate_block_body(node.body, indent), indent)
     if isinstance(header, LoopRecord):
         start = render_value(header.start)
         end = render_value(header.end)
@@ -337,7 +364,7 @@ def _generate_loop_block(node: BlockNode, indent: int) -> list[str]:
     else:
         raise TypeError(f"Unexpected block header: {header!r}")
     lines = [header_line]
-    lines.extend(_generate_block_body(node.body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+    lines.extend(_ensure_nonempty_suite(_generate_block_body(node.body, indent + 1), indent + 1))
     return lines
 
 

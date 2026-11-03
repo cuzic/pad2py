@@ -482,5 +482,21 @@ def test_generate_python_leaves_multi_arm_on_error_as_todo() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "Result = 'a'" in code
-    assert "# TODO: ON ERROR handling not converted" in code
+    assert "# TODO: ON ERROR/ON BLOCK ERROR handling not converted" in code
     assert "try:" not in code
+
+
+def test_generate_python_renders_on_block_error_as_try_except_with_pass_body() -> None:
+    # design/dsl_format_findings.md 知見40(実機検証済み): PADの「On block error」が
+    # 自動生成する空のBLOCKに「Go to next action」を設定して実機キャプチャした生データ
+    # そのもの。BLOCK自体はPython側に対応する制御構文を持たないため本体は`pass`になり、
+    # ハンドラ内の`NEXT ACTION`はPADのcase名同様マッピング未検証のため`# TODO`に倒れる
+    # (でっち上げた`continue`/`break`等は生成しない)。
+    dsl = "BLOCK \nON BLOCK ERROR\nNEXT ACTION\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "try:" in code
+    assert "    pass" in code
+    assert "except Exception:" in code
+    assert "# TODO: unmapped keyword: NEXT ACTION" in code

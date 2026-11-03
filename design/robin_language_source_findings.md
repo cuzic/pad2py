@@ -571,8 +571,12 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   ソースの類推が誤りだったと判明・修正済み(本セクション参照)。パーサー/codegenへの実装も
   完了(`OnErrorRecord`/`OnErrorNode`/`GuardedNode`)。名前付きケース・複数ケース・
   `REPEAT ACTION`の実機検証も完了(design/dsl_format_findings.md 知見36・37)。
-  `NEXT ACTION`(既存の`NEXT`キーワードで対応できる見込みだが未検証)・「Throw error」・
-  「Go to label」・`ON BLOCK ERROR`は未検証のまま持ち越し
+  **`ON BLOCK ERROR`・`NEXT ACTION`も実機検証完了**(知見40)——`ON BLOCK ERROR`は
+  `ON ERROR`と完全に同じ構造(本体のindentがヘッダーと同じ、複数アーム、共有END)だと
+  確認でき、新たに発見した`BLOCK`(PADの「On block error」アクションが自動生成する
+  無名グループ化構文)とあわせて`BlockRecord`/`OnBlockErrorRecord`として実装した。
+  `NEXT ACTION`は予測通り既存の`KeywordRecord`機構で追加実装無しに対応できた。
+  「Throw error」・「Go to label」は未検証のまま持ち越し
 - `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
   リトライの挙動)とDSL表現の実機検証
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
@@ -590,8 +594,9 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   類推していたインデント規則は誤りだったと判明し、修正済み)
 - ~~名前付き`ON ERROR <Case>`ケース・複数ケース構成の実機検証~~ → 完了
   (design/dsl_format_findings.md 知見36。`stop_at_on_error`での区切りバグを修正、
-  パーサー/codegenとも実装済み)。`REPEAT ACTION`も実機検証済み(知見37)。`NEXT ACTION`・
-  「Throw error」・「Go to label」・`ON BLOCK ERROR`は未検証のまま持ち越し
+  パーサー/codegenとも実装済み)。`REPEAT ACTION`も実機検証済み(知見37)。
+  ~~`NEXT ACTION`・`ON BLOCK ERROR`~~ → 完了(知見40)。「Throw error」・「Go to label」は
+  未検証のまま持ち越し
 - `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
   本セクション参照)を表現できるよう、`IfRecord`等のフラットな構造を再帰的な式木に
   再設計すること。優先順位・結合性も実機/文法でさらに確認が必要
