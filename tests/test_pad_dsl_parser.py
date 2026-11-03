@@ -931,6 +931,37 @@ def test_repeat_action_parsed_as_keyword_record_inside_on_error_arm() -> None:
     assert named_body[1] == KeywordRecord(name="REPEAT", args=["ACTION"], indent=0)
 
 
+def test_build_block_tree_handles_on_error_with_header_nested_one_level_deeper() -> None:
+    # design/dsl_format_findings.md 知見61(実機再検証): 知見34/36(上の`REAL_ON_ERROR_DSL`/
+    # `REAL_MULTI_ARM_ON_ERROR_DSL`、ヘッダー・本体とも保護対象の文と同じindent)とは別に、
+    # **同じ`ON ERROR RunPythonScriptError`/`ON ERROR`の2アーム構造が、ヘッダーが保護対象の
+    # 文より1段深く・本体がヘッダーよりさらに1段深い形で実機に実在する**ことを、本セッションで
+    # VM上のLoopTestフローから「アクション単体のコピー」と「フロー全体の一括コピー」の
+    # 両方で独立に再現した(`tests/fixtures/on_error_nested_indent.txt`がその実際の
+    # クリップボードキャプチャそのもの)。`build_block_tree()`はヘッダー自身のindentが
+    # 保護対象の文のindentと一致するかどうかで、どちらの形かを自己記述的に判別する。
+    text = (FIXTURES_DIR / "on_error_nested_indent.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert isinstance(records[0], ActionRecord)
+    assert isinstance(records[1], OnErrorRecord) and records[1].case_name == "RunPythonScriptError"
+    assert records[1].indent == records[0].indent + 1  # 知見34/36とは逆に、保護対象より1段深い
+    assert isinstance(records[2], SetVariableRecord)
+    assert records[2].indent == records[1].indent + 1  # 本体はヘッダーよりさらに1段深い
+
+    tree = build_block_tree(records)
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, ActionRecord)
+    assert len(guarded.on_error.arms) == 2
+    named_header, named_body = guarded.on_error.arms[0]
+    assert named_header.case_name == "RunPythonScriptError"
+    assert len(named_body) == 1 and named_body[0].var_name == "NewVar2"
+    default_header, default_body = guarded.on_error.arms[1]
+    assert default_header.case_name is None
+    assert len(default_body) == 1 and default_body[0].var_name == "NewVar"
+
+
 def test_ui_element_reference_with_space_in_name_parsed_as_single_token() -> None:
     # 実機で「Click UI element in window」にUI要素ピッカーで「Start Button」(Windowsの
     # スタートボタン)を選んでキャプチャした生データ(design/dsl_format_findings.md 知見38)。
@@ -1003,6 +1034,34 @@ def test_on_block_error_wraps_block_node_with_next_action_in_handler_body() -> N
     header, handler_body = guarded.on_error.arms[0]
     assert header == OnBlockErrorRecord(case_name=None, indent=0)
     assert handler_body == [KeywordRecord(name="NEXT", args=["ACTION"], indent=0)]
+
+
+def test_build_block_tree_handles_on_block_error_one_level_shallower_than_block() -> None:
+    # design/dsl_format_findings.md 知見61(実機再検証): `tests/fixtures/on_block_error_isolated.txt`
+    # (BLOCK単体を個別コピー)は上のテスト同様`ON BLOCK ERROR`がBLOCKと同じindentだったが、
+    # **同じBLOCKがLOOP本体の中にネストしている状態でフロー全体を一括コピーすると、
+    # `ON BLOCK ERROR`はBLOCKより1段"浅い"(=BLOCKを囲むLOOPと同じ)indentで出力される**ことを
+    # VM上で実機確認した(`tests/fixtures/looptest_whole_subflow_with_calculator_button.txt`の
+    # 一部、本セッションで同一のBLOCKをフロー全体の一括コピーとして再キャプチャしても再現する)。
+    # この場合、アーム群を閉じる`END`とBLOCK自身を閉じる`END`は別々の2行になる。どちらの
+    # indentが「正しい」かは未解明なため、`build_block_tree()`は両方を受理する。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_calculator_button.txt").read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    loop_block = tree[3]
+    assert isinstance(loop_block, BlockNode) and isinstance(loop_block.header, LoopRecord)
+    guarded = loop_block.body[1]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, BlockNode)
+    assert isinstance(guarded.node.header, BlockRecord)
+    assert guarded.node.body == []
+    assert len(guarded.on_error.arms) == 1
+    header, handler_body = guarded.on_error.arms[0]
+    assert isinstance(header, OnBlockErrorRecord) and header.case_name is None
+    assert handler_body == [KeywordRecord(name="GOTO", args=["MyLabel"], indent=0)]
+    # BLOCKの後(END×2を正しく消費した後)にも兄弟要素が切り捨てられず残っている。
+    assert isinstance(loop_block.body[2], ActionRecord)
+    assert loop_block.body[2].action_id == "UIAutomation.Click.Click"
+    assert isinstance(loop_block.body[3], CommentRecord)
 
 
 def test_build_block_tree_handles_block_body_action_and_named_multi_arm_on_block_error() -> None:

@@ -1173,3 +1173,35 @@ Pythonで同じ値に対して同じ添字/スライス式を評価した結果�
 **結論**: PADの`[Index]`/`[start:end]`構文は、**0始まり・終端を含まない(exclusive)という、Pythonの添字/スライスと寸分違わぬ意味論**であることが実機実行で確定した。これは知見51のLOOPのrange(0始まりではなく、終端排除という点でPythonの`range()`と一致)とあわせて、「PADの各種範囲・添字表現はPythonの対応物と驚くほど自然に一致する」という傾向を補強する結果でもある。これにより、`pad_codegen.py`が`VarRef`としてそのまま素通ししている`InnerVar[0:2]`等の表現は、構文が偶然一致しているだけでなく**意味論的にも正しい**ことが保証された——今後、これらの式を単純な素通し以上の形で積極的に扱う場合(例えば型推論や最適化)でも、安心してPythonのスライス/添字セマンティクスを前提にできる。
 
 **検証後の後始末**: 知見51と全く同じ手順で`Main`を完全に復元した——追加した2アクションを削除、`For each`/`End`を再度有効化して元の単一の検証エラーのみに戻し、テストファイル`slice_check.txt`をWinRM経由で削除(`os.path.exists()`で`False`を確認)、アクティブタブを`LoopTest`に戻した。
+
+## 61. 【重大な訂正】`ON ERROR`/`ON BLOCK ERROR`のインデント規則を実機再検証——知見34/36は実在する一方の形でしかなく、**もう一方の形(ヘッダーが保護対象より1段深い)も実在すると判明**
+
+`pad_codegen.py`のアクションカバレッジを機械的に測定するツール(`dump_daemon/codegen_coverage.py`、新規)を作り、`tests/fixtures/`の実機キャプチャ全14件に通して回帰確認していたところ、`looptest_whole_subflow_with_calculator_button.txt`を変換した結果の木構造が明らかに壊れていた——`WAIT`/`LABEL`/`LOOP`以降の内容が丸ごと無関係な`ON ERROR`ハンドラの中に取り込まれ、`GOTO MyLabel`が全く無関係な先頭アクションのハンドラとして誤って付き、行き場を失った生の`END`キーワードがトップレベルの本体に漏れ出ていた。
+
+**実機再検証**: この壊れた変換の原因を特定するため、`LoopTest`フロー(VM上に現存、本フィクスチャのキャプチャ元そのもの)に対して2つの独立した再コピー実験を行った。
+
+1. **保護対象アクション単体を個別選択してコピー**(知見34/36と同じ手法——フロー全体ではなく1アクションだけを選んで右クリック→コピー):
+   ```
+   Scripting.RunPythonScript.RunPythonScript PythonCode: $'''...''' ScriptOutput=> PythonScriptOutput3
+       ON ERROR RunPythonScriptError
+           SET NewVar2 TO $'''script failed'''
+       ON ERROR
+           SET NewVar TO $'''recovered'''
+       END
+   ```
+   `ON ERROR`ヘッダーが保護対象のアクションより**1段深く**(4スペース)、本体(`SET`)がヘッダーよりさらに**1段深い**(8スペース)——知見34/36の「ヘッダー・本体とも保護対象の文と同じindent」とは完全に異なる形。
+
+2. **フロー全体を選択してコピー**(`Ctrl+A`→`Ctrl+C`、一括コピー):同じ箇所が全く同じインデント(ヘッダー+1段・本体+2段)で出力され、アーカイブ済みの`looptest_whole_subflow_with_calculator_button.txt`と完全に一致した。
+
+この2つの独立した再現により、「単体コピーだからdedentされて消えた」という仮説は排除できた(単体コピーでも1段/2段のインデントがそのまま出力された)。一方、他6件の`whole subflow`系フィクスチャ(`looptest_whole_subflow_with_wait_for_window.txt`等)は、全く同じ`Scripting.RunPythonScript.RunPythonScript`+2アーム`ON ERROR`の構造を、知見34/36通りの「保護対象と同じindent」(0段)で含んでいる。**同一セッション内で、同じ種類の構文が明確に異なる2つのインデント形で実在する**ことになる——おそらく、これらの古いフィクスチャがキャプチャされた時点と本知見の再検証時点の間に、PAD側のクリップボードシリアライザの挙動(バージョン更新等)が変わったことを示唆しているが、断定的な原因は不明なまま。
+
+**`ON BLOCK ERROR`side でも別の実例を発見**: 同フローの`LOOP`本体内にネストした(無名・空)`BLOCK`+`ON BLOCK ERROR`(`GOTO MyLabel`)を、(a)その2行だけを個別選択してコピーすると`ON BLOCK ERROR`は`BLOCK`と**同じ**indent(知見40通り、再確認)になったが、(b)`LOOP`にネストした状態のままフロー全体を一括コピーすると、`ON BLOCK ERROR`は`BLOCK`より**1段浅い**(`BLOCK`を囲む`LOOP`と同じ)indentになった——`BLOCK`自身の閉じ`END`とは別に、ハンドラ群を閉じる`END`がもう1行、別々に存在する形。`ON BLOCK ERROR`の本体(`GOTO MyLabel`)自体は、どちらの場合も常にヘッダーと**同じ**indent(`ON ERROR`の新しい「+1段」規則とは異なり、知見40の規則のまま)。
+
+**実装**: `build_block_tree()`の`OnErrorRecord`/`OnBlockErrorRecord`処理を全面的に見直した。
+
+- 旧実装は`stop_at_on_error`付きの`parse_level(level, ...)`(`level`=保護対象の文のindent、常に固定)を使っていたが、これは「ヘッダー自身のindentが`level`と一致する」という知見34/36の前提に暗黙に依存していた。前提が崩れると、本体パースが暴走して後続の無関係な行を全て飲み込んでしまう(今回発覚した破壊の直接原因)。
+- 新実装はヘッダー自身の実際のindent(`arm_level = rec.indent`)を基準に使う。`ON ERROR`は`arm_level`が保護対象の`level`と一致するかどうかで、本体が「ヘッダーと同じ段」(知見34/36の形)か「ヘッダーより1段深い」(本知見の新しい形)かを自己記述的に判別する——後者はIF/LOOP/SWITCHと同じ「ヘッダーの子は+1段」という規則にむしろ合致し、本体が明確に深くなる分、次のアーム見出しとの区別に`rec.indent < level`という既存の素朴な比較だけで足りる(専用フラグ不要)。前者は従来通り、次のアーム見出し/共有`END`への先読み(`stop_at_error_sibling`、旧`stop_at_on_error`を汎用化・改称)が必要。
+- `ON BLOCK ERROR`は本体が常にヘッダーと同じ段という知見40の規則を維持しつつ、`BLOCK`に対するヘッダー自身のindentが`level`(`BLOCK`と同じ)または`level - 1`(`BLOCK`を囲む構文と同じ)のどちらでも受理するようにした。`arm_level`が`level`と異なる場合は、アーム群を閉じる`END`とは別に`BLOCK`自身を閉じる`END`をもう1行、明示的に消費する。
+- 両方の形について実機キャプチャをそのまま新規フィクスチャとして追加した: `tests/fixtures/on_error_nested_indent.txt`(本知見の新しい`ON ERROR`形、単体コピー)・`tests/fixtures/on_block_error_isolated.txt`(`ON BLOCK ERROR`が`BLOCK`と同じindentになる個別コピー形)。既存の`looptest_whole_subflow_with_calculator_button.txt`が「`BLOCK`より1段浅い`ON BLOCK ERROR`」の実例として既に手元にあったため、そちらは新規キャプチャ不要だった。
+
+**今後の課題**: どちらのインデント形が「現在の」PADの標準的な挙動なのか(あるいは両方とも状況依存で今後も両方出現し続けるのか)は未解明。もし今後、このプロジェクトが対象にするPADのバージョンが特定の1つに固定されるなら、この二重対応は単純化できる可能性がある。`ON BLOCK ERROR`が「なぜ`BLOCK`より1段浅くなりうるのか」(`ON ERROR`と同じ「+1段」パターンにも、知見40の「同じ段」パターンにも当てはまらない、独立した現象)についても、統一的な説明は得られていない。

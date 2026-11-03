@@ -1,0 +1,6 @@
+Scripting.RunPythonScript.RunPythonScript PythonCode: $'''open(r\'C:\\Users\\tomoya_kaw\\pad2py\\loop_counter.txt\',\'w\').close()''' ScriptOutput=> PythonScriptOutput3
+    ON ERROR RunPythonScriptError
+        SET NewVar2 TO $'''script failed'''
+    ON ERROR
+        SET NewVar TO $'''recovered'''
+    END
