@@ -97,6 +97,66 @@ Name + "(" + string.Join(", ", Arguments) + ")"
 
 `ActionStatement`(一般アクション行の構造)自体は、既に構築済みの`IInputArgument[] inputs`配列を受け取って`ToString()`するだけで、**「どのパラメータを配列に含めるか」を決めるロジックはLanguage.dll(文法層)には存在しない**。この判断は、各アクションモジュール(`Modules.MouseAndKeyboard.Actions.dll`等、50以上存在する個別のアクションDLL群)側のUI/シリアライズコードに委ねられていると考えられる。つまり「一貫した規則がない」という我々の結論(知見23)は、**実装上も一貫した規則が存在しない(各アクションの実装者がそれぞれ個別に判断している)可能性が高い**ことがアーキテクチャ面からも裏付けられた——今後この謎を解明するには、Language.dllではなく個別のアクションモジュールDLL群を調査する必要がある(今回はスコープ外)。
 
+## デフォルト値省略の謎(知見19〜21・23)を完全に解明——`ActionSelector`の`Prop().ShouldBe()`/`Show()`パターン
+
+上記「Language.dllにはこの判断ロジックが無い」という調査結果を受けて、実際にアクションモジュールDLL(`Microsoft.Flow.RPA.Desktop.Modules.MouseAndKeyboard.Actions.dll`、WinRM経由で取得・逆コンパイル)を調査し、**デフォルト値省略の謎を完全に解明した**。
+
+PADの各アクションクラス(例: `SendKeys`、`SendMouseClick`、`PressReleaseKey`)は、`[InputArgument]`属性を持つプロパティの集合として定義される。しかし**1つのアクションクラスが、複数の`ActionSelector<T>`サブクラス("variant"=DSL上の`action_id`末尾)を持ちうる**。各`ActionSelector`のコンストラクタは以下の2種類の宣言を組み合わせる:
+
+- **`Prop<T>(expr).ShouldBe(value)`**: 「このプロパティの値が`value`であることが、このvariantが選ばれるための条件」という**判別子(discriminator)**の宣言。
+- **`Show<T>(expr)`** または **`ShowAll()`**: 「このプロパティ(群)をDSLのパラメータとして表示する」という宣言。
+
+実例(`FocusAndSendKeysSelector`、`MouseAndKeyboard.SendKeys.FocusAndSendKeys`に対応):
+
+```
+UseName("FocusAndSendKeys");
+Prop<SendKeysTo>(s => s.SendKeysTo).ShouldBe((SendKeysTo)0);   // 判別子: SendKeysTo == Foreground
+Show<int>(s => s.DelayBetweenKeystrokes);
+Show<bool>(s => s.SendTextAsHardwareKeys);
+Show<EncryptableObject>(s => s.TextToSend);
+```
+
+同じ`SendKeys`クラスの別variant(`FocusAndSendKeysByTitleClassSelector`、`...FocusAndSendKeysByTitleClass`に対応)は判別子が異なり、`Show`される項目も増える:
+
+```
+UseName("FocusAndSendKeysByTitleClass");
+Prop<SendKeysTo>(s => s.SendKeysTo).ShouldBe((SendKeysTo)3);   // 判別子: SendKeysTo == ByTitleClass
+Show<int>(s => s.DelayBetweenKeystrokes);
+Show<bool>(s => s.SendTextAsHardwareKeys);
+Show<EncryptableObject>(s => s.TextToSend);
+Show<string>(s => s.Title);   // By title/classモード固有の追加フィールド
+Show<string>(s => s.Class);
+```
+
+**確立した規則**: あるプロパティがDSLのテキストに出力されるかどうかは、以下で決まる——
+
+1. そのプロパティが、現在選ばれているvariant(=実際の`action_id`)の`ActionSelector`において`Prop().ShouldBe()`の**判別子として使われている**場合 → **DSLには出力されない**。なぜなら、その値は選ばれた`action_id`自体に既に暗示されており(「`FocusAndSendKeysByTitleClass`」という名前自体が`SendKeysTo == ByTitleClass`を意味する)、改めてパラメータとして書く必要が無いため。
+2. それ以外(`Show()`または`ShowAll()`で明示的に示されているプロパティ)→ **値が`[DefaultValue]`属性と一致していてもDSLに出力される**。
+
+これは`SendMouseClick`(知見21)でも完全に一致した。`SendMouseClickSelector`(`...SendMouseClick.Click`に対応)は:
+
+```
+UseName("Click");
+Prop<bool>(c => c.MoveMouse).ShouldBe(false);   // 判別子: MoveMouse == false
+Show<MouseClickType>(c => c.ClickType);
+Show<int>(c => c.MillisecondsDelay);
+Show<bool>(c => c.MoveMouse);                   // ← Propと同じプロパティだがShowも宣言されている
+```
+
+`MoveMouse`は`Prop().ShouldBe(false)`判別子であると同時に`Show()`でも宣言されているが、実機では省略されていた(知見21)——つまり**判別子として機能している間は、`Show()`が併記されていても判別子としての扱いが優先され、省略される**ことが実データと整合する。一方`ClickType`/`MillisecondsDelay`は判別子ではなく単なる`Show()`なので、`[DefaultValue(MouseClickType.LeftClick)]`/`[DefaultValue(0)]`という既定値と一致していても(実機ではまさにこの既定値を使った)、省略されずに出力されていた(`ClickType: ...LeftClick MillisecondsDelay: 0`)。
+
+`PressReleaseKey`(知見23)も同様に完全解明できた。`PressKeySelector`(`...PressReleaseKey.PressKey`に対応):
+
+```
+UseName("PressKey");
+Prop<KeyEventType>(c => c.Event).ShouldBe(KeyEventType.Press);   // 判別子: Event == Press
+ShowAll();                                                        // 残り全フィールド(Control/Alt/Shift/Win)を無条件に表示
+```
+
+「Action to perform」(`Event`プロパティ)が判別子として`action_id`の末尾(`PressKey`/`ReleaseKey`)に変換されるため省略され、`ShowAll()`により残りの`Control`/`Alt`/`Shift`/`Win`は(触っていなくても)**無条件に全て**出力される——知見23で観測した「4つの真偽値が全部出力された」という挙動と完全に一致する。
+
+**結論**: design/dsl_format_findings.md 知見19〜21・23で「アクション・フィールドごとに個別確認するしかない」としていた暫定結論は、**今回の`ActionSelector`のソースコード調査により、明確で一貫した規則(判別子は省略・Show/ShowAllは常に出力)に置き換えられた**。今後どのアクションがどのプロパティを省略するかを予測するには、そのアクションの`ActionSelector`サブクラス群(`Prop().ShouldBe()`と`Show()`/`ShowAll()`の宣言)を確認すればよい——UIを1つずつクリックして試行錯誤する必要はなくなった。
+
 ## 今後の調査候補(未着手)
 
 - `SWITCH`/`CASE`/`CASE DEFAULT`構文の実機検証とパーサー対応
