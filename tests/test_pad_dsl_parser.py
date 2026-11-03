@@ -8,6 +8,7 @@ from __future__ import annotations
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    CommentRecord,
     ConditionalNode,
     ElseIfFunctionRecord,
     ElseIfRecord,
@@ -471,3 +472,30 @@ def test_action_with_multiple_outputs_keeps_all_of_them() -> None:
     }
     # output_var は後方互換のため最後に見つかったものを保持するだけ(単一出力専用)。
     assert record.output_var == "AutomationWindow"
+
+
+def test_single_line_comment_parsed_as_comment_record() -> None:
+    # design/robin_language_source_findings.md: Robin.Language.dllの
+    # CommentStatement.ToString()のソースコードで確認した構文(実機未確認)。
+    records = parse_dsl("# this is a comment")
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, CommentRecord)
+    assert record.text == "this is a comment"
+
+
+def test_empty_comment_parsed_as_comment_record_with_empty_text() -> None:
+    records = parse_dsl("#")
+    assert len(records) == 1
+    assert isinstance(records[0], CommentRecord)
+    assert records[0].text == ""
+
+
+def test_comment_does_not_get_mistaken_for_action_or_keyword() -> None:
+    dsl = "# WAIT is not a real wait here\nWAIT 1"
+    records = parse_dsl(dsl)
+    assert len(records) == 2
+    assert isinstance(records[0], CommentRecord)
+    assert records[0].text == "WAIT is not a real wait here"
+    assert isinstance(records[1], KeywordRecord)
+    assert records[1].name == "WAIT"

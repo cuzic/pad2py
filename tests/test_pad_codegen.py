@@ -356,3 +356,13 @@ def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None
     code = generate_python(tree)
     assert "# TODO: map PAD action: UIAutomation.MoveWindow.MoveByTitleClass" in code
     assert "Desktop(" not in code
+
+
+def test_generate_python_renders_comment_record_as_python_comment() -> None:
+    # CommentRecord追加後、codegenがクラッシュせず正しくPythonコメントへ変換すること
+    # (design/robin_language_source_findings.mdで構文を確認、未対応のままだと
+    # _generate_node()がTypeErrorを送出していたはずの回帰確認)。
+    tree = build_block_tree(parse_dsl("# hello comment"))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# hello comment" in code
