@@ -2,10 +2,23 @@
 
 design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_parser.py`が構造化
 できている範囲(SET/IF+ELSE IF+ELSE/LOOP系3種/EXIT・NEXT LOOP)だけを対象にした
-プロトタイプ。UI automation操作(クリック・キー入力等)のpywinauto/pyautogui変換は
-別途「アクションID→API呼び出し」の対応表が必要で、本モジュールはまだそこまで踏み込んで
-いない——未対応のアクションは実在しないAPIをでっち上げるのではなく、`# TODO`コメントを
+プロトタイプ。未対応のアクションは実在しないAPIをでっち上げるのではなく、`# TODO`コメントを
 出力するだけに留める。
+
+**pywinauto / pyautoguiの使い分け基準**(`research_notes/Power Automate Desktop Python変換調査/02_action_mapping.md`
+で整理した方針に準拠): PADのアクションカテゴリ単位で決まる。
+- 「Mouse and keyboard」カテゴリ(座標・物理入力ベース: Send keys/Move mouse/
+  Send mouse click/Press release key等)→ **pyautogui**。マウス/キーボードを実際に
+  操作する「物理モード」に相当し、ウィンドウオブジェクトを介さず画面座標・フォーカス
+  ベースで完結するため。
+- 「UI automation」カテゴリの「Windows」サブグループ(Set window state/Move window/
+  Resize window/Close window等、ウィンドウ単位の検索・状態操作)→ **pywinauto**
+  (`Desktop`/`WindowSpecification` API)。`Find window mode`(By title/class等)で
+  ウィンドウを特定し、取得したオブジェクトに対してメソッド呼び出しを行うという構造が
+  pywinautoの`Desktop().window(...)`の設計とそのまま対応するため。
+- 同カテゴリの要素レベル操作(Click UI element in window等、UIA要素セレクタが必要な
+  もの)もpywinauto対応になる見込みだが、セレクタ自体のDSL表現(`By window UI element`
+  モード)がまだ未解明のため本モジュールは未対応。
 
 対応範囲:
 - `SetVariableRecord` → 代入文
