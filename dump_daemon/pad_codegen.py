@@ -26,8 +26,14 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   いずれも行き止まりだった。**これを本プロジェクトのv1スコープの意図的な線引きとして確定する**:
   UI要素セレクタが必要なアクションはPythonへ変換せず、`UiElementRef`で参照されている表示名を
   含む`# TODO`コメントとして明示的に出力する(でっち上げた架空のセレクタ文字列を埋め込むことは
-  絶対にしない)。ユーザーはそのTODOコメントを見て、該当するUI要素のセレクタを手動で
-  (pywinautoの`best_match`/`class_name`等で)補う前提。
+  絶対にしない)。design/dsl_format_findings.md 知見56(実機検証済み)——`generate_python()`に
+  `parse_control_repository()`の結果を`repository`引数として渡すと、`Ignore: False`の
+  `Attributes`(`Class`/`Name`)から組み立てた`Desktop(backend="uia").window(...)
+  .child_window(...)`形式のセレクタ式を、実際に実機で対象要素を一意に特定できることを
+  確認した上でTODOコメントへの**提案**として追記する(`_build_pywinauto_selector_expr()`)。
+  生成される実行コード自体は変えない——リポジトリに情報が無い場合は何も付け足さない。
+  ユーザーはそのTODOコメント(と付記された提案)を見て、該当するUI要素のセレクタを手動で
+  補う前提。
 
 対応範囲:
 - `SetVariableRecord` → 代入文
@@ -102,6 +108,7 @@ from .pad_dsl_parser import (
     BlockNode,
     BlockRecord,
     CaseDefaultRecord,
+    ControlRepositoryEntry,
     CommentRecord,
     ConditionalNode,
     ElseIfActionRecord,
@@ -219,9 +226,25 @@ def render_condition(operand1: object, operator: str, operand2: object) -> str:
     return f"{render_value(operand1)} {py_operator} {render_value(operand2)}"
 
 
-def generate_python(nodes: list[Node]) -> str:
-    """ブロック木からスタンドアロンのPythonソースを生成する(末尾改行付き)。"""
-    body = _generate_block_body(nodes, indent=0)
+def generate_python(
+    nodes: list[Node],
+    repository: dict[str, dict[str, ControlRepositoryEntry]] | None = None,
+) -> str:
+    """ブロック木からスタンドアロンのPythonソースを生成する(末尾改行付き)。
+
+    `repository`は`parse_control_repository()`の戻り値(知見44)。渡された場合、
+    `# TODO`コメント中のUI要素ヒントに、実機検証済み(知見56)のpywinautoセレクタ式の
+    提案を付記する——あくまでコメント内の提案であり、実行されるコードそのものを
+    変えることはしない(でっち上げたセレクタで動くコードを生成することは無い)。
+    省略時(`None`)は従来通りの挙動(ヒント無し)のまま完全に後方互換。
+    """
+    global _active_repository
+    previous_repository = _active_repository
+    _active_repository = repository or {}
+    try:
+        body = _generate_block_body(nodes, indent=0)
+    finally:
+        _active_repository = previous_repository
     imports = []
     if any("time.sleep(" in line for line in body):
         imports.append("import time")
@@ -232,6 +255,14 @@ def generate_python(nodes: list[Node]) -> str:
     imports.sort()
     header = [*imports, ""] if imports else []
     return "\n".join(header + body) + "\n"
+
+
+# `generate_python()`の呼び出し期間中だけ設定される、現在のUI要素リポジトリ(知見44)。
+# 深く再帰する内部のcodegenヘルパー群(`_generate_conditional`等)全ての関数シグネチャに
+# 引数を追加するのを避けるための、意図的なモジュールレベル状態(`generate_python()`内で
+# try/finallyにより必ず元の値に復元される——再入可能な公開APIは`generate_python()`のみ、
+# かつ単一スレッド・同期実行前提のため許容)。
+_active_repository: dict[str, dict[str, ControlRepositoryEntry]] = {}
 
 
 def _generate_block_body(nodes: list[Node], indent: int) -> list[str]:
@@ -551,7 +582,56 @@ def _ui_element_hint(node: ActionRecord | WaitActionRecord) -> str:
     if not paths:
         return ""
     joined = ", ".join(" > ".join(repr(name) for name in path) for path in paths)
-    return f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43/46 — fill in manually)"
+    hints = [h for p in paths if (h := _build_pywinauto_selector_expr(p)) is not None]
+    suggestion = f"; verified pywinauto selector: {' / '.join(hints)}" if hints else ""
+    return (
+        f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43/46"
+        f" — fill in manually{suggestion})"
+    )
+
+
+_REPOSITORY_ATTR_TO_PYWINAUTO_KWARG = {
+    "Class": "class_name",
+    "Name": "title",
+}
+
+
+def _build_pywinauto_selector_expr(path: tuple[str, ...]) -> str | None:
+    """`parse_control_repository()`(知見44)のエントリから、確証のあるpywinautoセレクタ式を
+    組み立てる(知見56: `appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']`の
+    実例で、`Desktop(backend="uia").window(title="Untitled - Notepad").child_window(
+    class_name="Edit")`が実機で正しく対応する実要素を一意に特定できることを確認済み)。
+
+    `ControlRepositorySelectorElement.attributes`のうち`Ignore: False`の属性だけを使う
+    (`Ignore: True`はPAD自身の要素特定ロジックが使わない属性——知見46)。`Class`/`Name`
+    属性だけを`class_name`/`title`へ対応付ける。`Process`属性はpywinautoの`window()`/
+    `child_window()`がプロセス**名**を直接受け付けない(`process=`はPIDを要求する)ため
+    意図的に使わない。経路上のいずれかのセグメントでリポジトリに情報が無い、または
+    使える属性が1つも無い(例: 知見44の`:startbutton`のような特殊タグで`Attributes`が
+    空)場合は、でっち上げた式を返さず`None`にする。
+    """
+    repository = _active_repository.get("appmask")
+    if not repository:
+        return None
+    calls: list[str] = []
+    for i, name in enumerate(path):
+        entry = repository.get(name)
+        if entry is None or not entry.selectors or not entry.selectors[0]:
+            return None
+        element = entry.selectors[0][0]
+        kwargs: dict[str, str] = {}
+        for attr in element.attributes:
+            if attr.get("Ignore"):
+                continue
+            kwarg_name = _REPOSITORY_ATTR_TO_PYWINAUTO_KWARG.get(attr.get("Name"))
+            value = attr.get("Value")
+            if kwarg_name is not None and isinstance(value, str):
+                kwargs[kwarg_name] = value
+        if not kwargs:
+            return None
+        kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+        calls.append(f'Desktop(backend="uia").window({kwargs_str})' if i == 0 else f".child_window({kwargs_str})")
+    return "".join(calls)
 
 
 def _window_lookup_expr(node: ActionRecord) -> str | None:
