@@ -388,3 +388,19 @@ MouseAndKeyboard.PressReleaseKey.ReleaseKey Control: True Alt: False Shift: Fals
 ここで**デフォルト値省略の謎(知見19-21)がさらに深まった**: 今回は触っていないAlt/Shift/Win(すべてBool、すべてFalseのまま)が**全部出力された**。知見21の「Send mouse click」ではBool型トグル(`Move mouse`)が省略されたのに対し、今回は同じBool型でも省略されない。3つのアクション(Send keys/Send mouse click/Press release key)で、Bool型フィールドの省略有無がバラバラという結果になり、**「型」だけでも「触ったかどうか」だけでも説明がつかない**ことが確定的になった。今のところ「アクションの実装者がどう設計したか次第」としか言いようがなく、汎用的な予測は諦めて個別確認を続けるしかない。
 
 `pad_codegen.py`に`MouseAndKeyboard.PressReleaseKey.PressKey`/`...ReleaseKey` → `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`の変換を追加した。知見19-21と同じ方針で、Control/Alt/Shift/Winのうち**ちょうど1つだけ**`True`の組み合わせ(今回実機確認した唯一のケース)のときだけ変換し、0個または複数同時`True`(未検証)は`# TODO`のままにする。
+
+## 24. 5つ目のUI automationアクション(`Set window state`)——セレクタ不要な「ウィンドウタイトル指定」モードを発見
+
+「Set window state」(`UI automation > Windows`カテゴリ)を実機で追加した。ダイアログには「Find window mode」という3択のドロップダウンがあった: 「By window UI element」(既定。本格的なセレクタピッカーが必要——research_notesで触れていた「セレクタ形式」の本丸だが今回は踏み込まなかった)・「By window instance/handle」(ウィンドウハンドルの変数参照)・**「By title and/or class」**(ウィンドウタイトル文字列、クラス名文字列、または「Select window」ボタンでの対話的選択)。
+
+「By title and/or class」モードはセレクタピッカーを使わずテキストでウィンドウを指定できるため、今回はこれを選んで検証した。Window titleに"Power Automate"と入力すると、PADは自動補完で実際に開いているウィンドウの完全なタイトル("Power Automate | g1g2_test")に置き換えた。Window classは空のまま、Window stateを既定の"Restored"から"Maximized"に変更して保存・再コピーしたところ:
+
+```
+UIAutomation.SetWindowState.SetStateByTitleClass Title: $'''Power Automate | g1g2_test''' Class: $'''''' State: UIAutomation.WindowState.Maximized
+```
+
+`Class: $''''''`(中身が空の文字列リテラル、`$'''` 直後に `'''` が続く)という初めてのケースも確認できた——既存の`_STRING_RE`(`\$'''(.*?)'''`、非貪欲マッチ)は空文字列も問題なく処理できることを確認済み(コード変更不要)。
+
+`pad_codegen.py`に`UIAutomation.SetWindowState.SetStateByTitleClass` → `Desktop(backend='uia').window(title=...).maximize()/minimize()/restore()`の変換を追加した(`pyautogui`と同様、使用時のみ`from pywinauto import Desktop`をファイル先頭に出力するよう`generate_python()`を拡張)。知見19-23と同じ方針で、`Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証——`Desktop().window(title=..., class_name=...)`になるのか等)は`# TODO`のままにする。
+
+これは**初めて「アクション名のテキスト指定でウィンドウを特定する」実機データが取れた**という点で重要——本格的なUIA要素セレクタ(`By window UI element`モードで使われる、ボタンやテキストボックス等の個別要素を特定する仕組み)の文法はまだ未解明だが、ウィンドウ単位の操作であれば、セレクタピッカーを介さずタイトル文字列ベースで十分実用的に変換できる可能性が見えた。

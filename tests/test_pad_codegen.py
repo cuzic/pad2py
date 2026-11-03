@@ -284,3 +284,34 @@ def test_generate_python_leaves_press_key_as_todo_when_no_modifier_is_true() -> 
     code = generate_python(tree)
     assert "# TODO: map PAD action: MouseAndKeyboard.PressReleaseKey.PressKey" in code
     assert "pyautogui.keyDown" not in code
+
+
+# 実機で「Set window state」(Find window mode=By title and/or class, Window title=
+# "Power Automate | g1g2_test", Window class=(空のまま), Window state=Maximized)を
+# 追加して再キャプチャした生データ(知見24)。
+SET_WINDOW_STATE_DSL = (
+    "UIAutomation.SetWindowState.SetStateByTitleClass "
+    "Title: $'''Power Automate | g1g2_test''' Class: $'''''' "
+    "State: UIAutomation.WindowState.Maximized"
+)
+
+
+def test_generate_python_maps_set_window_state_to_pywinauto() -> None:
+    tree = build_block_tree(parse_dsl(SET_WINDOW_STATE_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from pywinauto import Desktop" in code
+    assert "Desktop(backend='uia').window(title='Power Automate | g1g2_test').maximize()" in code
+
+
+def test_generate_python_leaves_set_window_state_as_todo_when_class_is_used() -> None:
+    # Window classを併用するケース(未検証)は推測でマッピングしないこと。
+    dsl = (
+        "UIAutomation.SetWindowState.SetStateByTitleClass "
+        "Title: $'''Notepad''' Class: $'''Notepad''' "
+        "State: UIAutomation.WindowState.Maximized"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: UIAutomation.SetWindowState.SetStateByTitleClass" in code
+    assert "Desktop(" not in code

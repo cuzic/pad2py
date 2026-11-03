@@ -33,6 +33,11 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `ActionRecord`(`MouseAndKeyboard.PressReleaseKey.PressKey`/`...ReleaseKey`) →
   `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`(知見23。Control/Alt/Shift/Winのうち
   ちょうど1つだけ`True`の場合のみ変換し、0個または複数同時`True`(未検証)は`# TODO`のまま)
+- `ActionRecord`(`UIAutomation.SetWindowState.SetStateByTitleClass`) →
+  `Desktop(backend='uia').window(title=...).maximize()/minimize()/restore()`(知見24。
+  `Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証)は
+  `# TODO`のまま。`import pyautogui`と同様、使用時のみ`from pywinauto import Desktop`を
+  先頭に出力する)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
   `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
@@ -90,6 +95,13 @@ _MODIFIER_TO_PYAUTOGUI_KEY = {
     "Alt": "alt",
     "Shift": "shift",
     "Win": "win",
+}
+
+# UIAutomation.WindowState.* の列挙値 → pywinautoのWindowSpecificationメソッド名。
+_WINDOW_STATE_TO_PYWINAUTO_METHOD = {
+    "UIAutomation.WindowState.Maximized": "maximize",
+    "UIAutomation.WindowState.Minimized": "minimize",
+    "UIAutomation.WindowState.Restored": "restore",
 }
 
 # PAD変数名として実機で確認した形(常に有効なPython識別子)とみなす。
@@ -160,6 +172,8 @@ def generate_python(nodes: list[Node]) -> str:
         imports.append("import time")
     if any("pyautogui." in line for line in body):
         imports.append("import pyautogui")
+    if any("Desktop(" in line for line in body):
+        imports.append("from pywinauto import Desktop")
     imports.sort()
     header = [*imports, ""] if imports else []
     return "\n".join(header + body) + "\n"
@@ -299,4 +313,18 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             pyautogui_key = _MODIFIER_TO_PYAUTOGUI_KEY[active[0]]
             func = "keyDown" if node.action_id.endswith("PressKey") else "keyUp"
             return [f"{prefix}pyautogui.{func}({pyautogui_key!r})"]
+    if node.action_id == "UIAutomation.SetWindowState.SetStateByTitleClass":
+        title = node.params.get("Title")
+        window_class = node.params.get("Class")
+        state = node.params.get("State")
+        # "Window class"を併用した組み合わせは未検証のため、Titleのみ(Classが空文字列)の
+        # ときだけ変換する(design/dsl_format_findings.md 知見24)。
+        if (
+            isinstance(title, str)
+            and window_class == ""
+            and isinstance(state, EnumRef)
+            and state.value in _WINDOW_STATE_TO_PYWINAUTO_METHOD
+        ):
+            method = _WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
+            return [f"{prefix}Desktop(backend='uia').window(title={render_value(title)}).{method}()"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]
