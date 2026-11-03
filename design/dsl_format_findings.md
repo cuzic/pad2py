@@ -513,6 +513,8 @@ END
 
 ## 実機での「フローの実行」による検証が未解決のブロッカーに突き当たった記録(LOOP range仮定の検証は持ち越し)
 
+> **追記**: このLOOP range仮定の検証は、知見47でさらに一度見送られた後、知見51(「LOOPの範囲は両端を含まない」)で最終的に実機確認・解決済み。本節は歴史的経緯の記録として残す。
+
 知見33のSWITCH検証に続けて、`pad_codegen.py`の`range(start, (end) + 1, step)`という未検証の前提(LOOPの`Start from`〜`End to`が両端を含むか)を、実際にフローを実行して確認しようとした。pywinautoでActionsパネルを操作し、新規サブフロー「LoopTest」に「カウンタファイルをリセットするPythonスクリプト」→「LOOP 1 TO 3 STEP 1」→「カウンタファイルに1文字追記するPythonスクリプト」→`END`を構築し、実行後にファイルの文字数でループが何回実行されたかを確認する計画だった。
 
 構築自体は成功したが、**実行(Run/Run from here)がブロックされた**: 「Run from here with default values」メニュー項目が無効化されており、調べたところ`Main`サブフロー側に以前からある無関係な検証エラー(`LOOP FOREACH CurrentItem IN TestVar`——`TestVar`が文字列でリスト/データテーブルではないため)が原因で、**PADはパッケージ全体を検証してからでないと、どのサブフローも実行させない**ことが分かった(重要な新発見: サブフロー単位の独立実行はできない)。この`For each`アクションを一時的に無効化(Disable action)したところ、対応する`End`が「孤立したEND」という別の検証エラーを出したため、安易に無効化するだけでは解決しないと判断し、`Ctrl+Z`で元に戻して`Main`を無傷のまま復元した。
@@ -806,6 +808,8 @@ Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\'']
 
 **今回は見送った判断**: `Main`の壊れた`For each`を修正し、`LoopTest`を呼び出す「Run subflow」アクションを新たに追加して実行・検証し、終わったら元に戻す、という手順も検討したが、確立済みの`Main`フロー(過去の複数の知見のフィクスチャの出どころ)への変更を伴う上に、「直して→呼び出しを足して→実行して→戻す」という複数ステップの往復が必要になり、このティックの残り時間で安全に完結させる確証が持てなかったため、**今回は実施を見送った**。LOOPの範囲両端含む仮定の実機検証は、専用のティックを設けて取り組むべき独立したタスクとして持ち越す——候補としては、(a) `Main`の修正+`Run subflow`追加+実行+復元を1ティックで計画的に行う、(b) 代わりに全く新しい使い捨てのサブフロー(例: `LoopVerify`)を作り、空の`Main`相当として単独で検証してから削除する、のいずれか。
 
+> **追記**: 知見51で解決済み。実際には(a)よりさらに軽い第三の方法——`Main`自身が元から持つ空の`Loop LoopIndex FROM 1 TO 3 STEP 1`(31行目)にテスト用アクションを直接挿入する——で検証に成功した。
+
 ## 48. `ON ERROR`/`ON BLOCK ERROR`最後の未検証項目「Go to label」を実機確認——`LABEL`/`GOTO`という素朴な2トークンキーワード、`GOTO`はPythonに対応物が無いため意図的に未変換
 
 知見41で「Throw error」を確認した際に最後まで持ち越していた「Go to label」オプション(design/robin_language_source_findings.mdが最初に発見した時点から「別のPADの『Label』/『Go to label』アクションと連動する、別の構文が必要になると推測される」と予想されていた項目)を実機確認した。
@@ -871,3 +875,29 @@ WAIT (UIAutomation.WaitForWindow.ToClose Window: appmask['Window \'Untitled - No
 ```
 
 `action_id`は予測通り`UIAutomation.WaitForWindow.ToClose`、`params`には`FocusWindow`が存在せず`Window`だけ——既存の汎用パラメータ解析ループ(`ActionRecord`と共有)がそのまま正しく対応できており、追加のコード変更は不要だった。`Become focused`/`Lose focus`の2つは未検証のまま持ち越し(いずれも`ToBecomeFocusedByTitleClass`相当・`ToLoseFocus`という命名パターンになると予測される)。調査後はLoopTestを元の`Open`設定に戻した。
+
+## 51. 【知見47の続き・ついに解決】LOOPの範囲は両端を含まない(`end`を含まない)——`pad_codegen.py`の当初の前提(`range(start, end+1, step)`)は誤りだったと実機確認
+
+知見47で「専用のティックが必要」として持ち越していた、`pad_codegen.py`冒頭から一貫して未検証の前提としていた「PADの`LOOP X FROM 1 TO 3 STEP 1`は両端を含むと仮定し`range(start, end+1, step)`としている」という前提を、知見47で見送った方針(a)(`Main`の修正+`Run subflow`追加ではなく、`Main`自身が元から持つ空の`Loop LoopIndex FROM 1 TO 3 STEP 1`を直接使う、より軽い代替案)で実機検証した。
+
+**手順**:
+1. `Main`サブフロー(35アクション)の唯一のブロッキングエラー(知見47で確認済みの、29行目`For each CurrentItem IN TestVar`——`TestVar`が文字列でリスト/データテーブルではないため)を、右クリック「Disable action」で無効化。対応する`End`(30行目)も同様に無効化しないと「No statement found to match the end statement」という別の検証エラーが出ることが分かり、両方を無効化してようやく`Main`の検証エラーがゼロになった(知見47で発見した「パッケージ全体の検証を通過する必要がある」という制約への対処)。
+2. `Main`が元から持つ空の`Loop LoopIndex FROM 1 TO 3 STEP 1`(31行目、知見47で「本体が空」と記録していたもの)の内部に、ファイルへ1文字追記する`Run Python script`アクションをドラッグ&ドロップで追加(Actionsパネルからの複数ステップの細かいマウス移動が必要だった。コンテナのヘッダー行にドロップすると兄弟要素として挿入されてしまうため、ヘッダー行と`End`行の間の狭い隙間に2回目のドラッグを行い、ループ内部への挿入に成功した)。
+3. カウンタファイル(`C:\Users\tomoya_kaw\pad2py\loop_range_check.txt`)が存在しない状態から、ツールバーのRun(▶)で`Main`を実行。実行中はステータスバーに「Status: Running HH:MM:SS」、「Variables」パネルに`LoopIndex`のライブな値が表示された。フロー序盤の`Display message`アクションが実際にWindowsのメッセージボックスを表示するため、OKボタンで手動で閉じて実行を継続させた。
+4. 実行完了後、WinRM経由で`[System.IO.File]::ReadAllBytes('C:\Users\tomoya_kaw\pad2py\loop_range_check.txt')`を実行し、ファイルの生バイト列を直接確認した。結果は`120, 120`——ASCIIで`"xx"`、つまり**ちょうど2回**の書き込みだった。
+
+**結論**: 「1 TO 3 STEP 1」という名目のループが実際に実行したのは`LoopIndex=1, 2`の2回のみで、`LoopIndex=3`は実行されなかった。これは**PADのLOOPが`end`を含まない**(Pythonの`range(start, end, step)`と全く同じセマンティクス)ことを直接示す、紛れのない実機証拠である。`pad_codegen.py`が当初から掲げていた「両端を含む」(`range(start, end+1, step)`)という前提は**誤り**だったと確定した。
+
+**修正内容**: `pad_codegen.py`の`_generate_loop_block()`における`LoopRecord`分岐のコード生成を
+```python
+header_line = f"{prefix}for {header.loop_var} in range({start}, ({end}) + 1, {step}):"
+```
+から
+```python
+header_line = f"{prefix}for {header.loop_var} in range({start}, {end}, {step}):"
+```
+に修正し、モジュールdocstringの該当箇所も「未検証の前提」から本知見を指す「実機検証済み」の記述に更新した。既存テスト`tests/test_pad_codegen.py::test_generate_python_renders_loop_family`のアサーション(`"for LoopIndex in range(1, (3) + 1, 1):"`)も新しい文字列に更新した。
+
+**検証後の後始末**: `Main`は`For each`/`End`を再度「Enable action」で有効化し、元の単一の検証エラー(知見47記載のもの)のみに戻した。追加した`Run Python script`アクションは削除。カウンタファイル`loop_range_check.txt`はWinRM経由で削除(`Test-Path`で`False`を確認)。アクティブなデザイナータブは「LoopTest」に戻した——`Main`自体は本検証以前の状態に完全復元されている。
+
+**教訓**: 知見47で一度は「安全に完結させる確証が持てない」として見送った複数ステップの往復(無効化→挿入→実行→削除→有効化→復元)も、各ステップを慎重に確認しながら進めれば1ティック内で完結でき、かつ実機の生バイト値という最も紛れのない形の証拠が得られた。これまで`pad_codegen.py`に長期間残っていた「未検証の前提」コメントの中でも、プロジェクトのコード生成結果に直接影響する(オフバイワンのバグを生成し続けていた)最も重要な項目が、ついに解消された。

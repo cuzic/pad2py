@@ -591,6 +591,11 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   `FocusWindow`パラメータ自体が存在しない。`ToBecomeFocusedByTitleClass`相当・
   `ToLoseFocus`の2バリアント、`FocusWindow: True`表記、「Wait for service」の構文は
   未検証のまま
+- ~~`LOOP X FROM start TO end STEP step`のrangeが両端を含むかどうかの実機検証~~ → 完了
+  (design/dsl_format_findings.md 知見51): 実機でLoopIndexの実行回数をファイルへの書き込み
+  バイト数として確認し、「1 TO 3」が2回(X=1,2)しか実行されないと判明——`end`を含まない、
+  Pythonの`range(start, end, step)`と同じセマンティクスだった。当初`pad_codegen.py`が
+  仮定していた「両端を含む」(`range(start, end+1, step)`)は誤りで、修正済み
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
   pywinauto APIの特定(架空のAPI名を避けるため保留中)
 - 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
