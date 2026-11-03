@@ -829,3 +829,11 @@ END
 **codegen側の判断**: `LABEL <名前>`自体は単なるジャンプ先マーカーなので、位置がわかるよう`# label: <名前>`というコメントとして残す(実行時の意味は持たない、純粋な注釈)。一方`GOTO <名前>`は、Pythonに`goto`文が存在しないため、**意図的に変換しない**——例外(`raise`/`try`)やネストした`while`ループへの書き換えで擬似的に`goto`を再現することもできなくはないが、元のPAD側の制御フローの意図(エラー発生後にどこまで巻き戻るか、ループを再開するのかフロー全体を再試行するのか等)を安全に汲み取れる保証が無いため、他の未対応要素と同じく`# TODO: unmapped keyword: GOTO <名前>`に倒す(`_generate_keyword()`の既存の汎用フォールバックがそのまま機能し、追加のコード変更は不要だった)。
 
 これで design/robin_language_source_findings.md の「今後の調査候補」に残っていた`ON ERROR`/`ON BLOCK ERROR`系の未検証項目(名前付きケース・複数アーム・`REPEAT ACTION`・`NEXT ACTION`・`THROW ERROR`・`Go to label`)は全て実機確認が完了した。
+
+## 49. `IN`/`NOT IN`演算子は標準の「If」アクションのOperatorドロップダウンには存在しないと判明(ネガティブな結果)
+
+design/robin_language_source_findings.mdでソースコード(`ComparisonOperatorExtensions`)から構文(`"NOT IN"`という内部に空白を1つ持つ1つの文字列)を確認し、パーサーにも`_merge_not_in()`で対応済みだったが、「実機でどのUI経由で使えるかはまだ未確認」として持ち越していた項目を確認した。
+
+LoopTestサブフローに実機で「If」アクションを新規追加し、Operatorドロップダウンの全選択肢を確認した(スクロールして最後まで展開): `Equal to (=)` / `Not equal to (<>)` / `Greater than (>)` / `Greater than or equal to (>=)` / `Less than (<)` / `Less than or equal to (<=)` / `Contains` / `Does not contain` / `Is empty` / `Is not empty` / `Starts with` / `Does not start with` / `Ends with` / `Does not end with` / `Is blank` / `Is not blank`。**`Is in`/`Is not in`に相当する選択肢は無かった**。
+
+**結論**: 標準の「If」/「Else if」アクションのUIからは`IN`/`NOT IN`演算子に到達できないことが実機で確認できた。ソースコード上は`ComparisonOperator`列挙型の一部として存在する(ため`_OPERATOR_MAP`には実装済みのまま残す——実際に出現した際に誤変換しないための正しい対応表という位置づけ)が、UI経由で到達可能な別の入口(List/Datatable関連のアクションカテゴリ等)が別途存在するのか、あるいはExpressions経由でのみ到達可能(UI上の専用アクションが無く、将来のバージョンでのみ追加される予定、等)なのかは未確認のまま。本調査では確認したIf アクションのダイアログは変更を保存せず(Cancel)、フローの状態は元のまま(9 Actions)に戻した。
