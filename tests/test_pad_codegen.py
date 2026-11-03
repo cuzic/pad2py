@@ -614,6 +614,30 @@ def test_generate_python_from_real_wait_for_window_whole_subflow_capture_compile
     assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" in code
 
 
+def test_generate_python_renders_wait_action_without_timeout_as_none() -> None:
+    # design/dsl_format_findings.md 知見50の追記: 「Fail with timeout error」OFFで
+    # `FOR <秒数>`句自体が無い場合、`timeout_seconds`が`None`になり、`render_value(None)`は
+    # 未対応の値型で例外になるため、TODOコメントでは"timeout: none"と表示するよう別扱いする。
+    dsl = (
+        "WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] FocusWindow: False)"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen (timeout: none)" in code
+
+
+def test_generate_python_from_real_wait_for_window_no_timeout_whole_subflow_capture_compiles() -> None:
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_no_timeout.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "(timeout: none)" in code
+
+
 def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
         encoding="utf-8"
