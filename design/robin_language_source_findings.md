@@ -515,8 +515,49 @@ InstantCheckで確定)。ただし`Contains`自体も実機確認は1例のみ�
 まだ変換対象にしていない(「window instance」というPAD独自の概念をPython側でどう表現するか
 という設計判断が必要)ため、こちらも実装を見送った。
 
+## 【重要な訂正】`ON ERROR`ブロックを実機で検証——ソースから類推したインデント規則は誤りだった
+
+PAD実機のActionダイアログには、どのアクションにも共通して「On error」ボタン(盾アイコン)が
+あり、クリックすると「Error handling」セクションが開く——「Failed to run Python script」
+「Directory not found」のような**アクション固有の名前付きエラーケース**と、常に最後に
+表示される「All errors (default)」(catch-all)が並び、それぞれに`+`ボタンで本体アクション
+(`Set variable`/`Run subflow`等)を追加でき、「Continue flow run」/「Throw error」の
+トグルがある、という構造を発見した。
+
+「All errors (default)」に`Set variable`(`NewVar`に`'recovered'`を代入)を追加し、
+「Continue flow run」を選んで保存・コピーしたところ:
+
+```
+Scripting.RunPythonScript.RunPythonScript PythonCode: $'''...''' ScriptOutput=> PythonScriptOutput3
+ON ERROR
+SET NewVar TO $'''recovered'''
+END
+```
+
+**ここで前セクション(`ExceptionStatementBase`のソース解析)での予測が誤りだったと判明した**。
+ソースから`SetLevel()`の実装(`Cases`/`CaseDefault`の`Level`を親+1に設定)を根拠に、
+「ケースの本体は`ON ERROR`ヘッダーより1段深いindentになる」と予測していたが、実機では
+**`SET NewVar TO ...`(本体)は`ON ERROR`・`END`と全く同じindent**だった(保護対象の
+アクション自身とも同じindent)。つまり`ON ERROR`ブロックは、他のブロック構文(`IF`/`LOOP`/
+`SWITCH`、いずれも本体がヘッダーより1段深い)とは異なり、**ヘッダーと本体が同じ段のまま**
+という、今まで見た中で唯一の例外的な構造だった。
+
+(今回検証したのは「All errors (default)」という名前無しのcatch-allケース1つだけで、
+`Case`/`Repeat`を含む複数ケース構成や`REPEAT ACTION`/`NEXT ACTION`の挙動はまだ未検証。
+名前付きケース(例: 「Directory not found」)やRepeatが絡むと、実際には別のインデント規則に
+なる可能性もゼロではない)
+
+**今回は実装を見送った**(SWITCH同様、「直前のアクションに紐付けて`try`/`except`として
+変換する」という意味論を`build_block_tree()`にどう組み込むかの設計(新しいNode種別が
+「直前の兄弟」をラップする必要がある、今までに無いパターン)にはもう少し検討が必要なため)。
+次のステップとして、確定した構文(ヘッダーと本体が同じindent)に基づいて
+`OnErrorRecord`/`OnErrorNode`を実装する。
+
 ## 今後の調査候補(未着手)
 
+- ~~`ON ERROR`/`ON BLOCK ERROR`ブロックの実機検証~~ → 構文(catch-allケースのみ)は完了・
+  ソースの類推が誤りだったと判明・修正済み(本セクション参照)。パーサー/codegenへの実装は
+  まだ未着手——「直前のアクションに紐付ける」という新パターンの設計が必要
 - `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
   リトライの挙動)とDSL表現の実機検証
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
@@ -532,8 +573,8 @@ InstantCheckで確定)。ただし`Contains`自体も実機確認は1例のみ�
   `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)
 - ~~`SWITCH`/`CASE`/`DEFAULT`の実機検証~~ → 完了(design/dsl_format_findings.md 知見33。
   類推していたインデント規則は誤りだったと判明し、修正済み)
-- `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
-  および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
+- 名前付き`ON ERROR <Case>`ケース・複数ケース構成・`REPEAT ACTION`/`NEXT ACTION`の
+  実機検証(catch-allケース1つだけの構造は確認済み——本セクション参照)
 - `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
   本セクション参照)を表現できるよう、`IfRecord`等のフラットな構造を再帰的な式木に
   再設計すること。優先順位・結合性も実機/文法でさらに確認が必要
