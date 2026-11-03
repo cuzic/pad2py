@@ -678,8 +678,12 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   添字アクセス構文に変換できていた。~~Slice構文~~ → 完了(design/dsl_format_findings.md
   知見59): `%InnerVar[0:2]%` → `SET NewVar3 TO InnerVar[0:2]`、Pythonのスライス構文
   `[start:end]`と字面上完全に一致することを実機確認した。これで`VariableTrailer`の
-  3形態(`.Name`/`[Index]`/Slice)全てが実機確認済みになった。0始まりか1始まりか・
-  終端を含むかどうかの意味論(実機実行による値の読み取りが必要)は未確認のまま持ち越し
+  3形態(`.Name`/`[Index]`/Slice)全てが実機確認済みになった。~~0始まりか1始まりか・
+  終端を含むかどうかの意味論~~ → 完了(design/dsl_format_findings.md 知見60): 知見51の
+  LOOP range検証と同じ「実機で実行してファイル経由で値を読み取る」手法で決着させた。
+  `"ABCDEFGHIJ"[0:3]` → `"ABC"`、`[0]` → `"A"`、`[3]` → `"D"`——いずれもPythonの
+  添字/スライス評価結果と完全に一致し、**0始まり・終端排除というPythonと寸分違わぬ
+  意味論**であることが確定した
 - `IExceptionStatement`の具象実装が本当に`ExceptionCaseStatement`と同じものかどうか、
   そして`StatementWithArguments.ToStringIgnoreMetadata()`末尾への連結がスペース無しに
   見える件(表記ミスか、実際には別の区切り規則があるのか)の確認
