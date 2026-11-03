@@ -221,6 +221,66 @@ indentを生成する恐れがあるため、`build_block_tree()`・`pad_codegen
 見送った(`RawRecord`として素通しされる——未対応のアクションと同様、サイレントに壊れるのではなく
 明示的に「未対応」として残る)。
 
+## アクション行の正確な直列化規則を`StatementWithArguments`で確認(既存パーサーとの整合性チェック)
+
+`StatementWithArguments.ToStringIgnoreMetadata()`を読み、既存の`ActionRecord`パーサーが
+これまで実機データから帰納していた「`ActionId Param: Value ... Output=> Var`」という形式が、
+ソースコード上でも正確に一致することを確認した:
+
+```csharp
+stringBuilder.Append(actionPath);
+if (Inputs.Any())  stringBuilder.Append(" " + string.Join(" ", Inputs.Select(i => i.ToString(...))));
+if (Outputs.Any()) stringBuilder.Append(" " + string.Join(" ", Outputs.Select(o => o.ToString(...))));
+if (DynamicInputs.Any())  stringBuilder.Append(" " + string.Join(" ", DynamicInputs.Select(...)));
+if (DynamicOutputs.Any()) stringBuilder.Append(" " + string.Join(" ", DynamicOutputs.Select(...)));
+if (!Inputs.Any() && !Outputs.Any()) stringBuilder.Append(" _");
+```
+
+`InputArgument.ToString()` → `"Name" + ": " + Expression`(コロン+半角スペース)、
+`OutputArgument.ToString()` → `"Name" + "=> " + Variable`(`=>`+半角スペース)——
+いずれも既存パーサーが仮定している区切り文字と完全に一致した。
+
+**新発見1**: Inputs/Outputsが両方とも0個のアクション(パラメータも出力も無い、例えば
+「次のアクションへ進む」系の単純なトリガー的アクション)は、末尾に` _`(半角スペース+
+アンダースコア)という**プレースホルダトークン**が付く。既存の`_parse_line()`はこの
+トークンを「`:`も`=>`も付かない未知のトークン」として黙ってスキップするだけなので、
+実害は無い(データロスは起きない)が、意図を把握しておく価値はある。なお、この判定は
+`DynamicInputs`/`DynamicOutputs`を見ていないため、静的な`Inputs`/`Outputs`が0個でも
+動的な引数を持つアクションでは、動的引数の**後に**この`_`が付く(未検証の組み合わせ)。
+
+**新発見2(重要・既存パーサーの潜在的曖昧性)**: `Variable.ToString()`(`Contexts.Evaluatable.Variable`)
+を読み、変数参照が単純な裸識別子だけではないことが判明した:
+
+```csharp
+return (HasGlobalPrefix ? "global." : "") + Name.Text
+     + string.Join("", Trailers.Select(t => t.ToString(...)));
+```
+
+さらに`VariableTrailer.ToString()`は3種類の形を持つ:
+- `Name`トレーラ: `"." + Name`(+ 引数があれば` (arg1 arg2 ...)`——**スペース区切り**で
+  `Contains(a, b, c)`のようなカンマ区切りとは異なる)
+- `Index`トレーラ: `"[" + Index + "]"`
+- `Slice`トレーラ: (今回は未調査)
+
+つまり`MyDataTable.Rows`や`MyList[0]`、`global.MySharedVar`のような変数参照が
+存在しうる。**`.`で連結された`Name`トレーラは、既存の`_DOTTED_RE`(`Namespace.Enum.Value`
+判定用)と字面上まったく区別できない**——`_resolve_value()`は現在、ドット区切りの
+トークンを無条件に`EnumRef`として分類しているため、実際には「トレーラ付き変数参照」
+だったトークンを誤って列挙値として分類してしまう可能性がある。これまでの実機データでは
+単純な裸変数名(`TestVar`等)しか観測しておらず、トレーラ付き変数参照の実例は未確認のため、
+現時点ではパーサーへの対応は見送る(誤った決め打ちをしないため)が、今後複雑な変数
+(配列要素・カスタムオブジェクトのプロパティ等)を扱うフローを実機確認する際は、この
+曖昧性の存在を前提に臨むこと。
+
+**未解明点(持ち越し)**: `StatementWithException.ExceptionStatement`(アクション単位の
+「エラー発生時の動作」設定、`IExceptionStatement`型)が`ToStringIgnoreMetadata()`末尾で
+区切り文字なしに直接連結されている。`ExceptionCaseStatement.ToString()`の実装
+(前セクション参照)は`base.ToString()`(通常は空文字列)に続けて`"ON ERROR "`を
+直接連結するため、これが本当に実際の`IExceptionStatement`実装なのであれば
+「アクション行の末尾に`ON ERROR`がスペース無しで連結される」という不自然な結果になる。
+`IExceptionStatement`の具象実装が`ExceptionCaseStatement`と同一かどうかを確認できておらず、
+この点は未解明として持ち越す(推測で確定情報として書かない)。
+
 ## 今後の調査候補(未着手)
 
 - `SWITCH`/`CASE`/`CASE DEFAULT`文のブロックネスト構造(indent規則)の特定——`SwitchStatement`等を
@@ -232,4 +292,10 @@ indentを生成する恐れがあるため、`build_block_tree()`・`pad_codegen
 - `/# ... #/`複数行コメント構文の実機検証(パーサーは対応済みだが実機出力例が無い)
 - `StringAtom`(非interpolated文字列)が実際にどの文脈で出力されるかの特定
 - アクションモジュールDLL群(`Modules.*.Actions.dll`)を対象にした、デフォルト値省略ロジックの追加調査
-- `StatementWithArguments`(`ActionStatement`の基底クラス)の`ToString()`実装を読み、パラメータ行の正確な区切り文字・エスケープルールをさらに裏付けること
+- ~~`StatementWithArguments`(`ActionStatement`の基底クラス)の`ToString()`実装を読み、パラメータ行の正確な区切り文字・エスケープルールをさらに裏付けること~~ → 完了(本セクション参照)
+- `VariableTrailer`(`.Name`/`[Index]`/Slice)付きの変数参照が実機でどう出力されるかの確認——
+  `.Name`トレーラは既存の`EnumRef`判定(`_DOTTED_RE`)と字面上区別できない曖昧性があるため、
+  実例が見つかったら最優先でパーサー対応すべき
+- `IExceptionStatement`の具象実装が本当に`ExceptionCaseStatement`と同じものかどうか、
+  そして`StatementWithArguments.ToStringIgnoreMetadata()`末尾への連結がスペース無しに
+  見える件(表記ミスか、実際には別の区切り規則があるのか)の確認
