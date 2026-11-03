@@ -272,22 +272,65 @@ return (HasGlobalPrefix ? "global." : "") + Name.Text
 (配列要素・カスタムオブジェクトのプロパティ等)を扱うフローを実機確認する際は、この
 曖昧性の存在を前提に臨むこと。
 
-**未解明点(持ち越し)**: `StatementWithException.ExceptionStatement`(アクション単位の
-「エラー発生時の動作」設定、`IExceptionStatement`型)が`ToStringIgnoreMetadata()`末尾で
-区切り文字なしに直接連結されている。`ExceptionCaseStatement.ToString()`の実装
-(前セクション参照)は`base.ToString()`(通常は空文字列)に続けて`"ON ERROR "`を
-直接連結するため、これが本当に実際の`IExceptionStatement`実装なのであれば
-「アクション行の末尾に`ON ERROR`がスペース無しで連結される」という不自然な結果になる。
-`IExceptionStatement`の具象実装が`ExceptionCaseStatement`と同一かどうかを確認できておらず、
-この点は未解明として持ち越す(推測で確定情報として書かない)。
+## `ON ERROR`/`ON BLOCK ERROR`ブロックの完全な構造を解明(前回の「未解明点」を解消)
+
+前回のティックで「`ExceptionStatement`がアクション行末尾にスペース無しで連結される点が
+不自然」と持ち越していた謎を、`IExceptionStatement`の**実際の具象実装**
+(`Microsoft.Flow.RPA.Desktop.Robin.Language.Contexts.Blocks.Exceptions.ExceptionStatementBase`——
+前セクションの`ExceptionCaseStatement`とは別物で、こちらが本物)を読んで解消した。
+
+`ExceptionStatementBase.ToString()`の先頭は`Environment.NewLine`から始まる(スペースではなく
+**改行**)——これで「スペース無しで連結されていた」ように見えた謎が解けた。構造は:
+
+```csharp
+// ExceptionStatementBase.ToString(): indentation = base.IndentationText (= Level * 4)
+NewLine + indentation + Repeat?.ToString()                              // 任意: リトライ設定
+NewLine + join(NewLine, Cases.Select(c => indentation + c.ToString()))  // 任意: 名前付きエラーケース群
+NewLine + indentation + CaseDefault?.ToString()                         // 任意: デフォルト(catch-all)
+NewLine + indentation + "END"                                           // 必須: 終端
+```
+
+各`Case`(`ExceptionCaseScope`、`BaseBlockWithRoot`のサブクラス)は「ルート文(ヘッダー)+
+本体」という構造で、`BaseBlockWithRoot.ToString()`が`RootStatement.ToString()`(ヘッダー行)と
+`base.ToString()`(`BaseBlock`の本体、各本体文は`Level+1`のインデントで出力)を改行で連結する
+(`SetLevel()`が`Cases`各要素のLevelを親の`Level + 1`に設定するのを確認済み)。ヘッダー行自体は
+`ExceptionCaseStatement.ToString()`(前セクション)の`"ON ERROR " + Case`、`CaseDefault`
+(`ExceptionCaseDefaultScope`、同様の構造)のヘッダーは`ExceptionCaseDefaultStatement.ToString()`の
+**`"ON ERROR"`(ケース名無しの素のキーワード、`"ON ERROR "`と違って末尾スペース無し)**。
+
+つまり実際にアクションへ付与された場合の全体像は(保護対象のアクション自身と同じインデント深さに
+`ON ERROR`系ヘッダー・`END`が並び、本体だけが1段深い):
+
+```
+ActionId Param: Value ... Output=> Var
+ON ERROR ErrorCase1
+    <このケースで実行する本体アクション群>
+ON ERROR ErrorCase2
+    <このケースで実行する本体アクション群>
+ON ERROR
+    <デフォルト(catch-all)ケースの本体アクション群>
+END
+```
+
+本体アクションの一部として使われると推測される専用キーワードも確認した:
+`RepeatActionStatement.ToString()` → `"REPEAT ACTION"`(リトライ、`Repeat`プロパティ経由で
+`Cases`より前に出力)、`NextActionStatement.ToString()` → `"NEXT ACTION"`(次のアクションへ
+進む、`EXIT LOOP`/`NEXT LOOP`と同じ2トークン形式)。これらの正確な出現位置(本体内のどこに
+置けるか)はまだ実機で確認していない。
+
+**結論**: ブロック構造自体はソースコード上完全に解明できた(推測ではなく`BaseBlockWithRoot`/
+`ExceptionStatementBase`/`SetLevel()`から直接確認)。残っている不確定要素は、このブロック
+全体が実際に**どのアクション(action_id行)に対して、DSLテキスト上どこに現れるか**
+(保護対象のアクション行の直後に続くという理解で合っているか)、および実機での出力例が
+一つも無いことだけ。
 
 ## 今後の調査候補(未着手)
 
 - `SWITCH`/`CASE`/`CASE DEFAULT`文のブロックネスト構造(indent規則)の特定——`SwitchStatement`等を
   出力する上位の印字ロジック(Robin.Language.dll内の別クラス、またはPrinter/Formatter相当のもの)
   をさらに追う必要がある。実機でのDSL出力例が無いため最優先の確認事項。
-- `ON ERROR`/`ON BLOCK ERROR`文がアクション/ブロックとどう結びつくか(前置される1行なのか、
-  それ自体がブロックを開くのか)の特定
+- `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
+  および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
 - `In`/`Not in`演算子を実機のどのUI経路で使えるかの特定、および`NOT IN`(2トークン)にパーサーが対応していないギャップの解消
 - `/# ... #/`複数行コメント構文の実機検証(パーサーは対応済みだが実機出力例が無い)
 - `StringAtom`(非interpolated文字列)が実際にどの文脈で出力されるかの特定
