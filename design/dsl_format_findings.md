@@ -976,3 +976,21 @@ IF (UIAutomation.IfWindowContains.WindowContainsElement Element: appmask['Window
 action_idは`UIAutomation.IfWindowContains.WindowContainsElement`——`UIAutomation.IfWindow.*`とは別の名前空間(`IfWindowContains`)だが、DSL構文は同じ`IF (<ActionId> ...) THEN`をそのまま再利用しており、これも**パーサー・codegenとも一切のコード変更無しで**正しく処理できた(`tests/fixtures/looptest_whole_subflow_with_if_window_contains_element.txt`で実機キャプチャをそのままテスト化)。知見52(`WAIT`側の`WaitForWindowContent`発見)と完全に対になる発見で、「action_idに依存しない汎用パーサー設計」が`WAIT`・`IF`の両方で未知の新アクションに対して自動的に安全側に倒れることを改めて実証した。
 
 **未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
+
+## 55. 【重大なパーサーバグ修正】変数のドット付きプロパティアクセス(`VariableTrailer`)が`EnumRef`に誤分類され文字列リテラルへすり替わるバグを発見・修正
+
+design/robin_language_source_findings.mdが`EnumRef`型のdocstring内に「既知の未解決の曖昧性」として明記していた懸念——PADの変数参照自体にも`.Name`のようなドット区切りの「トレーラ」(配列/カスタムオブジェクトのプロパティアクセス、例: `MyDataTable.Rows`)が存在しうるが、これは`Namespace.Enum.Value`形式のEnumRefと文字面上区別がつかない、という問題——が、実機キャプチャによってついに実例として確認された。
+
+**発端**: 知見54の調査中に見つけた`InnerVar[0]`のような添字アクセス記法を実機確認する過程で、ドット付きのプロパティアクセスも併せて検証した。「Set variable」のValue欄に`%InnerVar.SomeProperty%`という式を入力・保存・一括コピーしたところ:
+
+```
+SET NewVar3 TO InnerVar.SomeProperty
+```
+
+これは既存の全EnumRef capture(`Display.DefaultButton.Button1`等)と全く同じ`identifier.identifier`という見た目だった。パーサーの挙動を確認したところ、案の定`EnumRef('InnerVar.SomeProperty')`として誤分類され、`pad_codegen.py`の`render_value()`はEnumRefを「未対応の列挙値」として`repr(value.value)`——つまり**文字列リテラル**`'InnerVar.SomeProperty'`として出力していた。本来は変数`InnerVar`のプロパティ`SomeProperty`への参照のはずが、ただの固定文字列にすり替わってしまう、気付かれにくいが深刻な意味論破壊バグだった。
+
+**修正の根拠**: これまでに実機キャプチャした全てのEnumRef値(`Display.DefaultButton.Button1`/`Display.Buttons.OK`/`Display.Icon.None`/`MouseAndKeyboard.MouseClickType.LeftClick`/`MouseAndKeyboard.MovementStyle.Instant`/`MouseAndKeyboard.PositionRelativeTo.Screen`/`UIAutomation.ClickType.LeftClick`)、および全action_id(`MouseAndKeyboard.SendMouseClick.Click`等)を`tests/`・`dump_daemon/`・`tests/fixtures/*.txt`から再調査したところ、**例外なく全て`Namespace.Enum.Value`というちょうど3セグメント(ドット2個)**だった。一方、今回実機確認した`VariableTrailer`は`InnerVar.SomeProperty`という**2セグメント(ドット1個)**。この実績の差に基づき、EnumRef判定専用の新しい正規表現`_ENUM_REF_RE`(ドット2個以上を要求)を追加し、`_resolve_value()`のEnumRef判定をこちらに切り替えた。2セグメント(ドット1個)の場合は`VarRef`にフォールバックするよう修正した——`VarRef`のcodegen(`render_value()`)は`value.name`をそのままPython識別子として埋め込むため、`InnerVar.SomeProperty`は`InnerVar.SomeProperty`という(構文的に)正しいPython属性アクセス式として生成される。
+
+**添字アクセスも確認**: `%InnerVar[0]%`という式も同じ手順で確認した。`SET NewVar3 TO InnerVar[0]`というDSLが得られたが、これは元々ドットを含まないため`_DOTTED_RE`/`_ENUM_REF_RE`のどちらにもマッチせず、修正前から既に`VarRef(name='InnerVar[0]')`として正しく保持されていた——codegenも`InnerVar[0]`という有効なPython式(リスト/辞書の添字アクセスと同じ構文)を偶然にも正しく生成できていた。
+
+**未検証のまま残る項目**: この修正は完全な曖昧性解消ではない——3セグメント以上の`VariableTrailer`(`MyObj.Prop1.Prop2`のような多段プロパティアクセス)や2セグメントの`EnumRef`が実在すれば依然として誤判定しうる、実機証拠に基づく暫定的な最善の判断に留まる。添字`[0]`が0始まりか1始まりか(知見51のLOOP range同様、実機での動作確認が必要)、`VariableTrailer`がリスト/データテーブル/カスタムオブジェクトのどの型でどう振る舞うか、はいずれも未確認のまま持ち越し。

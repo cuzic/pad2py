@@ -268,6 +268,17 @@ class UiElementRef:
 
 
 _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
+# design/dsl_format_findings.md 知見55(実機検証済み)——`EnumRef`判定専用の、より厳しい版。
+# `_DOTTED_RE`は1個以上のドットにマッチするため、`InnerVar.SomeProperty`のような
+# `VariableTrailer`(ユーザー変数へのドット付きプロパティアクセス、`design/robin_language_source_findings.md`
+# が「既知の未解決の曖昧性」として警告していた形)も誤ってEnumRef扱いしてしまっていた。
+# これまでに実機キャプチャした全てのEnumRef値(`Display.DefaultButton.Button1`等)・action_id
+# (`MouseAndKeyboard.SendMouseClick.Click`等)は例外なく`Namespace.Enum.Value`という
+# ちょうど3セグメント(ドット2個)だったため、EnumRef判定だけドット数2個以上を要求するよう
+# 厳しくした。2セグメント(ドット1個)はVariableTrailerの可能性を優先してVarRefへフォールバックする
+# (完全な曖昧性解消ではない——3セグメント以上のVariableTrailerや2セグメントのEnumRefが
+# 実在すれば依然として誤判定しうるが、これまでの実機証拠に基づく最善の判断)。
+_ENUM_REF_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){2,}$")
 _INT_RE = re.compile(r"-?\d+")
 _FLOAT_RE = re.compile(r"-?\d+\.\d+")
 _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$")
@@ -969,7 +980,7 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
         return float(token)
     if _INT_RE.fullmatch(token):
         return int(token)
-    if _DOTTED_RE.fullmatch(token):
+    if _ENUM_REF_RE.fullmatch(token):
         return EnumRef(token)
     return VarRef(token)
 
