@@ -459,3 +459,11 @@ UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInsta
 
 - `AND`/`OR`/`XOR`(**XORは今回初めて判明**)による複合条件式、`NOT`前置演算子、`+`/`-`/`*`/`/`/`mod`による算術式——いずれも単純な中置(`NOT`のみ前置)記法であることが確定したが、現在の`IfRecord`等が前提とする「オペランド1個+演算子1個+オペランド2個」という完全にフラットな構造では表現できない(再帰的な式木が必要)。安易な部分対応は誤った意味論を生成する恐れが大きいため、構文を文書化した上で実装は見送った。
 - `IN`/`NOT IN`は、DSL上`NotIn`が内部に空白を1つ持つ**1つの**文字列として直列化されることがソースで確定した。これまで「`NOT IN`は2トークンのため誤パースする既知のギャップ」と記録していた問題を、`_merge_not_in()`(隣接する`"NOT"`/`"IN"`トークンを1トークンへ結合)で解消した。`pad_codegen.py`の`_OPERATOR_MAP`にも`in`/`not in`を追加した(Pythonの意味がPADの「含まれるか」とそのまま対応するため)。実機でどのUI経由で使えるかはまだ未確認。
+
+## 30. UI要素セレクタ(「By window UI element」モード)の文字列フォーマットを解明(実装は見送り)
+
+本プロジェクトの初期から(research_notesの事前調査時点から)「本格的なUIA要素セレクタの文法は未解明」として持ち越していた課題に、`Microsoft.Flow.RPA.Desktop.Modules.UIAutomation.Actions.dll`を新たに取得・逆コンパイルして取り組んだ。詳細はdesign/robin_language_source_findings.mdの該当節を参照。
+
+要点: `ClickElementInWindow`等の「By window UI element」系アクションが使う`UIControl`型(SDK Extended層)を辿ると、セレクタは**CSS属性セレクタに似た独自記法**で表現されることが分かった——要素は` > `で連結(ルートには`:desktop >`)、属性は`[name]`(存在チェック)/`[name="value"]`(完全一致)/`[name*="value"]`(部分一致)/`[name^="value"]`(前方一致)/`[name$="value"]`(後方一致)/`[name@="value"]`(正規表現、CSS標準には無い独自拡張)/`:eq(N)`(序数)/`:disabled`(無効化状態)。セレクタ文字列の内部に`%VarName%`マーカーを埋め込める(他の文字列パラメータと同じインターポレーション形式)ことも確認した。
+
+ただし、この**セレクタ文字列自体のフォーマット**が分かったことと、それが**実際のDSLテキスト上でどう直列化されるか**(`ActionRecord`のパラメータ値としてどう埋め込まれるか)は別の問題であり、後者はまだ確認できていない。`UIControl`が`IEvaluatableContext`を実装している形跡が見当たらず、実機でのDSL出力例も無いため、パーサー/codegenへの実装は時期尚早と判断し、見送った。
