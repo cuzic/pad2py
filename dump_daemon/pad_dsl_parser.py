@@ -147,7 +147,10 @@ class BlockNode:
     """単純なブロック構文(`LOOP`系)の開始レコードと、対応する`END`までの本体。"""
 
     header: LoopRecord | LoopForeachRecord | LoopWhileRecord
-    body: list["Record | BlockNode | ConditionalNode"] = field(default_factory=list)
+    body: list[Node] = field(default_factory=list)
+
+
+ConditionalArmHeader = IfRecord | ElseIfRecord | KeywordRecord
 
 
 @dataclass
@@ -160,12 +163,13 @@ class ConditionalNode:
     単一の`body`ではなく`arms`のリストを持つ。
     """
 
-    arms: list[tuple["IfRecord | ElseIfRecord | KeywordRecord", list["Record | BlockNode | ConditionalNode"]]] = field(
-        default_factory=list
-    )
+    arms: list[tuple[ConditionalArmHeader, list[Node]]] = field(default_factory=list)
 
 
-def build_block_tree(records: list[Record]) -> list["Record | BlockNode | ConditionalNode"]:
+Node = Record | BlockNode | ConditionalNode
+
+
+def build_block_tree(records: list[Record]) -> list[Node]:
     """`parse_dsl()`が返すフラットな`indent`付きレコード列から、ブロック木を組み立てる。
 
     design/dsl_format_findings.md 知見7・9・11で確認したルールに基づくスタック型の
@@ -181,9 +185,9 @@ def build_block_tree(records: list[Record]) -> list["Record | BlockNode | Condit
     def is_end(rec: Record, level: int) -> bool:
         return isinstance(rec, KeywordRecord) and rec.name == "END" and rec.indent == level
 
-    def parse_level(level: int) -> list["Record | BlockNode | ConditionalNode"]:
+    def parse_level(level: int) -> list[Node]:
         nonlocal pos
-        body: list[Record | BlockNode | ConditionalNode] = []
+        body: list[Node] = []
         while pos < len(records):
             rec = records[pos]
             if rec.indent < level:
@@ -193,7 +197,7 @@ def build_block_tree(records: list[Record]) -> list["Record | BlockNode | Condit
                 return body
             pos += 1
             if isinstance(rec, IfRecord):
-                arms: list[tuple[Any, list[Any]]] = [(rec, parse_level(level + 1))]
+                arms: list[tuple[ConditionalArmHeader, list[Node]]] = [(rec, parse_level(level + 1))]
                 while pos < len(records):
                     nxt = records[pos]
                     if nxt.indent != level:
@@ -217,6 +221,7 @@ def build_block_tree(records: list[Record]) -> list["Record | BlockNode | Condit
         return body
 
     return parse_level(0)
+
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT"}
