@@ -609,9 +609,16 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
 - 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で
   どう表現するかの設計、およびそれに基づく`CloseWindowByInstanceOrHandle`等の実装
 
-- `ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
-  実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認、および`Contains`を含む
-  「関数呼び出し条件ファミリー」群のPython変換方法の検討
+- ~~`ConditionAction`カテゴリ(`IfWindowAction`の`IsFocusedByTitleClass`等——本セクション参照)が
+  実機で本当に`IfFunctionRecord`形式のDSLを生成するかの確認~~ → 完了(design/dsl_format_findings.md
+  知見54): 実際には`IfFunctionRecord`ではなく、知見50の`WAIT (...)`と同じ丸括弧構文
+  (`IF (<ActionId> <Param>: <Value> ...) THEN`)という第3の条件表現パターンだった。
+  「If window」はこのアクション単体で対応する`End`も自動挿入される(=ブロック開始構文)ことも
+  確認。当時未対応だったため`IfRecord`へ誤パースされていた重大なバグを`IfActionRecord`/
+  `ElseIfActionRecord`型の新設で修正した。codegenは`IfFunctionRecord`と同じ方針で
+  `NotImplementedError`を送出しはっきり失敗する(UI要素セレクタ未取得+誤訳時の制御フロー
+  反転リスクのため)。`Contains`を含む「関数呼び出し条件ファミリー」群のPython変換方法の検討は
+  引き続き持ち越し
 - UI要素セレクタが実際のDSLテキスト上でどう直列化されるか(本セクション参照——セレクタ文字列の
   フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認。
   `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)

@@ -263,6 +263,30 @@ def test_generate_python_raises_clearly_for_contains_function_condition() -> Non
         generate_python(tree)
 
 
+def test_generate_python_raises_clearly_for_if_window_action_condition() -> None:
+    # design/dsl_format_findings.md 知見54: 「If window」等の[ConditionAction]カテゴリは
+    # `IF (<ActionId> ...) THEN`という知見50のWAIT (...)と同じ丸括弧構文を条件式として使う。
+    # パーサー側はIfActionRecordとして正しく構造化できるが、対象UI要素のセレクタがDSLから
+    # 取得できない上、条件を誤訳すると制御フロー全体が反転するという危険な失敗モードになるため、
+    # IfFunctionRecordと同じ方針でcodegenははっきり失敗すること(でっち上げた真偽値を出さない)。
+    dsl = (
+        "IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN\nEND"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match="UIAutomation.IfWindow.IsOpen"):
+        generate_python(tree)
+
+
+def test_generate_python_from_real_if_window_whole_subflow_capture_raises() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    with pytest.raises(NotImplementedError, match="UIAutomation.IfWindow.IsOpen"):
+        generate_python(tree)
+
+
 # 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
 # 続けてAction to perform=Releaseに切り替えて再キャプチャした生データ(知見23)。
 PRESS_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False"

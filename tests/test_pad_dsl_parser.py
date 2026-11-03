@@ -18,6 +18,7 @@ from dump_daemon.pad_dsl_parser import (
     ElseIfFunctionRecord,
     ElseIfRecord,
     GuardedNode,
+    IfActionRecord,
     IfFunctionRecord,
     IfRecord,
     KeywordRecord,
@@ -1221,5 +1222,27 @@ def test_build_block_tree_handles_real_wait_for_window_content_whole_subflow_cap
     assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_if_action_record_parsed_from_real_if_window_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見54(実機検証済み): 「If window」等の
+    # [ConditionAction]カテゴリは、知見50のWAIT (...)と全く同じ丸括弧パターンを条件式として
+    # 再利用する。以前はこの構文に専用の対応が無く、`IF (UIAutomation.IfWindow.IsOpen ...) THEN`が
+    # IfRecordとして誤って(operand1='(UIAutomation.IfWindow.IsOpen', operator='Window:'等という
+    # 意味不明な値で)パースされてしまっていた。PADはこのアクションを置いただけで自動的に
+    # 対応する`End`も挿入する(=ブロック開始構文であることも実機確認済み)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    if_action_records = [r for r in records if isinstance(r, IfActionRecord)]
+    assert len(if_action_records) == 1
+    rec = if_action_records[0]
+    assert rec.action_id == "UIAutomation.IfWindow.IsOpen"
+    assert rec.params["InstantCheck"] is False
+    element = rec.params["Window"]
+    assert element.path == ("Window 'Untitled - Notepad'",)
     tree = build_block_tree(records)
     assert len(tree) > 0
+    assert isinstance(tree[0], ConditionalNode)
+    assert tree[0].arms[0][0] is rec
