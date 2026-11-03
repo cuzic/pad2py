@@ -174,3 +174,33 @@ def test_generate_python_full_flow_still_marks_display_message_as_todo() -> None
     tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" in code
+
+
+# 実機で「Move mouse」(Position X=500, Position Y=300, Relative to=Screen(既定),
+# Move mouse from previous position=Instant(既定))を追加して再キャプチャした生データ(知見20)。
+MOVE_MOUSE_DSL = (
+    "MouseAndKeyboard.MoveMouse X: 500 Y: 300 "
+    "RelativeTo: MouseAndKeyboard.PositionRelativeTo.Screen "
+    "MovementStyle: MouseAndKeyboard.MovementStyle.Instant"
+)
+
+
+def test_generate_python_maps_move_mouse_to_pyautogui_moveto() -> None:
+    tree = build_block_tree(parse_dsl(MOVE_MOUSE_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "import pyautogui" in code
+    assert "pyautogui.moveTo(500, 300)" in code
+
+
+def test_generate_python_leaves_move_mouse_as_todo_when_relative_to_is_unverified() -> None:
+    # RelativeToがScreen以外(未検証)の場合は、でっち上げず架空の変換をしないこと。
+    dsl = (
+        "MouseAndKeyboard.MoveMouse X: 10 Y: 20 "
+        "RelativeTo: MouseAndKeyboard.PositionRelativeTo.Window "
+        "MovementStyle: MouseAndKeyboard.MovementStyle.Instant"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: MouseAndKeyboard.MoveMouse" in code
+    assert "pyautogui.moveTo" not in code

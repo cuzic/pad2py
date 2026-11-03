@@ -22,8 +22,12 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   (design/dsl_format_findings.md 知見19。**未検証の前提**: `TextToSend`が特殊キー記法
   (「Insert special keys」で挿入される`{ENTER}`等)を含まない、素のリテラルテキストである
   場合のみを対象にしている——特殊キー記法のDSL表現自体をまだ実機確認していないため、
-  含んでいた場合の変換は未対応。他のUI automationアクションも含め、未対応のものは
-  架空のAPI呼び出しをでっち上げず`# TODO`コメントを出力する)
+  含んでいた場合の変換は未対応)
+- `ActionRecord`(`MouseAndKeyboard.MoveMouse`) → `pyautogui.moveTo(x, y)`(知見20。
+  実機検証済みの`RelativeTo: Screen`・`MovementStyle: Instant`の組み合わせのときだけ変換し、
+  それ以外(Window基準・Smoothly等、未検証)は`# TODO`のままにする)
+- 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
+  `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
   (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
@@ -228,4 +232,17 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             delay_ms = node.params.get("DelayBetweenKeystrokes", 10)
             interval = delay_ms / 1000 if isinstance(delay_ms, (int, float)) else 0.01
             return [f"{prefix}pyautogui.typewrite({render_value(text)}, interval={interval!r})"]
+    if node.action_id == "MouseAndKeyboard.MoveMouse":
+        x = node.params.get("X")
+        y = node.params.get("Y")
+        # "Relative to: Window"や"Move mouse from previous position: Smoothly"は
+        # pyautoguiでの対応方法が未検証のため、確認済みの組み合わせ(Screen基準・Instant)の
+        # ときだけ変換する。
+        if (
+            isinstance(x, (int, float))
+            and isinstance(y, (int, float))
+            and node.params.get("RelativeTo") == EnumRef("MouseAndKeyboard.PositionRelativeTo.Screen")
+            and node.params.get("MovementStyle") == EnumRef("MouseAndKeyboard.MovementStyle.Instant")
+        ):
+            return [f"{prefix}pyautogui.moveTo({render_value(x)}, {render_value(y)})"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]
