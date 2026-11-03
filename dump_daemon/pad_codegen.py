@@ -26,6 +26,10 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `ActionRecord`(`MouseAndKeyboard.MoveMouse`) → `pyautogui.moveTo(x, y)`(知見20。
   実機検証済みの`RelativeTo: Screen`・`MovementStyle: Instant`の組み合わせのときだけ変換し、
   それ以外(Window基準・Smoothly等、未検証)は`# TODO`のままにする)
+- `ActionRecord`(`MouseAndKeyboard.SendMouseClick.Click`) → `pyautogui.click()`(知見21。
+  実機検証済みの`ClickType: LeftClick`のときだけ変換し、それ以外(Right click/Double click等
+  7種、未検証)は`# TODO`のままにする。`MillisecondsDelay`が0でなければクリック前に
+  `time.sleep(...)`を挿入する)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
   `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
@@ -245,4 +249,16 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             and node.params.get("MovementStyle") == EnumRef("MouseAndKeyboard.MovementStyle.Instant")
         ):
             return [f"{prefix}pyautogui.moveTo({render_value(x)}, {render_value(y)})"]
+    if node.action_id == "MouseAndKeyboard.SendMouseClick.Click":
+        # "Mouse event to send"には他に7種(Right click/Double click/Middle click等)あるが
+        # (design/dsl_format_findings.md 知見21)、実機確認したのはLeft clickのDSL表現
+        # (MouseAndKeyboard.MouseClickType.LeftClick)だけなので、それ以外は推測で
+        # マッピングせずTODOに倒す。
+        if node.params.get("ClickType") == EnumRef("MouseAndKeyboard.MouseClickType.LeftClick"):
+            delay_ms = node.params.get("MillisecondsDelay", 0)
+            lines = []
+            if isinstance(delay_ms, (int, float)) and delay_ms:
+                lines.append(f"{prefix}time.sleep({delay_ms / 1000!r})")
+            lines.append(f"{prefix}pyautogui.click()")
+            return lines
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]

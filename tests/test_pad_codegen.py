@@ -204,3 +204,44 @@ def test_generate_python_leaves_move_mouse_as_todo_when_relative_to_is_unverifie
     code = generate_python(tree)
     assert "# TODO: map PAD action: MouseAndKeyboard.MoveMouse" in code
     assert "pyautogui.moveTo" not in code
+
+
+# 実機で「Send mouse click」(Mouse event to send=Left click(既定), Wait=0(既定),
+# Move mouse=off(既定))を追加して再キャプチャした生データ(知見21)。
+SEND_MOUSE_CLICK_DSL = (
+    "MouseAndKeyboard.SendMouseClick.Click "
+    "ClickType: MouseAndKeyboard.MouseClickType.LeftClick MillisecondsDelay: 0"
+)
+
+
+def test_generate_python_maps_left_click_to_pyautogui_click() -> None:
+    tree = build_block_tree(parse_dsl(SEND_MOUSE_CLICK_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "pyautogui.click()" in code
+    assert "time.sleep" not in code  # MillisecondsDelay=0なのでsleepは不要
+
+
+def test_generate_python_inserts_sleep_before_click_when_delay_is_nonzero() -> None:
+    dsl = (
+        "MouseAndKeyboard.SendMouseClick.Click "
+        "ClickType: MouseAndKeyboard.MouseClickType.LeftClick MillisecondsDelay: 500"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "import time" in code
+    assert "time.sleep(0.5)" in code
+    assert "pyautogui.click()" in code
+
+
+def test_generate_python_leaves_send_mouse_click_as_todo_for_unverified_click_types() -> None:
+    # Right click等(未検証)は推測でマッピングせずTODOのままであること。
+    dsl = (
+        "MouseAndKeyboard.SendMouseClick.Click "
+        "ClickType: MouseAndKeyboard.MouseClickType.RightClick MillisecondsDelay: 0"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: MouseAndKeyboard.SendMouseClick.Click" in code
+    assert "pyautogui.click" not in code
