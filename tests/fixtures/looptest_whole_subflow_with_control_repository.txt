@@ -1,0 +1,42 @@
+Scripting.RunPythonScript.RunPythonScript PythonCode: $'''open(r\'C:\\Users\\tomoya_kaw\\pad2py\\loop_counter.txt\',\'w\').close()''' ScriptOutput=> PythonScriptOutput3
+ON ERROR RunPythonScriptError
+SET NewVar2 TO $'''script failed'''
+ON ERROR
+SET NewVar TO $'''recovered'''
+END
+LOOP LoopIndex2 FROM 1 TO 3 STEP 1
+    Scripting.RunPythonScript.RunPythonScript PythonCode: $'''open(r\'C:\\Users\\tomoya_kaw\\pad2py\\loop_counter.txt\',\'a\').write(\'x\')''' ScriptOutput=> PythonScriptOutput4
+    BLOCK 
+ON BLOCK ERROR
+
+END
+    END
+    UIAutomation.Click.Click Element: appmask['Start Button'] ClickType: UIAutomation.ClickType.LeftClick MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter OffsetX: 0 OffsetY: 0
+    /# line one
+line two with \#/ inside
+line three#/
+END
+
+# [ControlRepository][PowerAutomateDesktop]
+
+{
+  "ControlRepositorySymbols": [
+    {
+      "IgnoreImagesOnSerialization": false,
+      "Repository": "{\r\n  \"Screens\": [\r\n    {\r\n      \"Controls\": [],\r\n      \"Handle\": {\r\n        \"value\": 0\r\n      },\r\n      \"ProcessName\": \"explorer\",\r\n      \"ScreenShot\": \"iVBORw0KGgoAAAANSUhEUgAAADAAAAAoCAIAAAA35e4mAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADNSURBVFhHY3goIvWfgWGQIKBjoNReBfUBR5CgATkIyJE0sBxwBHTGqIPwolEHEUKjDiKERh1ECA13B8nZ+an4pGhGVeqm9ZlWrTNv3OE05zEQoSnDg8h3kIJLJNBuoMVGxYuBFgNFIHZjRcga8SMyHYRmHxBhFYQjZL340aiDCKFRBxFCZDqIdmi4hBCafUCEVRCOkPXiR6MOIoRGHUQIkekgIBpclSsuNJDNDxqhUQcRQqMOIoRGHUQIjTqIEBrEDhpcg54QapCghyJSABfdbHlLAoGgAAAAAElFTkSuQmCC\",\r\n      \"ElementTypeName\": \"Start Button\",\r\n      \"InstanceId\": \"489471a0-c6e2-4c59-8908-ea5e02c9a707\",\r\n      \"Name\": \"Start Button\",\r\n      \"SelectorCount\": 1,\r\n      \"Selectors\": [\r\n        {\r\n          \"CustomSelector\": null,\r\n          \"Elements\": [\r\n            {\r\n              \"Attributes\": [],\r\n              \"CustomValue\": \":startbutton\",\r\n              \"Ignore\": false,\r\n              \"Name\": \"Start Button\",\r\n              \"Tag\": \"startbutton\"\r\n            }\r\n          ],\r\n          \"Ignore\": false,\r\n          \"ImageSelector\": null,\r\n          \"IsCustom\": false,\r\n          \"IsImageBased\": false,\r\n          \"IsPlaceholderSelector\": false,\r\n          \"IsWindowsInstance\": false,\r\n          \"Name\": \"Default Selector\",\r\n          \"Properties\": []\r\n        }\r\n      ],\r\n      \"Tag\": \"startbutton\",\r\n      \"ScreenshotPath\": \"controlRepo-screenshots\\\\b75b5751-cc09-48d2-b654-e2fc9ff7587a.png\"\r\n    }\r\n  ],\r\n  \"Version\": 1\r\n}",
+      "ImportMetadata": {
+        "DisplayName": "Local computer",
+        "ConnectionString": "",
+        "Type": "Local",
+        "DesktopType": "local"
+      },
+      "Name": "appmask"
+    }
+  ],
+  "ImageRepositorySymbol": {
+    "Repository": "{\r\n  \"Folders\": [],\r\n  \"Images\": [],\r\n  \"Version\": 1\r\n}",
+    "ImportMetadata": {},
+    "Name": "imgrepo"
+  },
+  "ConnectionReferences": []
+}

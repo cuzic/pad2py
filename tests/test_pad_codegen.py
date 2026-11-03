@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from dump_daemon.pad_codegen import (
@@ -15,6 +17,8 @@ from dump_daemon.pad_codegen import (
     render_value,
 )
 from dump_daemon.pad_dsl_parser import EnumRef, VarRef, build_block_tree, parse_dsl
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 FULL_FLOW_DSL = (
     "Display.ShowMessageDialog.ShowMessage Icon: Display.Icon.None Buttons: Display.Buttons.OK "
@@ -535,3 +539,21 @@ def test_generate_python_names_ui_element_in_todo_without_fabricating_selector()
     assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
     assert "UI element: 'Start Button'" in code
     assert "appmask" not in code
+
+
+def test_generate_python_from_real_whole_subflow_capture_compiles() -> None:
+    # design/dsl_format_findings.md 知見44・45: LoopTestサブフロー8アクションを一括選択して
+    # コピーした実機生データ(UI要素リポジトリのJSONを含む)をフルパイプラインに通した
+    # End-to-Endの回帰テスト。知見1以来、1〜4アクションの個別コピーでしか検証してこな
+    # かった「whole-flow copy」の経路を初めて検証する。知見45の通りネストしたBLOCKの
+    # ON BLOCK ERRORのインデントがずれるため理想的な構造にはならないが、クラッシュせず
+    # 構文的に正しいPythonを生成できることを保証する。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "ControlRepositorySymbols" not in code
+    assert "appmask" not in code
+    assert "UI element: 'Start Button'" in code

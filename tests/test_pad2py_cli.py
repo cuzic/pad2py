@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 from dump_daemon.pad2py_cli import build_arg_parser, convert, main
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 SIMPLE_DSL = "SET TestVar TO $'''hello'''"
 
@@ -91,6 +94,24 @@ def test_console_script_end_to_end_via_subprocess() -> None:
     assert "try:" in result.stdout
     assert "UI element: 'Start Button'" in result.stdout
     compile(result.stdout, "<generated>", "exec")
+
+
+def test_cli_handles_real_whole_subflow_capture_with_control_repository_section(tmp_path) -> None:
+    # design/dsl_format_findings.md 知見44: サブフロー全体を一括選択してコピーすると
+    # UI要素リポジトリのJSONが末尾に同梱される(個別の1〜4アクションコピーとは違う形)。
+    # CLIにそのまま渡しても、JSON部分がノイズとして出力に混ざらず、クラッシュせず
+    # compileできるPythonを生成することを確認する——「本物のwhole-flow copyをCLIに
+    # 渡す」という、これまで一度もテストされていなかった経路そのもの。
+    fixture = FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt"
+    output_path = tmp_path / "out.py"
+
+    exit_code = main([str(fixture), "-o", str(output_path)])
+
+    assert exit_code == 0
+    code = output_path.read_text(encoding="utf-8")
+    assert "ControlRepositorySymbols" not in code
+    assert "appmask" not in code
+    compile(code, "<generated>", "exec")
 
 
 class _FakeStdin:

@@ -123,9 +123,24 @@ design/dsl_format_findings.md 知見40)。PADの「On block error」アクショ
 追加実装は不要だった)。名前付きBLOCK・名前付き`ON BLOCK ERROR <CaseName>`・ON BLOCK ERROR
 を伴わない素のBLOCKは、いずれも実機では未確認のまま(既存の確認済みパターンからの類推で
 実装)。
+
+**UI要素セレクタの実体(`# [ControlRepository][PowerAutomateDesktop]`セクション、
+design/dsl_format_findings.md 知見44で実機確認済み)**: 知見38で「DSLテキストには
+`appmask['<表示名>']`という名前参照しか現れず、実セレクタは含まれない」としていたのは、
+**1〜4個程度のアクションだけを個別にコピーしていた場合に限った話**だった。フロー
+(サブフロー)内のアクション群を**一括選択してコピー**すると、クリップボードテキストの
+末尾に`# [ControlRepository][PowerAutomateDesktop]`という区切り行に続けて、参照先の
+UI要素リポジトリ全体(`appmask`シンボルの中身)がJSONとしてまるごと含まれる。
+`parse_dsl()`はこのセクションを(通常のDSLレコード列には含めず)自動的に読み飛ばし、
+`parse_control_repository()`で別途パースできる。ただし今回実機確認できた実例は
+Windowsタスクバーの「Start Button」という特殊ケース(`CustomValue: ":startbutton"`という
+PAD独自の予約済み擬似セレクタで、通常の`Attributes`配列は空)のみで、**一般的なアプリ内
+コントロールの`Attributes`配列がどう埋まるかは未確認のまま**(`pad_codegen.py`側での
+実際のpywinautoセレクタ生成への配線は、確証が得られるまで見送っている)。
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -139,6 +154,12 @@ _COMMENT_ESCAPE_RE = re.compile(r"\\(#/|\\)")
 # 名前参照`appmask['<表示名>']`として埋め込まれる。表示名に空白を含みうる(`'Start Button'`等)ため、
 # `$'''...'''`と同じくマスキングしてから行分割する必要がある。
 _UI_ELEMENT_RE = re.compile(r"appmask\['([^']*)'\]")
+# design/dsl_format_findings.md 知見44(実機検証済み)——フロー内のアクション群を一括選択して
+# コピーすると、クリップボードテキストの末尾にこの区切り行から始まるUI要素リポジトリ全体の
+# JSONが同梱される。`parse_dsl()`はこの行以降を通常のDSLレコード列から除外し(除外しないと
+# JSON各行がデタラメな`RawRecord`の山になってしまう)、`parse_control_repository()`で
+# 別途パースする。
+_CONTROL_REPOSITORY_MARKER = "# [ControlRepository][PowerAutomateDesktop]"
 
 
 def _unescape(raw: str) -> str:
@@ -660,7 +681,101 @@ _ACTION_ID_RE = _DOTTED_RE
 _KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT", "REPEAT", "THROW"}
 
 
+@dataclass(frozen=True)
+class ControlRepositorySelectorElement:
+    """UI要素セレクタの1階層分の指定(`Elements`配列の1要素、知見44で実機確認済み)。
+
+    `attributes`の内部シェイプ(キー名等)は実機で未確認(今回の実例は常に空配列)のため、
+    でっち上げた型でラップせず生のJSON値(`list[dict[str, Any]]`)のまま保持する。
+    """
+
+    name: str
+    tag: str
+    custom_value: str | None
+    ignore: bool
+    attributes: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ControlRepositoryEntry:
+    """UI要素リポジトリの1エントリ(表示名1つ分)。
+
+    `selectors`は「セレクタの候補」のリストで、各候補はルートから対象要素までの
+    `ControlRepositorySelectorElement`のパス(知見44の実例では1階層のみ)。
+    """
+
+    name: str
+    element_type_name: str
+    selectors: list[list[ControlRepositorySelectorElement]]
+
+
+def _split_control_repository(text: str) -> tuple[str, str | None]:
+    """`# [ControlRepository][PowerAutomateDesktop]`セクションをDSL本体から切り離す。
+
+    区切り行が無ければ`(text, None)`を返す(知見38-43の、1〜4アクションだけを
+    個別にコピーしたケース)。
+    """
+    idx = text.find(_CONTROL_REPOSITORY_MARKER)
+    if idx == -1:
+        return text, None
+    return text[:idx], text[idx + len(_CONTROL_REPOSITORY_MARKER) :]
+
+
+def _walk_repository_controls(node: dict[str, Any]) -> list[dict[str, Any]]:
+    entries = [node] if "Selectors" in node else []
+    for child in node.get("Controls") or []:
+        entries.extend(_walk_repository_controls(child))
+    return entries
+
+
+def _build_control_repository_entry(node: dict[str, Any]) -> ControlRepositoryEntry:
+    selectors: list[list[ControlRepositorySelectorElement]] = []
+    for selector in node.get("Selectors") or []:
+        path = [
+            ControlRepositorySelectorElement(
+                name=element.get("Name", ""),
+                tag=element.get("Tag", ""),
+                custom_value=element.get("CustomValue"),
+                ignore=bool(element.get("Ignore", False)),
+                attributes=element.get("Attributes") or [],
+            )
+            for element in selector.get("Elements") or []
+        ]
+        selectors.append(path)
+    return ControlRepositoryEntry(
+        name=node.get("Name", ""),
+        element_type_name=node.get("ElementTypeName", ""),
+        selectors=selectors,
+    )
+
+
+def parse_control_repository(text: str) -> dict[str, dict[str, ControlRepositoryEntry]]:
+    """`# [ControlRepository][PowerAutomateDesktop]`セクション(知見44)をパースする。
+
+    戻り値: `{シンボル名(例: "appmask"): {表示名(例: "Start Button"): ControlRepositoryEntry}}`。
+    該当セクションが無い入力(単独アクションのコピー等)に対しては空の辞書を返す。
+    """
+    _, repo_text = _split_control_repository(text)
+    if repo_text is None or not repo_text.strip():
+        return {}
+
+    data = json.loads(repo_text)
+    result: dict[str, dict[str, ControlRepositoryEntry]] = {}
+    for symbol in data.get("ControlRepositorySymbols") or []:
+        symbol_name = symbol.get("Name", "")
+        # `Repository`自体が文字列化されたJSON(二重エンコード)であることに注意。
+        inner = json.loads(symbol["Repository"])
+        entries: dict[str, ControlRepositoryEntry] = {}
+        for screen in inner.get("Screens") or []:
+            for node in _walk_repository_controls(screen):
+                entry = _build_control_repository_entry(node)
+                entries[entry.name] = entry
+        result[symbol_name] = entries
+    return result
+
+
 def parse_dsl(text: str) -> list[Record]:
+    text, _ = _split_control_repository(text)
     placeholders: dict[str, str] = {}
 
     def _stash_comment(m: re.Match[str]) -> str:

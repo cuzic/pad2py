@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     BlockNode,
@@ -32,8 +34,11 @@ from dump_daemon.pad_dsl_parser import (
     UiElementRef,
     VarRef,
     build_block_tree,
+    parse_control_repository,
     parse_dsl,
 )
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 REAL_FLOW_DSL = (
     'Display.ShowMessageDialog.ShowMessage Icon: Display.Icon.None '
@@ -920,3 +925,65 @@ def test_throw_error_parsed_as_keyword_record_inside_on_block_error_arm() -> Non
     assert isinstance(guarded, GuardedNode)
     _header, handler_body = guarded.on_error.arms[0]
     assert handler_body == [KeywordRecord(name="THROW", args=["ERROR"], indent=0)]
+
+
+def test_parse_dsl_strips_control_repository_section_instead_of_treating_it_as_garbage() -> None:
+    # design/dsl_format_findings.md 知見44(実機検証済み): サブフロー全体を一括選択して
+    # コピーすると、DSLテキストの末尾に`# [ControlRepository][PowerAutomateDesktop]`で
+    # 始まるJSONブロック(UI要素リポジトリ全体)が同梱される。これをDSLレコード列から
+    # 除外しないと、JSON各行がデタラメな`RawRecord`の山になって出力を汚染してしまう。
+    dsl = (
+        "SET TestVar TO $'''hello'''\n"
+        "\n"
+        "# [ControlRepository][PowerAutomateDesktop]\n"
+        "\n"
+        '{"ControlRepositorySymbols": []}\n'
+    )
+    records = parse_dsl(dsl)
+    assert records == [SetVariableRecord(var_name="TestVar", value="hello", indent=0)]
+
+
+def test_parse_control_repository_returns_empty_dict_when_section_absent() -> None:
+    assert parse_control_repository("SET TestVar TO $'''hello'''") == {}
+
+
+def test_parse_control_repository_extracts_start_button_selector_from_real_capture() -> None:
+    # design/dsl_format_findings.md 知見44(実機検証済み、本プロジェクト最大の発見)。
+    # LoopTestサブフロー8アクションを一括選択してコピーした生データそのもの
+    # (tests/fixtures/looptest_whole_subflow_with_control_repository.txt)。知見38の
+    # `appmask['Start Button']`が指す実体が、このセクションに含まれる`appmask`シンボルの
+    # 中の「Start Button」エントリだと実機で確認できた。今回の実例は`CustomValue:
+    # ":startbutton"`というPAD独自の予約済み擬似セレクタ(Windowsタスクバーのスタート
+    # ボタンという特殊ケース)で、通常のUIA`Attributes`配列は空だった——一般的な
+    # アプリ内コントロールでの`Attributes`の中身は別途確認が必要(知見44の「次の課題」)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt").read_text(
+        encoding="utf-8"
+    )
+
+    repository = parse_control_repository(text)
+
+    assert set(repository.keys()) == {"appmask"}
+    entry = repository["appmask"]["Start Button"]
+    assert entry.element_type_name == "Start Button"
+    assert len(entry.selectors) == 1
+    (part,) = entry.selectors[0]
+    assert part.name == "Start Button"
+    assert part.tag == "startbutton"
+    assert part.custom_value == ":startbutton"
+    assert part.attributes == []
+
+
+def test_build_block_tree_does_not_crash_on_real_whole_subflow_capture_with_nested_block() -> None:
+    # design/dsl_format_findings.md 知見45: 一括コピーした実機生データでは、LOOPにネストした
+    # BLOCKのON BLOCK ERRORのインデントがBLOCK自身とずれており(PAD側のシリアライズの
+    # 癖か不具合か未確定)、`build_block_tree()`は厳密indent一致の既存ルールにより
+    # これを「孤立したON BLOCK ERROR」として扱い、直前の兄弟(LOOP全体)を
+    # GuardedNodeでラップしてしまう——構造的には理想より広い範囲をtry/exceptで
+    # 包んでしまうが、意図的に特例処理は追加していない(1例だけから場当たり的な
+    # 再紐付けロジックを足すと、他の未検証ケースで誤動作する恐れがあるため)。
+    # ここでは最低限の安全性(クラッシュしない、構文的に正しいPythonを生成する)だけを保証する。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    assert len(tree) > 0
