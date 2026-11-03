@@ -640,6 +640,21 @@ def test_generate_python_from_real_wait_for_window_no_timeout_whole_subflow_capt
     assert "(timeout: none)" in code
 
 
+def test_generate_python_from_real_wait_for_window_content_whole_subflow_capture_compiles() -> None:
+    # design/dsl_format_findings.md 知見52: 「Wait for window content」も知見50の
+    # WaitActionRecord/_generate_wait_action()をそのまま再利用でき、コード変更は不要だった。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "# TODO: map PAD wait action: "
+        "UIAutomation.WaitForWindowContent.WindowToContainElement (timeout: none)" in code
+    )
+
+
 def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
         encoding="utf-8"

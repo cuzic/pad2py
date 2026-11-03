@@ -901,3 +901,22 @@ header_line = f"{prefix}for {header.loop_var} in range({start}, {end}, {step}):"
 **検証後の後始末**: `Main`は`For each`/`End`を再度「Enable action」で有効化し、元の単一の検証エラー(知見47記載のもの)のみに戻した。追加した`Run Python script`アクションは削除。カウンタファイル`loop_range_check.txt`はWinRM経由で削除(`Test-Path`で`False`を確認)。アクティブなデザイナータブは「LoopTest」に戻した——`Main`自体は本検証以前の状態に完全復元されている。
 
 **教訓**: 知見47で一度は「安全に完結させる確証が持てない」として見送った複数ステップの往復(無効化→挿入→実行→削除→有効化→復元)も、各ステップを慎重に確認しながら進めれば1ティック内で完結でき、かつ実機の生バイト値という最も紛れのない形の証拠が得られた。これまで`pad_codegen.py`に長期間残っていた「未検証の前提」コメントの中でも、プロジェクトのコード生成結果に直接影響する(オフバイワンのバグを生成し続けていた)最も重要な項目が、ついに解消された。
+
+## 52. 【新発見】「Wait for window」とは別の新アクション「Wait for window content」を発見——`WindowToContainElement`というaction_id、既存の`WAIT (...)`汎用パーサー/codegenのままコード変更無しで対応できた
+
+知見50で「Wait for window」の実機DSLを確認した際、Actionsパネルで"Wait for window"を検索すると「UI automation」カテゴリに**2件**ヒットすることに気づいていなかった。今回検索結果を展開して初めて2件あることを確認し、それぞれのツールチップを確認したところ、全く別のアクションだと判明した:
+
+- 1件目(知見50で確認済みの「Wait for window」): 「Suspends the execution or the process until a specific window opens, closes, get or loses the focus」——ウィンドウ自体の開閉・フォーカスを待つ。
+- 2件目(**今回新発見**「Wait for window content」): 「Suspends the execution of the automation until a specific piece of text or UI element appears or disappears from a Window」——ウィンドウ**内のテキストやUI要素の出現/消失**を待つ、全く別の機能。
+
+2件目をキャンバスにドラッグすると、ダイアログタイトルは「Wait for window content」、構成は「Wait until window:」(ドロップダウン、既定値「Contains UI element」、他の選択肢は未確認)「Check UI element state:」(トグル)「UI element:」(UI要素ピッカー)「Fail with timeout error:」(トグル、知見50と同じくONで初めてDurationが現れると推測されるが未確認)。既存のUI要素リポジトリから「Document 'Text Editor'」(Notepadのテキストエリア)を選択して保存・一括コピーしたところ:
+
+```
+WAIT (UIAutomation.WaitForWindowContent.WindowToContainElement Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\''])
+```
+
+**重要な確認結果**: action_idは`UIAutomation.WaitForWindowContent.WindowToContainElement`——知見50の`UIAutomation.WaitForWindow.*`ファミリーとは全く別の名前空間(`WaitForWindowContent`)だが、DSLの構文自体は知見50で発見した`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`(FOR句は省略可能)を完全にそのまま再利用していた。知見50実装時に`_WAIT_ACTION_RE`/`WaitActionRecord`/`_generate_wait_action()`をaction_idに依存しない汎用設計にしていたため、**パーサー・codegenとも一切のコード変更無しで**正しく`WaitActionRecord(action_id="UIAutomation.WaitForWindowContent.WindowToContainElement", params={"Element": UiElementRef(...)}, timeout_seconds=None)`としてパースされ、`# TODO: map PAD wait action: ...`という同じ安全なフォールバックでcodegenされることを確認した(`tests/fixtures/looptest_whole_subflow_with_wait_for_window_content.txt`で実機キャプチャをそのままテスト化、新規追加コード無し)。
+
+**未検証のまま残る項目**: 「Wait until window:」ドロップダウンの他の選択肢(「Contains UI element」以外に何があるか)・「Check UI element state」トグルをONにした場合に追加される設定項目・「Fail with timeout error」ON時のタイムアウト値表記・「UI要素が消える」ケース(Containsの逆、"Does not contain"のような選択肢があるか)は、いずれも実機未確認のまま持ち越し。
+
+**教訓**: 知見50で確立した「action_idに依存しない汎用WaitActionパーサー」という設計判断が、今回の全く別系統の新アクション発見でそのまま活きた——個別のaction_idをハードコードせず、共通の構文パターン(`WAIT (...)`)を抽象化しておいたことで、実機で新しい具体例が見つかってもパーサー/codegenの変更が一切不要という結果になった。これは本プロジェクトが知見36以来重ねてきた「架空のPython APIを決してでっち上げない、TODOへの安全なフォールバックを徹底する」という方針が、未知の新アクションに対しても自動的に安全側に倒れることを示す実例でもある。
