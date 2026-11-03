@@ -452,3 +452,10 @@ UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInsta
 長らく「IF文のような決め打ちを安易に適用すると誤った意味論を生成する恐れがある」として見送っていた`SWITCH`/`CASE`/`DEFAULT`のブロック構造を、PADのANTLR生成パーサー本体(`Language.cs`)の文法規則定義から解明した。詳細はdesign/robin_language_source_findings.mdの該当節を参照。要点: `switch_statement`/`case_statement`/`case_default`は、既に実機確認済みの`if_statement`/`elseif_statement`/`else_statement`と**文法上完全に並列な選択肢**として定義されている(専用のネスト構造は存在しない)。この並列性を根拠に、IF/ELSE IF/ELSEで確立済みのインデント規則(ヘッダー群は同じindent、各アームの本体はindent+1、ENDは構文全体に1つ)をそのまま類推適用し、`SwitchRecord`/`CaseRecord`/`CaseDefaultRecord`/`SwitchNode`をパーサーに、`if`/`elif`/`else`(`==`比較)への変換をcodegenに追加した。
 
 これは今までの「実機で1つずつ確認してから実装する」という方針からの意図的な逸脱である——根拠は「文法レベルでの確認(ANTLRのルール定義)」という、実機データと同程度に確実な一次情報であり、当てずっぽうの推測ではない。ただしSWITCH自身が実際にこのインデント規則で出力される実機データはまだ無く、`LOOP`の両端含むrange仮定と同じ位置づけの「明示的に文書化された未検証の前提」として扱う。
+
+## 29. ANTLR文法から複合式(AND/OR/XOR/NOT)・算術式(+/-/*//mod)・IN系演算子のDSL表現を確認、`NOT IN`パーサーの既知ギャップを解消
+
+`SWITCH`の調査と同じ`Language.cs`の`ExpressionContext`サブクラス群を確認し、これまで「存在は確認したが構文は未確認」としていた複合条件式と、全く未確認だった算術式のDSL表現が判明した。詳細はdesign/robin_language_source_findings.mdの該当節を参照。
+
+- `AND`/`OR`/`XOR`(**XORは今回初めて判明**)による複合条件式、`NOT`前置演算子、`+`/`-`/`*`/`/`/`mod`による算術式——いずれも単純な中置(`NOT`のみ前置)記法であることが確定したが、現在の`IfRecord`等が前提とする「オペランド1個+演算子1個+オペランド2個」という完全にフラットな構造では表現できない(再帰的な式木が必要)。安易な部分対応は誤った意味論を生成する恐れが大きいため、構文を文書化した上で実装は見送った。
+- `IN`/`NOT IN`は、DSL上`NotIn`が内部に空白を1つ持つ**1つの**文字列として直列化されることがソースで確定した。これまで「`NOT IN`は2トークンのため誤パースする既知のギャップ」と記録していた問題を、`_merge_not_in()`(隣接する`"NOT"`/`"IN"`トークンを1トークンへ結合)で解消した。`pad_codegen.py`の`_OPERATOR_MAP`にも`in`/`not in`を追加した(Pythonの意味がPADの「含まれるか」とそのまま対応するため)。実機でどのUI経由で使えるかはまだ未確認。

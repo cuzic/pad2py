@@ -620,3 +620,25 @@ def test_build_block_tree_handles_switch_with_no_default() -> None:
     switch_node = tree[0]
     assert isinstance(switch_node, SwitchNode)
     assert len(switch_node.arms) == 1
+
+
+def test_not_in_operator_merged_into_single_token_for_if() -> None:
+    # design/robin_language_source_findings.md: ComparisonOperatorExtensions.ToString()の
+    # ソースで`NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることを確認した。
+    # 素朴にline.split()するだけだと"NOT"/"IN"の2トークンに分かれ、tokens[2]を演算子として
+    # 読む既存ロジックがずれてしまう(以前から既知だったギャップ)——_merge_not_in()で解消。
+    records = parse_dsl("IF TestVar NOT IN $'''list''' THEN")
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, IfRecord)
+    assert record.operand1 == VarRef("TestVar")
+    assert record.operator == "NOT IN"
+    assert record.operand2 == "list"
+
+
+def test_in_operator_parsed_as_single_token_for_loop_while() -> None:
+    records = parse_dsl("LOOP WHILE (TestVar) IN ($'''list''')")
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, LoopWhileRecord)
+    assert record.operator == "IN"

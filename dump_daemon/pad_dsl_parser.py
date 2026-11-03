@@ -77,9 +77,20 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   コメント→文字列(コメント本文に`$'''`等が含まれていても文字列リテラルとして
   誤認されないようにするため)。
 
-未対応(今後の実機確認が必要): 複合式(AND/OR)、`IN`/`NOT IN`演算子(ソースコードでは
-存在を確認したが、実機でどのUI経由で使えるかは未確認。`NOT IN`は2トークンのため現状の
-`_parse_line`では誤パースする既知のギャップがある)。
+- `IN`/`NOT IN`演算子(design/robin_language_source_findings.md——`ComparisonOperatorExtensions`の
+  ソースで`NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることを確認した。
+  `tokens = line.split()`で素朴に分割すると`"NOT"`/`"IN"`の2トークンになり、`IF`/`ELSE IF`/
+  `LOOP WHILE`の固定位置での演算子読み取りがずれてしまうため、`_merge_not_in()`で
+  トークン化の直後に1トークンへ結合してから既存の位置ベースロジックに渡している。
+  実機でどのUI経由で使えるかはまだ未確認)
+
+未対応(今後の実機確認が必要・構造的に大きな変更が必要なため今回は見送り): `AND`/`OR`/`XOR`
+(`LogicalExpression`)・`NOT`前置演算子(`NotExpression`)による複合条件式、`+`/`-`/`*`/`/`/`mod`
+(`ArithmeticExpression`)による算術式——いずれもソースコード上は`<operand> <keyword> <operand>`
+という単純な中置(`NOT`は前置)記法であることを確認済みだが、現在の`IfRecord`等は
+「オペランド1個+演算子1個+オペランド2個」という**フラットな**構造を前提にしており、
+再帰的な式木を表現できない。安易に部分対応すると`A AND B OR C`のような式を誤って
+解釈する恐れがあるため、構造自体の見直しが必要な別タスクとして持ち越す。
 
 - `SWITCH <expr>` / `CASE <value>` / `DEFAULT` / `END` 形式の多分岐(design/robin_language_source_findings.md——
   ANTLR生成パーサー`Language.cs`の`Small_statementContext`を読み、`switch_statement`/
@@ -472,6 +483,28 @@ def _strip_parens(token: str) -> str:
     return token
 
 
+def _merge_not_in(tokens: list[str]) -> list[str]:
+    """隣接する`"NOT"`・`"IN"`の2トークンを1個の`"NOT IN"`トークンへ結合する。
+
+    design/robin_language_source_findings.md——`ComparisonOperatorExtensions.ToString()`の
+    ソースで、`ComparisonOperator.NotIn`は`"NOT IN"`(内部に空白を1つ持つ**1つの**文字列)として
+    直列化されることを確認した。`IF`/`ELSE IF`/`LOOP WHILE`の演算子は固定位置の
+    トークン(`tokens[2]`等)として読むため、空白区切りで2トークンになる`NOT IN`を
+    そのままにすると以降の全トークン位置がずれてしまう(以前から既知だったギャップ)。
+    ここで先に1トークンへ結合しておくことで、既存の固定位置ロジックを変更せずに対応できる。
+    """
+    merged: list[str] = []
+    i = 0
+    while i < len(tokens):
+        if tokens[i] == "NOT" and i + 1 < len(tokens) and tokens[i + 1] == "IN":
+            merged.append("NOT IN")
+            i += 2
+        else:
+            merged.append(tokens[i])
+            i += 1
+    return merged
+
+
 def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
     if token in placeholders:
         return _unescape(placeholders[token])
@@ -508,7 +541,7 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
             return IfFunctionRecord(function_name=func_name, args=args, indent=indent)
         return ElseIfFunctionRecord(function_name=func_name, args=args, indent=indent)
 
-    tokens = line.split()
+    tokens = _merge_not_in(line.split())
     first = tokens[0]
 
     if first == "SET" and len(tokens) >= 4 and tokens[2] == "TO":

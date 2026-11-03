@@ -359,12 +359,58 @@ indent+1、`END`は構文全体に1つ)を適用した。`pad_codegen.py`にも`
 SWITCH自身が実機で実際にこのインデント規則で出力されるかを直接確認したDSL例は無い
 (`LOOP`のrange両端含む仮定と同種の、明示的に文書化された未検証の前提として扱う)。
 
+## ANTLR文法(`Language.cs`の`ExpressionContext`サブクラス群)で複合式・算術式・IN系演算子を一括確認
+
+`SWITCH`/`CASE`/`DEFAULT`の構造解明に続けて、同じANTLR生成パーサー(`Language.cs`)の
+`ExpressionContext`(値・条件式を表す汎用ルール)のサブクラス一覧を確認した:
+`ArithmExpContext`/`ComparisonExpContext`/`FactorExpContext`/`FunctionExpContext`/
+`InvalidExpContext`/`LogicalExpContext`/`NotExpContext`/`OperantExpContext`/`ParenthesisExpContext`。
+これは`IF`の条件自体が(これまで仮定していた「オペランド1個+演算子1個+オペランド2個」という
+固定3トークン構造ではなく)**再帰的な式木を許す汎用`expression()`ルール**として実装されている
+ことを意味する——`If_statementContext.Expression => expression()?.ToEvaluatableContext();`で確認済み。
+
+各クラスの`ToEvaluatableContext()`/対応する`Evaluatable.Expressions`配下の実装クラスの`ToString()`
+から、以下が確定した:
+
+- **`LogicalExpContext`→`LogicalExpression`**: `<expr1> AND <expr2>` / `<expr1> OR <expr2>` /
+  `<expr1> XOR <expr2>`(`AND`/`OR`に加え**`XOR`も存在**——これまでのUIドロップダウンや
+  研究ノートでは見た記憶が無く、ANTLR文法調査で初めて判明した)。いずれも単純な中置記法で
+  キーワードは`keywordFormat`に応じて大文字化される。
+- **`NotExpContext`→`NotExpression`**: `NOT <expr>`(前置、単項)。
+- **`ArithmExpContext`→`ArithmeticExpression`**: `<expr1> + <expr2>` / `-` / `*` / `/` /
+  `<expr1> mod <expr2>`(**`mod`だけは`keywordFormat`を経由せず常に小文字固定**——`ToCodeString()`
+  がFormatStringを呼ばずに直接`"mod"`を返すため。他の演算子キーワードとの数少ない例外)。
+- **`ComparisonExpContext`→`ComparisonExpression`/`SpecialComparisonExpression`**:
+  `ComparisonOperatorExtensions.ToString(format)`で6つの対称演算子(`=`/`<>`/`<`/`<=`/`>`/`>=`)に
+  加え`In`→`"IN"`、`NotIn`→`"NOT IN"`(**1つの`ToString()`呼び出しの戻り値として、内部に
+  半角スペース1つを含む1つの文字列**)を確認。`NotIn`が`IsSpecialComparisonOperator()`で
+  区別される特別な演算子だったため、`ComparisonExpression`と`SpecialComparisonExpression`という
+  似た2クラスに分かれている(ToStringの出力形式自体はどちらも同じ)。
+
+**実装した対応**: `NOT IN`はソース上確定した1演算子の直列化だが、空白区切りのDSLテキスト上では
+2トークンに分かれるため、`pad_dsl_parser.py`に`_merge_not_in()`(隣接する`"NOT"`/`"IN"`トークンを
+`"NOT IN"`へ結合)を追加し、`IF`/`ELSE IF`/`LOOP WHILE`の既存の固定位置ロジックを変更せずに
+対応した(以前から既知だったギャップの解消)。`pad_codegen.py`の`_OPERATOR_MAP`にも
+`"IN": "in"`/`"NOT IN": "not in"`を追加した(Pythonの`in`/`not in`はPADの「含まれるか」という
+意味とそのまま対応する自然な写像と判断)。
+
+**実装を見送った対応**: `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による
+算術式は、いずれも**再帰的な式木**を必要とするため見送った。現在の`IfRecord`等は
+「オペランド1個+演算子1個+オペランド2個」という完全にフラットな構造を前提にしており、
+`A AND B OR C`のような式を正しく表現するには構造自体の再設計が必要(優先順位・結合性も
+未確認)。安易な部分対応は誤った意味論を生成する恐れが大きいため、`pad_dsl_parser.py`の
+モジュールdocstringに確定した構文を明記した上で、別タスクとして持ち越す。
+
 ## 今後の調査候補(未着手)
 
 - `SWITCH`/`CASE`/`DEFAULT`(構造はANTLR文法から類推実装済み——本セクション参照)の実機検証
 - `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
   および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
-- `In`/`Not in`演算子を実機のどのUI経路で使えるかの特定、および`NOT IN`(2トークン)にパーサーが対応していないギャップの解消
+- `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
+  本セクション参照)を表現できるよう、`IfRecord`等のフラットな構造を再帰的な式木に
+  再設計すること。優先順位・結合性も実機/文法でさらに確認が必要
+- `IN`/`NOT IN`演算子(DSL表現・パーサー対応は完了——本セクション参照)を実機のどのUI経由で
+  使えるかの特定
 - `/# ... #/`複数行コメント構文の実機検証(パーサーは対応済みだが実機出力例が無い)
 - `StringAtom`(非interpolated文字列)が実際にどの文脈で出力されるかの特定
 - アクションモジュールDLL群(`Modules.*.Actions.dll`)を対象にした、デフォルト値省略ロジックの追加調査
