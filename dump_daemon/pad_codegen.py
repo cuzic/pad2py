@@ -609,28 +609,46 @@ def _build_pywinauto_selector_expr(path: tuple[str, ...]) -> str | None:
     意図的に使わない。経路上のいずれかのセグメントでリポジトリに情報が無い、または
     使える属性が1つも無い(例: 知見44の`:startbutton`のような特殊タグで`Attributes`が
     空)場合は、でっち上げた式を返さず`None`にする。
+
+    design/dsl_format_findings.md 知見56の追記(実機検証済み): 1つの`ControlRepositoryEntry`の
+    `selectors[0]`自体が**複数の`ControlRepositorySelectorElement`からなる内部チェーン**に
+    なりうる(例: 電卓の「7」ボタンは`pane(Class: CalcFrame)` → `button(Class: Button,
+    Name: 7)`という2段)。当初の実装は`entry.selectors[0][0]`(チェーンの最初の1要素)だけを
+    見ていたため、この例では実際のボタンではなく中間の`pane`要素(`control_type: Pane`)を
+    指す誤った式を生成してしまっていた(実機で`child_window(class_name="CalcFrame")`が
+    ボタンではなくPaneに解決されることを確認して発覚)。チェーン内の各要素を**それぞれ
+    別個の`.child_window(...)`呼び出し**として連ねる(属性を1つの呼び出しにまとめて
+    しまうと、異なる階層の要素が同じ属性名を異なる値で持つ場合に情報をサイレントに
+    失う恐れがあるため、PAD自身の内部チェーン構造をそのまま1対1で複製する方針にした)
+    よう修正し、実機で`Desktop(backend="uia").window(title="Calculator").child_window(
+    class_name="CalcFrame").child_window(class_name="Button", title="7")`が電卓の
+    実際の「7」ボタン(`control_type: Button`, `name: 7`)を正しく一意に特定できることを
+    確認した。
     """
     repository = _active_repository.get("appmask")
     if not repository:
         return None
     calls: list[str] = []
-    for i, name in enumerate(path):
+    for name in path:
         entry = repository.get(name)
         if entry is None or not entry.selectors or not entry.selectors[0]:
             return None
-        element = entry.selectors[0][0]
-        kwargs: dict[str, str] = {}
-        for attr in element.attributes:
-            if attr.get("Ignore"):
-                continue
-            kwarg_name = _REPOSITORY_ATTR_TO_PYWINAUTO_KWARG.get(attr.get("Name"))
-            value = attr.get("Value")
-            if kwarg_name is not None and isinstance(value, str):
-                kwargs[kwarg_name] = value
-        if not kwargs:
-            return None
-        kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
-        calls.append(f'Desktop(backend="uia").window({kwargs_str})' if i == 0 else f".child_window({kwargs_str})")
+        for element in entry.selectors[0]:
+            kwargs: dict[str, str] = {}
+            for attr in element.attributes:
+                if attr.get("Ignore"):
+                    continue
+                kwarg_name = _REPOSITORY_ATTR_TO_PYWINAUTO_KWARG.get(attr.get("Name"))
+                value = attr.get("Value")
+                if kwarg_name is not None and isinstance(value, str):
+                    kwargs[kwarg_name] = value
+            if not kwargs:
+                return None
+            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+            if not calls:
+                calls.append(f'Desktop(backend="uia").window({kwargs_str})')
+            else:
+                calls.append(f".child_window({kwargs_str})")
     return "".join(calls)
 
 

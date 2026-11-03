@@ -813,3 +813,30 @@ def test_generate_python_omits_selector_hint_for_special_pseudo_selector() -> No
     code = generate_python(tree, repository=repository)
     assert "verified pywinauto selector" not in code
     assert "Start Button" in code
+
+
+def test_generate_python_chains_all_elements_of_a_multi_element_internal_selector() -> None:
+    # design/dsl_format_findings.md 知見56の追記(実機検証済み・バグ修正): 1つの
+    # ControlRepositoryEntryのselectors[0]自体が複数のControlRepositorySelectorElementから
+    # なる内部チェーンになりうる例を、電卓の「7」ボタン(appmask['Window \'Calculator\'']
+    # ['Button \'7\'']、「Button '7'」エントリ自体がpane(Class: CalcFrame)→
+    # button(Class: Button, Name: 7)という2段チェーン)で実機確認した。
+    # 修正前は`entry.selectors[0][0]`(チェーンの最初の1要素)だけを見ていたため、
+    # 実際にはボタンではなく中間のpane要素(実機でcontrol_type: Paneと確認)を指す
+    # 誤った式(`child_window(class_name="CalcFrame")`止まり)を生成してしまっていた。
+    # 修正後はチェーンの全要素をそれぞれ別個の`.child_window(...)`として連ね、
+    # 実機で電卓の実際の「7」ボタン(control_type: Button, name: 7)を正しく一意に
+    # 特定できる式を生成することを確認した。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_calculator_button.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        'verified pywinauto selector: Desktop(backend="uia").window(title=\'Calculator\')'
+        ".child_window(class_name='CalcFrame').child_window(class_name='Button', title='7')" in code
+    )
+    # バグがあった頃の誤った(中間のpane止まりの)式が生成されていないことも確認する。
+    assert 'window(title=\'Calculator\').child_window(class_name=\'CalcFrame\'))' not in code
