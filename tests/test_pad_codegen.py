@@ -54,13 +54,21 @@ def test_render_value_distinguishes_varref_enumref_and_literals() -> None:
 
 
 def test_render_condition_maps_known_operators() -> None:
+    # design/dsl_format_findings.md 知見18で実機確認した6種の比較演算子すべて。
     assert render_condition(VarRef("TestVar"), "=", "hello") == "TestVar == 'hello'"
+    assert render_condition(VarRef("X"), "<>", 1) == "X != 1"
+    assert render_condition(VarRef("X"), ">", 1) == "X > 1"
+    assert render_condition(VarRef("X"), ">=", 1) == "X >= 1"
     assert render_condition(VarRef("LoopIndex"), "<", 10) == "LoopIndex < 10"
+    assert render_condition(VarRef("X"), "<=", 1) == "X <= 1"
 
 
 def test_render_condition_rejects_unverified_operator() -> None:
+    # Containsはそもそも中置演算子ではなく関数呼び出し構文(知見18-2)なので、
+    # パーサーが対応していない現状では到達しえないはずだが、render_condition単体としても
+    # 未知の演算子記号を渡されたら例外を出すことを確認する。
     with pytest.raises(ValueError, match="Unmapped PAD operator"):
-        render_condition(VarRef("X"), "<>", 1)
+        render_condition(VarRef("X"), "Contains", 1)
 
 
 def test_generate_python_full_flow_compiles_as_valid_python() -> None:

@@ -260,3 +260,61 @@ SET InterpVar TO $'''Hello %TestVar% world, LoopIndex is %LoopIndex%'''
 知見16のTODOを解消するため、`pad_codegen.py`に`render_text_template(text)`を実装した。`%VarName%`マーカーを含まない文字列はこれまで通り`repr()`、含む場合はトリプルダブルクォートのf-string(`f"""..."""`、改行を含む値でも壊れないように)に変換し、`%VarName%`を`{VarName}`に置き換える。リテラル部分に含まれうる`\`・`"""`・`{`/`}`はf-string内で問題を起こさないようエスケープする(バックスラッシュの二重化、3連続ダブルクォートのエスケープ、波括弧の二重化)。`render_value()`は文字列値をこの関数経由で処理するよう変更した。
 
 **単なる構文チェックに留めず、実行時の意味論まで検証した**: `tests/test_pad_codegen.py`に、生成したf-string式を実際に`eval()`し、`TestVar="hello"`・`LoopIndex=5`を束縛した上で`"Hello hello world, LoopIndex is 5"`という期待通りの文字列になることを確認するテストを追加した(構文的に妥当なだけでなく、PADのテキストテンプレートと同じ実行結果になることの検証)。
+
+## 18. `If`/`Loop condition`の演算子を全種類実機確認——比較演算子は単純な記号、テキスト演算子は関数呼び出し構文
+
+`If`/`Loop condition`ダイアログの「Operator」ドロップダウンを開き、選択可能な全演算子を列挙した:
+
+```
+Equal to (=)
+Not equal to (<>)
+Greater than (>)
+Greater than or equal to (>=)
+Less than (<)
+Less than or equal to (<=)
+Contains
+Does not contain
+Is empty
+Is not empty
+Starts with
+Does not start with
+Ends with
+Does not end with
+Is blank
+Is not blank
+```
+
+### 18-1. 比較演算子(6種)はすべて単純な記号——`_OPERATOR_MAP`を完全化
+
+残り4種(`<>`/`>`/`>=`/`<=`)を実機で1つずつ選択・保存・コピーして確認した結果、すべて`IF <operand1> <記号> <operand2> THEN`という、既知の`=`/`<`と全く同じ単純な中置記法だった:
+
+| UIのラベル | DSL上の記号 | Python演算子 |
+| --- | --- | --- |
+| Equal to (=) | `=` | `==` |
+| Not equal to (<>) | `<>` | `!=` |
+| Greater than (>) | `>` | `>` |
+| Greater than or equal to (>=) | `>=` | `>=` |
+| Less than (<) | `<` | `<` |
+| Less than or equal to (<=) | `<=` | `<=` |
+
+これで`pad_codegen.py`の`_OPERATOR_MAP`に残り4種を追加でき、数値・文字列の比較条件は網羅できる見込み。
+
+### 18-2. テキスト演算子(`Contains`等)は中置記法ではなく**関数呼び出し構文**——重大な文法上の相違
+
+「Contains」を選択すると、ダイアログに新たに**「Ignore case」トグルスイッチ**という第3のフィールドが現れた(First/Operator/Second operandの3フィールド構成が、演算子の種類によって追加フィールドを持つことがある、という初めての発見)。これを保存して再コピーしたところ、DSL上は以下の**完全に異なる形式**だった:
+
+```
+IF Contains(InnerVar, $'''nested''', False) THEN
+```
+
+つまり`Contains`/`Does not contain`等は`<operand1> <operator> <operand2>`という中置記法ではなく、**`FunctionName(operand1, operand2, caseFlag)`という関数呼び出し構文**になる。第3引数の`False`は「Ignore case」トグルの値(この例ではOFF=大文字小文字を区別する=Case sensitive)に対応すると見られる。これは`IF`/`LOOP WHILE`で確立していた「常に3トークンの中置演算子」という前提を覆す。
+
+**現状のパーサーはこのケースを(エラーを出さずに)サイレントに破壊する**——実際に`parse_dsl("IF Contains(InnerVar, $'''nested''', False) THEN\nEND")`を試したところ、クラッシュせずに以下のような無意味な結果を返した:
+
+```python
+IfRecord(operand1=VarRef(name='Contains(InnerVar,'), operator='\x00STR0\x00,', operand2=VarRef(name='False)'), indent=0)
+```
+
+(`\x00STR0\x00`は未解決のプレースホルダキーがそのまま`operator`フィールドに漏れ出したもの)。これは「対応していないものは例外を出す」という`pad_codegen.py`の`render_condition()`の設計方針(知見15のコメント参照)とは異なり、**パーサー自体が壊れたデータを沈黙して生成してしまう**既知のギャップであり、修正は別タスクとしてスコープ外にした(関数呼び出し構文は`Contains`系6種・`Is empty`系4種で引数の個数(2引数+フラグ / 1引数のみ)が異なると推測され、対応表の設計にまとまった作業が必要なため)。
+
+**実機操作の後片付け**: 検証後、g1g2_testフローのネストした`If`(`InnerVar`)は元の`Equal to (=)`演算子に復元し、これまでのコミットが前提とするDSL出力(`IF InnerVar = $'''nested''' THEN`)と一致する状態に戻した。
