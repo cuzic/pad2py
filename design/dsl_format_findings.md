@@ -534,4 +534,6 @@ END
 
 design/robin_language_source_findings.mdで`ExceptionStatementBase`のソース(`SetLevel()`)から「ケースの本体はヘッダーより1段深いindentになる」と予測していたが、**実機ではこれが誤りだったと判明した**——`SET NewVar TO ...`(本体)は`ON ERROR`・`END`・保護対象のアクション自身と全く同じindentだった。他の全ブロック構文(IF/LOOP/SWITCH、いずれも本体がヘッダーより1段深い)とは異なる、唯一の例外的な構造。詳細はdesign/robin_language_source_findings.mdの該当節を参照。
 
-今回検証したのは名前無しcatch-allケース1つのみで、複数ケース・`REPEAT ACTION`/`NEXT ACTION`は未検証。パーサー/codegenへの実装は「直前のアクションに紐付ける」という新しいパターンの設計が必要なため、今回は発見の記録のみとし、次回以降の実装とした。
+今回検証したのは名前無しcatch-allケース1つのみで、複数ケース・`REPEAT ACTION`/`NEXT ACTION`は未検証。
+
+**(後続のティックで実装)**: `pad_dsl_parser.py`に`OnErrorRecord`/`OnErrorNode`/`GuardedNode`(直前のノードをラップする新しいNode種別)を追加し、`build_block_tree()`で「本体は`ON ERROR`と同じlevelで再帰パース」という実機確認済みの規則を実装した。`pad_codegen.py`は`GuardedNode`を`try`/`except Exception`に変換する(「Continue flow run」の意味論にそのまま対応)。`except Exception`節が実際に例外を捕捉してハンドラを実行することをexecベースのテストで確認済み。

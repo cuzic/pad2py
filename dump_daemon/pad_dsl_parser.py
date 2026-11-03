@@ -302,6 +302,19 @@ class CaseDefaultRecord:
 
 
 @dataclass
+class OnErrorRecord:
+    """`ON ERROR`(ベアキーワード、名前無しのcatch-allエラーケース、実機検証済み——
+    design/dsl_format_findings.md 知見34)。直前のアクション(または他の文)に対する
+    エラーハンドラを開始する。**他の全ブロック構文(IF/LOOP/SWITCH)と異なり、本体の
+    indentはヘッダー自身(および保護対象の文)と同じ**——唯一の例外的な構造。
+    `ON ERROR <CaseName>`(名前付きケース)の形は未実装(design/robin_language_source_findings.md
+    で`ExceptionCaseStatement.ToString()`からソース上の構文は確認済みだが実機未検証)。
+    """
+
+    indent: int = 0
+
+
+@dataclass
 class RawRecord:
     text: str
     indent: int = 0
@@ -322,6 +335,7 @@ Record = (
     | SwitchRecord
     | CaseRecord
     | CaseDefaultRecord
+    | OnErrorRecord
     | RawRecord
 )
 
@@ -373,7 +387,32 @@ class SwitchNode:
     arms: list[tuple[SwitchArmHeader, list[Node]]] = field(default_factory=list)
 
 
-Node = Record | BlockNode | ConditionalNode | SwitchNode
+@dataclass
+class OnErrorNode:
+    """`ON ERROR`/`END`で囲まれたエラーハンドラ本体(実機検証済み——design/dsl_format_findings.md
+    知見34)。名前無しのcatch-allケースのみ対応(複数ケース・`REPEAT ACTION`/`NEXT ACTION`は
+    実機未検証のため非対応)。単独では出現せず、常に`GuardedNode`経由で直前の文に紐付く。
+    """
+
+    body: list[Node] = field(default_factory=list)
+
+
+@dataclass
+class GuardedNode:
+    """直前の文(`node`)に`ON ERROR`ハンドラ(`on_error`)が紐付いていることを表す。
+
+    `ON ERROR`はそれ自身が独立した文ではなく、DSL上では直前の文のすぐ後ろ・同じindentに
+    現れてそれを「保護」する(design/robin_language_source_findings.md——
+    `StatementWithArguments.ToStringIgnoreMetadata()`が`ExceptionStatement`を末尾に
+    改行区切りで連結している)。`build_block_tree()`は`ON ERROR`を独立したノードとして
+    bodyに追加せず、直前に追加済みのノードをこれでラップし直す。
+    """
+
+    node: Node
+    on_error: OnErrorNode
+
+
+Node = Record | BlockNode | ConditionalNode | SwitchNode | GuardedNode
 
 
 def build_block_tree(records: list[Record]) -> list[Node]:
@@ -449,6 +488,20 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                 if pos < len(records) and is_end(records[pos], level):
                     pos += 1
                 body.append(BlockNode(header=rec, body=block_body))
+            elif isinstance(rec, OnErrorRecord):
+                # 実機検証済み(design/dsl_format_findings.md 知見34): 本体は`ON ERROR`
+                # 自身と同じlevelなので、再帰呼び出しも同じlevelで行う——他のブロック構文と
+                # 異なり呼び出し元での明示的なEND消費が不要(再帰呼び出し自身がlevelの
+                # ENDを見つけて消費・終了する)。`ON ERROR`は独立したノードではなく、
+                # 直前の文を保護するものなのでGuardedNodeで直前のノードをラップし直す。
+                on_error_body = parse_level(level)
+                on_error_node = OnErrorNode(body=on_error_body)
+                if body:
+                    body[-1] = GuardedNode(node=body[-1], on_error=on_error_node)
+                else:
+                    # ON ERRORが文の先頭(保護対象が無い)という壊れたデータ。
+                    # 黙って捨てずraw相当として保持する。
+                    body.append(on_error_node)
             else:
                 body.append(rec)
         return body
@@ -629,6 +682,11 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
 
     if first == "DEFAULT" and len(tokens) == 1:
         return CaseDefaultRecord(indent=indent)
+
+    if first == "ON" and len(tokens) == 2 and tokens[1] == "ERROR":
+        # design/dsl_format_findings.md 知見34(実機検証済み、名前無しcatch-allケースのみ)。
+        # `ON ERROR <CaseName>`(名前付き)・`ON BLOCK ERROR`は未対応(実機未確認)。
+        return OnErrorRecord(indent=indent)
 
     if first in _KNOWN_KEYWORDS:
         return KeywordRecord(name=first, args=tokens[1:], indent=indent)

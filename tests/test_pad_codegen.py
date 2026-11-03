@@ -445,3 +445,21 @@ def test_generate_python_renders_not_in_operator_as_python_not_in() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "if TestVar not in 'list':" in code
+
+
+def test_generate_python_renders_guarded_node_as_try_except() -> None:
+    # design/dsl_format_findings.md 知見34(実機確認済み、「All errors (default)」+
+    # 「Continue flow run」の組み合わせのみ)。GuardedNodeに対する唯一のcodegenテスト——
+    # 生成結果が実際にPythonとして正しく動くこと(構文だけでなく実行結果も、except節が
+    # 本当に例外を捕捉してハンドラを実行することも)をexecで確認する。
+    # `SET Result TO UndefinedVar`は未定義変数の参照(NameError)でON ERRORハンドラを誘発する。
+    dsl = "SET Result TO UndefinedVar\nON ERROR\nSET Result TO $'''recovered'''\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "try:" in code
+    assert "except Exception:" in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result"] == "recovered"
