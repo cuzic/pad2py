@@ -1269,3 +1269,24 @@ def test_if_action_record_check_if_window_variants_use_distinct_action_ids() -> 
     records = parse_dsl(is_not_open_dsl)
     assert isinstance(records[0], IfActionRecord)
     assert records[0].action_id == "UIAutomation.IfWindow.IsNotOpen"
+
+
+def test_if_action_record_parsed_from_real_if_window_contains_element_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見54の追記(実機検証済み): 「If window contains element」は
+    # 「If window」とは別のアクション(別のツールチップ・別のダイアログ構成——「Check if window:
+    # Contains UI element」「Check UI element state」トグル「UI element:」ピッカー、知見52の
+    # 「Wait for window content」とよく似た構成)だが、DSL上は同じ`IF (<ActionId> ...) THEN`構文を
+    # 再利用し、action_idが`UIAutomation.IfWindowContains.WindowContainsElement`になるだけだった
+    # ——既存の汎用パーサー/codegenロジックのまま、コード変更無しで正しく処理できた。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_if_window_contains_element.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    if_action_records = [r for r in records if isinstance(r, IfActionRecord)]
+    assert len(if_action_records) == 1
+    rec = if_action_records[0]
+    assert rec.action_id == "UIAutomation.IfWindowContains.WindowContainsElement"
+    element = rec.params["Element"]
+    assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
+    tree = build_block_tree(records)
+    assert len(tree) > 0
