@@ -1119,3 +1119,31 @@ def test_build_block_tree_handles_real_wait_for_window_whole_subflow_capture() -
     assert wait_records[0].timeout_seconds == 5
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_wait_action_without_for_clause_has_no_timeout() -> None:
+    # design/dsl_format_findings.md 知見50の追記(実機検証済み): 「Fail with timeout error」
+    # トグルをOFFにすると、`FOR <秒数>`句自体がDSLから省略される(既定のタイムアウト値に
+    # 置き換わるのではなく、本当に句ごと無くなる)。
+    dsl = (
+        "WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] FocusWindow: False)"
+    )
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, WaitActionRecord)
+    assert record.action_id == "UIAutomation.WaitForWindow.ToOpen"
+    assert record.timeout_seconds is None
+
+
+def test_build_block_tree_handles_real_wait_for_window_no_timeout_whole_subflow_capture() -> None:
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_no_timeout.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert wait_records[0].timeout_seconds is None
+    tree = build_block_tree(records)
+    assert len(tree) > 0

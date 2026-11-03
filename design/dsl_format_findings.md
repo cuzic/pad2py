@@ -854,4 +854,12 @@ WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \'Untitled - Not
 
 **codegen側の判断**: `UIAutomation.WaitForWindow.ToOpen`はpywinautoの`WindowSpecification.wait("exists", timeout=...)`に自然に対応しそうに見えるが、対象ウィンドウの実セレクタ自体が`Window`パラメータの`UiElementRef`という名前参照でしかなく、知見38・46と同じ制約でDSLから取得できないため、でっち上げたセレクタを埋め込まず、`# TODO: map PAD wait action: <action_id> (timeout: <秒数>s) (UI element: ...)`というTODOコメントに倒す。
 
-**未検証のまま残る項目**: 「Wait for window to」の他の3選択肢(`ToClose`/`ToBecomeFocusedByTitleClass`/`ToLoseFocus`)・「Focus window after it opens」をONにした場合の`FocusWindow: True`表記・「Fail with timeout error」をOFFにした場合に`FOR`句自体が省略されるのか/既定のタイムアウト値がどう扱われるのか・「Wait for service」の構文、はいずれも実機未確認。
+**未検証のまま残る項目**: 「Wait for window to」の他の3選択肢(`ToClose`/`ToBecomeFocusedByTitleClass`/`ToLoseFocus`)・「Focus window after it opens」をONにした場合の`FocusWindow: True`表記・「Wait for service」の構文、はいずれも実機未確認。
+
+**追記(同日、別ティック)**: 「Fail with timeout error」をOFFにした場合の挙動を実機確認した。結果は**`FOR`句自体がDSLから丸ごと省略される**(既定のタイムアウト値に置き換わるわけではない):
+
+```
+WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \'Untitled - Notepad\''] FocusWindow: False)
+```
+
+**新たなパーサーバグを発見・修正**: 実装当初の`_WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\) FOR (.+)$")`は`FOR`句を必須としていたため、この省略形には一切マッチせず、知見50本文で報告した「サイレントに壊れたPythonを生成する」バグ(`time.sleep("(UIAutomation.WaitForWindow.ToOpen")`相当)がこのバリエーションでも再発していた——実装直後に別の変種を実機キャプチャしたことで、確認済みの構文にもまだ別の落とし穴が残っていたことにすぐ気づけた(知見15・26・36・38・46・50と同系統)。正規表現を`^WAIT \((.+)\)(?: FOR (.+))?$`(`FOR`句全体をオプションに)に修正し、`WaitActionRecord.timeout_seconds`は`FOR`句が無い場合`None`のままにした。`pad_codegen.py`側も`render_value(None)`が例外になる問題(`None`は`render_value()`が対応していない値型)に気づき、`timeout_seconds is None`の場合は`"timeout: none"`という専用の表示に分岐させた。

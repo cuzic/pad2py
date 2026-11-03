@@ -494,13 +494,15 @@ def _generate_wait_action(node: WaitActionRecord, indent: int) -> list[str]:
     timeout=...)`に自然に対応しそうに見えるが、対象ウィンドウのセレクタ自体は`Window`
     パラメータの`UiElementRef`が指す名前参照でしかなく、実セレクタがDSLから取得できない
     (知見38・46と同じ制約)。でっち上げたセレクタを埋め込まず、action_id・タイムアウト秒数・
-    関連UI要素の表示名をTODOコメントに残すだけに留める。
+    関連UI要素の表示名をTODOコメントに残すだけに留める。`timeout_seconds`は「Fail with
+    timeout error」トグルがOFFの場合`None`になる(知見50の追記——`FOR <秒数>`句自体が
+    DSLから省略される、実機確認済み)。
     """
     prefix = INDENT * indent
-    timeout = render_value(node.timeout_seconds)
+    timeout_desc = f"{render_value(node.timeout_seconds)}s" if node.timeout_seconds is not None else "none"
     return [
         f"{prefix}# TODO: map PAD wait action: {node.action_id} "
-        f"(timeout: {timeout}s){_ui_element_hint(node)}"
+        f"(timeout: {timeout_desc}){_ui_element_hint(node)}"
     ]
 
 

@@ -260,7 +260,9 @@ _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN
 # 単純な`WAIT <seconds>`キーワードとは全く別の構文で、`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`
 # という、丸括弧で囲んだアクション呼び出し風の式を伴う。例:
 # `WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['...'] FocusWindow: False) FOR 5`
-_WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\) FOR (.+)$")
+# `FOR <秒数>`句は「Fail with timeout error」トグルが有効な場合のみ付与され、無効な場合は
+# `WAIT (...)`のみで終わる(知見50の追記で実機確認済み)——そのため`FOR`句全体を省略可能にしている。
+_WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\)(?: FOR (.+))?$")
 
 
 @dataclass
@@ -957,7 +959,8 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
                 i += 2
                 continue
             i += 1
-        wait_record.timeout_seconds = _resolve_value(duration_str.strip(), placeholders)
+        if duration_str is not None:
+            wait_record.timeout_seconds = _resolve_value(duration_str.strip(), placeholders)
         return wait_record
 
     tokens = _merge_not_in(line.split())
