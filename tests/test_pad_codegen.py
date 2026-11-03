@@ -287,6 +287,20 @@ def test_generate_python_from_real_if_window_whole_subflow_capture_raises() -> N
         generate_python(tree)
 
 
+def test_generate_python_from_real_if_window_contains_element_whole_subflow_capture_raises() -> None:
+    # design/dsl_format_findings.md 知見54の追記: 「If window contains element」も知見54の
+    # IfActionRecord/_generate_conditional()のNotImplementedErrorフォールバックをそのまま
+    # 再利用でき、コード変更は不要だった。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_if_window_contains_element.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    with pytest.raises(
+        NotImplementedError, match="UIAutomation.IfWindowContains.WindowContainsElement"
+    ):
+        generate_python(tree)
+
+
 # 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
 # 続けてAction to perform=Releaseに切り替えて再キャプチャした生データ(知見23)。
 PRESS_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False"

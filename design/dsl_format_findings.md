@@ -967,4 +967,12 @@ IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \'Untitled - Notepad\''
 
 **追記(同ティック内)**: 「Check if window」ドロップダウンの全選択肢を確認した。「Is open」「Isn't open」「Is focused」「Isn't focused」の4択で全てだった。「Is focused」を選んで保存・一括コピーしたところ`UIAutomation.IfWindow.IsFocused`、「Isn't open」では`UIAutomation.IfWindow.IsNotOpen`——`InstantCheck`のような共有パラメータで否定を表すのではなく、**4つの選択肢それぞれが別々のaction_id**(`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`、最後の1つは未検証だが命名パターンから確実視)になることを確認した。design/robin_language_source_findings.mdが予測していた`IsFocusedByTitleClass`という名前ではなく、単純な`IsFocused`だった。
 
-**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If window contains element」「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
+**さらに追記(別ティック)**: 「If window contains element」の実機DSLも確認した。「If window」とは別のアクション(ダイアログは「Check if window: Contains UI element」「Check UI element state」トグル「UI element:」ピッカーという構成——知見52の「Wait for window content」とよく似ている)だが、保存・一括コピーしたところ:
+
+```
+IF (UIAutomation.IfWindowContains.WindowContainsElement Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\''] InstantCheck: False) THEN
+```
+
+action_idは`UIAutomation.IfWindowContains.WindowContainsElement`——`UIAutomation.IfWindow.*`とは別の名前空間(`IfWindowContains`)だが、DSL構文は同じ`IF (<ActionId> ...) THEN`をそのまま再利用しており、これも**パーサー・codegenとも一切のコード変更無しで**正しく処理できた(`tests/fixtures/looptest_whole_subflow_with_if_window_contains_element.txt`で実機キャプチャをそのままテスト化)。知見52(`WAIT`側の`WaitForWindowContent`発見)と完全に対になる発見で、「action_idに依存しない汎用パーサー設計」が`WAIT`・`IF`の両方で未知の新アクションに対して自動的に安全側に倒れることを改めて実証した。
+
+**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
