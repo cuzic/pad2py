@@ -19,12 +19,16 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `KeywordRecord(EXIT LOOP)` / `KeywordRecord(NEXT LOOP)` → `break`/`continue`
 - `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身をそのまま展開
   (他のUI automationアクションはまだ対応していないため`# TODO`コメントを出力する)
+- 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
+  (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
 演算子は実機検証済みの`=`/`<`のみ`_OPERATOR_MAP`に登録している。未検証の演算子
 (`<>`/`>`/`>=`/`<=`/文字列の`contains`等)に遭遇した場合は、誤った意味論を生成しないよう
 `ValueError`を送出する。
 """
 from __future__ import annotations
+
+import re
 
 from .pad_dsl_parser import (
     ActionRecord,
@@ -51,6 +55,37 @@ _OPERATOR_MAP = {
     "<": "<",
 }
 
+# PAD変数名として実機で確認した形(常に有効なPython識別子)とみなす。
+_VAR_MARKER_RE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+
+
+def render_text_template(text: str) -> str:
+    """`%VarName%`マーカーを含む文字列値をf-stringに変換する(design/dsl_format_findings.md 知見16)。
+
+    マーカーを含まない文字列は通常の`repr()`と変わらない。マーカーを含む場合は
+    トリプルダブルクォートのf-string(改行を含む値でも壊れないように)に変換し、
+    `%VarName%`を`{VarName}`に置き換える。リテラル部分のバックスラッシュ・3連続の
+    ダブルクォート・波括弧はf-string内で問題を起こさないようエスケープする。
+    """
+    if not _VAR_MARKER_RE.search(text):
+        return repr(text)
+
+    parts: list[str] = []
+    pos = 0
+    for m in _VAR_MARKER_RE.finditer(text):
+        parts.append(_escape_fstring_literal(text[pos : m.start()]))
+        parts.append("{" + m.group(1) + "}")
+        pos = m.end()
+    parts.append(_escape_fstring_literal(text[pos:]))
+    return 'f"""' + "".join(parts) + '"""'
+
+
+def _escape_fstring_literal(segment: str) -> str:
+    escaped = segment.replace("\\", "\\\\")
+    escaped = escaped.replace('"""', '\\"\\"\\"')
+    escaped = escaped.replace("{", "{{").replace("}", "}}")
+    return escaped
+
 
 def render_value(value: object) -> str:
     """DSLの値(`_resolve_value()`の戻り値)をPython式の文字列に変換する。"""
@@ -62,8 +97,10 @@ def render_value(value: object) -> str:
         return repr(value.value)
     if isinstance(value, bool):
         return repr(value)
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, (int, float)):
         return repr(value)
+    if isinstance(value, str):
+        return render_text_template(value)
     raise TypeError(f"Unsupported value type for codegen: {type(value)!r}")
 
 

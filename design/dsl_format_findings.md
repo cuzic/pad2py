@@ -253,4 +253,10 @@ SET InterpVar TO $'''Hello %TestVar% world, LoopIndex is %LoopIndex%'''
 
 この違いはPADのパーサー/シリアライザが「式全体が単一の変数式かどうか」で表現方法を切り替えていることを示唆する。重要な点: **既存の`pad_dsl_parser.py`の実装はこのケースを変更なしで正しく処理できる**——`$'''...'''`で囲まれた値は常にプレースホルダ経由で復元されるため、中身に`%...%`が含まれていてもただの文字列として扱われ、`VarRef`と誤認されることはない(`tests/test_pad_dsl_parser.py`に回帰テストを追加して確認)。
 
-**今後のコード生成への示唆(未実装)**: 現在の`pad_codegen.py`の`render_value()`はこのような文字列をそのまま`repr()`するため、生成されるPythonコードには文字列として`"Hello %TestVar% world..."`というリテラルの`%TestVar%`がそのまま埋め込まれる——実行時に`TestVar`変数の値へ置換される訳ではない。PADの実行時セマンティクスを再現するには、将来的に`%VarName%`パターンを検出してf-string(`f"Hello {TestVar} world..."`)に変換する後処理が必要になる。これは今回はスコープ外とし、TODOとして記録するに留める。
+**今後のコード生成への示唆 → 実装済み(知見17参照)**: 当初`pad_codegen.py`の`render_value()`はこのような文字列をそのまま`repr()`していたため、生成されるPythonコードには文字列として`"Hello %TestVar% world..."`というリテラルの`%TestVar%`がそのまま埋め込まれ、実行時に`TestVar`変数の値へ置換されない問題があった。この後すぐに`render_text_template()`を実装して解消した(知見17)。
+
+## 17. コード生成: `%Var%`テキストテンプレートをf-stringへ変換
+
+知見16のTODOを解消するため、`pad_codegen.py`に`render_text_template(text)`を実装した。`%VarName%`マーカーを含まない文字列はこれまで通り`repr()`、含む場合はトリプルダブルクォートのf-string(`f"""..."""`、改行を含む値でも壊れないように)に変換し、`%VarName%`を`{VarName}`に置き換える。リテラル部分に含まれうる`\`・`"""`・`{`/`}`はf-string内で問題を起こさないようエスケープする(バックスラッシュの二重化、3連続ダブルクォートのエスケープ、波括弧の二重化)。`render_value()`は文字列値をこの関数経由で処理するよう変更した。
+
+**単なる構文チェックに留めず、実行時の意味論まで検証した**: `tests/test_pad_codegen.py`に、生成したf-string式を実際に`eval()`し、`TestVar="hello"`・`LoopIndex=5`を束縛した上で`"Hello hello world, LoopIndex is 5"`という期待通りの文字列になることを確認するテストを追加した(構文的に妥当なだけでなく、PADのテキストテンプレートと同じ実行結果になることの検証)。

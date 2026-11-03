@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from dump_daemon.pad_codegen import generate_python, render_condition, render_value
+from dump_daemon.pad_codegen import (
+    generate_python,
+    render_condition,
+    render_text_template,
+    render_value,
+)
 from dump_daemon.pad_dsl_parser import EnumRef, VarRef, build_block_tree, parse_dsl
 
 FULL_FLOW_DSL = (
@@ -103,3 +108,37 @@ def test_generate_python_marks_unmapped_action_with_todo_not_fabrication() -> No
     # Display.ShowMessageDialog はまだUI automationへのマッピングが無いため、
     # 架空のAPI呼び出しをでっち上げず、TODOコメントになっていること。
     assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" in code
+
+
+def test_render_text_template_without_markers_is_plain_repr() -> None:
+    assert render_text_template("no vars here") == repr("no vars here")
+
+
+def test_render_text_template_converts_markers_to_fstring_braces() -> None:
+    result = render_text_template("Hello %TestVar% world, LoopIndex is %LoopIndex%")
+    assert result == 'f"""Hello {TestVar} world, LoopIndex is {LoopIndex}"""'
+    compile(result, "<test>", "eval")
+
+
+def test_render_text_template_doubles_literal_braces_in_fstring() -> None:
+    result = render_text_template("value {x} here %Var%")
+    assert result == 'f"""value {{x}} here {Var}"""'
+    compile(result, "<test>", "eval")
+
+
+def test_render_text_template_actually_substitutes_variable_values_at_runtime() -> None:
+    # 実機で実際にキャプチャした値(design/dsl_format_findings.md 知見16)を使い、
+    # 単に構文が通るだけでなく、生成されたf-stringが実行時に正しく変数を埋め込むことまで検証する。
+    code = render_text_template("Hello %TestVar% world, LoopIndex is %LoopIndex%")
+    namespace = {"TestVar": "hello", "LoopIndex": 5}
+    result = eval(code, {}, namespace)  # noqa: S307 - テスト内でのみ使用する生成コードの評価
+    assert result == "Hello hello world, LoopIndex is 5"
+
+
+def test_generate_python_interpolates_text_template_set_variable() -> None:
+    # 実機で確認したInterpVarのSET文(知見16)を結合テストでも確認する。
+    dsl = "SET InterpVar TO $'''Hello %TestVar% world, LoopIndex is %LoopIndex%'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert 'InterpVar = f"""Hello {TestVar} world, LoopIndex is {LoopIndex}"""' in code
