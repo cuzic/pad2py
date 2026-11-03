@@ -975,7 +975,15 @@ IF (UIAutomation.IfWindowContains.WindowContainsElement Element: appmask['Window
 
 action_idは`UIAutomation.IfWindowContains.WindowContainsElement`——`UIAutomation.IfWindow.*`とは別の名前空間(`IfWindowContains`)だが、DSL構文は同じ`IF (<ActionId> ...) THEN`をそのまま再利用しており、これも**パーサー・codegenとも一切のコード変更無しで**正しく処理できた(`tests/fixtures/looptest_whole_subflow_with_if_window_contains_element.txt`で実機キャプチャをそのままテスト化)。知見52(`WAIT`側の`WaitForWindowContent`発見)と完全に対になる発見で、「action_idに依存しない汎用パーサー設計」が`WAIT`・`IF`の両方で未知の新アクションに対して自動的に安全側に倒れることを改めて実証した。
 
-**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If image」「If service」の実機DSL表現は、いずれも未確認のまま持ち越し。
+**さらに追記(別ティック)**: 「If service」(Windows servicesカテゴリ)の実機DSLも確認した。ダイアログは「If service: Is running」(ドロップダウン)「Service name:」(テキスト)という単純な構成。既存のサービス名(`Spooler`)を入力して保存・単独コピーしたところ:
+
+```
+IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN
+```
+
+**重要な発見**: これまでの`[ConditionAction]`/`[WaitAction]`の実機キャプチャは`UIAutomation.*`名前空間ばかりだったが、「If service」は初めて見る**`Services.*`という別の名前空間**だった(`Services.IfService.IsRunning`)。UI要素を伴わないアクションのため、単独コピーでは`# [ControlRepository][PowerAutomateDesktop]`ブロックが付かないことも確認できた(知見44の「全選択時のみ付く」という理解と整合)。Service nameはUI要素参照(`appmask[...]`)ではなく、通常のプレースホルダ文字列(`$'''Spooler'''`)として渡される——既存の汎用パーサー/codegenロジックのまま、**一切のコード変更無しで**正しく処理できた。
+
+**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If image」の実機DSL表現・「If service」の他の選択肢(「Is running」以外に何があるか、知見50/54の`Is open`/`Isn't open`のようなペアが存在すると予測される)は、いずれも未確認のまま持ち越し。
 
 ## 55. 【重大なパーサーバグ修正】変数のドット付きプロパティアクセス(`VariableTrailer`)が`EnumRef`に誤分類され文字列リテラルへすり替わるバグを発見・修正
 

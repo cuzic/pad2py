@@ -301,6 +301,15 @@ def test_generate_python_from_real_if_window_contains_element_whole_subflow_capt
         generate_python(tree)
 
 
+def test_generate_python_from_real_if_service_capture_raises() -> None:
+    # design/dsl_format_findings.md 知見54の追記: 「If service」(Services.*名前空間)も
+    # 同じNotImplementedErrorフォールバックをそのまま再利用でき、コード変更は不要だった。
+    dsl = "IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match="Services.IfService.IsRunning"):
+        generate_python(tree)
+
+
 # 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
 # 続けてAction to perform=Releaseに切り替えて再キャプチャした生データ(知見23)。
 PRESS_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False"

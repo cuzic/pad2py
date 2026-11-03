@@ -1337,3 +1337,19 @@ def test_if_action_record_parsed_from_real_if_window_contains_element_whole_subf
     assert element.path == ("Window 'Untitled - Notepad'", "Document 'Text Editor'")
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_if_action_record_parsed_from_real_if_service_capture() -> None:
+    # design/dsl_format_findings.md 知見54の追記(実機検証済み): 「If service」(Windows
+    # servicesカテゴリ)も同じ`IF (<ActionId> ...) THEN`構文を再利用する。これまでの
+    # [ConditionAction]/[WaitAction]の実機キャプチャは全て`UIAutomation.*`名前空間だったが、
+    # 「If service」は`Services.*`という別の名前空間だった(UI要素を伴わないため
+    # ControlRepositoryブロックも付かない、単独アクションのコピーで確認)。
+    # Service nameはUI要素参照ではなく通常のプレースホルダ文字列(`$'''Spooler'''`)として
+    # 渡される。
+    records = parse_dsl("IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN\nEND")
+    if_action_records = [r for r in records if isinstance(r, IfActionRecord)]
+    assert len(if_action_records) == 1
+    rec = if_action_records[0]
+    assert rec.action_id == "Services.IfService.IsRunning"
+    assert rec.params["Service"] == "Spooler"
