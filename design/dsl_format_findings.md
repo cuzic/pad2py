@@ -551,3 +551,27 @@ line three#/
 `#/`が`\#/`にエスケープされている点を含め、design/robin_language_source_findings.mdで事前にソースから導出していた規則(`"/# " + EscapeRobinComment(text) + "#/"`)と**完全に一致**し、`pad_dsl_parser.py`のコード変更は一切不要だった(`parse_dsl()`にそのまま通して正しくデコードできることを確認)。知見27の「実機未検証」という注記は不要になったため解消した。
 
 ソースコード調査だけに基づく実装が実機で無修正のまま正確に動いた、数少ない(しかし重要な)成功例——知見33(SWITCH)・知見34(ON ERROR)の「インデント規則は実機で裏取りするまで確信しない」という教訓と対になる、「構文・エスケープ規則など局所的な文字列処理は、ソース1箇所の`ToString()`を正確に読めば実機と一致する」という逆の教訓。
+
+## 36. `ON ERROR`の名前付きケース・複数アーム連続を実機検証——パーサーの重大バグを発見・修正
+
+知見34で検証した「All errors (default)」(名前無しcatch-all、1アームのみ)に続けて、同じ「Run Python script」アクションの「Failed to run Python script」(名前付きケース)にも`Set variable`を追加し(Continue flow run)、既存のcatch-allケースと共存させてキャプチャしたところ:
+
+```
+Scripting.RunPythonScript.RunPythonScript PythonCode: $'''...''' ScriptOutput=> PythonScriptOutput3
+ON ERROR RunPythonScriptError
+SET NewVar2 TO $'''script failed'''
+ON ERROR
+SET NewVar TO $'''recovered'''
+END
+```
+
+**2つの発見**:
+
+1. **名前付きケースの構文確定**: `ON ERROR RunPythonScriptError`——design/robin_language_source_findings.mdで`ExceptionCaseStatement.ToString()`から予測していた`"ON ERROR " + Case`という形がそのまま実機で確認できた(`RunPythonScriptError`はUI上の表示名「Failed to run Python script」とは異なる、PAD内部のケース識別子)。
+2. **複数アームが区切り無しに連続する**: 名前付きケースの本体(`SET NewVar2 TO ...`)の直後に、間に`END`を挟まず次のアーム(`ON ERROR`、catch-all)がそのまま続き、**構文全体の末尾に`END`が1つだけ**付く——`SWITCH`の`CASE`/`DEFAULT`(知見33)と全く同じ「複数アーム+末尾に1つのEND」という構造だった。
+
+この2件目の発見により、**知見34時点の実装に重大なバグがあった**ことが判明した。当時の実装は「`ON ERROR`の本体を同じlevelで再帰パースし、見つかった`END`で終了する」という単純な1アーム専用ロジックだったため、2個目の`ON ERROR`(catch-all)に出会うと、それを1個目のアームの**本体の一部として誤って取り込んでしまい**、`GuardedNode`が入れ子状に誤ってネストする結果になっていた(1個目のアームの中に2個目の`OnErrorNode`が隠れてしまう、という静かなデータ破損)。さらに、当時の`_parse_line`は`ON ERROR <CaseName>`(3トークン)を全く認識しておらず、名前付きケースの行は`RawRecord`として素通りしていた。
+
+**修正**: `OnErrorRecord`に`case_name: str | None`フィールドを追加し、3トークン形式(`ON ERROR <CaseName>`)を正しくパースするようにした。`OnErrorNode`を`SwitchNode`と同型の`arms: list[tuple[OnErrorRecord, list[Node]]]`に再設計し、`build_block_tree()`に`parse_level(level, stop_at_on_error=True)`という新しいパラメータを追加——各アームの本体パースが、次のアーム見出し(別の`ON ERROR`)に出会ったら(消費せずに)打ち切るようにした(`SWITCH`の`CASE`/`DEFAULT`の処理と同じ考え方)。`pad_codegen.py`の`_generate_guarded()`も、**1アームかつ名前無しcatch-allの場合のみ**`try`/`except`に変換し、複数アーム・名前付きケースは(PADのエラーケース名とPythonの例外型の対応が不明なため)安易に変換せず`# TODO`に倒すよう修正した。
+
+**教訓**: 知見26(複数出力バグ)・知見15(LOOP兄弟切り捨てバグ)と同種の「単純なケースのフィクスチャだけでは発覚しない」構造的バグが、今回も「2つ目の実機データ(複数アーム)」で初めて発覚した。SWITCH(知見33)で先に「複数アーム+末尾1つのEND」というパターンを知っていたにも関わらず、ON ERRORの実装時にそれを類推適用しなかったのが直接の原因——**1つの構文で確認した構造パターンは、関連する別の構文にも適用されうると常に疑うべき**という教訓。

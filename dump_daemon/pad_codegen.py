@@ -26,8 +26,9 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `SwitchNode` → `if`/`elif`/`else`(design/dsl_format_findings.md 知見33で実機確認済みの
   `CASE <operator> <value>`構文通り、`CASE`自身の演算子を`_OPERATOR_MAP`経由で変換する)
 - `GuardedNode`(`ON ERROR`で保護された文) → `try`/`except Exception`(design/dsl_format_findings.md
-  知見34で実機確認済みの「All errors (default)」+「Continue flow run」の組み合わせのみ対応。
-  名前付きエラーケースや「Throw error」のDSL表現は未検証)
+  知見34・36で実機確認済み。ただし変換するのは1アームかつ名前無しcatch-allの場合のみ——
+  複数アーム・名前付きケースは、PADのエラーケース名とPythonの例外型の対応表が無いため
+  `# TODO`に倒す。「Throw error」のDSL表現は未検証)
 - `BlockNode(LoopRecord)` → `for ... in range(...)`
   (**未検証の前提**: PADの`Start from`〜`End to`は両端を含むと仮定し`range(start, end+1, step)`
   としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
@@ -294,16 +295,25 @@ def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
     """`GuardedNode`(`ON ERROR`で保護された文) → `try`/`except Exception`。
 
     design/dsl_format_findings.md 知見34で実機確認したのは「All errors (default)」
-    (名前無しcatch-all)に本体アクションを追加し「Continue flow run」を選んだケースのみ——
-    そのDSL上の意味論(エラーを捕捉してハンドラを実行し、続行する)は`try`/`except`に
-    自然に対応する。「Throw error」を選んだ場合やエラーケース名の違いがDSLテキスト上どう
-    変わるかは未検証のため、`except`節は常に捕捉して継続する前提でのみ変換する。
+    (名前無しcatch-all、1アームのみ)に本体アクションを追加し「Continue flow run」を選んだ
+    ケースのみ——そのDSL上の意味論(エラーを捕捉してハンドラを実行し、続行する)は
+    `try`/`except`に自然に対応する。知見36で、名前付きケース(`ON ERROR <CaseName>`)や
+    複数アームが区切り無しに連続しうることも実機確認したが、**PADの各エラーケース名が
+    Pythonのどの例外型に対応するかは分からない**(`RunPythonScriptError`が`OSError`
+    相当なのか等、対応表が無い)ため、複数アームや名前付きケースを安易に`except`の
+    型指定に変換することはしない——1アームかつ名前無しcatch-allの場合のみ変換し、
+    それ以外は保護対象の文だけ出力して`# TODO`を残す。
     """
     prefix = INDENT * indent
-    lines = [f"{prefix}try:"]
-    lines.extend(_generate_node(node.node, indent + 1))
-    lines.append(f"{prefix}except Exception:")
-    lines.extend(_generate_block_body(node.on_error.body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+    if len(node.on_error.arms) == 1 and node.on_error.arms[0][0].case_name is None:
+        handler_body = node.on_error.arms[0][1]
+        lines = [f"{prefix}try:"]
+        lines.extend(_generate_node(node.node, indent + 1))
+        lines.append(f"{prefix}except Exception:")
+        lines.extend(_generate_block_body(handler_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+        return lines
+    lines = list(_generate_node(node.node, indent))
+    lines.append(f"{prefix}# TODO: ON ERROR handling not converted (named/multiple error cases)")
     return lines
 
 

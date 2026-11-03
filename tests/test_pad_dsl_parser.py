@@ -709,8 +709,11 @@ def test_build_block_tree_wraps_preceding_action_in_guarded_node() -> None:
     assert isinstance(guarded.node, ActionRecord)
     assert guarded.node.action_id == "Scripting.RunPythonScript.RunPythonScript"
     assert isinstance(guarded.on_error, OnErrorNode)
-    assert len(guarded.on_error.body) == 1
-    set_var = guarded.on_error.body[0]
+    assert len(guarded.on_error.arms) == 1
+    header, arm_body = guarded.on_error.arms[0]
+    assert isinstance(header, OnErrorRecord) and header.case_name is None
+    assert len(arm_body) == 1
+    set_var = arm_body[0]
     assert isinstance(set_var, SetVariableRecord)
     assert set_var.var_name == "NewVar"
     assert set_var.value == "recovered"
@@ -731,4 +734,46 @@ def test_build_block_tree_handles_on_error_with_empty_body() -> None:
     assert len(tree) == 1
     guarded = tree[0]
     assert isinstance(guarded, GuardedNode)
-    assert guarded.on_error.body == []
+    assert len(guarded.on_error.arms) == 1
+    assert guarded.on_error.arms[0][1] == []
+
+
+# 実機で「Run Python script」の「On error」>「Failed to run Python script」(名前付きケース)
+# にも`Set variable`を追加し、既存の「All errors (default)」と連続させてキャプチャした生データ
+# (design/dsl_format_findings.md 知見36)。
+REAL_MULTI_ARM_ON_ERROR_DSL = (
+    "Scripting.RunPythonScript.RunPythonScript "
+    "PythonCode: $'''pass''' ScriptOutput=> PythonScriptOutput3\n"
+    "ON ERROR RunPythonScriptError\n"
+    "SET NewVar2 TO $'''script failed'''\n"
+    "ON ERROR\n"
+    "SET NewVar TO $'''recovered'''\n"
+    "END"
+)
+
+
+def test_on_error_parses_named_case_as_three_tokens() -> None:
+    records = parse_dsl(REAL_MULTI_ARM_ON_ERROR_DSL)
+    assert isinstance(records[1], OnErrorRecord)
+    assert records[1].case_name == "RunPythonScriptError"
+    assert isinstance(records[3], OnErrorRecord)
+    assert records[3].case_name is None
+
+
+def test_build_block_tree_groups_consecutive_on_error_arms_without_separator() -> None:
+    # **重要な発見**: 複数のON ERRORアーム(名前付き+catch-all)が区切り無しに連続し、
+    # 末尾に1つのENDだけが付く——SwitchNodeのCASE/DEFAULTと同じ構造(design/dsl_format_findings.md
+    # 知見36)。当初の実装は2個目のON ERRORを1個目の本体に誤って取り込んでしまうバグが
+    # あったため、`stop_at_on_error`で明示的に区切るよう修正した。
+    tree = build_block_tree(parse_dsl(REAL_MULTI_ARM_ON_ERROR_DSL))
+    assert len(tree) == 1
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    assert isinstance(guarded.node, ActionRecord)
+    assert len(guarded.on_error.arms) == 2
+    named_header, named_body = guarded.on_error.arms[0]
+    assert named_header.case_name == "RunPythonScriptError"
+    assert len(named_body) == 1 and named_body[0].var_name == "NewVar2"
+    default_header, default_body = guarded.on_error.arms[1]
+    assert default_header.case_name is None
+    assert len(default_body) == 1 and default_body[0].var_name == "NewVar"

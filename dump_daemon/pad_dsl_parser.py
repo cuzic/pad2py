@@ -104,10 +104,12 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   `_OPERATOR_MAP`の演算子一般がありうる(ソース上`SemiComparison.Operator`は`ComparisonOperator?`
   型)。
 
-`ON ERROR <Case>` / `ON BLOCK ERROR <Case>`(design/robin_language_source_findings.md——
-`ExceptionStatementBase`のソースでブロック構造自体は解明できたが、実機でのDSL出力例が
-まだ無く、保護対象のアクションとの結びつき方も実証されていないため、本モジュールでは
-未実装のまま(`RawRecord`として保持される)。
+`ON ERROR [<CaseName>]` / `END`(**実機検証済み** design/dsl_format_findings.md 知見34・36)。
+直前の文を保護するエラーハンドラで、`OnErrorRecord`/`OnErrorNode`/`GuardedNode`として実装
+済み。名前無しcatch-all・名前付きケース(`ON ERROR <CaseName>`)のいずれも実機確認済みで、
+複数アームが区切り無しに連続しうる(`SwitchNode`のCASE/DEFAULTと同じ構造)。他の全ブロック
+構文と異なり、本体のindentはヘッダー自身と同じ。`ON BLOCK ERROR`・`REPEAT ACTION`/
+`NEXT ACTION`は未実装のまま(`RawRecord`として保持される)。
 """
 from __future__ import annotations
 
@@ -305,14 +307,17 @@ class CaseDefaultRecord:
 
 @dataclass
 class OnErrorRecord:
-    """`ON ERROR`(ベアキーワード、名前無しのcatch-allエラーケース、実機検証済み——
-    design/dsl_format_findings.md 知見34)。直前のアクション(または他の文)に対する
-    エラーハンドラを開始する。**他の全ブロック構文(IF/LOOP/SWITCH)と異なり、本体の
-    indentはヘッダー自身(および保護対象の文)と同じ**——唯一の例外的な構造。
-    `ON ERROR <CaseName>`(名前付きケース)の形は未実装(design/robin_language_source_findings.md
-    で`ExceptionCaseStatement.ToString()`からソース上の構文は確認済みだが実機未検証)。
+    """`ON ERROR`(`case_name=None`、名前無しのcatch-allケース)または
+    `ON ERROR <CaseName>`(`case_name`に名前、個別のエラーケース)。いずれも実機検証済み
+    (design/dsl_format_findings.md 知見34・36)。直前のアクション(または他の文)に対する
+    エラーハンドラ群の1アームを開始する。**他の全ブロック構文(IF/LOOP/SWITCH)と異なり、
+    本体のindentはヘッダー自身(および保護対象の文)と同じ**——唯一の例外的な構造。
+    複数の`ON ERROR`アームが連続する場合、アーム間に区切り(ENDなど)は無く、
+    構文全体の終端に`END`が1つだけ付く(`SwitchNode`のCASE/DEFAULTと同じ「複数アーム+
+    末尾に1つのEND」という構造)。
     """
 
+    case_name: str | None = None
     indent: int = 0
 
 
@@ -389,14 +394,19 @@ class SwitchNode:
     arms: list[tuple[SwitchArmHeader, list[Node]]] = field(default_factory=list)
 
 
+OnErrorArmHeader = OnErrorRecord
+
+
 @dataclass
 class OnErrorNode:
-    """`ON ERROR`/`END`で囲まれたエラーハンドラ本体(実機検証済み——design/dsl_format_findings.md
-    知見34)。名前無しのcatch-allケースのみ対応(複数ケース・`REPEAT ACTION`/`NEXT ACTION`は
-    実機未検証のため非対応)。単独では出現せず、常に`GuardedNode`経由で直前の文に紐付く。
+    """1個以上の`ON ERROR [CaseName]`アームと、それらをまとめて閉じる1つの`END`
+    (実機検証済み——design/dsl_format_findings.md 知見34・36)。`SwitchNode`と同型
+    (`arms: list[tuple[header, body]]`)——複数アームが連続する場合でもアーム間に区切りは無く、
+    末尾に`END`が1つだけ付く。`REPEAT ACTION`/`NEXT ACTION`は実機未検証のため非対応。
+    単独では出現せず、常に`GuardedNode`経由で直前の文に紐付く。
     """
 
-    body: list[Node] = field(default_factory=list)
+    arms: list[tuple[OnErrorArmHeader, list[Node]]] = field(default_factory=list)
 
 
 @dataclass
@@ -436,12 +446,19 @@ def build_block_tree(records: list[Record]) -> list[Node]:
     def is_end(rec: Record, level: int) -> bool:
         return isinstance(rec, KeywordRecord) and rec.name == "END" and rec.indent == level
 
-    def parse_level(level: int) -> list[Node]:
+    def parse_level(level: int, stop_at_on_error: bool = False) -> list[Node]:
         nonlocal pos
         body: list[Node] = []
         while pos < len(records):
             rec = records[pos]
             if rec.indent < level:
+                break
+            if stop_at_on_error and isinstance(rec, OnErrorRecord) and rec.indent == level:
+                # ON ERRORの各アームの本体をパースしている最中。次のアーム(別の
+                # ON ERROR見出し)に出会ったら、それを自分の本体に取り込まず
+                # 呼び出し元(OnErrorRecordの処理)へ判断を戻す——SwitchNodeのCASE/DEFAULTと
+                # 同じ「複数アーム+末尾に1つのEND」という構造(design/dsl_format_findings.md
+                # 知見36)。
                 break
             if is_end(rec, level):
                 pos += 1
@@ -491,13 +508,23 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                     pos += 1
                 body.append(BlockNode(header=rec, body=block_body))
             elif isinstance(rec, OnErrorRecord):
-                # 実機検証済み(design/dsl_format_findings.md 知見34): 本体は`ON ERROR`
-                # 自身と同じlevelなので、再帰呼び出しも同じlevelで行う——他のブロック構文と
-                # 異なり呼び出し元での明示的なEND消費が不要(再帰呼び出し自身がlevelの
-                # ENDを見つけて消費・終了する)。`ON ERROR`は独立したノードではなく、
-                # 直前の文を保護するものなのでGuardedNodeで直前のノードをラップし直す。
-                on_error_body = parse_level(level)
-                on_error_node = OnErrorNode(body=on_error_body)
+                # 実機検証済み(design/dsl_format_findings.md 知見34・36): 各アームの本体は
+                # `ON ERROR`自身と同じlevel。複数アーム(名前付きケース+catch-all等)が
+                # 区切り無しに連続しうるため、`stop_at_on_error=True`で次のアーム見出しに
+                # 出会ったら本体パースを止める。他のブロック構文と異なり、最後のアームの
+                # 本体パース自身がlevelのENDを見つけて消費・終了するので、呼び出し元での
+                # 明示的なEND消費は不要。`ON ERROR`は独立したノードではなく直前の文を
+                # 保護するものなのでGuardedNodeで直前のノードをラップし直す。
+                on_error_arms: list[tuple[OnErrorArmHeader, list[Node]]] = [
+                    (rec, parse_level(level, stop_at_on_error=True))
+                ]
+                while pos < len(records):
+                    nxt = records[pos]
+                    if nxt.indent != level or not isinstance(nxt, OnErrorRecord):
+                        break
+                    pos += 1
+                    on_error_arms.append((nxt, parse_level(level, stop_at_on_error=True)))
+                on_error_node = OnErrorNode(arms=on_error_arms)
                 if body:
                     body[-1] = GuardedNode(node=body[-1], on_error=on_error_node)
                 else:
@@ -686,9 +713,14 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
         return CaseDefaultRecord(indent=indent)
 
     if first == "ON" and len(tokens) == 2 and tokens[1] == "ERROR":
-        # design/dsl_format_findings.md 知見34(実機検証済み、名前無しcatch-allケースのみ)。
-        # `ON ERROR <CaseName>`(名前付き)・`ON BLOCK ERROR`は未対応(実機未確認)。
-        return OnErrorRecord(indent=indent)
+        # design/dsl_format_findings.md 知見34(実機検証済み、名前無しcatch-allケース)。
+        return OnErrorRecord(case_name=None, indent=indent)
+
+    if first == "ON" and len(tokens) == 3 and tokens[1] == "ERROR":
+        # design/dsl_format_findings.md 知見36(実機検証済み、名前付きケース。例:
+        # `ON ERROR RunPythonScriptError`)。`ON BLOCK ERROR`(3トークン目が"ERROR"ではなく
+        # tokens[1]が"BLOCK"になる形)はこの分岐にはマッチせず未対応(実機未確認)のまま。
+        return OnErrorRecord(case_name=tokens[2], indent=indent)
 
     if first in _KNOWN_KEYWORDS:
         return KeywordRecord(name=first, args=tokens[1:], indent=indent)
