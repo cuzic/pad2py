@@ -593,8 +593,10 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   ~~「Fail with timeout error」OFF時の挙動~~ → 完了:`FOR`句自体がDSLから省略される
   (パーサーバグを修正)。~~`ToClose`バリアント~~ → 完了:`UIAutomation.WaitForWindow.ToClose`、
   `FocusWindow`パラメータ自体が存在しない。`ToBecomeFocusedByTitleClass`相当・
-  `ToLoseFocus`の2バリアント、`FocusWindow: True`表記、「Wait for service」の構文は
-  未検証のまま。**新発見**(design/dsl_format_findings.md 知見52): 「Wait for window」とは
+  `ToLoseFocus`の2バリアント、`FocusWindow: True`表記は未検証のまま。~~「Wait for service」の構文~~ →
+  完了(design/dsl_format_findings.md 知見50追記): `Services.WaitForService.Started`
+  ——知見54の「If service」(`Services.IfService.IsRunning`)と同じ`Services.*`名前空間。
+  単一行アクションで対応する`End`は自動挿入されない。**新発見**(design/dsl_format_findings.md 知見52): 「Wait for window」とは
   別物の「Wait for window content」という新アクションが存在し、action_idは
   `UIAutomation.WaitForWindowContent.WindowToContainElement`——DSL構文自体は`WAIT (...)`を
   そのまま再利用しており、パーサー/codegenとも無改修で正しく処理できた。「Wait until window」
@@ -619,9 +621,13 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   `NotImplementedError`を送出しはっきり失敗する(UI要素セレクタ未取得+誤訳時の制御フロー
   反転リスクのため)。`Contains`を含む「関数呼び出し条件ファミリー」群のPython変換方法の検討は
   引き続き持ち越し
-- UI要素セレクタが実際のDSLテキスト上でどう直列化されるか(本セクション参照——セレクタ文字列の
-  フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認。
-  `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)
+- ~~UI要素セレクタが実際のDSLテキスト上でどう直列化されるか~~ → 完了(design/dsl_format_findings.md
+  知見38で最初に確定し、知見44・46・50・52・54・55を含む以降の全実機キャプチャで一貫して
+  再確認されている)。`ActionRecord`/`WaitActionRecord`/`IfActionRecord`いずれのパラメータ値としても
+  `appmask['<表示名>']`(複数階層は`appmask['<親>']['<子>']`)という形でそのまま埋め込まれる——
+  本セクションで解明したCSS風セレクタ文字列自体はDSLには直接現れず、`# [ControlRepository]
+  [PowerAutomateDesktop]`セクション内のリポジトリJSONに格納される(知見44)。`UIAutomationActionBase`
+  のDLL追跡は不要になった
 - ~~`SWITCH`/`CASE`/`DEFAULT`の実機検証~~ → 完了(design/dsl_format_findings.md 知見33。
   類推していたインデント規則は誤りだったと判明し、修正済み)
 - ~~名前付き`ON ERROR <Case>`ケース・複数ケース構成の実機検証~~ → 完了
