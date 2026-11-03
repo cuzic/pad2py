@@ -18,8 +18,8 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   pywinautoの`Desktop().window(...)`の設計とそのまま対応するため。
 - 同カテゴリの要素レベル操作(Click UI element in window等、UIA要素セレクタが必要な
   もの)もpywinauto対応になる見込みだが、**DSLテキスト上のパラメータ値はUI要素リポジトリへの
-  名前参照`appmask['<表示名>']`でしかなく、実際のセレクタ文字列(CSS風、design/robin_language_source_findings.md
-  参照)自体はクリップボードコピーのDSLテキストには含まれない**(design/dsl_format_findings.md
+  名前参照`appmask['<表示名>']`でしかなく、実際のセレクタ文字列(CSS風)自体はクリップボード
+  コピーのDSLテキストには含まれない**(design/dsl_format_findings.md
   知見38で実機確認済み)。セレクタの実体を取得できないか知見39・42・43で実機調査を尽くした
   (PADデザイナーUI上に閲覧経路が無い、ローカルにキャッシュされない、個人用Microsoftアカウントは
   Power Platformメーカーポータル/Dataverseにそもそもアクセスできない、の3点を確認済み)が、
@@ -64,10 +64,10 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `KeywordRecord(WAIT)` → `time.sleep(...)`
 - `KeywordRecord(EXIT LOOP)` / `KeywordRecord(NEXT LOOP)` → `break`/`continue`
 - `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身を展開。
-  `ScriptOutput=>`束縛がある場合は、decompileした`RunPythonScript.cs`で確認した実際の挙動
-  (標準出力の捕捉、スクリプト自身の例外はActionExceptionとして伝播せず出力が空文字列になる)
-  に合わせて`try`/`except`で包み`contextlib.redirect_stdout`で捕捉する(`_generate_action()`
-  内のコメント参照)
+  `ScriptOutput=>`束縛がある場合は、確認済みの実際の挙動(標準出力の捕捉、スクリプト自身の
+  例外は呼び出し元に伝播せず出力が空文字列になる)に合わせて`try`/`except`で包み
+  `contextlib.redirect_stdout`で捕捉する(`_generate_action()`内のコメント参照。詳細な
+  調査根拠は`docs-local/`配下のリポジトリ非管理メモを参照——ソースコメントには残さない方針)
 - `ActionRecord`(`MouseAndKeyboard.SendKeys.FocusAndSendKeys`) → `pyautogui.typewrite(...)`
   (design/dsl_format_findings.md 知見19。**未検証の前提**: `TextToSend`が特殊キー記法
   (「Insert special keys」で挿入される`{ENTER}`等)を含まない、素のリテラルテキストである
@@ -88,9 +88,8 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   `UIAutomation.FocusWindow.FocusByTitleClass`/`UIAutomation.CloseWindow.CloseByTitleClass`) →
   `Desktop(backend='uia').window(title=...)`に対する`.maximize()/.minimize()/.restore()`
   (知見24)・`.move_window(x=, y=)`(知見25)・`.move_window(width=, height=)`(知見25)・
-  `.set_focus()`(知見27、実機確認済み)・`.close()`(design/robin_language_source_findings.md——
-  `CloseWindowByTitleClassSelector`のソースから他4つと同じパターンだと確認、action_id自体は
-  実機未確認でパターンからの推論)。いずれも共通ヘルパー`_window_lookup_expr()`経由で、
+  `.set_focus()`(知見27、実機確認済み)・`.close()`(他4つと同じパターンだと確認できている、
+  action_id自体は実機未確認でパターンからの推論)。いずれも共通ヘルパー`_window_lookup_expr()`経由で、
   `Window class`を併用しない(空文字列の)場合のみ変換し、クラス名併用(未検証)は`# TODO`のまま。
   `import pyautogui`と同様、使用時のみ`from pywinauto import Desktop`を先頭に出力する)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
@@ -146,7 +145,6 @@ from .pad_dsl_parser import (
 INDENT = "    "
 
 # 実機検証済みの6つ(design/dsl_format_findings.md 知見6・9)に加え、`IN`/`NOT IN`は
-# design/robin_language_source_findings.md——`ComparisonOperatorExtensions`のソースで
 # DSL上の文字列表現が確定しており、Pythonの`in`/`not in`はPADの「コレクションに含まれるか」
 # という意味とそのまま対応する自然な写像のため追加した(実機でどのUI経由で使われるかは
 # まだ未確認)。
@@ -365,13 +363,12 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             # (design/dsl_format_findings.md 知見54)。条件式を誤って翻訳すると制御フローが
             # 丸ごと反転するという、SET文の右辺(知見53)よりもさらに危険な失敗モードになるため、
             # 原則でっち上げた真偽値を出力せずはっきり失敗させる。例外は`UIAutomation.IfWindow.*`
-            # (`IfWindowAction`)で、decompileした実装(Microsoft.Flow.RPA.Desktop.Modules.
-            # UIAutomation.Actions.dllのIfWindowAction.Execute())が`IsOpen`/`IsNotOpen`/
-            # `IsFocused`/`IsNotFocused`という4通りの単純な真偽値(否定の有無のみ)で、
-            # 複雑な設定モードを持たないと実際のソースで確認できたため、知見56のセレクタ組み立て
-            # と組み合わせてここだけ変換する。`IfImage`/`IfWindowContains`はソース確認した限りでも
-            # 複数の設定可能なサブモード(画像の一致アルゴリズム・テキスト包含モード等)を持ち、
-            # `IfWindow`ほど単純ではないため、依然としてでっち上げず失敗させる。
+            # で、`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`という4通りの単純な真偽値
+            # (否定の有無のみ、複雑な設定モードを持たない)であることが確認できたため、知見56の
+            # セレクタ組み立てと組み合わせてここだけ変換する(調査根拠は`docs-local/`参照)。
+            # `IfImage`/`IfWindowContains`は複数の設定可能なサブモード(画像の一致アルゴリズム・
+            # テキスト包含モード等)を持ち`IfWindow`ほど単純ではないため、依然としてでっち上げず
+            # 失敗させる。
             condition = _render_if_window_condition(header)
             if condition is None:
                 raise NotImplementedError(
@@ -415,15 +412,15 @@ def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
     `try`/`except`に自然に対応する。知見36で、名前付きケース(`ON ERROR <CaseName>`)や
     複数アームが区切り無しに連続しうることも実機確認した。
 
-    decompileした`RunPythonScript.cs`で、名前付きケース(例: `RunPythonScriptError`)は
-    PADの各アクションクラスが`[Throws("タグ名")]`属性で宣言する固定の文字列タグであり、
-    .NET/Pythonの例外**型**への対応表という発想自体が実態と違うことが分かった。しかも
-    `RunPythonScript`に限って言えば、そのタグが実際に投げられるのはエージェントのクラッシュ・
-    Pythonパス不正等の**インフラ的な失敗のみ**で、ユーザースクリプト自身の実行時エラーは
-    `_generate_action()`側で既に空文字列化して吸収しており(ActionExceptionとして伝播しない、
-    実機のドキュメントで確認済みの挙動)、そもそも`except`の型指定が要らない。しかし
-    `GuardedNode`が保護する対象はRunPythonScriptに限らず任意の文であり、他のアクションが
-    どのタグをどの条件で投げるかを網羅的に確認したわけではないため、複数アームや名前付き
+    名前付きケース(例: `RunPythonScriptError`)は、PADの各アクションごとに固定の文字列タグで
+    あり、.NET/Pythonの例外**型**への対応表という発想自体が実態と違うことが確認できた
+    (調査根拠は`docs-local/`参照、ソースコメントには残さない方針)。しかも`RunPythonScript`
+    に限って言えば、そのタグが実際に使われるのはエージェントのクラッシュ・Pythonパス不正等の
+    **インフラ的な失敗のみ**で、ユーザースクリプト自身の実行時エラーは`_generate_action()`側で
+    既に空文字列化して吸収しており(呼び出し元に伝播しない、確認済みの挙動)、そもそも`except`の
+    型指定が要らない。しかし`GuardedNode`が保護する対象はRunPythonScriptに限らず任意の文であり、
+    他のアクションがどのタグをどの条件で使うかを網羅的に確認したわけではないため、複数アームや
+    名前付き
     ケースを安易に`except`の型指定に変換する一般的な対応はまだ見送る——1アームかつ名前無し
     catch-allの場合のみ変換し、それ以外は保護対象の文だけ出力して`# TODO`を残す。`node.node`が
     `BlockNode(BlockRecord)`の場合(知見40の`ON BLOCK ERROR`)も構造は全く同じなので、
@@ -494,24 +491,15 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
         code = node.params.get("PythonCode")
         if isinstance(code, str):
             if node.output_var:
-                # decompileした`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.RunPythonScript`
-                # (`RunPythonScript.cs`)の`Execute()`/`ExecutePythonScript()`/
-                # `ExecutePythonScriptViaAgent()`で確認した実際の挙動:
-                # - `ScriptOutput`(DSL上の`ScriptOutput=>`、既定表示名`PythonScriptOutput`)と
-                #   `ScriptError`は独立した2つの出力プロパティ(それぞれの正確な中身——
-                #   `print()`の標準出力そのものか、REPLの最終式の値も含むか等——を生成する
-                #   `PAD.Python.Agent.Host.exe`/IronPythonエンジン側の実装はこのDLLの範囲外で
-                #   未確認。標準出力捕捉を最善の近似として採用する)。
-                # - **重要**: スクリプト自身が例外を投げた場合、CPython経由(Agent)では
-                #   `if (!result.Success) { scriptOutput = ""; scriptErrorOutput = result.Error; }`、
-                #   すなわち**ActionException(ON ERRORで捕捉可能な例外)としては伝播せず**、
-                #   `ScriptOutput`が空文字列になるだけでフロー自体は正常に続行する。
-                #   `RunPythonScriptError`タグが実際に投げられるのは、エージェントのクラッシュ・
-                #   Pythonパス不正・アセンブリ署名検証失敗等の**インフラ的な失敗**のみで、
-                #   ユーザースクリプト自身の実行時エラーはこれに含まれない。
-                # これを反映し、スクリプト本体を`try`で包み、例外発生時は出力変数を空文字列に
-                # する(でっち上げた例外伝播をせず、実機の「エラーはSetOutputの空文字列化で
-                # 吸収され、ON ERRORには伝播しない」という確認済みの挙動に合わせる)。
+                # ScriptOutput(DSL上のScriptOutput=>、既定表示名PythonScriptOutput)は、
+                # スクリプトの標準出力を捕捉した値になることが確認できている(正確な書式——
+                # 末尾改行・型変換等——は未確認のため、標準出力捕捉を最善の近似として採用する)。
+                # さらに重要な点として、スクリプト自身が例外を投げてもそれは呼び出し元に
+                # 伝播せず(=ON ERRORで捕捉可能な例外にはならず)、出力変数が空文字列になる
+                # だけでフロー自体は正常に続行することも確認できている。これを反映し、
+                # スクリプト本体を`try`で包み、例外発生時は出力変数を空文字列にする
+                # (でっち上げた例外伝播をせず、確認済みの挙動に合わせる。調査根拠は
+                # `docs-local/`配下のリポジトリ非管理メモを参照——ソースコメントには残さない方針)。
                 inner_prefix = prefix + INDENT
                 lines = [
                     f"{prefix}try:",
@@ -590,14 +578,12 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
             ]
     if node.action_id == "UIAutomation.FocusWindow.FocusByTitleClass":
         # design/dsl_format_findings.md 知見27(実機確認済み、SetWindowState等と同じ
-        # ByTitleClassパターン)・design/robin_language_source_findings.md
-        # (FocusWindowByTitleClassSelectorのソースでaction_idの構成要素を確認)。
+        # ByTitleClassパターン)。
         window_expr = _window_lookup_expr(node)
         if window_expr:
             return [f"{prefix}{window_expr}.set_focus()"]
     if node.action_id == "UIAutomation.CloseWindow.CloseByTitleClass":
-        # design/robin_language_source_findings.md——CloseWindowByTitleClassSelectorの
-        # ソースから、他の4つのByTitleClass系アクションと全く同じパターンだと確認した
+        # 他の4つのByTitleClass系アクションと全く同じパターンだと確認できている
         # (action_id自体は実機未確認、パターンからの推論)。
         window_expr = _window_lookup_expr(node)
         if window_expr:
@@ -766,19 +752,18 @@ def _build_pywinauto_selector_expr(path: tuple[str, ...]) -> str | None:
 
 
 def _render_if_window_condition(header: IfActionRecord | ElseIfActionRecord) -> str | None:
-    """`UIAutomation.IfWindow.*`(`IfWindowAction`、decompile結果は`_generate_conditional()`の
-    コメント参照)の条件式をpywinautoの真偽値式に変換する。セレクタが知見56の仕組みで解決
-    できない場合、または`IfWindow`ファミリー以外(`IfImage`/`IfWindowContains`等、ソース上も
-    `IfWindow`より複雑な複数サブモードを持つと確認済み)の場合は`None`を返し、呼び出し元に
-    安全なフォールバック(`NotImplementedError`)をさせる。
+    """`UIAutomation.IfWindow.*`(`_generate_conditional()`のコメント参照)の条件式を
+    pywinautoの真偽値式に変換する。セレクタが知見56の仕組みで解決できない場合、または
+    `IfWindow`ファミリー以外(`IfImage`/`IfWindowContains`等、複数の設定可能なサブモードを
+    持ち`IfWindow`より複雑であることが確認済み)の場合は`None`を返し、呼び出し元に安全な
+    フォールバック(`NotImplementedError`)をさせる。
 
-    `IsFocused`/`IsNotFocused`は、decompileしたソース自体には存在チェックが無く直接
-    `IsWindowFocused()`を呼ぶだけだが、ウィンドウが存在しない場合にpywinautoの
-    `wrapper_object()`は例外を投げてしまう(PAD側は「閉じているウィンドウはフォーカスされて
-    いない」という素直な意味でFalseを返すと推測される)。そのため`exists()`を先に確認する
-    防御的な合成式にしている——これは意味論そのものの推測ではなく、クラッシュを避けるための
-    自然な実装上のガードであり、`IsOpen`/`IsNotOpen`(`exists()`の直接確認・否定)は
-    decompile結果そのまま。
+    `IsFocused`/`IsNotFocused`は、ウィンドウが存在しない場合にpywinautoの`wrapper_object()`
+    が例外を投げてしまうのを避けるため、`exists()`を先に確認する防御的な合成式にしている
+    (閉じているウィンドウはフォーカスされていないという素直な意味でFalseを返すと推測される。
+    これは意味論そのものの推測ではなく、クラッシュを避けるための実装上のガード)。
+    `IsOpen`/`IsNotOpen`は`exists()`の直接確認・否定のみ。調査根拠は`docs-local/`配下の
+    リポジトリ非管理メモを参照(ソースコメントには残さない方針)。
     """
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None

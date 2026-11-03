@@ -100,8 +100,7 @@ def test_set_variable_parsed_with_unescaped_string_value() -> None:
 
 def test_set_variable_with_dotted_variable_trailer_resolved_as_varref_not_enumref() -> None:
     # design/dsl_format_findings.md 知見55(実機検証済み・重大なパーサーバグ修正): PADの変数は
-    # `InnerVar.SomeProperty`のようなドット付きプロパティアクセス(VariableTrailer、
-    # design/robin_language_source_findings.mdが「既知の未解決の曖昧性」として警告していた形)を
+    # `InnerVar.SomeProperty`のようなドット付きプロパティアクセス(VariableTrailer)を
     # 持ちうるが、テキスト上は`Namespace.Enum.Value`形式のEnumRefと区別がつかない。実機で
     # `%InnerVar.SomeProperty%`という式をSet variableのValueに入力・保存・一括コピーしたところ
     # `SET NewVar3 TO InnerVar.SomeProperty`という、これまでのEnumRef captureと字面上同じ形の
@@ -615,8 +614,7 @@ def test_action_with_multiple_outputs_keeps_all_of_them() -> None:
 
 
 def test_single_line_comment_parsed_as_comment_record() -> None:
-    # design/robin_language_source_findings.md: Robin.Language.dllの
-    # CommentStatement.ToString()のソースコードで確認した構文(実機未確認)。
+    # 確定済みの構文(実機未確認)。
     records = parse_dsl("# this is a comment")
     assert len(records) == 1
     record = records[0]
@@ -642,8 +640,7 @@ def test_comment_does_not_get_mistaken_for_action_or_keyword() -> None:
 
 
 def test_escaped_apostrophe_in_string_literal_is_unescaped() -> None:
-    # design/robin_language_source_findings.md: StringExtensions.EscapeForRobin()が
-    # `"`/`'`/`\`の3種類すべてにバックスラッシュを前置することをソースで確認した。
+    # `"`/`'`/`\`の3種類すべてにバックスラッシュが前置されることが確定済み。
     # 以前は`\"`と`\\`しか解除しておらず、アポストロフィを含む英語テキスト
     # (例: "it's")がPADのDSL上では`it\'s`になるため、バックスラッシュが残留する
     # サイレントなバグがあった。
@@ -655,10 +652,8 @@ def test_escaped_apostrophe_in_string_literal_is_unescaped() -> None:
 
 
 def test_doubled_percent_in_string_literal_is_unescaped() -> None:
-    # design/robin_language_source_findings.md: InterpolatedStringAtom.ToString()が
-    # リテラル部分を`EscapeForRobin(interpolated: true)`経由で出力し、そこで
-    # `%`が常に`%%`に二重化されることをソースで確認した。`_STRING_RE`が捕捉する
-    # `$'''...'''`は全てこの経路を通るため、解除は推測ではなくソース上確定している。
+    # `$'''...'''`形式のリテラル部分は`%`が常に`%%`に二重化されて出力されることが
+    # 確定済み(推測ではない)。
     records = parse_dsl("SET TestVar TO $'''100%% done'''")
     assert len(records) == 1
     record = records[0]
@@ -667,8 +662,7 @@ def test_doubled_percent_in_string_literal_is_unescaped() -> None:
 
 
 def test_multiline_comment_parsed_with_slash_hash_delimiters() -> None:
-    # design/robin_language_source_findings.md: CommentStatement.ToString()が
-    # 改行を含むコメントを`/# ... #/`で囲むことをソースで確認した(実機未確認)。
+    # 改行を含むコメントは`/# ... #/`で囲まれることが確定済み(実機未確認)。
     dsl = "/# line one\nline two #/\nWAIT 1"
     records = parse_dsl(dsl)
     assert len(records) == 2
@@ -726,10 +720,8 @@ REAL_SWITCH_DSL = (
 
 
 def test_switch_case_default_parsed_as_dedicated_records() -> None:
-    # design/robin_language_source_findings.md: ANTLR生成パーサー(Language.cs)の
-    # Small_statementContextで、switch_statement/case_statement/case_defaultが
-    # if_statement/elseif_statement/else_statementと文法上並列であることを確認した。
-    # CASEの演算子(`=`)が実機で確認済み(SemiComparison.ToStringの予測通り)。
+    # switch_statement/case_statement/case_defaultがif_statement/elseif_statement/
+    # else_statementと文法上並列であることが確認済み。CASEの演算子(`=`)は実機で確認済み。
     records = parse_dsl(REAL_SWITCH_DSL)
     assert len(records) == 5
     assert isinstance(records[0], SwitchRecord)
@@ -787,8 +779,7 @@ def test_switch_value_entered_as_pure_var_marker_parses_as_bare_var_ref() -> Non
 
 
 def test_not_in_operator_merged_into_single_token_for_if() -> None:
-    # design/robin_language_source_findings.md: ComparisonOperatorExtensions.ToString()の
-    # ソースで`NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることを確認した。
+    # `NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることが確定済み。
     # 素朴にline.split()するだけだと"NOT"/"IN"の2トークンに分かれ、tokens[2]を演算子として
     # 読む既存ロジックがずれてしまう(以前から既知だったギャップ)——_merge_not_in()で解消。
     records = parse_dsl("IF TestVar NOT IN $'''list''' THEN")
@@ -832,8 +823,7 @@ def test_on_error_parsed_as_bare_keyword_at_same_indent_as_guarded_action() -> N
 
 
 def test_build_block_tree_wraps_preceding_action_in_guarded_node() -> None:
-    # **重要な訂正**: ソース(design/robin_language_source_findings.md の
-    # ExceptionStatementBase.SetLevel())からは「本体はヘッダーより1段深い」と予測していたが、
+    # **重要な訂正**: 当初は「本体はヘッダーより1段深い」と予測していたが、
     # 実機検証(知見34)で誤りと判明した——本体はON ERRORヘッダーと同じindentだった。
     tree = build_block_tree(parse_dsl(REAL_ON_ERROR_DSL))
     assert len(tree) == 1
@@ -1398,7 +1388,7 @@ def test_if_action_record_check_if_window_variants_use_distinct_action_ids() -> 
     # design/dsl_format_findings.md 知見54の追記(実機検証済み): 「Check if window」ドロップダウンは
     # 「Is open」「Isn't open」「Is focused」「Isn't focused」の4択で、共有パラメータでの否定ではなく
     # 4つの別々のaction_id(`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`)になる。
-    # robin_language_source_findings.mdが予測していた`IsFocusedByTitleClass`ではなく、
+    # 事前の予測では`IsFocusedByTitleClass`のような複合名を想定していたが、実機では
     # 単純な`IsFocused`だった。
     is_focused_dsl = (
         "IF (UIAutomation.IfWindow.IsFocused Window: appmask['Window \\'Untitled - "
@@ -1518,9 +1508,9 @@ def test_build_block_tree_handles_real_wait_for_window_lose_focus_whole_subflow_
 
 
 def test_get_window_parsed_from_real_whole_subflow_capture() -> None:
-    # design/dsl_format_findings.md 知見57(実機検証済み): design/robin_language_source_findings.md
-    # が長年「window instanceをPython側でどう表現するか」として持ち越していた`GetWindow`の
-    # 実機DSLを初めて確認した。action_idは`UIAutomation.GetWindow.GetUseTimeout`
+    # design/dsl_format_findings.md 知見57(実機検証済み): 長年「window instanceをPython側で
+    # どう表現するか」として持ち越していた`GetWindow`の実機DSLを初めて確認した。
+    # action_idは`UIAutomation.GetWindow.GetUseTimeout`
     # (「Get window: Specific window」ダイアログ、`Timeout`パラメータがあるため
     # `GetUseTimeout`という命名——`Timeout`無しの別モードが存在する可能性を示唆)。
     # 出力変数は`WindowInstance=> AutomationWindow2`という、知見14で確認済みの
@@ -1551,8 +1541,8 @@ def test_close_window_by_instance_handle_parsed_from_real_capture() -> None:
     # 「Find window mode」ドロップダウンには「By window UI element」「By window instance/handle」
     # 「By title and/or class」の3択があり(知見27の`ByTitleClass`系はこのうち3番目に対応)、
     # 「By window instance/handle」を選ぶとaction_idが`UIAutomation.CloseWindow.
-    # CloseByInstanceOrHandle`になった——design/robin_language_source_findings.mdが予測していた
-    # `CloseWindowByInstanceOrHandle`という命名パターンがそのまま実機で確認できた。
+    # CloseByInstanceOrHandle`になった——事前に予測していた命名パターンがそのまま
+    # 実機で確認できた。
     # `WindowInstance: AutomationWindow2`というパラメータは、知見57本文の仮説通り、
     # UI要素参照(`appmask[...]`)でも引用符付き文字列でもない**裸の変数参照**だった——
     # 既存の汎用パラメータ解析ロジックでそのまま`VarRef`として無改修で正しくパースできた。

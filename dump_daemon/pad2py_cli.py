@@ -1,6 +1,6 @@
 """`parse_dsl()` → `build_block_tree()` → `generate_python()` を1コマンドで結ぶCLIエントリポイント。
 
-design/dsl_format_findings.md・robin_language_source_findings.mdの実機検証で育てた
+design/dsl_format_findings.mdの実機検証で育てた
 `pad_dsl_parser.py`/`pad_codegen.py`には、これまで「ユーザーが実際のフローのDSLテキストを
 どう渡して、生成Pythonをどう受け取るか」という入出力経路が存在しなかった(`argparse`等を
 grepしても何も出てこない状態)。このモジュールはその最小限の橋渡しだけを行う——

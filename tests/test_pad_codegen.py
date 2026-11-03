@@ -116,11 +116,9 @@ def test_generate_python_inlines_run_python_script_body() -> None:
 
 
 def test_generate_python_binds_script_output_to_captured_stdout() -> None:
-    # decompileした`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.RunPythonScript`
-    # (RunPythonScript.cs、Execute()/ExecutePythonScript())で、ScriptOutput(DSL上の
-    # ScriptOutput=>)が`print()`相当の標準出力を捕捉した値になることを確認した
-    # (正確な文字単位の書式——末尾改行・型変換——を生成する側のエンジン実装は未確認のため、
-    # 生のテキストをそのまま代入するだけの最小限の変換に留める)。
+    # ScriptOutput(DSL上のScriptOutput=>)が`print()`相当の標準出力を捕捉した値になることを
+    # 確認した(正確な文字単位の書式——末尾改行・型変換——は未確認のため、生のテキストを
+    # そのまま代入するだけの最小限の変換に留める)。
     dsl = "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: $'''print(1 + 1)''' ScriptOutput=> Out1"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -138,14 +136,12 @@ def test_generate_python_binds_script_output_to_captured_stdout() -> None:
 
 
 def test_generate_python_script_exception_sets_empty_output_instead_of_propagating() -> None:
-    # decompileした`RunPythonScript.cs`の`ExecutePythonScriptViaAgent()`で、スクリプト自身が
-    # 例外を投げた場合`if (!result.Success) { scriptOutput = ""; scriptErrorOutput = result.Error; }`、
-    # つまり**ActionException(ON ERRORで捕捉可能な例外)としては伝播せず**ScriptOutputが
-    # 空文字列になるだけでフロー自体は正常に続行することが確認できた(`RunPythonScriptError`
-    # タグは、エージェントのクラッシュ・Pythonパス不正等のインフラ的な失敗のみに使われ、
-    # ユーザースクリプト自身の実行時エラーには使われない)。これを反映し、スクリプト本体の
-    # 例外をtry/exceptで吸収し、出力変数を空文字列にすることを確認する(でっち上げた例外
-    # 伝播をせず、実機で確認された「エラーは出力の空文字列化で吸収される」挙動に合わせる)。
+    # スクリプト自身が例外を投げても、それはON ERRORで捕捉可能な例外としては伝播せず、
+    # ScriptOutputが空文字列になるだけでフロー自体は正常に続行することが確認できている
+    # (インフラ的な失敗とユーザースクリプト自身の実行時エラーは別扱いになる)。これを反映し、
+    # スクリプト本体の例外をtry/exceptで吸収し、出力変数を空文字列にすることを確認する
+    # (でっち上げた例外伝播をせず、確認された「エラーは出力の空文字列化で吸収される」
+    # 挙動に合わせる)。
     dsl = (
         "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: "
         "$'''raise ValueError(\"boom\")''' ScriptOutput=> Out1"
@@ -350,11 +346,10 @@ def test_generate_python_from_real_if_window_whole_subflow_capture_raises() -> N
 
 
 def test_generate_python_converts_if_window_is_open_when_selector_resolves() -> None:
-    # decompileしたIfWindowAction.Execute()(Microsoft.Flow.RPA.Desktop.Modules.
-    # UIAutomation.Actions.dll)のソースで、`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`の
-    # 4通りの単純な真偽値(複雑な設定モード無し)であることを確認できたため、知見56のセレクタ
-    # 組み立てと組み合わせて実行コードを生成するようにした(IfImage/IfWindowContainsは
-    # ソース上も複数の設定可能なサブモードを持ち複雑なため、依然NotImplementedErrorのまま)。
+    # `IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`の4通りの単純な真偽値(複雑な設定モード
+    # 無し)であることが確認できたため、知見56のセレクタ組み立てと組み合わせて実行コードを
+    # 生成するようにした(IfImage/IfWindowContainsは複数の設定可能なサブモードを持ち複雑な
+    # ため、依然NotImplementedErrorのまま)。
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
         encoding="utf-8"
     )
@@ -384,7 +379,7 @@ def test_generate_python_converts_if_window_is_open_when_selector_resolves() -> 
     ],
 )
 def test_generate_python_converts_all_four_if_window_modes(mode: str, expected_condition: str) -> None:
-    # IfWindowAction(decompile結果)の4つのWindowModeそれぞれの変換を確認する。
+    # 4つのWindowModeそれぞれの変換を確認する。
     # IsFocused/IsNotFocusedは、ウィンドウが存在しない場合にwrapper_object()が例外を
     # 投げてしまうのを避けるための防御的なexists()ガードを合成している(_render_if_window_
     # condition()のコメント参照)。
@@ -563,9 +558,7 @@ def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None
 
 
 def test_generate_python_maps_focus_window_to_pywinauto_set_focus() -> None:
-    # design/dsl_format_findings.md 知見27(実機確認済み)・
-    # design/robin_language_source_findings.md(FocusWindowByTitleClassSelectorのソースで
-    # action_idの構成要素を確認)。
+    # design/dsl_format_findings.md 知見27(実機確認済み)。
     dsl = "UIAutomation.FocusWindow.FocusByTitleClass Title: $'''Notepad''' Class: $'''''' "
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -574,8 +567,7 @@ def test_generate_python_maps_focus_window_to_pywinauto_set_focus() -> None:
 
 
 def test_generate_python_maps_close_window_to_pywinauto_close() -> None:
-    # design/robin_language_source_findings.md——CloseWindowByTitleClassSelectorのソースから
-    # 他のByTitleClass系アクションと同じパターンだと確認(action_id自体は実機未確認)。
+    # 他のByTitleClass系アクションと同じパターンだと確認できている(action_id自体は実機未確認)。
     dsl = "UIAutomation.CloseWindow.CloseByTitleClass Title: $'''Notepad''' Class: $'''''' "
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -593,8 +585,7 @@ def test_generate_python_leaves_focus_window_as_todo_when_class_is_used() -> Non
 
 def test_generate_python_renders_comment_record_as_python_comment() -> None:
     # CommentRecord追加後、codegenがクラッシュせず正しくPythonコメントへ変換すること
-    # (design/robin_language_source_findings.mdで構文を確認、未対応のままだと
-    # _generate_node()がTypeErrorを送出していたはずの回帰確認)。
+    # (未対応のままだと_generate_node()がTypeErrorを送出していたはずの回帰確認)。
     tree = build_block_tree(parse_dsl("# hello comment"))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
@@ -641,9 +632,8 @@ def test_generate_python_renders_switch_case_default_as_if_elif_else() -> None:
 
 
 def test_generate_python_renders_not_in_operator_as_python_not_in() -> None:
-    # design/robin_language_source_findings.md: IN/NOT INのDSL表現はComparisonOperatorExtensions
-    # のソースで確定しており、Pythonのin/not inは意味的にそのまま対応するため_OPERATOR_MAPに
-    # 追加した(実機でどのUI経由で使われるかは未確認)。
+    # IN/NOT INのDSL表現は確定しており、Pythonのin/not inは意味的にそのまま対応するため
+    # _OPERATOR_MAPに追加した(実機でどのUI経由で使われるかは未確認)。
     dsl = "IF TestVar NOT IN $'''list''' THEN\n    WAIT 1\nEND"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)

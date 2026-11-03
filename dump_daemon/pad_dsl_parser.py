@@ -7,11 +7,8 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   `output_var`は後方互換のため最後に見つかったものを保持するだけなので、複数出力が
   ありうるアクションでは`output_vars`を参照すること)
 - `$'''...'''`(複数行可)の文字列リテラル、および `\"`/`\'`/`\\` のエスケープ解除、
-  および`%%`→`%`の解除(design/robin_language_source_findings.md——
-  `InterpolatedStringAtom.ToString()`のソースで、リテラル部分は`EscapeForRobin(interpolated: true)`
-  経由で常に`%`が`%%`に二重化されてから出力されることを確認した。`_STRING_RE`が捕捉する
-  `$'''...'''`形式は全て`InterpolatedStringAtom`由来であり、この二重化を必ず受けているため、
-  推測ではなくソース上確定した解除処理。以前は`\'`と`%%`の解除が未実装で、本文中にアポストロフィ
+  および`%%`→`%`の解除(`$'''...'''`形式のリテラル部分は常に`%`が`%%`に二重化されてから
+  出力される確定済みの挙動。以前は`\'`と`%%`の解除が未実装で、本文中にアポストロフィ
   (例: `it's`)を含むPADテキストが誤って`it\'s`のままPythonコードに混入するサイレントな
   バグがあった)
 - `Namespace.Enum.Value` 形式の列挙値、`True`/`False` の真偽値
@@ -75,27 +72,24 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 - `# <comment>` 形式の単一行コメント、および `/# ... #/` 形式の複数行コメント(**実機検証済み**
   design/dsl_format_findings.md 知見35——本文中に`#/`を含む3行コメントを実機で確認し、
   エスケープ(`#/`をバックスラッシュ付きの形に変換)を含めソース通りの挙動と完全に一致した)。
-  design/robin_language_source_findings.md——`CommentStatement.ToString()`のソースで
-  両方の形式と、複数行側の正確なエスケープ規則(`EscapeRobinComment`: `#/`とバックスラッシュの
-  直前にバックスラッシュを挿入)を確認した。`$'''...'''`の複数行文字列マスキングと同じ手法(DOTALLで
-  先に1トークンに退避してから行分割)を複数行コメントにも適用し、マスキングの順序は
-  コメント→文字列(コメント本文に`$'''`等が含まれていても文字列リテラルとして
-  誤認されないようにするため)。
+  両方の形式と、複数行側の正確なエスケープ規則(`#/`とバックスラッシュの
+  直前にバックスラッシュを挿入)が確定済みの挙動であることを確認した。`$'''...'''`の複数行
+  文字列マスキングと同じ手法(DOTALLで先に1トークンに退避してから行分割)を複数行コメントにも
+  適用し、マスキングの順序はコメント→文字列(コメント本文に`$'''`等が含まれていても文字列
+  リテラルとして誤認されないようにするため)。
 
-- `IN`/`NOT IN`演算子(design/robin_language_source_findings.md——`ComparisonOperatorExtensions`の
-  ソースで`NOT IN`が内部に空白を1つ持つ1つの文字列として直列化されることを確認した。
-  `tokens = line.split()`で素朴に分割すると`"NOT"`/`"IN"`の2トークンになり、`IF`/`ELSE IF`/
-  `LOOP WHILE`の固定位置での演算子読み取りがずれてしまうため、`_merge_not_in()`で
-  トークン化の直後に1トークンへ結合してから既存の位置ベースロジックに渡している。
-  実機でどのUI経由で使えるかはまだ未確認)
+- `IN`/`NOT IN`演算子(`NOT IN`は内部に空白を1つ持つ1つの文字列として直列化されることが
+  確定済み。`tokens = line.split()`で素朴に分割すると`"NOT"`/`"IN"`の2トークンになり、
+  `IF`/`ELSE IF`/`LOOP WHILE`の固定位置での演算子読み取りがずれてしまうため、
+  `_merge_not_in()`でトークン化の直後に1トークンへ結合してから既存の位置ベースロジックに
+  渡している。実機でどのUI経由で使えるかはまだ未確認)
 
-未対応(今後の実機確認が必要・構造的に大きな変更が必要なため今回は見送り): `AND`/`OR`/`XOR`
-(`LogicalExpression`)・`NOT`前置演算子(`NotExpression`)による複合条件式、`+`/`-`/`*`/`/`/`mod`
-(`ArithmeticExpression`)による算術式——いずれもソースコード上は`<operand> <keyword> <operand>`
-という単純な中置(`NOT`は前置)記法であることを確認済みだが、現在の`IfRecord`等は
-「オペランド1個+演算子1個+オペランド2個」という**フラットな**構造を前提にしており、
-再帰的な式木を表現できない。安易に部分対応すると`A AND B OR C`のような式を誤って
-解釈する恐れがあるため、構造自体の見直しが必要な別タスクとして持ち越す。
+未対応(今後の実機確認が必要・構造的に大きな変更が必要なため今回は見送り): `AND`/`OR`/`XOR`・
+`NOT`前置演算子による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式——いずれも
+`<operand> <keyword> <operand>`という単純な中置(`NOT`は前置)記法であることを確認済みだが、
+現在の`IfRecord`等は「オペランド1個+演算子1個+オペランド2個」という**フラットな**構造を
+前提にしており、再帰的な式木を表現できない。安易に部分対応すると`A AND B OR C`のような式を
+誤って解釈する恐れがあるため、構造自体の見直しが必要な別タスクとして持ち越す。
 
 - `SWITCH <expr>` / `CASE <op> <value>` / `DEFAULT` / `END` 形式の多分岐。**実機検証済み**
   (design/dsl_format_findings.md 知見33): `SWITCH $'''TestVar'''` / `CASE = $'''a'''` /
@@ -170,8 +164,7 @@ _CONTROL_REPOSITORY_MARKER = "# [ControlRepository][PowerAutomateDesktop]"
 
 def _unescape(raw: str) -> str:
     """DSL文字列リテラル内の `\\"`→`"`・`\\'`→`'`・`\\\\`→`\\` を解除し、続けて
-    `%%`→`%` を解除する(`InterpolatedStringAtom.ToString()`のソースで確認した
-    `EscapeForRobin(interpolated: true)`の逆操作。順序が重要——先にクォート/
+    `%%`→`%` を解除する(確定済みのエスケープ処理の逆操作。順序が重要——先にクォート/
     バックスラッシュのエスケープを解除し、その後で`%`の二重化を解除する)。
     """
     dequoted = _ESCAPE_RE.sub(lambda m: m.group(0)[-1], raw)
@@ -181,16 +174,16 @@ def _unescape(raw: str) -> str:
 def _unescape_ui_element_segment(raw: str) -> str:
     """`appmask['...']`の1セグメント内の`\\'`→`'`・`\\\\`→`\\`を解除する(知見46)。
 
-    `_unescape()`と違い`%%`→`%`の解除は行わない——UI要素の表示名が`$'''...'''`の
-    `InterpolatedStringAtom`由来という確証は無く、`%`の二重化規則が適用される根拠が
-    無いため、確認できた`\\'`/`\\\\`のエスケープ解除だけに留める。
+    `_unescape()`と違い`%%`→`%`の解除は行わない——UI要素の表示名が`$'''...'''`形式の
+    文字列リテラルと同じ経路で生成されているという確証は無く、`%`の二重化規則が
+    適用される根拠が無いため、確認できた`\\'`/`\\\\`のエスケープ解除だけに留める。
     """
     return _ESCAPE_RE.sub(lambda m: m.group(0)[-1], raw)
 
 
 def _unescape_comment(raw: str) -> str:
     """複数行コメント(`/# ... #/`)内の `\\#/`→`#/`、`\\\\`→`\\` を解除する
-    (`CommentStatement.ToString()`が呼ぶ`EscapeRobinComment`の逆操作)。
+    (確定済みのコメントエスケープ処理の逆操作)。
     """
     return _COMMENT_ESCAPE_RE.sub(lambda m: m.group(1), raw)
 
@@ -236,10 +229,9 @@ class EnumRef:
     ドット区切りの完全修飾名という見た目でPAD変数参照(ドットを含まない裸識別子)と
     区別できるため、`VarRef`とは別の型にしている。
 
-    **既知の未解決の曖昧性**(design/robin_language_source_findings.md):
-    `Variable.ToString()`のソースで、PADの変数参照自体にも`.Name`という
+    **既知の未解決の曖昧性**: PADの変数参照自体にも`.Name`という
     ドット区切りの「トレーラ」(配列/カスタムオブジェクトのプロパティアクセス、例:
-    `MyDataTable.Rows`)が存在しうることを確認した。この形はテキスト上
+    `MyDataTable.Rows`)が存在しうることが確認できている。この形はテキスト上
     `Namespace.Enum.Value`と完全に同じ見た目になるため、`_DOTTED_RE`だけでは
     区別できない。これまでの実機データにトレーラ付き変数参照の実例が無いため、
     現状は全てのドット区切りトークンを`EnumRef`として扱っているが、これは
@@ -254,8 +246,7 @@ class UiElementRef:
     """`appmask['<表示名>']`形式のUI要素リポジトリ参照(**実機検証済み**——
     design/dsl_format_findings.md 知見38)。`Click UI element in window`のような
     「By window UI element」系アクションの`Element`パラメータに現れる。選択済みUI要素の
-    CSS風セレクタ文字列(`SelectorElement`等、design/robin_language_source_findings.md参照)
-    自体はこの参照の先(UI要素リポジトリ側)にあり、ActionRecordのパラメータ値には
+    CSS風セレクタ文字列自体はこの参照の先(UI要素リポジトリ側)にあり、ActionRecordのパラメータ値には
     **表示名への参照だけ**が直接埋め込まれる——以前の調査で解明したセレクタ文字列の
     フォーマットは、リポジトリ内部の格納形式であり、DSLテキスト上の直接の値ではなかった。
 
@@ -276,8 +267,8 @@ class UiElementRef:
 _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 # design/dsl_format_findings.md 知見55(実機検証済み)——`EnumRef`判定専用の、より厳しい版。
 # `_DOTTED_RE`は1個以上のドットにマッチするため、`InnerVar.SomeProperty`のような
-# `VariableTrailer`(ユーザー変数へのドット付きプロパティアクセス、`design/robin_language_source_findings.md`
-# が「既知の未解決の曖昧性」として警告していた形)も誤ってEnumRef扱いしてしまっていた。
+# `VariableTrailer`(ユーザー変数へのドット付きプロパティアクセス、`EnumRef`の
+# 「既知の未解決の曖昧性」として上のクラスdocstringに記した形)も誤ってEnumRef扱いしてしまっていた。
 # これまでに実機キャプチャした全てのEnumRef値(`Display.DefaultButton.Button1`等)・action_id
 # (`MouseAndKeyboard.SendMouseClick.Click`等)は例外なく`Namespace.Enum.Value`という
 # ちょうど3セグメント(ドット2個)だったため、EnumRef判定だけドット数2個以上を要求するよう
@@ -296,8 +287,7 @@ _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN
 # `WAIT (...)`のみで終わる(知見50の追記で実機確認済み)——そのため`FOR`句全体を省略可能にしている。
 _WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\)(?: FOR (.+))?$")
 # design/dsl_format_findings.md 知見54(実機検証済み)——`[ConditionAction]`カテゴリ
-# (`If window`/`If window contains element`/`If image`等、design/robin_language_source_findings.md
-# で事前にソースから発見していたカテゴリ)は、知見50の`WAIT (...)`と全く同じ丸括弧パターンを
+# (`If window`/`If window contains element`/`If image`等)は、知見50の`WAIT (...)`と全く同じ丸括弧パターンを
 # 条件式として再利用する。例:
 # `IF (UIAutomation.IfWindow.IsOpen Window: appmask['...'] InstantCheck: False) THEN`
 # `IfFunctionRecord`(`Contains(a, b) THEN`、知見18-2)とは異なり、丸括弧が`IF`/`ELSE IF`の
@@ -325,8 +315,7 @@ class KeywordRecord:
 @dataclass
 class WaitActionRecord:
     """`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`形式(**実機検証済み**——
-    design/dsl_format_findings.md 知見50)。`[WaitAction]`カテゴリ(`Wait for window`等、
-    design/robin_language_source_findings.mdで事前にソースから発見していたカテゴリ)の
+    design/dsl_format_findings.md 知見50)。`[WaitAction]`カテゴリ(`Wait for window`等)の
     実際のDSL表現。単純な`WAIT <seconds>`キーワード(`KeywordRecord`)とは別構文——`ActionRecord`
     と同じ`Param: Value`形式のパラメータを丸括弧で包み、末尾に`FOR <タイムアウト秒数>`が付く。
     """
@@ -380,8 +369,8 @@ class ElseIfFunctionRecord:
 class IfActionRecord:
     """`IF (<ActionId> <Param>: <Value> ...) THEN`形式の条件(design/dsl_format_findings.md
     知見54で実機確認)。「If window」「If window contains element」「If image」のような
-    `[ConditionAction]`カテゴリ(design/robin_language_source_findings.md参照)のアクションが
-    生成する。知見50の`WaitActionRecord`と全く同じ、丸括弧で包んだ`<ActionId> <Param>: <Value>`
+    `[ConditionAction]`カテゴリのアクションが生成する。知見50の`WaitActionRecord`と全く同じ、
+    丸括弧で包んだ`<ActionId> <Param>: <Value>`
     形式をそのまま条件式として使う——`IfFunctionRecord`(`Contains(a, b)`のような単純な
     関数呼び出し形式、知見18-2)とは別の、第3の条件表現パターン。
     """
@@ -401,8 +390,7 @@ class ElseIfActionRecord:
 @dataclass
 class CommentRecord:
     """`# <comment>`形式の単一行コメント、および`/# ... #/`形式の複数行コメント
-    (design/robin_language_source_findings.md——`CommentStatement.ToString()`の
-    ソースコードで両方の構文を確認。複数行の場合`text`に改行が含まれる)。
+    (両方の構文が確定済み。複数行の場合`text`に改行が含まれる)。
     """
 
     text: str
@@ -435,8 +423,7 @@ class LoopWhileRecord:
 
 @dataclass
 class SwitchRecord:
-    """`SWITCH <expr>`(design/robin_language_source_findings.md——`SwitchStatement.ToString()`
-    のソースで構文を確認。**実機検証済み**(design/dsl_format_findings.md 知見33): `CASE`/
+    """`SWITCH <expr>`(**実機検証済み**(design/dsl_format_findings.md 知見33): `CASE`/
     `DEFAULT`は`SWITCH`自身より1段深いindentに並び(`IF`/`ELSE IF`/`ELSE`のような「同じindentの
     兄弟」ではない)、各`CASE`/`DEFAULT`の本体はさらにもう1段深い——`LOOP`が本体を1段深くするのと
     同じ構造が、`SWITCH`→`CASE`の間にも`CASE`→本体の間にも、二重に重なっている)。
@@ -449,10 +436,8 @@ class SwitchRecord:
 @dataclass
 class CaseRecord:
     """`CASE <operator> <value>`(**実機検証済み**: design/dsl_format_findings.md 知見33で
-    `CASE = $'''a'''`という実例を確認した。`CaseStatement.SemiEvaluatableContext`の実装
-    (`SemiComparison`)が`Operator`(nullable)+`RightOperand`を持つため、演算子が省略される
-    ケースもソース上ありうるが、実機では常に演算子付きだった。`SwitchRecord`より1段深いindentに
-    並ぶ)。
+    `CASE = $'''a'''`という実例を確認した。演算子が省略されるケースも理論上ありうるが、
+    実機では常に演算子付きだった。`SwitchRecord`より1段深いindentに並ぶ)。
     """
 
     operator: str | None
@@ -505,10 +490,9 @@ class OnBlockErrorRecord:
     """`ON BLOCK ERROR`(`case_name=None`、名前無しcatch-all)または
     `ON BLOCK ERROR <CaseName>`。**実機検証済み**(design/dsl_format_findings.md 知見40)。
 
-    `OnErrorRecord`の`BLOCK`版——同じ`ExceptionCaseStatement`/`ExceptionCaseDefaultStatement`
-    クラスが`Type`プロパティ(`Statement`か`Block`か)に応じて`"ON ERROR"`/`"ON BLOCK ERROR"`の
-    どちらを出力するかを切り替えているだけ(design/robin_language_source_findings.md)。
-    構造も`OnErrorRecord`と同一: 直前の文(ここでは直前の`BlockRecord`開始ブロック全体)を
+    `OnErrorRecord`の`BLOCK`版——保護対象が「文」か「ブロック」かに応じて`"ON ERROR"`/
+    `"ON BLOCK ERROR"`のどちらを出力するかが切り替わるだけ。構造も`OnErrorRecord`と同一:
+    直前の文(ここでは直前の`BlockRecord`開始ブロック全体)を
     保護し、本体のindentはヘッダー自身と同じ、複数アームが区切り無しに連続しうる。
     名前付きケース(`ON BLOCK ERROR <CaseName>`)は`ON ERROR <CaseName>`との類推で実装したが、
     実機では無名catch-allの形のみ確認済み(未検証の拡張)。
@@ -627,9 +611,7 @@ class GuardedNode:
     いることを表す。
 
     `ON ERROR`/`ON BLOCK ERROR`はそれ自身が独立した文ではなく、DSL上では直前の文
-    (またはBLOCK)のすぐ後ろ・同じindentに現れてそれを「保護」する
-    (design/robin_language_source_findings.md——`StatementWithArguments.ToStringIgnoreMetadata()`
-    が`ExceptionStatement`を末尾に改行区切りで連結している)。`build_block_tree()`は
+    (またはBLOCK)のすぐ後ろ・同じindentに現れてそれを「保護」する。`build_block_tree()`は
     `ON ERROR`/`ON BLOCK ERROR`を独立したノードとしてbodyに追加せず、直前に追加済みの
     ノードをこれでラップし直す。
     """
@@ -822,8 +804,8 @@ def build_block_tree(records: list[Record]) -> list[Node]:
 
 _ACTION_ID_RE = _DOTTED_RE
 # "REPEAT"は design/dsl_format_findings.md 知見37(実機検証済み)の`REPEAT ACTION`用。
-# "NEXT"は既存の`NEXT LOOP`と`NEXT ACTION`(同じくON ERRORの本体内で使える——ソース上
-# `NextActionStatement.ToString()`が同じ`"NEXT ACTION"`を返すため、追加の実装は不要)の両方で使われる。
+# "NEXT"は既存の`NEXT LOOP`と`NEXT ACTION`(同じくON ERRORの本体内で使える——いずれも
+# 同じ`"NEXT ACTION"`という2トークンのベアキーワードのため、追加の実装は不要)の両方で使われる。
 # "THROW"は design/dsl_format_findings.md 知見41(実機検証済み)の`THROW ERROR`用——
 # `ON BLOCK ERROR`の「Throw error」を選ぶと本体に追加される2トークンのベアキーワード。
 # "LABEL"/"GOTO"は design/dsl_format_findings.md 知見48(実機検証済み)——`Label`アクション
@@ -976,9 +958,8 @@ def _strip_parens(token: str) -> str:
 def _merge_not_in(tokens: list[str]) -> list[str]:
     """隣接する`"NOT"`・`"IN"`の2トークンを1個の`"NOT IN"`トークンへ結合する。
 
-    design/robin_language_source_findings.md——`ComparisonOperatorExtensions.ToString()`の
-    ソースで、`ComparisonOperator.NotIn`は`"NOT IN"`(内部に空白を1つ持つ**1つの**文字列)として
-    直列化されることを確認した。`IF`/`ELSE IF`/`LOOP WHILE`の演算子は固定位置の
+    `NOT IN`は`"NOT IN"`(内部に空白を1つ持つ**1つの**文字列)として直列化されることが
+    確定済み。`IF`/`ELSE IF`/`LOOP WHILE`の演算子は固定位置の
     トークン(`tokens[2]`等)として読むため、空白区切りで2トークンになる`NOT IN`を
     そのままにすると以降の全トークン位置がずれてしまう(以前から既知だったギャップ)。
     ここで先に1トークンへ結合しておくことで、既存の固定位置ロジックを変更せずに対応できる。
@@ -1076,7 +1057,7 @@ def _parse_action_call_body(
 
 def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], indent: int = 0) -> Record:
     if line.startswith("\x00CMT") and line in placeholders:
-        # `CommentStatement.ToString()`は常に`"/# " + escaped + "#/"`という形で
+        # DSL上のコメントは常に`"/# " + escaped + "#/"`という形で
         # `/#`の直後に1文字の空白を固定で挿入する(コメント本文自体が空白で始まる
         # 場合でも区別なく追加される)。そのためここでは「空白なら剥がす」のような
         # 条件分岐ではなく、常に先頭1文字をデリミタの一部として取り除く。
@@ -1197,9 +1178,7 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
         )
 
     if first == "CASE" and len(tokens) == 2:
-        # ソース上`SemiComparison.Operator`はnullableなため、演算子が省略される形
-        # (`SemiComparison.ToString()`が`RightOperand`だけを返す場合)も理論上ありうるが、
-        # 実機では未確認。
+        # 演算子が省略される形(値だけが出力される場合)も理論上ありうるが、実機では未確認。
         return CaseRecord(operator=None, value=_resolve_value(tokens[1], placeholders), indent=indent)
 
     if first == "DEFAULT" and len(tokens) == 1:

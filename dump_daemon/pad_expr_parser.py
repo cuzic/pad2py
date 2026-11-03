@@ -2,8 +2,7 @@
 
 design/dsl_format_findings.md 知見53で、`AND`/`OR`/`XOR`/`NOT`の論理式・`+`/`-`/`*`/`/`/`mod`の
 算術式・比較演算子が実機DSLでどう直列化されるかは確認済みだが、**演算子の優先順位・結合性は
-実機で未検証**(design/robin_language_source_findings.md「ANTLR文法(`Language.cs`の
-`ExpressionContext`サブクラス群)...」の節: 「優先順位・結合性も未確認」と明記)。
+実機で未検証**。
 
 以下の文法は一般的な言語慣習(`OR` < `XOR` < `AND` < `NOT` < 比較 < `+`/`-` < `*`/`/`/`mod`、
 括弧が最優先)を**仮に採用した未検証の仮定**であり、この優先順位が実機の挙動と一致する保証は無い。
