@@ -304,3 +304,35 @@ def test_build_block_tree_groups_if_elseif_else_into_one_conditional_node_with_o
     assert isinstance(set_var, SetVariableRecord)
     assert isinstance(while_node, BlockNode)
     assert isinstance(while_node.header, LoopWhileRecord)
+
+
+# 実機でLOOP WHILEの中にExit loop/Next loopを追加して再キャプチャした生データ。
+EXIT_NEXT_LOOP_DSL = "LOOP WHILE (LoopIndex) < (10)\n    EXIT LOOP\n    NEXT LOOP\nEND"
+
+
+def test_exit_loop_and_next_loop_parsed_as_two_token_keywords() -> None:
+    records = parse_dsl(EXIT_NEXT_LOOP_DSL)
+    assert len(records) == 4
+    while_record, exit_record, next_record, end_record = records
+
+    assert exit_record.indent == 1
+    assert isinstance(exit_record, KeywordRecord)
+    assert exit_record.name == "EXIT"
+    assert exit_record.args == ["LOOP"]
+
+    assert isinstance(next_record, KeywordRecord)
+    assert next_record.name == "NEXT"
+    assert next_record.args == ["LOOP"]
+    assert next_record.indent == 1
+
+
+def test_build_block_tree_keeps_exit_next_loop_as_leaves_in_while_body() -> None:
+    tree = build_block_tree(parse_dsl(EXIT_NEXT_LOOP_DSL))
+    assert len(tree) == 1
+    while_node = tree[0]
+    assert isinstance(while_node, BlockNode)
+    assert isinstance(while_node.header, LoopWhileRecord)
+    assert len(while_node.body) == 2
+    exit_rec, next_rec = while_node.body
+    assert isinstance(exit_rec, KeywordRecord) and exit_rec.name == "EXIT"
+    assert isinstance(next_rec, KeywordRecord) and next_rec.name == "NEXT"

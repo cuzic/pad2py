@@ -37,6 +37,11 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   `ElseIfRecord`/`ELSE`キーワードが同じindentで後続する限り1つの`ConditionalNode`に
   まとめ、最後に現れる`END`1つだけを構文全体の終端として消費する。
 
+- `EXIT LOOP` / `NEXT LOOP`(実機検証。いずれも2トークンのベアキーワードで、
+  `KeywordRecord(name="EXIT"/"NEXT", args=["LOOP"])`としてそのまま表現できる。
+  `LOOP`系ブロックの本体内に通常のリーフとして現れるため、`build_block_tree()`に
+  特別な対応は不要)
+
 未対応(今後の実機確認が必要): 複合式(AND/OR)。
 """
 from __future__ import annotations
@@ -214,7 +219,7 @@ def build_block_tree(records: list[Record]) -> list["Record | BlockNode | Condit
     return parse_level(0)
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
-_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE"}
+_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT"}
 
 
 def parse_dsl(text: str) -> list[Record]:
