@@ -539,7 +539,10 @@ def build_block_tree(records: list[Record]) -> list[Node]:
 
 
 _ACTION_ID_RE = _DOTTED_RE
-_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT"}
+# "REPEAT"は design/dsl_format_findings.md 知見37(実機検証済み)の`REPEAT ACTION`用。
+# "NEXT"は既存の`NEXT LOOP`と`NEXT ACTION`(同じくON ERRORの本体内で使える——ソース上
+# `NextActionStatement.ToString()`が同じ`"NEXT ACTION"`を返すため、追加の実装は不要)の両方で使われる。
+_KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT", "REPEAT"}
 
 
 def parse_dsl(text: str) -> list[Record]:

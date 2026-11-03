@@ -777,3 +777,27 @@ def test_build_block_tree_groups_consecutive_on_error_arms_without_separator() -
     default_header, default_body = guarded.on_error.arms[1]
     assert default_header.case_name is None
     assert len(default_body) == 1 and default_body[0].var_name == "NewVar"
+
+
+def test_repeat_action_parsed_as_keyword_record_inside_on_error_arm() -> None:
+    # design/dsl_format_findings.md 知見37(実機検証済み): 「Exception handling mode」を
+    # 「Repeat action」に変更すると、アーム本体に`REPEAT ACTION`が追加される(ソース上
+    # `RepeatActionStatement.ToString()`で予測していた構文そのまま)。`EXIT LOOP`/`NEXT LOOP`と
+    # 同じ2トークンのベアキーワードとして扱える。
+    dsl = (
+        "Scripting.RunPythonScript.RunPythonScript "
+        "PythonCode: $'''pass''' ScriptOutput=> PythonScriptOutput3\n"
+        "ON ERROR RunPythonScriptError\n"
+        "SET NewVar2 TO $'''script failed'''\n"
+        "REPEAT ACTION\n"
+        "ON ERROR\n"
+        "SET NewVar TO $'''recovered'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    named_header, named_body = guarded.on_error.arms[0]
+    assert named_header.case_name == "RunPythonScriptError"
+    assert len(named_body) == 2
+    assert named_body[1] == KeywordRecord(name="REPEAT", args=["ACTION"], indent=0)
