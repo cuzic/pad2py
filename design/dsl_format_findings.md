@@ -594,3 +594,17 @@ END
 「Go to label」オプションは今回は未検証のまま持ち越し(おそらくPADの「Label」/「Go to label」アクションと連動する、別の構文が必要になると推測される)。
 
 **追加確認**: 「Exception handling mode」を既定の「Go to next action」に戻して再キャプチャしたところ、`REPEAT ACTION`はおろか**いかなるトークンも出力されなかった**(アーム本体は`SET NewVar2 TO ...`だけに戻った)。つまり「Go to next action」(既定の「次のアクションへ進む」という通常のフロー)は明示的な`NEXT ACTION`トークンを伴わない——`REPEAT ACTION`は非既定の選択をした場合にのみ現れる、という理解で確定した。`pad_dsl_parser.py`は元々この状態(本体にREPEAT/NEXTが無い)も問題なく扱えるため、コード変更は不要。
+
+## 38. 【本プロジェクト最大の謎の1つが解決】UI要素セレクタはDSLテキスト上では名前参照`appmask['<表示名>']`にすぎないと判明——パーサーの重大バグも発見・修正
+
+research_notesの初期調査時点から「本格的なUIA要素セレクタの文法が未解明」として持ち越していた課題に、ついに実機で取り組んだ。ON ERRORの実機検証と同じく「実行不要、アクションの追加とコピーだけでDSLをキャプチャできる」ことを活かし、「Click UI element in window」アクションを追加、UI要素ピッカー(pywinautoでマウスカーソルを移動させ、Ctrl+左クリックでキャプチャ)でWindowsのスタートボタンを選択してキャプチャしたところ:
+
+```
+UIAutomation.Click.Click Element: appmask['Start Button'] ClickType: UIAutomation.ClickType.LeftClick MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter OffsetX: 0 OffsetY: 0
+```
+
+**最大の発見**: `Element`パラメータの値は`appmask['Start Button']`——design/robin_language_source_findings.mdで解明した`Selector`/`SelectorElement`/`SelectorAttribute`のCSS風セレクタ文字列(`[name="value"]`等)が直接埋め込まれているのではなく、**UI要素リポジトリ内のエントリへの名前参照**だった。つまり、これまで解明していた「CSS風セレクタ文字列のフォーマット」は実在する知識ではあるが、それは**UI要素リポジトリの内部格納形式**であって、**DSLクリップボードテキストに直接現れる値ではなかった**——両者は別のレイヤーだと判明した。
+
+**新たなパーサーバグを発見・修正**: `appmask['Start Button']`はUI要素の表示名(`'Start Button'`、空白を含む)を単純な角括弧+シングルクォートで囲んだだけの形式で、`$'''...'''`のような保護は無い。既存の`line.split()`による素朴なトークン化では、空白を含む表示名が2トークンに分裂し(`appmask['Start`と`Button']`)、`Element`パラメータの値が`VarRef("appmask['Start")`という壊れた値になり、`Button']`トークンは静かに失われる——知見15・26・36と同種の「フィクスチャの多様性不足で長年気づかれなかったはずのバグ」を、今回は実機データを得た直後に自分で書いたテストで即座に発見した。`_UI_ELEMENT_RE`で`appmask['...']`全体を他の値(`$'''...'''`文字列・`/# #/`コメント)と同じくマスキングしてから行分割するよう修正し、新しい値型`UiElementRef(name)`を追加した。
+
+**今後の課題**: この発見により「UI要素参照がDSLテキスト上でどう直列化されるか」という構文上の謎は解けたが、**実際のセレクタ文字列(CSS風)自体はクリップボードのDSLテキストには含まれていない**ため、`Click UI element in window`等のアクションをPythonのpywinauto呼び出しに変換するには、別途PAD側の「UI要素」リポジトリの中身(表示名→セレクタ文字列のマッピング)を取得する方法が必要になる——`.msapp`ファイルやフローパッケージの別の部分を調べる、あるいはPAD自体のエクスポート機能を使う等、クリップボードコピー以外の経路が必要になると推測される。
