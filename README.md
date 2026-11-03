@@ -13,8 +13,26 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
   - `clipwire_client.py` — clipwire(対話的セッション内実行デーモン)のHTTPクライアント
   - `pad_dsl_parser.py` — PADクリップボードDSLのパーサー(実データで検証済み)。SET/IF+ELSE IF+ELSE(ネスト対応)/LOOP(カウント・FOREACH・WHILE)/EXIT・NEXT LOOPを`indent`情報付きのフラットな`Record`列に変換し、`build_block_tree()`で`BlockNode`/`ConditionalNode`の木構造に組み立てる
   - `pad_codegen.py` — `build_block_tree()`の出力からPythonソースを生成する最小限のコードジェネレーター(プロトタイプ)。未対応のアクションは架空のAPI呼び出しをでっち上げず`# TODO`コメントを出力する
+  - `pad2py_cli.py` — `parse_dsl()`→`build_block_tree()`→`generate_python()`を1コマンドで結ぶCLIエントリポイント(下記「CLIの使い方」参照)
   - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
+
+## CLIの使い方
+
+PADのデザイナーで変換したいアクション群を選択して**コピー**し、そのクリップボードテキストを`pad2py`コマンドに渡す(PADのフロー定義ファイルを直接読む機能ではない——理由は後述の「v1スコープ」参照)。
+
+```bash
+uv sync --all-groups
+
+# クリップボードテキストをファイルに保存して変換
+uv run pad2py flow_snippet.txt -o converted.py
+
+# 標準入力・標準出力でパイプ処理(macOS/Linuxでクリップボードから直接流し込む例)
+pbpaste | uv run pad2py > converted.py   # macOS
+xclip -o -selection clipboard | uv run pad2py > converted.py   # Linux
+```
+
+変換できない構文・アクション(知見18-2の関数呼び出し条件等)は例外を送出し、変換できないアクション(UI要素セレクタが必要なもの等、下記「v1スコープ」参照)は出力中に`# TODO`コメントとして残る——いずれも、架空のPython APIをでっち上げて出力することは無い。
 
 ## v1スコープ: UI要素セレクタが必要なアクションは変換対象外
 

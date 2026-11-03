@@ -17,6 +17,9 @@ dependencies = [
     "httpx>=0.27.0",
 ]
 
+[project.scripts]
+pad2py = "dump_daemon.pad2py_cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
