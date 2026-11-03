@@ -586,9 +586,11 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   という、`WAIT <seconds>`とは全く別の構文だった。`action_id`は予測通り
   `UIAutomation.WaitForWindow.ToOpen`。タイムアウトは「Fail with timeout error」
   トグルで初めて設定可能になる(既定5秒)。パーサーに`WaitActionRecord`として実装済み。
-  `ToClose`/`ToBecomeFocusedByTitleClass`/`ToLoseFocus`の3バリアント、
-  `FocusWindow: True`表記、「Fail with timeout error」OFF時の挙動、
-  「Wait for service」の構文は未検証のまま
+  ~~「Fail with timeout error」OFF時の挙動~~ → 完了:`FOR`句自体がDSLから省略される
+  (パーサーバグを修正)。~~`ToClose`バリアント~~ → 完了:`UIAutomation.WaitForWindow.ToClose`、
+  `FocusWindow`パラメータ自体が存在しない。`ToBecomeFocusedByTitleClass`相当・
+  `ToLoseFocus`の2バリアント、`FocusWindow: True`表記、「Wait for service」の構文は
+  未検証のまま
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
   pywinauto APIの特定(架空のAPI名を避けるため保留中)
 - 「window instance」(`GetWindow`の出力、`ByInstanceOrHandle`系アクションの入力)をPython側で

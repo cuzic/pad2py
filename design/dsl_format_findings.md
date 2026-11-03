@@ -863,3 +863,11 @@ WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \'Untitled - Not
 ```
 
 **新たなパーサーバグを発見・修正**: 実装当初の`_WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\) FOR (.+)$")`は`FOR`句を必須としていたため、この省略形には一切マッチせず、知見50本文で報告した「サイレントに壊れたPythonを生成する」バグ(`time.sleep("(UIAutomation.WaitForWindow.ToOpen")`相当)がこのバリエーションでも再発していた——実装直後に別の変種を実機キャプチャしたことで、確認済みの構文にもまだ別の落とし穴が残っていたことにすぐ気づけた(知見15・26・36・38・46・50と同系統)。正規表現を`^WAIT \((.+)\)(?: FOR (.+))?$`(`FOR`句全体をオプションに)に修正し、`WaitActionRecord.timeout_seconds`は`FOR`句が無い場合`None`のままにした。`pad_codegen.py`側も`render_value(None)`が例外になる問題(`None`は`render_value()`が対応していない値型)に気づき、`timeout_seconds is None`の場合は`"timeout: none"`という専用の表示に分岐させた。
+
+**さらに追記(同ティック内)**: 「Wait for window to」の残り3選択肢を確認した。ドロップダウンの全選択肢は`Open`/`Close`/`Become focused`/`Lose focus`(前回「他の3選択肢は未検証」としていたのが確定)。`Close`を選ぶと、**「Focus window after it opens」トグル自体がダイアログから消える**(意味的に当然——閉じるのを待つ場合はフォーカスする/しないの概念が無い)。`Close`・タイムアウト無しで保存・コピーしたところ:
+
+```
+WAIT (UIAutomation.WaitForWindow.ToClose Window: appmask['Window \'Untitled - Notepad\''])
+```
+
+`action_id`は予測通り`UIAutomation.WaitForWindow.ToClose`、`params`には`FocusWindow`が存在せず`Window`だけ——既存の汎用パラメータ解析ループ(`ActionRecord`と共有)がそのまま正しく対応できており、追加のコード変更は不要だった。`Become focused`/`Lose focus`の2つは未検証のまま持ち越し(いずれも`ToBecomeFocusedByTitleClass`相当・`ToLoseFocus`という命名パターンになると予測される)。調査後はLoopTestを元の`Open`設定に戻した。

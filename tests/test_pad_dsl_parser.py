@@ -1147,3 +1147,20 @@ def test_build_block_tree_handles_real_wait_for_window_no_timeout_whole_subflow_
     assert wait_records[0].timeout_seconds is None
     tree = build_block_tree(records)
     assert len(tree) > 0
+
+
+def test_build_block_tree_handles_real_wait_for_window_to_close_whole_subflow_capture() -> None:
+    # design/dsl_format_findings.md 知見50の追記(実機検証済み): 「Wait for window to」を
+    # 「Close」に変更すると、`ToClose`という別のaction_idになり、`FocusWindow`パラメータ
+    # 自体が存在しない(UI上も「Focus window after it opens」トグルが消える——意味的に
+    # 当然だが実機確認済み)。既存の汎用パラメータ解析ロジックのまま正しく処理できた。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_to_close.txt"
+    ).read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToClose"
+    assert "FocusWindow" not in wait_records[0].params
+    tree = build_block_tree(records)
+    assert len(tree) > 0
