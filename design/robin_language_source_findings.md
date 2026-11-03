@@ -648,9 +648,14 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
 - `StringAtom`(非interpolated文字列)が実際にどの文脈で出力されるかの特定
 - アクションモジュールDLL群(`Modules.*.Actions.dll`)を対象にした、デフォルト値省略ロジックの追加調査
 - ~~`StatementWithArguments`(`ActionStatement`の基底クラス)の`ToString()`実装を読み、パラメータ行の正確な区切り文字・エスケープルールをさらに裏付けること~~ → 完了(本セクション参照)
-- `VariableTrailer`(`.Name`/`[Index]`/Slice)付きの変数参照が実機でどう出力されるかの確認——
-  `.Name`トレーラは既存の`EnumRef`判定(`_DOTTED_RE`)と字面上区別できない曖昧性があるため、
-  実例が見つかったら最優先でパーサー対応すべき
+- ~~`VariableTrailer`(`.Name`/`[Index]`/Slice)付きの変数参照が実機でどう出力されるかの確認~~ →
+  `.Name`トレーラ・`[Index]`添字アクセスの両方を実機確認(design/dsl_format_findings.md 知見55)。
+  懸念していた通り`.Name`トレーラ(`InnerVar.SomeProperty`)は既存の`EnumRef`判定と字面上
+  区別できず、実際に誤分類されて文字列リテラルへすり替わる重大なバグとして発覚した。
+  これまでの実機EnumRef captureが全て例外なく3セグメントだった実績に基づき、EnumRef判定を
+  3セグメント以上に限定する`_ENUM_REF_RE`を新設して修正した(完全な解消ではない暫定対応)。
+  `[Index]`添字は元々ドットを含まないため影響を受けず、`VarRef`としてそのままPythonの
+  添字アクセス構文に変換できていた。Slice構文・0始まりか1始まりかは未確認のまま持ち越し
 - `IExceptionStatement`の具象実装が本当に`ExceptionCaseStatement`と同じものかどうか、
   そして`StatementWithArguments.ToStringIgnoreMetadata()`末尾への連結がスペース無しに
   見える件(表記ミスか、実際には別の区切り規則があるのか)の確認

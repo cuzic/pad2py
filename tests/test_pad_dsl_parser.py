@@ -98,6 +98,53 @@ def test_set_variable_parsed_with_unescaped_string_value() -> None:
     assert set_var.value == 'He said "hello" and used \\ in C:\\temp\\file.txt'
 
 
+def test_set_variable_with_dotted_variable_trailer_resolved_as_varref_not_enumref() -> None:
+    # design/dsl_format_findings.md 知見55(実機検証済み・重大なパーサーバグ修正): PADの変数は
+    # `InnerVar.SomeProperty`のようなドット付きプロパティアクセス(VariableTrailer、
+    # design/robin_language_source_findings.mdが「既知の未解決の曖昧性」として警告していた形)を
+    # 持ちうるが、テキスト上は`Namespace.Enum.Value`形式のEnumRefと区別がつかない。実機で
+    # `%InnerVar.SomeProperty%`という式をSet variableのValueに入力・保存・一括コピーしたところ
+    # `SET NewVar3 TO InnerVar.SomeProperty`という、これまでのEnumRef captureと字面上同じ形の
+    # DSLが得られ、修正前は`EnumRef('InnerVar.SomeProperty')`に誤分類され、codegenが
+    # 文字列リテラル`'InnerVar.SomeProperty'`を出力してしまっていた(変数参照のはずが
+    # 文字列定数にすり替わる、気付かれにくい意味論破壊バグ)。これまでの実機EnumRef captureが
+    # 全て例外なく3セグメント(`Namespace.Enum.Value`)だった実績に基づき、EnumRef判定を
+    # ドット数2個以上(3セグメント以上)に限定し、2セグメントはVarRefへフォールバックするよう
+    # 修正した。
+    records = parse_dsl("SET NewVar3 TO InnerVar.SomeProperty")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert set_var.value == VarRef("InnerVar.SomeProperty")
+
+
+def test_set_variable_with_index_trailer_resolved_as_varref() -> None:
+    # design/dsl_format_findings.md 知見55(実機検証済み): `InnerVar[0]`のような添字アクセスも
+    # 実機確認した。これは元々`_DOTTED_RE`にマッチしない(ドットが無い)ため、修正前から
+    # 既に`VarRef`としてそのまま保持され、codegenも`InnerVar[0]`という有効なPython式を
+    # 生成できていた(インデックスが0始まりか1始まりかの正確な意味論は未検証のまま)。
+    records = parse_dsl("SET NewVar3 TO InnerVar[0]")
+    set_var = records[0]
+    assert isinstance(set_var, SetVariableRecord)
+    assert set_var.value == VarRef("InnerVar[0]")
+
+
+def test_enum_ref_still_recognized_for_known_three_segment_values() -> None:
+    # design/dsl_format_findings.md 知見55: EnumRef判定を3セグメント限定にした後も、
+    # これまでに実機確認済みの全EnumRef値(例: Display.DefaultButton.Button1)は
+    # 引き続き正しくEnumRefとして認識されることを確認する回帰テスト。
+    for value in (
+        "Display.DefaultButton.Button1",
+        "Display.Buttons.OK",
+        "Display.Icon.None",
+        "MouseAndKeyboard.MouseClickType.LeftClick",
+        "UIAutomation.ClickType.LeftClick",
+    ):
+        records = parse_dsl(f"SET NewVar3 TO {value}")
+        set_var = records[0]
+        assert isinstance(set_var, SetVariableRecord)
+        assert set_var.value == EnumRef(value)
+
+
 def test_set_variable_with_compound_and_or_not_expression_captured_as_raw_expr() -> None:
     # design/dsl_format_findings.md 知見53(実機検証済み): `SET ... TO`の右辺は単一トークンに
     # 収まらない複合式になりうる。以前は`tokens[3]`1つだけを読んでいたため、
