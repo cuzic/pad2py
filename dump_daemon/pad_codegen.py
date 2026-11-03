@@ -115,6 +115,7 @@ from .pad_dsl_parser import (
     LoopRecord,
     LoopWhileRecord,
     Node,
+    RawExpr,
     RawRecord,
     SetVariableRecord,
     SwitchNode,
@@ -256,6 +257,16 @@ def _ensure_nonempty_suite(lines: list[str], indent: int) -> list[str]:
 def _generate_node(node: Node, indent: int) -> list[str]:
     prefix = INDENT * indent
     if isinstance(node, SetVariableRecord):
+        if isinstance(node.value, RawExpr):
+            # design/dsl_format_findings.md 知見53: AND/OR/XOR/NOT・算術演算子の実機DSL
+            # 表現は確認済みだが、演算子の優先順位やmod/XORの境界値での意味論差異が
+            # PADとPythonで一致する保証がまだ無いため、でっち上げた変換式を出力せず
+            # TODOに倒す(知見50等と同じ安全側フォールバックの方針)。
+            return [
+                f"{prefix}# TODO: map PAD compound expression for variable "
+                f"'{node.var_name}': {node.value.text}",
+                f"{prefix}{node.var_name} = None  # unresolved compound expression, see TODO above",
+            ]
         return [f"{prefix}{node.var_name} = {render_value(node.value)}"]
     if isinstance(node, ConditionalNode):
         return _generate_conditional(node, indent)

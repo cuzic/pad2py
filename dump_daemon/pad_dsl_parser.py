@@ -209,6 +209,21 @@ class VarRef:
 
 
 @dataclass(frozen=True)
+class RawExpr:
+    """`SET ... TO`の右辺が単一トークンに収まらない複合式(比較式を`AND`/`OR`/`XOR`/`NOT`
+    で結合した論理式、`+`/`-`/`*`/`/`/`mod`による算術式)だったことを示すマーカー型。
+
+    design/dsl_format_findings.md 知見53(実機検証済み)で確認した通り、これらの演算子は
+    予測通りのベアキーワード(`AND`/`OR`/`XOR`/`NOT`は大文字に正規化される、`mod`は
+    小文字のまま)としてDSLに出力される。Pythonへの意味論的に正しい変換(演算子の優先順位、
+    `mod`/`XOR`の境界値での挙動差異等)は未検証のため、ここではトークン列を失わずに
+    そのままテキストとして保持するにとどめ、codegen側で安全にTODO化する。
+    """
+
+    text: str
+
+
+@dataclass(frozen=True)
 class EnumRef:
     """`Namespace.Enum.Value`形式(例: `Display.Icon.None`)の列挙値を表すマーカー型。
 
@@ -918,6 +933,36 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
     return VarRef(token)
 
 
+def _stringify_resolved_expr_token(value: Any) -> str:
+    """`_resolve_value()`の戻り値を、人間可読な複合式テキストの断片として文字列化する。
+
+    `RawExpr`はPythonへの意味論的な変換を行わないため、元のDSLテキストを極力忠実に
+    再構成できればよく、`VarRef`はそのまま変数名(`AND`/`OR`/`mod`等の裸キーワードや
+    `(1`のような括弧付き断片もここに落ちる)、数値/真偽値は`str()`、プレースホルダ由来の
+    文字列は`repr()`で引用符を復元する。
+    """
+    if isinstance(value, VarRef):
+        return value.name
+    if isinstance(value, EnumRef):
+        return value.value
+    if isinstance(value, UiElementRef):
+        return "appmask" + "".join(f"[{p!r}]" for p in value.path)
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return repr(value)
+    return str(value)
+
+
+def _render_raw_expr(tokens: list[str], placeholders: dict[str, str | tuple[str, ...]]) -> RawExpr:
+    pieces = [
+        _stringify_resolved_expr_token(_resolve_value(tok, placeholders)) for tok in tokens
+    ]
+    return RawExpr(text=" ".join(pieces))
+
+
 def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], indent: int = 0) -> Record:
     if line.startswith("\x00CMT") and line in placeholders:
         # `CommentStatement.ToString()`は常に`"/# " + escaped + "#/"`という形で
@@ -967,9 +1012,20 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
     first = tokens[0]
 
     if first == "SET" and len(tokens) >= 4 and tokens[2] == "TO":
+        expr_tokens = tokens[3:]
+        if len(expr_tokens) == 1:
+            value: Any = _resolve_value(expr_tokens[0], placeholders)
+        else:
+            # design/dsl_format_findings.md 知見53(実機検証済み): `SET ... TO`の右辺は
+            # `AND`/`OR`/`XOR`/`NOT`で結合した論理式や`+`/`-`/`*`/`/`/`mod`の算術式のような
+            # 複数トークンにまたがる複合式になりうる。以前は`tokens[3]`1つだけを読み、
+            # 残りのトークンをサイレントに切り捨てていた(知見15・26・36・38・46・50と
+            # 同系統の、気付かれにくいデータ消失バグ)。`RawExpr`としてトークン列全体を
+            # 失わずに保持し、codegen側で安全にTODO化する。
+            value = _render_raw_expr(expr_tokens, placeholders)
         return SetVariableRecord(
             var_name=tokens[1],
-            value=_resolve_value(tokens[3], placeholders),
+            value=value,
             indent=indent,
         )
 
