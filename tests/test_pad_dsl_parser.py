@@ -900,3 +900,23 @@ def test_build_block_tree_does_not_drop_siblings_after_on_block_error_block() ->
     assert len(tree) == 2
     assert isinstance(tree[0], GuardedNode)
     assert tree[1].var_name == "AfterVar"
+
+
+def test_throw_error_parsed_as_keyword_record_inside_on_block_error_arm() -> None:
+    # design/dsl_format_findings.md 知見41(実機検証済み): 「On block error」ダイアログの
+    # 「Continue flow run」/「Throw error」トグルで「Throw error」を選ぶと、「Exception
+    # handling mode」ドロップダウンが消え、代わりにアーム本体へ`THROW ERROR`という
+    # 2トークンのベアキーワードが追加される(`REPEAT ACTION`/`NEXT ACTION`と同形式)。
+    dsl = "BLOCK \nON BLOCK ERROR\nTHROW ERROR\nEND"
+    records = parse_dsl(dsl)
+    assert records == [
+        BlockRecord(name=None, indent=0),
+        OnBlockErrorRecord(case_name=None, indent=0),
+        KeywordRecord(name="THROW", args=["ERROR"], indent=0),
+        KeywordRecord(name="END", args=[], indent=0),
+    ]
+    tree = build_block_tree(records)
+    guarded = tree[0]
+    assert isinstance(guarded, GuardedNode)
+    _header, handler_body = guarded.on_error.arms[0]
+    assert handler_body == [KeywordRecord(name="THROW", args=["ERROR"], indent=0)]
