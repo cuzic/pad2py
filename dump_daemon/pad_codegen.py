@@ -63,7 +63,11 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   しない)。`ON BLOCK ERROR`による保護は`GuardedNode`の`try`/`except`が担う
 - `KeywordRecord(WAIT)` → `time.sleep(...)`
 - `KeywordRecord(EXIT LOOP)` / `KeywordRecord(NEXT LOOP)` → `break`/`continue`
-- `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身をそのまま展開
+- `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身を展開。
+  `ScriptOutput=>`束縛がある場合は、decompileした`RunPythonScript.cs`で確認した実際の挙動
+  (標準出力の捕捉、スクリプト自身の例外はActionExceptionとして伝播せず出力が空文字列になる)
+  に合わせて`try`/`except`で包み`contextlib.redirect_stdout`で捕捉する(`_generate_action()`
+  内のコメント参照)
 - `ActionRecord`(`MouseAndKeyboard.SendKeys.FocusAndSendKeys`) → `pyautogui.typewrite(...)`
   (design/dsl_format_findings.md 知見19。**未検証の前提**: `TextToSend`が特殊キー記法
   (「Insert special keys」で挿入される`{ENTER}`等)を含まない、素のリテラルテキストである
@@ -409,12 +413,21 @@ def _generate_guarded(node: GuardedNode, indent: int) -> list[str]:
     (名前無しcatch-all、1アームのみ)に本体アクションを追加し「Continue flow run」を選んだ
     ケースのみ——そのDSL上の意味論(エラーを捕捉してハンドラを実行し、続行する)は
     `try`/`except`に自然に対応する。知見36で、名前付きケース(`ON ERROR <CaseName>`)や
-    複数アームが区切り無しに連続しうることも実機確認したが、**PADの各エラーケース名が
-    Pythonのどの例外型に対応するかは分からない**(`RunPythonScriptError`が`OSError`
-    相当なのか等、対応表が無い)ため、複数アームや名前付きケースを安易に`except`の
-    型指定に変換することはしない——1アームかつ名前無しcatch-allの場合のみ変換し、
-    それ以外は保護対象の文だけ出力して`# TODO`を残す。`node.node`が`BlockNode(BlockRecord)`の
-    場合(知見40の`ON BLOCK ERROR`)も構造は全く同じなので、このロジックをそのまま流用できる。
+    複数アームが区切り無しに連続しうることも実機確認した。
+
+    decompileした`RunPythonScript.cs`で、名前付きケース(例: `RunPythonScriptError`)は
+    PADの各アクションクラスが`[Throws("タグ名")]`属性で宣言する固定の文字列タグであり、
+    .NET/Pythonの例外**型**への対応表という発想自体が実態と違うことが分かった。しかも
+    `RunPythonScript`に限って言えば、そのタグが実際に投げられるのはエージェントのクラッシュ・
+    Pythonパス不正等の**インフラ的な失敗のみ**で、ユーザースクリプト自身の実行時エラーは
+    `_generate_action()`側で既に空文字列化して吸収しており(ActionExceptionとして伝播しない、
+    実機のドキュメントで確認済みの挙動)、そもそも`except`の型指定が要らない。しかし
+    `GuardedNode`が保護する対象はRunPythonScriptに限らず任意の文であり、他のアクションが
+    どのタグをどの条件で投げるかを網羅的に確認したわけではないため、複数アームや名前付き
+    ケースを安易に`except`の型指定に変換する一般的な対応はまだ見送る——1アームかつ名前無し
+    catch-allの場合のみ変換し、それ以外は保護対象の文だけ出力して`# TODO`を残す。`node.node`が
+    `BlockNode(BlockRecord)`の場合(知見40の`ON BLOCK ERROR`)も構造は全く同じなので、
+    このロジックをそのまま流用できる。
     """
     prefix = INDENT * indent
     if len(node.on_error.arms) == 1 and node.on_error.arms[0][0].case_name is None:
@@ -481,24 +494,35 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
         code = node.params.get("PythonCode")
         if isinstance(code, str):
             if node.output_var:
-                # PADの公開ドキュメント(Microsoft公式Learnの関連解説記事・コミュニティ記事、
-                # 複数の第三者ソースで一致)によれば、ScriptOutputはスクリプトが`print()`で
-                # 標準出力に書き出した内容がそのまま値になる、という仕組みが確認できる。
-                # ただし末尾改行の有無・複数回print()時の結合・型変換(常に文字列固定か、
-                # 数値へ変換されるか)は公開資料・実機のいずれでも確認できなかったため、
-                # 余計な推測(stripやint変換等)を加えず、標準出力の生テキストを
-                # そのまま代入する最小限の変換に留める(`# NOTE`は安全側の注意書きであり、
-                # `# TODO`ではない——変換自体は実行可能なコードとして生成されるため)。
+                # decompileした`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.RunPythonScript`
+                # (`RunPythonScript.cs`)の`Execute()`/`ExecutePythonScript()`/
+                # `ExecutePythonScriptViaAgent()`で確認した実際の挙動:
+                # - `ScriptOutput`(DSL上の`ScriptOutput=>`、既定表示名`PythonScriptOutput`)と
+                #   `ScriptError`は独立した2つの出力プロパティ(それぞれの正確な中身——
+                #   `print()`の標準出力そのものか、REPLの最終式の値も含むか等——を生成する
+                #   `PAD.Python.Agent.Host.exe`/IronPythonエンジン側の実装はこのDLLの範囲外で
+                #   未確認。標準出力捕捉を最善の近似として採用する)。
+                # - **重要**: スクリプト自身が例外を投げた場合、CPython経由(Agent)では
+                #   `if (!result.Success) { scriptOutput = ""; scriptErrorOutput = result.Error; }`、
+                #   すなわち**ActionException(ON ERRORで捕捉可能な例外)としては伝播せず**、
+                #   `ScriptOutput`が空文字列になるだけでフロー自体は正常に続行する。
+                #   `RunPythonScriptError`タグが実際に投げられるのは、エージェントのクラッシュ・
+                #   Pythonパス不正・アセンブリ署名検証失敗等の**インフラ的な失敗**のみで、
+                #   ユーザースクリプト自身の実行時エラーはこれに含まれない。
+                # これを反映し、スクリプト本体を`try`で包み、例外発生時は出力変数を空文字列に
+                # する(でっち上げた例外伝播をせず、実機の「エラーはSetOutputの空文字列化で
+                # 吸収され、ON ERRORには伝播しない」という確認済みの挙動に合わせる)。
                 inner_prefix = prefix + INDENT
-                lines = [f"{prefix}with contextlib.redirect_stdout(io.StringIO()) as _pyscript_stdout:"]
+                lines = [
+                    f"{prefix}try:",
+                    f"{inner_prefix}with contextlib.redirect_stdout(io.StringIO()) as _pyscript_stdout:",
+                ]
                 lines.extend(
-                    f"{inner_prefix}{line}" if line else "" for line in code.splitlines()
+                    f"{inner_prefix}{INDENT}{line}" if line else "" for line in code.splitlines()
                 )
-                lines.append(f"{prefix}{node.output_var} = _pyscript_stdout.getvalue()")
-                lines.append(
-                    f"{prefix}# NOTE: {node.output_var} is the script's raw stdout text; "
-                    "trailing newline / type coercion are not verified against real PAD"
-                )
+                lines.append(f"{inner_prefix}{node.output_var} = _pyscript_stdout.getvalue()")
+                lines.append(f"{prefix}except Exception:")
+                lines.append(f"{inner_prefix}{node.output_var} = \"\"")
                 return lines
             return [f"{prefix}{line}" if line else "" for line in code.splitlines()]
     if node.action_id == "MouseAndKeyboard.SendKeys.FocusAndSendKeys":

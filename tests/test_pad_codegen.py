@@ -116,10 +116,11 @@ def test_generate_python_inlines_run_python_script_body() -> None:
 
 
 def test_generate_python_binds_script_output_to_captured_stdout() -> None:
-    # 公開ドキュメント(Microsoft Learn関連の解説記事・コミュニティ記事、複数ソースで一致)に
-    # よれば、PADの「Run Python script」のScriptOutputはスクリプトがprint()で標準出力に
-    # 書き出した内容がそのまま値になる。末尾改行・型変換の詳細は未確認のため、生のテキストを
-    # そのまま代入するだけの最小限の変換(でっち上げたstrip/型変換は行わない)。
+    # decompileした`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.RunPythonScript`
+    # (RunPythonScript.cs、Execute()/ExecutePythonScript())で、ScriptOutput(DSL上の
+    # ScriptOutput=>)が`print()`相当の標準出力を捕捉した値になることを確認した
+    # (正確な文字単位の書式——末尾改行・型変換——を生成する側のエンジン実装は未確認のため、
+    # 生のテキストをそのまま代入するだけの最小限の変換に留める)。
     dsl = "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: $'''print(1 + 1)''' ScriptOutput=> Out1"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -134,6 +135,27 @@ def test_generate_python_binds_script_output_to_captured_stdout() -> None:
     # 実行して、実際にprint()の内容が変数に渡ることを確認する(構文チェックだけでなく
     # 実際のランタイム挙動まで検証する)。
     assert namespace["Out1"] == "2\n"
+
+
+def test_generate_python_script_exception_sets_empty_output_instead_of_propagating() -> None:
+    # decompileした`RunPythonScript.cs`の`ExecutePythonScriptViaAgent()`で、スクリプト自身が
+    # 例外を投げた場合`if (!result.Success) { scriptOutput = ""; scriptErrorOutput = result.Error; }`、
+    # つまり**ActionException(ON ERRORで捕捉可能な例外)としては伝播せず**ScriptOutputが
+    # 空文字列になるだけでフロー自体は正常に続行することが確認できた(`RunPythonScriptError`
+    # タグは、エージェントのクラッシュ・Pythonパス不正等のインフラ的な失敗のみに使われ、
+    # ユーザースクリプト自身の実行時エラーには使われない)。これを反映し、スクリプト本体の
+    # 例外をtry/exceptで吸収し、出力変数を空文字列にすることを確認する(でっち上げた例外
+    # 伝播をせず、実機で確認された「エラーは出力の空文字列化で吸収される」挙動に合わせる)。
+    dsl = (
+        "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: "
+        "$'''raise ValueError(\"boom\")''' ScriptOutput=> Out1"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # 例外が外へ伝播せず正常終了することそのものが検証対象
+    assert namespace["Out1"] == ""
 
 
 def test_generate_python_run_python_script_without_output_var_stays_unwrapped() -> None:
