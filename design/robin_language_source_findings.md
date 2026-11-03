@@ -361,6 +361,15 @@ indent+1、`END`は構文全体に1つ)を適用した。`pad_codegen.py`にも`
 SWITCH自身が実機で実際にこのインデント規則で出力されるかを直接確認したDSL例は無い
 (`LOOP`のrange両端含む仮定と同種の、明示的に文書化された未検証の前提として扱う)。
 
+> **【重要な訂正】実機検証の結果、上記のインデント規則の予測は誤りだったと判明した**
+> (design/dsl_format_findings.md 知見33)。`CASE`/`DEFAULT`は`SWITCH`と同じindentではなく、
+> `SWITCH`より1段深いindentに配置され、各アームの本体はさらに1段深かった(`SWITCH`→`CASE`の
+> 関係も`CASE`→本体の関係も`LOOP`→本体と同じ構造——二重に重なっている)。「文法規則が並列
+> だから印字時のインデント規則も同じ」という推論自体が誤りだった、という教訓。文法上の
+> 並列性という発見自体(専用のBlock/Scopeクラスが無いこと)は正しいままで、`CASE`に演算子
+> (`=`等)が明示されることも実機で確認済み。詳細・修正後の実装はdesign/dsl_format_findings.md
+> 知見33を参照。
+
 ## ANTLR文法(`Language.cs`の`ExpressionContext`サブクラス群)で複合式・算術式・IN系演算子を一括確認
 
 `SWITCH`/`CASE`/`DEFAULT`の構造解明に続けて、同じANTLR生成パーサー(`Language.cs`)の
@@ -521,7 +530,8 @@ InstantCheckで確定)。ただし`Contains`自体も実機確認は1例のみ�
 - UI要素セレクタが実際のDSLテキスト上でどう直列化されるか(本セクション参照——セレクタ文字列の
   フォーマット自体は解明できたが、`ActionRecord`パラメータ値としての埋め込み方法が未確認。
   `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)
-- `SWITCH`/`CASE`/`DEFAULT`(構造はANTLR文法から類推実装済み——本セクション参照)の実機検証
+- ~~`SWITCH`/`CASE`/`DEFAULT`の実機検証~~ → 完了(design/dsl_format_findings.md 知見33。
+  類推していたインデント規則は誤りだったと判明し、修正済み)
 - `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
   および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
 - `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
