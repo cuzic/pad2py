@@ -666,3 +666,14 @@ END
 `THROW ERROR`は`REPEAT ACTION`(知見37)・`NEXT ACTION`(知見40)と全く同じ、2トークンのベアキーワード(`KeywordRecord(name="THROW", args=["ERROR"])`)として表現でき、`_KNOWN_KEYWORDS`に`"THROW"`を追加するだけで対応できた。design/robin_language_source_findings.mdで未検証のまま持ち越していた「Throw error」のDSL表現が、この最小限の追加だけで解決した。
 
 `pad_codegen.py`側は、`THROW ERROR`が意味的には`raise`に対応しそうに見えても、「何を`raise`すべきか」(元の例外の再送出か、何らかの固定メッセージか)が実機から読み取れないため、安易に`raise`をでっち上げず`# TODO: unmapped keyword: THROW ERROR`に倒す(`_generate_keyword()`の既存の汎用フォールバックがそのまま機能する——追加のコード変更は不要だった)。このテストを書いたことで、知見40で修正した`_ensure_nonempty_suite()`(コメント行だけの本体に`pass`を補うバグ修正)が実際に別のケース(このTHROW ERRORのコメントのみの`except`節)でも効いていることを確認できた。
+
+## 42. UI要素セレクタ探索の「ローカル側から行ける手段」を全て潰す——残る手段はクラウド保存(2FA)のみと確定
+
+知見38・39で見つけた「保存済みUI要素リポジトリエントリの実セレクタをPADデザイナーUIから直接見る方法が無い」という行き止まりについて、ユーザーに「一歩下がって大局的に考えて」と言われたのを機に、残っていた非2FA経路を総ざらいした。
+
+1. **「UI elements」パネルの右クリックメニュー「Find usages」**(これまで未クリックだった最後の項目)を試した。結果は単なる使用箇所一覧(`LoopTest Line: 6 Click on UI element Start Button`)だけで、属性やセレクタ情報は一切含まれていなかった。
+2. **ローカルファイルシステムの再探索を拡張**: 前回(知見39)は`%LOCALAPPDATA%\Microsoft\Power Automate Desktop`のみを対象に`"Start Button"`文字列でgrepしたが、今回は対象を`C:\ProgramData\Microsoft\Power Automate Desktop`(存在しない)・`%LOCALAPPDATA%\Packages`・`.db`/`.sqlite`/`.sqlite3`/`.ldb`/`.json`拡張子のファイル全件に広げて再探索したが、UI要素リポジトリらしきデータは見つからなかった(見つかった`.json`は全てデザイナーのタブ状態等、知見39で確認済みのものと同種)。
+3. **レジストリ探索**(`HKCU:\Software\Microsoft\Power Automate Desktop`配下)も空振り(該当キー自体が存在しない)。
+4. **稼働中プロセスの棚卸し**を行い、PADの内部アーキテクチャを把握した: `PAD.Designer.exe`(デザイナーUI)・`PAD.AutomationServer.exe`(×2、実行エンジン)・`PAD.BridgeToUIAutomation2.exe`(×2、UIAブリッジ——おそらくUI要素ピッカーの実体)・`UIFlowService.exe`・`Microsoft.Flow.RPA.LauncherService.exe`等が別プロセスとして稼働している。これらがクライアント側で完結したローカルキャッシュを持たず、保存のたびにクラウド(Dataverseの`workflow`テーブル、research_notes/の調査で確認済み)とやり取りしている可能性が高い構成であることが、プロセス分割からも裏付けられた。
+
+**結論**: UI要素セレクタの実体を取得する手段のうち、**このセッションでエージェント単独(2FA無し)で試せる経路は全て潰した**。残る唯一の既知の経路は、「LoopTest」フローをクラウドに保存すること(2FA承認がユーザーの携帯端末でのみ完了できるため、エージェント単独では実行不可)であり、保存できれば(a) UI要素リポジトリが同期されたDataverse側のデータを何らかの形で覗く、(b) 保存後にPADの「Export」機能やUI要素リポジトリのエクスポート機能が使えるかを確認する、といった次の調査に進める見込みがある。この2FAブロッカーの解消は、UI要素セレクタ対応アクション(Click/SendKeys等、実際のPADフローの大半を占めると推測される種類)をcodegenで実装するための事実上の前提条件であり、ユーザーへの確認が必要な分岐点として記録する。
