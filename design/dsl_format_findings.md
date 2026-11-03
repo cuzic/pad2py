@@ -1000,7 +1000,15 @@ IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN
 
 **重要な発見**: これまでの`[ConditionAction]`/`[WaitAction]`の実機キャプチャは`UIAutomation.*`名前空間ばかりだったが、「If service」は初めて見る**`Services.*`という別の名前空間**だった(`Services.IfService.IsRunning`)。UI要素を伴わないアクションのため、単独コピーでは`# [ControlRepository][PowerAutomateDesktop]`ブロックが付かないことも確認できた(知見44の「全選択時のみ付く」という理解と整合)。Service nameはUI要素参照(`appmask[...]`)ではなく、通常のプレースホルダ文字列(`$'''Spooler'''`)として渡される——既存の汎用パーサー/codegenロジックのまま、**一切のコード変更無しで**正しく処理できた。
 
-**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味・「If service」の他の選択肢(「Is running」以外に何があるか、知見50/54の`Is open`/`Isn't open`のようなペアが存在すると予測される)は、いずれも未確認のまま持ち越し。~~「If image」の実機DSL表現~~ → 完了(知見58)。
+**未検証のまま残る項目**: `IsNotFocused`(未検証だが命名パターンから確実視)・`InstantCheck`パラメータの正確な意味は未確認のまま持ち越し。~~「If image」の実機DSL表現~~ → 完了(知見58)。
+
+**追記(別ティック・「If service」ドロップダウンの全選択肢を確認)**: 「If service:」ドロップダウンの全選択肢を確認したところ、「Is stopped」「Is installed」「Isn't installed」「Is running」「Is paused」の**5択**だった(スクロールしても追加の選択肢は現れなかった)。知見50/54の`Open`/`Close`/`Become focused`/`Lose focus`や`Is open`/`Isn't open`のような完全な肯定/否定ペアが全選択肢にあると予測していたが、実際には**「installed」だけが肯定/否定ペア**(`Is installed`/`Isn't installed`)を持ち、`running`/`stopped`/`paused`には否定形が存在しない非対称な構成だった。「Is stopped」を選んで保存・単独コピーしたところ:
+
+```
+IF (Services.IfService.IsStopped Service: $'''Spooler''') THEN
+```
+
+予測通り`Services.IfService.IsStopped`——`IsRunning`(既に確認済み)と対になる命名パターンだった。既存の汎用パーサー/codegenのまま、**一切のコード変更無しで**正しく処理できることを確認した。これで知見50・54・本追記により、`[ConditionAction]`/`[WaitAction]`カテゴリの主要なアクション(`If window`/`If window contains element`/`If image`/`If service`/`Wait for window`/`Wait for window content`/`Wait for service`)は、ドロップダウンの全選択肢まで含めて実機確認が概ね出揃った。
 
 ## 55. 【重大なパーサーバグ修正】変数のドット付きプロパティアクセス(`VariableTrailer`)が`EnumRef`に誤分類され文字列リテラルへすり替わるバグを発見・修正
 
