@@ -118,6 +118,7 @@ from .pad_dsl_parser import (
     SwitchNode,
     UiElementRef,
     VarRef,
+    WaitActionRecord,
 )
 
 INDENT = "    "
@@ -266,6 +267,8 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return _generate_keyword(node, indent)
     if isinstance(node, ActionRecord):
         return _generate_action(node, indent)
+    if isinstance(node, WaitActionRecord):
+        return _generate_wait_action(node, indent)
     if isinstance(node, CommentRecord):
         # 複数行コメント(`/# ... #/`)はPythonの`#`コメントが1行ずつしか続けられない
         # ため、埋め込まれた改行ごとに別の`#`行として出力する。
@@ -483,7 +486,25 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
     return [f"{prefix}# TODO: map PAD action: {node.action_id}{_ui_element_hint(node)}"]
 
 
-def _ui_element_hint(node: ActionRecord) -> str:
+def _generate_wait_action(node: WaitActionRecord, indent: int) -> list[str]:
+    """`WaitActionRecord`(design/dsl_format_findings.md 知見50で実機確認した
+    `WAIT (<ActionId> ...) FOR <秒数>`構文) → `# TODO`コメント。
+
+    `UIAutomation.WaitForWindow.ToOpen`等はpywinautoの`WindowSpecification.wait("exists",
+    timeout=...)`に自然に対応しそうに見えるが、対象ウィンドウのセレクタ自体は`Window`
+    パラメータの`UiElementRef`が指す名前参照でしかなく、実セレクタがDSLから取得できない
+    (知見38・46と同じ制約)。でっち上げたセレクタを埋め込まず、action_id・タイムアウト秒数・
+    関連UI要素の表示名をTODOコメントに残すだけに留める。
+    """
+    prefix = INDENT * indent
+    timeout = render_value(node.timeout_seconds)
+    return [
+        f"{prefix}# TODO: map PAD wait action: {node.action_id} "
+        f"(timeout: {timeout}s){_ui_element_hint(node)}"
+    ]
+
+
+def _ui_element_hint(node: ActionRecord | WaitActionRecord) -> str:
     """未対応アクションのTODOコメントに、関連するUI要素の表示名を付記する。
 
     design/dsl_format_findings.md 知見38で確認した通り、`Click UI element in window`等の

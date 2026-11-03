@@ -33,6 +33,7 @@ from dump_daemon.pad_dsl_parser import (
     SwitchRecord,
     UiElementRef,
     VarRef,
+    WaitActionRecord,
     build_block_tree,
     parse_control_repository,
     parse_dsl,
@@ -1083,5 +1084,38 @@ def test_build_block_tree_handles_real_goto_label_whole_subflow_capture() -> Non
     )
     records = parse_dsl(text)
     assert KeywordRecord(name="LABEL", args=["MyLabel"], indent=0) in records
+    tree = build_block_tree(records)
+    assert len(tree) > 0
+
+
+def test_wait_action_parsed_from_parenthesized_action_call_with_for_clause() -> None:
+    # design/dsl_format_findings.md 知見50(実機検証済み)。「Wait for window」アクション
+    # (UI automationカテゴリ)を実機でWindowに向けてタイムアウト5秒・Focus window無効で
+    # 追加・コピーした生データそのもの。`WAIT <seconds>`という単純なベアキーワードとは
+    # 全く別構文で、`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`という、丸括弧で
+    # 囲んだアクション呼び出し風の式を伴う。
+    dsl = (
+        "WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] FocusWindow: False) FOR 5"
+    )
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, WaitActionRecord)
+    assert record.action_id == "UIAutomation.WaitForWindow.ToOpen"
+    assert record.params["Window"] == UiElementRef(path=("Window 'Untitled - Notepad'",))
+    assert record.params["FocusWindow"] is False
+    assert record.timeout_seconds == 5
+
+
+def test_build_block_tree_handles_real_wait_for_window_whole_subflow_capture() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    wait_records = [r for r in records if isinstance(r, WaitActionRecord)]
+    assert len(wait_records) == 1
+    assert wait_records[0].action_id == "UIAutomation.WaitForWindow.ToOpen"
+    assert wait_records[0].timeout_seconds == 5
     tree = build_block_tree(records)
     assert len(tree) > 0

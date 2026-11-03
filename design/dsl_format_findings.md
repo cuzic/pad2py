@@ -837,3 +837,21 @@ design/robin_language_source_findings.mdでソースコード(`ComparisonOperato
 LoopTestサブフローに実機で「If」アクションを新規追加し、Operatorドロップダウンの全選択肢を確認した(スクロールして最後まで展開): `Equal to (=)` / `Not equal to (<>)` / `Greater than (>)` / `Greater than or equal to (>=)` / `Less than (<)` / `Less than or equal to (<=)` / `Contains` / `Does not contain` / `Is empty` / `Is not empty` / `Starts with` / `Does not start with` / `Ends with` / `Does not end with` / `Is blank` / `Is not blank`。**`Is in`/`Is not in`に相当する選択肢は無かった**。
 
 **結論**: 標準の「If」/「Else if」アクションのUIからは`IN`/`NOT IN`演算子に到達できないことが実機で確認できた。ソースコード上は`ComparisonOperator`列挙型の一部として存在する(ため`_OPERATOR_MAP`には実装済みのまま残す——実際に出現した際に誤変換しないための正しい対応表という位置づけ)が、UI経由で到達可能な別の入口(List/Datatable関連のアクションカテゴリ等)が別途存在するのか、あるいはExpressions経由でのみ到達可能(UI上の専用アクションが無く、将来のバージョンでのみ追加される予定、等)なのかは未確認のまま。本調査では確認したIf アクションのダイアログは変更を保存せず(Cancel)、フローの状態は元のまま(9 Actions)に戻した。
+
+## 50. 【新構文の発見】`[WaitAction]`カテゴリ(「Wait for window」)の実機DSLを確認——`WAIT <seconds>`とは全く別の`WAIT (<ActionId> ...) FOR <秒数>`構文、パーサーバグを即座に発見・修正
+
+design/robin_language_source_findings.mdで逆コンパイルから存在だけ確認していた`[WaitAction]`カテゴリ(`WaitForWindowAction`、`ToBecomeFocusedByTitleClass`/`ToClose`/`ToLoseFocus`/`ToOpen`の4バリアント)を、実機で初めて確認した。Actionsパネルで"Wait for window"を検索すると「UI automation」カテゴリに見つかり(「Windows services」カテゴリには別途「Wait for service」もある)、ダイアログには「Find window: By window UI element」「Window:」「Wait for window to: Open」(ドロップダウン、他の選択肢は未確認)「Focus window after it opens:」(トグル)「Fail with timeout error:」(トグル)という構成だった。「Fail with timeout error」を有効にすると初めて「Duration:」という秒数入力欄(ツールチップ「Time duration in seconds」、既定値5)が現れた——つまりタイムアウト値はこのトグルが有効な場合のみ設定可能。
+
+既存の「Window 'Untitled - Notepad'」UI要素を対象に設定し、「Focus window after it opens」はOFF(既定)のまま、「Fail with timeout error」をON(Duration: 5)にして保存・一括コピーしたところ:
+
+```
+WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \'Untitled - Notepad\''] FocusWindow: False) FOR 5
+```
+
+**最大の発見**: これは`WAIT <seconds>`という既存の単純なベアキーワード(`KeywordRecord`)とは**全く別の構文**だった。`WAIT (<ActionId> <Param>: <Value> ...) FOR <秒数>`——丸括弧で囲んだ、`ActionRecord`と全く同じ`Param: Value`形式のパラメータを持つ「アクション呼び出し風の式」を`WAIT ( ... )`で包み、末尾に`FOR <タイムアウト秒数>`が付く。`action_id`は`UIAutomation.WaitForWindow.ToOpen`——design/robin_language_source_findings.mdでソースから予測していた`ByTitleClass`系と同じ命名パターン(`WindowMode`列挙値`ToOpen`がそのままaction_id末尾になる)が正しかったことも確定した。`FocusWindow: False`という真偽値パラメータは「Focus window after it opens」トグル(既定でOFF)に対応する。
+
+**パーサーの実装**: 既存の`line.split()`による素朴なトークン化では、丸括弧・`FOR`句・内部の`Param: Value`構造を一切解釈できず、`KeywordRecord(name="WAIT", args=["(UIAutomation.WaitForWindow.ToOpen", "Window:", "\x00UIE0\x00", "FocusWindow:", "False)", "FOR", "5"])`という壊れたバラバラの値になった(実際に実装前に確認した)——さらに悪いことに、既存の`_generate_keyword()`はこの`args[0]`をそのまま`time.sleep("(UIAutomation.WaitForWindow.ToOpen")`のように**構文的には正しいが意味的には完全にデタラメなPython**として出力してしまう(`compile()`は通ってしまうため、他のTODO化パターンと違って**サイレントに壊れた変換**になる、知見15・26・36・38・46と同種だが今回は「コンパイルは通るのに実行時に意味不明」という一段質の悪いバグだった)。専用の正規表現`_WAIT_ACTION_RE`(`^WAIT \((.+)\) FOR (.+)$`)で先に検出し、括弧の中身は`ActionRecord`と同じパラメータ解析ループを再利用する`WaitActionRecord`(`action_id`/`params`/`timeout_seconds`)を新設して対応した。
+
+**codegen側の判断**: `UIAutomation.WaitForWindow.ToOpen`はpywinautoの`WindowSpecification.wait("exists", timeout=...)`に自然に対応しそうに見えるが、対象ウィンドウの実セレクタ自体が`Window`パラメータの`UiElementRef`という名前参照でしかなく、知見38・46と同じ制約でDSLから取得できないため、でっち上げたセレクタを埋め込まず、`# TODO: map PAD wait action: <action_id> (timeout: <秒数>s) (UI element: ...)`というTODOコメントに倒す。
+
+**未検証のまま残る項目**: 「Wait for window to」の他の3選択肢(`ToClose`/`ToBecomeFocusedByTitleClass`/`ToLoseFocus`)・「Focus window after it opens」をONにした場合の`FocusWindow: True`表記・「Fail with timeout error」をOFFにした場合に`FOR`句自体が省略されるのか/既定のタイムアウト値がどう扱われるのか・「Wait for service」の構文、はいずれも実機未確認。

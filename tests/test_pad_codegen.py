@@ -586,6 +586,34 @@ def test_generate_python_renders_label_as_comment_and_leaves_goto_as_todo() -> N
     assert "# TODO: unmapped keyword: GOTO MyLabel" in code
 
 
+def test_generate_python_renders_wait_action_as_todo_with_timeout_and_ui_element() -> None:
+    # design/dsl_format_findings.md 知見50: `WAIT (<ActionId> ...) FOR <秒数>`構文は
+    # pywinautoの`WindowSpecification.wait("exists", timeout=...)`に自然に対応しそうに
+    # 見えるが、対象のセレクタ自体がDSLから取得できない(知見38・46と同じ制約)ため、
+    # でっち上げたセレクタを埋め込まず、action_id・タイムアウト秒数・UI要素の表示名を
+    # TODOコメントに残すだけに留める。
+    dsl = (
+        "WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] FocusWindow: False) FOR 5"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen (timeout: 5s)" in code
+    assert "UI element: \"Window 'Untitled - Notepad'\"" in code
+    assert "appmask" not in code
+
+
+def test_generate_python_from_real_wait_for_window_whole_subflow_capture_compiles() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" in code
+
+
 def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
         encoding="utf-8"
