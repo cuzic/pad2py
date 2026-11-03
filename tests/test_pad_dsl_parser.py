@@ -395,3 +395,18 @@ def test_build_block_tree_does_not_drop_siblings_after_a_simple_loop_block() -> 
     assert isinstance(loop_node.header, LoopRecord)
     assert isinstance(wait_record, KeywordRecord)
     assert wait_record.name == "WAIT"
+
+
+def test_set_variable_with_mixed_text_and_variable_markers_stays_a_plain_string() -> None:
+    # 実機で値フィールドに "Hello %TestVar% world, LoopIndex is %LoopIndex%" という
+    # リテラルテキストと変数参照の混在(テキストテンプレート)を入力して再キャプチャした
+    # ところ、値全体が $'''...''' の文字列リテラルとして囲まれ、%VarName% マーカーは
+    # (裸トークンに剥がされず)そのまま文字列の中身として残っていた。
+    # これは「値全体がまるごと1個の変数参照」のときだけVarRefになる(知見6)ことの裏返しで、
+    # 既存の実装は変更なしで正しく処理できることの確認。
+    dsl = "SET InterpVar TO $'''Hello %TestVar% world, LoopIndex is %LoopIndex%'''"
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, SetVariableRecord)
+    assert record.value == "Hello %TestVar% world, LoopIndex is %LoopIndex%"
