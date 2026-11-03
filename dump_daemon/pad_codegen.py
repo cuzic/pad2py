@@ -23,9 +23,8 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 対応範囲:
 - `SetVariableRecord` → 代入文
 - `ConditionalNode` → `if`/`elif`/`else`
-- `SwitchNode` → `if`/`elif`/`else`(`==`比較。design/robin_language_source_findings.md——
-  SWITCH文法自体がIF/ELSE IF/ELSEと文法上並列であることをANTLR文法から確認した上での類推に
-  基づく実装であり、SWITCH自身のインデント規則・比較セマンティクスは実機未検証の前提)
+- `SwitchNode` → `if`/`elif`/`else`(design/dsl_format_findings.md 知見33で実機確認済みの
+  `CASE <operator> <value>`構文通り、`CASE`自身の演算子を`_OPERATOR_MAP`経由で変換する)
 - `BlockNode(LoopRecord)` → `for ... in range(...)`
   (**未検証の前提**: PADの`Start from`〜`End to`は両端を含むと仮定し`range(start, end+1, step)`
   としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
@@ -266,19 +265,21 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
 
 
 def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
-    """`SwitchNode` → `if`/`elif`/`else`(`==`による等価比較、design/robin_language_source_findings.md
-    参照——実機でのSWITCH文の比較セマンティクスは未検証の前提。`CASE`の値との比較に`==`以外の
-    演算子を使う可能性もゼロではないが、他に手がかりが無いため、最も妥当な解釈として採用する)。
+    """`SwitchNode` → `if`/`elif`/`else`(design/dsl_format_findings.md 知見33で実機確認した
+    `CASE <operator> <value>`構文通り、`CASE`自身の演算子を`_OPERATOR_MAP`経由で変換する——
+    `==`固定ではない。`CaseRecord.operator`が`None`の場合(ソース上`SemiComparison.Operator`は
+    nullableだが実機では未確認)は、素のcase値として暗黙の等価比較を仮定する)。
     """
     prefix = INDENT * indent
-    switch_expr = render_value(node.expression)
     lines: list[str] = []
     for i, (header, arm_body) in enumerate(node.arms):
         if isinstance(header, CaseDefaultRecord):
             lines.append(f"{prefix}else:")
         else:
             keyword = "if" if i == 0 else "elif"
-            lines.append(f"{prefix}{keyword} {switch_expr} == {render_value(header.value)}:")
+            operator = header.operator if header.operator is not None else "="
+            condition = render_condition(node.expression, operator, header.value)
+            lines.append(f"{prefix}{keyword} {condition}:")
         lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
     return lines
 

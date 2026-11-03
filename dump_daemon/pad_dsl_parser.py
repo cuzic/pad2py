@@ -92,17 +92,15 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 再帰的な式木を表現できない。安易に部分対応すると`A AND B OR C`のような式を誤って
 解釈する恐れがあるため、構造自体の見直しが必要な別タスクとして持ち越す。
 
-- `SWITCH <expr>` / `CASE <value>` / `DEFAULT` / `END` 形式の多分岐(design/robin_language_source_findings.md——
-  ANTLR生成パーサー`Language.cs`の`Small_statementContext`を読み、`switch_statement`/
-  `case_statement`/`case_default`が`if_statement`/`elseif_statement`/`else_statement`/
-  `while_statement`/`loop_statement`と**全く同じ文法規則(grammar rule)の選択肢として並列**
-  であることを確認した——つまりSWITCH/CASE/DEFAULTにも専用のネスト構造(Block/Scopeクラス)は
-  存在せず、IF/ELSE IF/ELSEと同様、フラットな文の並びをindentだけで解釈する設計になっている。
-  この文法上の並列性から類推し、`IF`/`ELSE IF`/`ELSE`で確認済みの規則(ヘッダー群は同じindent、
-  各アームの本体はindent+1、`END`は構文全体に1つ)を`SWITCH`/`CASE`/`DEFAULT`にもそのまま適用した。
-  **注意**: この類推自体は確認済みの文法的並列性に基づく合理的な推論だが、SWITCH自身の
-  実機でのインデント規則そのものを直接確認したDSL出力例はまだ無い——`LOOP`の両端含むrange仮定
-  (このモジュールの別箇所)と同種の「明示的に文書化された未検証の前提」として扱うこと。
+- `SWITCH <expr>` / `CASE <op> <value>` / `DEFAULT` / `END` 形式の多分岐。**実機検証済み**
+  (design/dsl_format_findings.md 知見33): `SWITCH $'''TestVar'''` / `CASE = $'''a'''` /
+  `DEFAULT` / `END`という実例を確認した。**重要**: 当初はANTLR文法上の`IF`/`ELSE IF`/`ELSE`との
+  並列性から「`CASE`/`DEFAULT`は`SWITCH`と同じindentに並ぶ」と類推していたが、これは誤りだった。
+  実際には`CASE`/`DEFAULT`は`SWITCH`より**1段深い**indentに並び、各アームの本体は**さらに1段深い**
+  (`SWITCH`→`CASE`の関係も`CASE`→本体の関係も、`LOOP`→本体と同じ「ヘッダーより1段深い」構造——
+  二重に重なっている)。`END`だけは`SWITCH`と同じindent。`CASE`の演算子は`=`固定ではなく
+  `_OPERATOR_MAP`の演算子一般がありうる(ソース上`SemiComparison.Operator`は`ComparisonOperator?`
+  型)。
 
 `ON ERROR <Case>` / `ON BLOCK ERROR <Case>`(design/robin_language_source_findings.md——
 `ExceptionStatementBase`のソースでブロック構造自体は解明できたが、実機でのDSL出力例が
@@ -270,8 +268,10 @@ class LoopWhileRecord:
 @dataclass
 class SwitchRecord:
     """`SWITCH <expr>`(design/robin_language_source_findings.md——`SwitchStatement.ToString()`
-    のソースで構文を確認。ブロックとしてのネスト規則はIF/ELSE IF/ELSEとの文法上の並列性から
-    類推した未検証の前提——モジュールdocstring参照)。
+    のソースで構文を確認。**実機検証済み**(design/dsl_format_findings.md 知見33): `CASE`/
+    `DEFAULT`は`SWITCH`自身より1段深いindentに並び(`IF`/`ELSE IF`/`ELSE`のような「同じindentの
+    兄弟」ではない)、各`CASE`/`DEFAULT`の本体はさらにもう1段深い——`LOOP`が本体を1段深くするのと
+    同じ構造が、`SWITCH`→`CASE`の間にも`CASE`→本体の間にも、二重に重なっている)。
     """
 
     expression: Any
@@ -280,15 +280,23 @@ class SwitchRecord:
 
 @dataclass
 class CaseRecord:
-    """`CASE <value>`(`SwitchRecord`のアーム。`SwitchRecord`と同じindentに並ぶ)。"""
+    """`CASE <operator> <value>`(**実機検証済み**: design/dsl_format_findings.md 知見33で
+    `CASE = $'''a'''`という実例を確認した。`CaseStatement.SemiEvaluatableContext`の実装
+    (`SemiComparison`)が`Operator`(nullable)+`RightOperand`を持つため、演算子が省略される
+    ケースもソース上ありうるが、実機では常に演算子付きだった。`SwitchRecord`より1段深いindentに
+    並ぶ)。
+    """
 
+    operator: str | None
     value: Any
     indent: int = 0
 
 
 @dataclass
 class CaseDefaultRecord:
-    """`DEFAULT`(ベアキーワード。`SwitchRecord`のcatch-allアーム)。"""
+    """`DEFAULT`(ベアキーワード、実機検証済み。`SwitchRecord`より1段深いindentに並ぶ
+    catch-allアーム)。
+    """
 
     indent: int = 0
 
@@ -352,12 +360,13 @@ _CASE_ARM_TYPES = (CaseRecord, CaseDefaultRecord)
 
 @dataclass
 class SwitchNode:
-    """`SWITCH <expr>`/`CASE <value>`*/`DEFAULT`?/`END`全体を1つの構文単位として表す。
+    """`SWITCH <expr>`/`CASE <op> <value>`*/`DEFAULT`?/`END`全体を1つの構文単位として表す。
 
-    `ConditionalNode`と同じ理由([`IF`/`ELSE IF`/`ELSE`と同じく`switch_statement`/
-    `case_statement`/`case_default`も文法上並列な単なる文であり、専用のブロック構造を
-    持たない——モジュールdocstring参照)で、`CASE`/`DEFAULT`アームを個別の`BlockNode`
-    にせず、`SWITCH`全体を1つの`SwitchNode`としてまとめる。
+    **実機検証済み**(design/dsl_format_findings.md 知見33)。`ConditionalNode`とは異なり、
+    `CASE`/`DEFAULT`は`SWITCH`自身より1段深いindentに並び、各アームの本体はさらに1段深い
+    (`SWITCH`→`CASE`の関係は`LOOP`→本体と同じ「ヘッダーより1段深い」構造で、`CASE`→その本体の
+    関係でも同じ構造がもう一重重なっている)。当初はIF/ELSE IFと同じ「ヘッダー群が同じindentに
+    並ぶ」構造だと類推していたが、実機確認の結果これは誤りだったため訂正した。
     """
 
     expression: Any
@@ -374,9 +383,9 @@ def build_block_tree(records: list[Record]) -> list[Node]:
     再帰下降パース:
     - `LOOP`系はブロック開始行と対応する`END`が同じindent深さ、本体だけがその1段内側。
     - `IF`/`ELSE IF`/`ELSE`は同じindent深さの1つの構文で、`END`は構文全体に1つだけ。
-    - `SWITCH`/`CASE`/`DEFAULT`も同様に扱う(design/robin_language_source_findings.md——
-      文法上`IF`/`ELSE IF`/`ELSE`と並列な構造であることをANTLR文法から確認したため、
-      同じ規則を類推適用。SWITCH自身のインデント規則は未検証の前提——モジュールdocstring参照)。
+    - `SWITCH`/`CASE`/`DEFAULT`は実機検証済み(design/dsl_format_findings.md 知見33)で、
+      `IF`/`ELSE IF`とは異なる構造だと判明した: `CASE`/`DEFAULT`は`SWITCH`より1段深いindentに
+      並び、各アームの本体はさらに1段深い(`END`は`SWITCH`と同じindentに1つだけ)。
     対応する`END`が見つからないまま入力が尽きた場合(壊れたデータ等)は、例外を出さず
     そこまでの本体を返す。
     """
@@ -416,13 +425,16 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                     pos += 1
                 body.append(ConditionalNode(arms=arms))
             elif isinstance(rec, SwitchRecord):
+                # 実機検証済み(design/dsl_format_findings.md 知見33): CASE/DEFAULTは
+                # SWITCH自身よりindentが1段深く(level + 1)、各アームの本体はさらに1段深い
+                # (level + 2)。SWITCH自身のENDだけはSWITCHと同じlevel。
                 switch_arms: list[tuple[SwitchArmHeader, list[Node]]] = []
                 while pos < len(records):
                     nxt = records[pos]
-                    if nxt.indent != level or not isinstance(nxt, _CASE_ARM_TYPES):
+                    if nxt.indent != level + 1 or not isinstance(nxt, _CASE_ARM_TYPES):
                         break
                     pos += 1
-                    switch_arms.append((nxt, parse_level(level + 1)))
+                    switch_arms.append((nxt, parse_level(level + 2)))
                     if isinstance(nxt, CaseDefaultRecord):
                         break
                 if pos < len(records) and is_end(records[pos], level):
@@ -600,8 +612,20 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
     if first == "SWITCH" and len(tokens) == 2:
         return SwitchRecord(expression=_resolve_value(tokens[1], placeholders), indent=indent)
 
+    if first == "CASE" and len(tokens) == 3:
+        # 実機検証済み(design/dsl_format_findings.md 知見33): `CASE = $'''a'''`のように
+        # 演算子が明示される(`SemiComparison`のソース通り)。
+        return CaseRecord(
+            operator=tokens[1],
+            value=_resolve_value(tokens[2], placeholders),
+            indent=indent,
+        )
+
     if first == "CASE" and len(tokens) == 2:
-        return CaseRecord(value=_resolve_value(tokens[1], placeholders), indent=indent)
+        # ソース上`SemiComparison.Operator`はnullableなため、演算子が省略される形
+        # (`SemiComparison.ToString()`が`RightOperand`だけを返す場合)も理論上ありうるが、
+        # 実機では未確認。
+        return CaseRecord(operator=None, value=_resolve_value(tokens[1], placeholders), indent=indent)
 
     if first == "DEFAULT" and len(tokens) == 1:
         return CaseDefaultRecord(indent=indent)

@@ -480,3 +480,33 @@ UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInsta
 `[Action]`/`[ConditionAction]`に続く3つ目の属性カテゴリ`[WaitAction]`を発見した。`WaitForWindowAction`(「Wait for window」、`ToBecomeFocusedByTitleClass`等4バリアント)に付いており、`ConditionAction`と同じく`Result`出力を持つが、通常の`[Action]`と同様に独立したアクション行として振る舞う——条件が真になるまでポーリングして待つ、タイムアウト/リトライ内包のブロッキング待機アクション固有の属性と推測される(実行時セマンティクスは未確認)。詳細はdesign/robin_language_source_findings.mdの該当節を参照。
 
 新たなByTitleClassパターンの通常アクションとして`SetWindowVisibility`(action_id: `UIAutomation.SetWindowVisibility.SetVisibilityByTitleClass`、パラメータTitle/Class/Visibility)も確認した。ただし今回はcodegen実装を見送った——「ウィンドウの表示/非表示」に対応する確実なpywinauto公開APIの心当たりが無く、`.maximize()`等と同程度の確信を持てないまま架空のAPI呼び出しをでっち上げるリスクを避けた。また`CloseWindow`/`FocusWindow`の`ByInstanceOrHandle`(Window instance変数を使う3つ目のFind window mode)も見つけたが、「window instance」をPython側でどう表現するかという設計判断(`GetWindow`のcodegen未実装と連動)が必要なため見送った。
+
+## 33. 【重要な訂正】`SWITCH`/`CASE`/`DEFAULT`を実機検証——ANTLR文法からの類推(知見28)は構造面で誤りだった
+
+知見28でANTLR文法上の並列性(`IF`/`ELSE IF`/`ELSE`と同じ文法規則の選択肢)から類推実装していた`SWITCH`/`CASE`/`DEFAULT`を、ついに実機(PAD VM、pywinautoでActionsパネルの検索ボックスを操作してアクションを追加)で検証する機会を得た。「Switch」「Case」「Default case」を実際にフローへ追加し、「コピーとして貼り付け」でキャプチャした結果:
+
+```
+SWITCH $'''TestVar'''
+
+    CASE = $'''a'''
+
+        # inside case
+
+    DEFAULT
+
+END
+```
+
+(`CASE`の本体を確認するため`Case`選択後に`Comment`アクション「inside case」も追加した)
+
+**2つの重要な発見・訂正**:
+
+1. **ブロックのネスト構造が、類推していたものと違った**: `IF`/`ELSE IF`/`ELSE`は「ヘッダー群が同じindentに並ぶ」構造だが、`SWITCH`/`CASE`/`DEFAULT`は**そうではなかった**。`CASE`/`DEFAULT`は`SWITCH`自身より**1段深い**indentに配置され、各`CASE`の本体(ここでは`# inside case`コメント)は**さらに1段深い**。つまり`SWITCH`→`CASE`の関係も`CASE`→本体の関係も、両方とも`LOOP`→本体と同じ「ヘッダーより1段深い」構造になっていて、二重に重なっている。`END`だけは`SWITCH`自身と同じindentに1つ。知見28の「ANTLR文法上の並列性からIF/ELSE IFと同じ規則を類推適用」という判断は、**文法上の並列性という根拠自体は正しかったが、具体的なインデント規則の予測は外れていた**——文法規則が並列だからといって、印字時のインデント規則まで同じとは限らない、という教訓。
+
+2. **`CASE`は演算子を省略しない**: `CASE = $'''a'''`のように、比較演算子(`=`)が明示されていた。design/robin_language_source_findings.mdで`SemiComparison.ToString()`のソースから「演算子はnullableで省略されうる」と確認していた通り、UIの「Operator:」ドロップダウン(既定値「Equal to (=)」)でも明示的に選択できる——バグではなく仕様。
+
+3. **副次的な発見**: `SWITCH`の「Value to check」欄に裸の`TestVar`(`%`で囲まない)と入力したところ、変数参照ではなく**文字列リテラル**`$'''TestVar'''`として直列化された。これはSWITCHの値欄が他の文字列パラメータと同じ`%VarName%`補間規則(知見16)に従う「テキストフィールド」であり、`IF`の「First operand」欄のような純粋な式エディタではないことを意味する(変数を参照したければ`%TestVar%`と入力する必要があった)。
+
+**修正内容**: `pad_dsl_parser.py`の`build_block_tree()`における`SWITCH`処理を、アーム探索のindent判定を`level`→`level + 1`に、各アームの本体パースを`parse_level(level + 1)`→`parse_level(level + 2)`に修正。`CaseRecord`に`operator: str | None`フィールドを追加し、`CASE <operator> <value>`の3トークン形式を正しくパースするようにした。`pad_codegen.py`の`_generate_switch()`も、ハードコードしていた`==`演算子を`CaseRecord.operator`から`_OPERATOR_MAP`経由で変換するよう修正した。既存のテストフィクスチャ(当初の誤った構造を前提にしていたもの)は実機キャプチャした生データに差し替えた。
+
+**教訓**: ソースコード調査(ANTLR文法・逆コンパイル)は「存在する構文」や「演算子の種類」を確定させるには非常に強力だが、「印字時のインデント規則」のような**複数のクラス階層をまたいだ振る舞い**(`SwitchStatement`自体にはBlock/Scopeが無く、実際の印字ロジックは別の場所にある——design/robin_language_source_findings.md参照)は、ソースだけから確実に予測するのが難しいケースがある。今回のように「文法的に並列だから印字規則も同じだろう」という類推は、**必ず実機検証で裏取りする**(または裏取りできるまで明示的に未検証と書く)という、このプロジェクトが当初から掲げてきた方針の正しさを改めて裏付ける結果になった。

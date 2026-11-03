@@ -565,61 +565,66 @@ def test_multiline_comment_does_not_corrupt_string_literal_masking() -> None:
     assert records[1].value == "real"
 
 
+# 実機で「Switch」「Case」「Default case」「Comment」(Caseの本体用)を追加してキャプチャ
+# した生データ(design/dsl_format_findings.md 知見33)。「Value to check」欄に裸の
+# "TestVar"(%で囲まない)と入力したため、変数参照ではなく文字列リテラルとして
+# 直列化されている点に注意(他の文字列パラメータと同じ%interpolation規則——知見16)。
+REAL_SWITCH_DSL = (
+    "SWITCH $'''TestVar'''\n"
+    "    CASE = $'''a'''\n"
+    "        # inside case\n"
+    "    DEFAULT\n"
+    "END"
+)
+
+
 def test_switch_case_default_parsed_as_dedicated_records() -> None:
     # design/robin_language_source_findings.md: ANTLR生成パーサー(Language.cs)の
     # Small_statementContextで、switch_statement/case_statement/case_defaultが
-    # if_statement/elseif_statement/else_statementと文法上並列であることを確認した
-    # (実機での出力例は未確認)。
-    dsl = "SWITCH TestVar\nCASE $'''a'''\nDEFAULT"
-    records = parse_dsl(dsl)
-    assert len(records) == 3
+    # if_statement/elseif_statement/else_statementと文法上並列であることを確認した。
+    # CASEの演算子(`=`)が実機で確認済み(SemiComparison.ToStringの予測通り)。
+    records = parse_dsl(REAL_SWITCH_DSL)
+    assert len(records) == 5
     assert isinstance(records[0], SwitchRecord)
-    assert records[0].expression == VarRef("TestVar")
+    assert records[0].expression == "TestVar"
     assert isinstance(records[1], CaseRecord)
+    assert records[1].operator == "="
     assert records[1].value == "a"
-    assert isinstance(records[2], CaseDefaultRecord)
+    assert records[2].indent == 2  # コメントはCASEよりさらに1段深い
+    assert isinstance(records[3], CaseDefaultRecord)
 
 
 def test_build_block_tree_groups_switch_case_default_into_one_switch_node() -> None:
-    # IF/ELSE IF/ELSEと同じ理由(文法上の並列性)で、SWITCH/CASE/DEFAULTも1つの
-    # SwitchNodeにまとめ、ENDは構文全体に1つだけ対応させる(類推による未検証の前提——
-    # pad_dsl_parser.pyのモジュールdocstring参照)。
-    dsl = (
-        "SWITCH TestVar\n"
-        "CASE $'''a'''\n"
-        "    WAIT 1\n"
-        "CASE $'''b'''\n"
-        "    WAIT 2\n"
-        "DEFAULT\n"
-        "    WAIT 3\n"
-        "END\n"
-        "WAIT 9"
-    )
+    # **重要な訂正**: 当初はIF/ELSE IFとの文法上の並列性から「CASE/DEFAULTはSWITCHと
+    # 同じindentに並ぶ」と類推していたが、実機検証(design/dsl_format_findings.md 知見33)で
+    # これは誤りだと判明した。実際にはCASE/DEFAULTはSWITCHより1段深く、各アームの本体は
+    # さらに1段深い(LOOPのheader→bodyの関係が二重に重なっている)。
+    dsl = REAL_SWITCH_DSL + "\nWAIT 9"
     tree = build_block_tree(parse_dsl(dsl))
     assert len(tree) == 2
     switch_node = tree[0]
     assert isinstance(switch_node, SwitchNode)
-    assert switch_node.expression == VarRef("TestVar")
-    assert len(switch_node.arms) == 3
-    case_a, case_b, default = switch_node.arms
-    assert isinstance(case_a[0], CaseRecord) and case_a[0].value == "a"
-    assert case_a[1] == [KeywordRecord(name="WAIT", args=["1"], indent=1)]
-    assert isinstance(case_b[0], CaseRecord) and case_b[0].value == "b"
-    assert case_b[1] == [KeywordRecord(name="WAIT", args=["2"], indent=1)]
+    assert switch_node.expression == "TestVar"
+    assert len(switch_node.arms) == 2
+    case_a, default = switch_node.arms
+    assert isinstance(case_a[0], CaseRecord) and case_a[0].operator == "=" and case_a[0].value == "a"
+    assert isinstance(case_a[1][0], CommentRecord) and case_a[1][0].text == "inside case"
     assert isinstance(default[0], CaseDefaultRecord)
-    assert default[1] == [KeywordRecord(name="WAIT", args=["3"], indent=1)]
+    assert default[1] == []
     # SwitchNode自体のENDを正しく消費し、後続の兄弟要素を切り捨てていないこと
     # (知見15と同種の回帰——LOOP系ブロックで一度発覚したバグと同じ形)。
     assert tree[1] == KeywordRecord(name="WAIT", args=["9"], indent=0)
 
 
 def test_build_block_tree_handles_switch_with_no_default() -> None:
-    dsl = "SWITCH TestVar\nCASE $'''a'''\n    WAIT 1\nEND"
+    dsl = "SWITCH $'''TestVar'''\n    CASE = $'''a'''\n        WAIT 1\nEND"
     tree = build_block_tree(parse_dsl(dsl))
     assert len(tree) == 1
     switch_node = tree[0]
     assert isinstance(switch_node, SwitchNode)
     assert len(switch_node.arms) == 1
+    case_a = switch_node.arms[0]
+    assert case_a[1] == [KeywordRecord(name="WAIT", args=["1"], indent=2)]
 
 
 def test_not_in_operator_merged_into_single_token_for_if() -> None:
