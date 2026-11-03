@@ -9,6 +9,7 @@ from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     IfRecord,
     KeywordRecord,
+    LoopRecord,
     SetVariableRecord,
     parse_dsl,
 )
@@ -142,3 +143,22 @@ def test_nested_set_variable_inside_if_has_indent_one() -> None:
     assert inner_set.value == "inside the if block"
     assert isinstance(end_record, KeywordRecord)
     assert end_record.indent == 0
+
+
+# 実機で「Loop」アクション(Start from=1, End to=3, Increment by=1)を追加して
+# 再キャプチャした生データ。
+LOOP_DSL = "LOOP LoopIndex FROM 1 TO 3 STEP 1\nEND"
+
+
+def test_loop_record_parsed_with_bounds_and_step() -> None:
+    records = parse_dsl(LOOP_DSL)
+    assert len(records) == 2
+    loop_record, end_record = records
+    assert isinstance(loop_record, LoopRecord)
+    assert loop_record.loop_var == "LoopIndex"
+    assert loop_record.start == "1"
+    assert loop_record.end == "3"
+    assert loop_record.step == "1"
+    assert loop_record.indent == 0
+    assert isinstance(end_record, KeywordRecord)
+    assert end_record.name == "END"
