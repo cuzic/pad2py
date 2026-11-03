@@ -1,0 +1,25 @@
+IF (UIAutomation.IfImage.ExistsOnScreen Images: [imgrepo['Image']] FindAllImages: False Tolerance: 10 SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy) THEN
+
+
+
+# [ControlRepository][PowerAutomateDesktop]
+
+
+
+{
+
+  "ControlRepositorySymbols": [],
+
+  "ImageRepositorySymbol": {
+
+    "Repository": "{\r\n  \"Folders\": [],\r\n  \"Images\": [\r\n    {\r\n      \"Id\": \"ed43e4f0-9ce5-489a-973d-07399318f9cc\",\r\n      \"Name\": \"Image\",\r\n      \"Screenshot\": \"iVBORw0KGgoAAAANSUhEUgAAAM0AAAAPCAYAAABHnEvWAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASLSURBVGhD7Znvb9tEGMf9d/k9vEUCife8sRDv0CSQmKYhUYamsS3dVtAK3UAbzYDRik0zG91Cs6Vt1sT52fz+5SZpmqRpt4hJkxDtl7uznZy9JLPcdKqIP5Ll3I/nnnP8PPe9SwRYOH151tbdxWVS6SXN7Xwdb7/7PoJbHbz1znvwqS12/72wxe43U5vs/nUwhfOBGOIBr27p4jJZsKT59+AAV+MlFPf+RqbTRaz1DE8bu/DXdnC/0sQiSZyf0puYS5Qx5Y/g3JMopqc+YAO4uEwaLGm2X7yEN7OJ/G4XqXYXke09rNY78G22cK/UwG/5Gm6kVczGSvj8UQhz4YybNC4TC0saqipLahPBcg1PSlX48irkdBmLyQK80SyuK2l8E0wyhfl4YQm3lNSIpJEhCSI8Bb3IGFRng4IH4lA7J2M6nAezEyBIsl42cDreUXIc5/T/giUNPc+sb+8i0X4OpbmHNZJEy9UW/qhsk61ZHfNEheaSFUwrBZy4+xix5u4RJc2oftY2J8HhxIai2YmiAHPe2B3PqV8nvElfkwlLGnqeSe104S9W8TCnqcwCUZlb0Rx+UDJEZTZwcSWBL5YVfDh/D5VWZyKTxiMT5RM96JvbHc+pXye8SV+TifDP/j5Lmlj7GVOblfoOO8vIZaIyRIGoylxLljETLeHM2gY+lQPYPzg4RNLonz0SBLrlIZfIGmi9VmYXW9INu1FtdEwC28oZfSTSqsPVix6P2cY2fV+yZMzXXM8wzcFQpUFzJwycrz4eTU69re9L8/3KOJSxPKOLXYTy8xf4OVtjCfMgW8GdVAm3E3nMk7PMtTA9yxCVCcTx5eMIPpNXcPLOX9jrdg+ZNNxLl2nyWIKmZ2u1s9lGxuQTsR+nIvHFj2GXYb6sn7ntGwvkQf0olrJlvoKhZqYxeIb7df6MLnYRlmttPCBnl1WiMP56G3+qTdwtNvBrvoabaRXfJyq4HCngbCiL0z4FM2tJZnhopem1j6HNssL3VmJab2c7ZbLnVKqHxY4mOotS6xzMtlQZtGC22A+br7UfoT8GK3A2nF9HW0YXpwj0p2S6JfNX21jcKOKXeB43Ihl8F05hJpjEeaoy/ghOPgzjxKIPPwbjr1GaAjyi5aWZAsr6Uvmyw7YBAcsYW0BZ7egz0mAePYfRSWMjOXt+6EfehvuOx/aMLnYRrkSLWN3qYEml55gGFsg5xpup4vqGim9jRVxU8vjqaRanAvQ8s4IQUSPK8KTRgqW3xTDK/eXS8lL58mHazPt/Da3ecD2e7ZkOC2Juxbf4Mge51X70fHv1/BhUZYzvlNUP9utuz44eYTZRZknjI0pjnGXoL2ZX11O4tJrAOaI0Z4jSnPKF8JFXRq7Reo3SULQVsreVGLkSmssswagNiwL7bf0g5vsQuC3NOH4I4HklQE1zMPc3z50wcL6aH0mi42r1RnfTdypKkHg1H8szuthFmAqmcXY9yxRlmpxdPAq98rhAr3AOl0gdvS6Ecvjk/ppuNlppXJwyODldjhfsfxqDQlllKmLncpPmKHCT5vgD/AcqYnU3jWevKgAAAABJRU5ErkJggg==\",\r\n      \"ScreenshotPath\": \"imageRepo-screenshots\\\\feb719e8-c4e1-447a-9d45-b7166d7a2857.png\"\r\n    }\r\n  ],\r\n  \"Version\": 1\r\n}",
+
+    "ImportMetadata": {},
+
+    "Name": "imgrepo"
+
+  },
+
+  "ConnectionReferences": []
+
+}

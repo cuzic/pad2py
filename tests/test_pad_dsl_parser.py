@@ -1471,3 +1471,26 @@ def test_get_window_foreground_mode_has_two_output_variables() -> None:
         "WindowInstance": "AutomationWindow2",
     }
     assert rec.output_var == "AutomationWindow2"
+
+
+def test_if_image_exists_on_screen_parsed_from_real_capture() -> None:
+    # design/dsl_format_findings.md 知見58(実機検証済み): `[ConditionAction]`カテゴリの
+    # 「If image」を実機確認した。action_idは`UIAutomation.IfImage.ExistsOnScreen`——知見54の
+    # `IF (<ActionId> ...) THEN`構文をそのまま再利用する。知見44以来ずっと空([])のままだった
+    # `ImageRepositorySymbol`(シンボル名`imgrepo`)が、今回初めて実データを持つ実例を確認できた。
+    # `Images: [imgrepo['Image']]`という、`appmask['...']`単体参照とは違う**角括弧で囲んだ
+    # リスト構文**も初めて実機確認した(「Find all images in the list」トグルが複数画像指定を
+    # 示唆する通り、複数要素を保持できるリストリテラルと推測される)。現在のパーサーは
+    # `appmask[...]`のような専用の`UiElementRef`抽出を`imgrepo[...]`に対しては行わないため、
+    # `[imgrepo['Image']]`全体が不透明な`VarRef`としてテキストのまま保持される——
+    # データを失わない安全なフォールバックであり、クラッシュも誤った構造化も起きない。
+    text = (FIXTURES_DIR / "if_image_exists_on_screen.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 1
+    rec = records[0]
+    assert isinstance(rec, IfActionRecord)
+    assert rec.action_id == "UIAutomation.IfImage.ExistsOnScreen"
+    assert rec.params["FindAllImages"] is False
+    assert rec.params["Tolerance"] == 10
+    assert rec.params["SearchAlgorithm"] == EnumRef("UIAutomation.ImageFinderAlgorithm.Legacy")
+    assert rec.params["Images"] == VarRef("[imgrepo['Image']]")
