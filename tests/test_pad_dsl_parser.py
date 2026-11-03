@@ -68,6 +68,7 @@ def test_display_message_action_parsed_correctly() -> None:
     assert msg.params["DefaultButton"] == EnumRef("Display.DefaultButton.Button1")
     assert msg.params["IsTopMost"] is False
     assert msg.output_var == "ButtonPressed"
+    assert msg.output_vars == {"ButtonPressed": "ButtonPressed"}
 
 
 def test_set_variable_parsed_with_unescaped_string_value() -> None:
@@ -451,3 +452,22 @@ def test_elseif_contains_parsed_as_function_record() -> None:
     assert isinstance(elseif_record, ElseIfFunctionRecord)
     assert elseif_record.function_name == "Contains"
     assert elseif_record.args == [VarRef("InnerVar"), "nested", False]
+
+
+def test_action_with_multiple_outputs_keeps_all_of_them() -> None:
+    # 実機で「Get window」(Get window=Foreground window)を追加して再キャプチャした生データ
+    # (知見26)。修正前は output_var が単一フィールドのため、2個目の `=>` 束縛
+    # (WindowInstance=> AutomationWindow)が1個目(WindowTitle=> WindowTitle)を
+    # サイレントに上書きし、WindowTitleの束縛が完全に失われていた。
+    dsl = "UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInstance=> AutomationWindow"
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, ActionRecord)
+    assert record.action_id == "UIAutomation.GetWindow.GetForegroundWindow"
+    assert record.output_vars == {
+        "WindowTitle": "WindowTitle",
+        "WindowInstance": "AutomationWindow",
+    }
+    # output_var は後方互換のため最後に見つかったものを保持するだけ(単一出力専用)。
+    assert record.output_var == "AutomationWindow"

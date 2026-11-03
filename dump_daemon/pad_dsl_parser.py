@@ -1,7 +1,11 @@
 """PADの「コピー&ペースト」クリップボードDSLのプロトタイプパーサー。
 
 design/dsl_format_findings.md で実機検証した文法に基づく。対応している範囲:
-- `ActionId Param: Value ... Output=> Var` 形式の一般アクション行
+- `ActionId Param: Value ... Output=> Var` 形式の一般アクション行(1個のアクションが
+  複数の出力を持つ場合(知見26: `WindowTitle=> WindowTitle WindowInstance=> AutomationWindow`)、
+  全ての束縛を`ActionRecord.output_vars`(パラメータ名→変数名の辞書)に保持する。
+  `output_var`は後方互換のため最後に見つかったものを保持するだけなので、複数出力が
+  ありうるアクションでは`output_vars`を参照すること)
 - `$'''...'''`(複数行可)の文字列リテラル、および `\"`/`\\` のエスケープ解除
 - `Namespace.Enum.Value` 形式の列挙値、`True`/`False` の真偽値
 - `WAIT <seconds>` のようなベアキーワード行(action行のパターンに一致しない行は
@@ -110,6 +114,7 @@ class ActionRecord:
     action_id: str
     params: dict[str, Any] = field(default_factory=dict)
     output_var: str | None = None
+    output_vars: dict[str, str] = field(default_factory=dict)
     indent: int = 0
 
 
@@ -419,12 +424,18 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
     while i < len(tokens):
         tok = tokens[i]
         if tok.endswith("=>"):
-            # 出力パラメータ名自体は破棄し、変数名だけを output_var として保持する
-            # (例: `ButtonPressed=> ButtonPressed` のパラメータ名とVar名が同名のケースが
-            # 多いが、必ずしも一致するとは限らない)。
+            # 出力パラメータ名(例: `ButtonPressed=>`の`ButtonPressed`)とVar名が同名の
+            # ケースが多いが、必ずしも一致するとは限らない。1個のアクションが複数の出力を
+            # 持つ場合(例: `WindowTitle=> WindowTitle WindowInstance=> AutomationWindow`)が
+            # あるため、全ての束縛を output_vars(パラメータ名→変数名)に記録する。
+            # output_var は後方互換のため最後に見つかったものを保持する(単一出力の
+            # アクションではこれで十分だが、複数出力では output_vars を参照すること)。
             if i + 1 >= len(tokens):
                 break
-            record.output_var = tokens[i + 1]
+            param_name = tok[:-2]
+            var_name = tokens[i + 1]
+            record.output_var = var_name
+            record.output_vars[param_name] = var_name
             i += 2
             continue
         if tok.endswith(":"):
