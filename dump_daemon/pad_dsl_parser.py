@@ -15,9 +15,13 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 - ネスト構造は**4スペースインデント**で表現される(実機検証: `IF...THEN`内の
   アクションは先頭に4スペース)。各レコードは`indent`フィールド(0始まりの深さ)を持つ。
 
+- `LOOP <VarName> FROM <start> TO <end> STEP <step>` / `END` 形式のカウントループ
+  (実機検証で `LOOP LoopIndex FROM 1 TO 3 STEP 1` ... `END` の形を確認。`IF`と同じく
+  ベアキーワード行+`END`で閉じる)
+
 未対応(今後の実機確認が必要): LOOP FOREACH、ELSE/ELSE IF、複合式(AND/OR)、
 インデント情報からの木構造組み立て(現状は`indent`を保持した**フラットな**
-レコード列を返すのみで、`IfRecord`と対応する`END`を自動的にグルーピングしない)。
+レコード列を返すのみで、`IfRecord`/`LoopRecord`と対応する`END`を自動的にグルーピングしない)。
 """
 from __future__ import annotations
 
@@ -65,12 +69,21 @@ class IfRecord:
 
 
 @dataclass
+class LoopRecord:
+    loop_var: str
+    start: Any
+    end: Any
+    step: Any
+    indent: int = 0
+
+
+@dataclass
 class RawRecord:
     text: str
     indent: int = 0
 
 
-Record = ActionRecord | KeywordRecord | SetVariableRecord | IfRecord | RawRecord
+Record = ActionRecord | KeywordRecord | SetVariableRecord | IfRecord | LoopRecord | RawRecord
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _KNOWN_KEYWORDS = {"WAIT", "END"}
@@ -122,6 +135,21 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
             operand1=_resolve_value(tokens[1], placeholders),
             operator=tokens[2],
             operand2=_resolve_value(tokens[3], placeholders),
+            indent=indent,
+        )
+
+    if (
+        first == "LOOP"
+        and len(tokens) >= 8
+        and tokens[2] == "FROM"
+        and tokens[4] == "TO"
+        and tokens[6] == "STEP"
+    ):
+        return LoopRecord(
+            loop_var=tokens[1],
+            start=_resolve_value(tokens[3], placeholders),
+            end=_resolve_value(tokens[5], placeholders),
+            step=_resolve_value(tokens[7], placeholders),
             indent=indent,
         )
 
