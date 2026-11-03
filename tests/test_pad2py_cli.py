@@ -114,6 +114,20 @@ def test_cli_handles_real_whole_subflow_capture_with_control_repository_section(
     compile(code, "<generated>", "exec")
 
 
+def test_cli_handles_real_goto_label_whole_subflow_capture(tmp_path) -> None:
+    # design/dsl_format_findings.md 知見48: LABEL/GOTOを含む実機の一括コピー生データを
+    # CLIにそのまま渡しても、compileできるPythonを生成することを確認する。
+    fixture = FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt"
+    output_path = tmp_path / "out.py"
+
+    exit_code = main([str(fixture), "-o", str(output_path)])
+
+    assert exit_code == 0
+    code = output_path.read_text(encoding="utf-8")
+    assert "# label: MyLabel" in code
+    compile(code, "<generated>", "exec")
+
+
 class _FakeStdin:
     """`monkeypatch.setattr(sys, "stdin", ...)`用の最小限のread()だけ持つスタブ。"""
 

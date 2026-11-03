@@ -578,7 +578,9 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   `NEXT ACTION`は予測通り既存の`KeywordRecord`機構で追加実装無しに対応できた。
   **「Throw error」も実機検証完了**(design/dsl_format_findings.md 知見41)——
   `THROW ERROR`という`REPEAT ACTION`/`NEXT ACTION`と同形式の2トークンのベアキーワード
-  だった。「Go to label」は未検証のまま持ち越し
+  だった。**「Go to label」も実機検証完了**(知見48)——`Label`アクションが`LABEL <名前>`、
+  「Go to label」が本体に`GOTO <名前>`を追加する、同じく2トークンのベアキーワード形式。
+  これで`ON ERROR`/`ON BLOCK ERROR`系の未検証項目は全て解消した
 - `WaitForWindowAction`等の`[WaitAction]`カテゴリの正確な実行時セマンティクス(タイムアウト・
   リトライの挙動)とDSL表現の実機検証
 - `SetWindowVisibility`(action_id確定済み——本セクション参照)のPython変換に使える、確実な
@@ -598,8 +600,8 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   (design/dsl_format_findings.md 知見36。`stop_at_on_error`での区切りバグを修正、
   パーサー/codegenとも実装済み)。`REPEAT ACTION`も実機検証済み(知見37)。
   ~~`NEXT ACTION`・`ON BLOCK ERROR`~~ → 完了(知見40)。~~「Throw error」~~ → 完了
-  (知見41、`THROW ERROR`という2トークンのベアキーワード)。「Go to label」は
-  未検証のまま持ち越し
+  (知見41、`THROW ERROR`という2トークンのベアキーワード)。~~「Go to label」~~ → 完了
+  (知見48、`LABEL <名前>`/`GOTO <名前>`という2トークンのベアキーワード)
 - `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
   本セクション参照)を表現できるよう、`IfRecord`等のフラットな構造を再帰的な式木に
   再設計すること。優先順位・結合性も実機/文法でさらに確認が必要

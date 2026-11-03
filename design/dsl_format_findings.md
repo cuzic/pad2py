@@ -805,3 +805,27 @@ Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\'']
 - `Main`自身にも`Loop LoopIndex FROM 1 TO 3 STEP 1`(29行目のForEachの直後、31行目)が存在するが、本体が空(内部にアクションが無い)で、カウンタ検証の役には立たない。
 
 **今回は見送った判断**: `Main`の壊れた`For each`を修正し、`LoopTest`を呼び出す「Run subflow」アクションを新たに追加して実行・検証し、終わったら元に戻す、という手順も検討したが、確立済みの`Main`フロー(過去の複数の知見のフィクスチャの出どころ)への変更を伴う上に、「直して→呼び出しを足して→実行して→戻す」という複数ステップの往復が必要になり、このティックの残り時間で安全に完結させる確証が持てなかったため、**今回は実施を見送った**。LOOPの範囲両端含む仮定の実機検証は、専用のティックを設けて取り組むべき独立したタスクとして持ち越す——候補としては、(a) `Main`の修正+`Run subflow`追加+実行+復元を1ティックで計画的に行う、(b) 代わりに全く新しい使い捨てのサブフロー(例: `LoopVerify`)を作り、空の`Main`相当として単独で検証してから削除する、のいずれか。
+
+## 48. `ON ERROR`/`ON BLOCK ERROR`最後の未検証項目「Go to label」を実機確認——`LABEL`/`GOTO`という素朴な2トークンキーワード、`GOTO`はPythonに対応物が無いため意図的に未変換
+
+知見41で「Throw error」を確認した際に最後まで持ち越していた「Go to label」オプション(design/robin_language_source_findings.mdが最初に発見した時点から「別のPADの『Label』/『Go to label』アクションと連動する、別の構文が必要になると推測される」と予想されていた項目)を実機確認した。
+
+まず「On block error」ダイアログの「Exception handling mode」を「Go to label」に切り替えると、「Select label」という新しいドロップダウンが現れ、既存に`Label`アクションが1つも無い状態では「No labels available」と表示された——予想通り、別途`Label`アクション(Actionsパネルで"Label"を検索すると「Flow control」カテゴリに見つかる)が必要だった。`Label`アクションを追加(名前「MyLabel」)してからこのドロップダウンを開き直すと、選択肢として表示された。これを選んで保存・一括コピーしたところ:
+
+```
+LABEL MyLabel
+LOOP LoopIndex2 FROM 1 TO 3 STEP 1
+    ...
+    BLOCK 
+ON BLOCK ERROR
+GOTO MyLabel
+END
+    END
+    ...
+```
+
+`LABEL <名前>`(`Label`アクション自身)・`GOTO <名前>`(`ON BLOCK ERROR`アーム本体内の「Go to label」)は、いずれも`REPEAT ACTION`/`NEXT ACTION`/`THROW ERROR`と全く同じ、2トークンのベアキーワードだった——design/robin_language_source_findings.mdで事前に確認していた`GoToLabelStatement`/`LabelStatement`相当のソース予測が正しかったことになる。`_KNOWN_KEYWORDS`に`"LABEL"`/`"GOTO"`を追加するだけで`KeywordRecord`としてそのまま表現できた。
+
+**codegen側の判断**: `LABEL <名前>`自体は単なるジャンプ先マーカーなので、位置がわかるよう`# label: <名前>`というコメントとして残す(実行時の意味は持たない、純粋な注釈)。一方`GOTO <名前>`は、Pythonに`goto`文が存在しないため、**意図的に変換しない**——例外(`raise`/`try`)やネストした`while`ループへの書き換えで擬似的に`goto`を再現することもできなくはないが、元のPAD側の制御フローの意図(エラー発生後にどこまで巻き戻るか、ループを再開するのかフロー全体を再試行するのか等)を安全に汲み取れる保証が無いため、他の未対応要素と同じく`# TODO: unmapped keyword: GOTO <名前>`に倒す(`_generate_keyword()`の既存の汎用フォールバックがそのまま機能し、追加のコード変更は不要だった)。
+
+これで design/robin_language_source_findings.md の「今後の調査候補」に残っていた`ON ERROR`/`ON BLOCK ERROR`系の未検証項目(名前付きケース・複数アーム・`REPEAT ACTION`・`NEXT ACTION`・`THROW ERROR`・`Go to label`)は全て実機確認が完了した。
