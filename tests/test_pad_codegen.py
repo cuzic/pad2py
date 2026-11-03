@@ -97,7 +97,9 @@ def test_generate_python_renders_loop_family() -> None:
     assert "break" in code
     assert "continue" in code
     assert "for CurrentItem in TestVar:" in code
-    assert "for LoopIndex in range(1, (3) + 1, 1):" in code
+    # design/dsl_format_findings.md 知見51(実機検証済み): PADのLOOPはendを含まない
+    # (Pythonのrange()と同じセマンティクス)。
+    assert "for LoopIndex in range(1, 3, 1):" in code
 
 
 def test_generate_python_inlines_run_python_script_body() -> None:

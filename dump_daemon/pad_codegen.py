@@ -38,9 +38,11 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   知見34・36で実機確認済み。ただし変換するのは1アームかつ名前無しcatch-allの場合のみ——
   複数アーム・名前付きケースは、PADのエラーケース名とPythonの例外型の対応表が無いため
   `# TODO`に倒す。「Throw error」のDSL表現は未検証)
-- `BlockNode(LoopRecord)` → `for ... in range(...)`
-  (**未検証の前提**: PADの`Start from`〜`End to`は両端を含むと仮定し`range(start, end+1, step)`
-  としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
+- `BlockNode(LoopRecord)` → `for ... in range(start, end, step)`
+  (**実機検証済み**——design/dsl_format_findings.md 知見51。当初は「両端を含む」
+  (`range(start, end+1, step)`)と仮定していたが誤りで、PADの`LOOP X FROM 1 TO 3 STEP 1`は
+  実際には`End`を含まず2回(X=1,2)しか実行されない——Pythonの`range(start, end, step)`と
+  同じ「終端を含まない」セマンティクスだと実機確認した)
 - `BlockNode(LoopForeachRecord)` → `for ... in ...`
 - `BlockNode(LoopWhileRecord)` → `while ...`
 - `BlockNode(BlockRecord)`(design/dsl_format_findings.md 知見40で実機確認した`BLOCK`/`END`——
@@ -364,8 +366,10 @@ def _generate_loop_block(node: BlockNode, indent: int) -> list[str]:
         start = render_value(header.start)
         end = render_value(header.end)
         step = render_value(header.step)
-        # 未検証の前提: PADのLoopはstart〜endを両端含むと仮定(モジュールdocstring参照)。
-        header_line = f"{prefix}for {header.loop_var} in range({start}, ({end}) + 1, {step}):"
+        # design/dsl_format_findings.md 知見51(実機検証済み): PADのLOOPはendを含まない
+        # (Pythonのrange()と同じセマンティクス)。`LOOP X FROM 1 TO 3 STEP 1`を実機で
+        # 実行し、ループ本体が2回(X=1,2)しか実行されないことを実測で確認した。
+        header_line = f"{prefix}for {header.loop_var} in range({start}, {end}, {step}):"
     elif isinstance(header, LoopForeachRecord):
         header_line = f"{prefix}for {header.item_var} in {render_value(header.collection)}:"
     elif isinstance(header, LoopWhileRecord):
