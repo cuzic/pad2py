@@ -336,3 +336,35 @@ def test_build_block_tree_keeps_exit_next_loop_as_leaves_in_while_body() -> None
     exit_rec, next_rec = while_node.body
     assert isinstance(exit_rec, KeywordRecord) and exit_rec.name == "EXIT"
     assert isinstance(next_rec, KeywordRecord) and next_rec.name == "NEXT"
+
+
+# 実機で外側Ifの「hello」アーム(空だった本体)にネストしたIfを追加して
+# 再キャプチャした生データ。PADのIfダイアログにAND/OR合成UIが無いこと(知見13)から、
+# 複合条件はIfのネストで代替されると推測しており、それがbuild_block_tree()の
+# 既存の再帰構造だけで(コード変更なしに)正しく組み立てられることを確認するための回帰テスト。
+NESTED_IF_INSIDE_IF_DSL = (
+    "IF TestVar = $'''hello''' THEN\n"
+    "    IF InnerVar = $'''nested''' THEN\n"
+    "    END\n"
+    "END"
+)
+
+
+def test_build_block_tree_handles_if_nested_inside_if_arm() -> None:
+    tree = build_block_tree(parse_dsl(NESTED_IF_INSIDE_IF_DSL))
+    assert len(tree) == 1
+    outer = tree[0]
+    assert isinstance(outer, ConditionalNode)
+    assert len(outer.arms) == 1
+    outer_header, outer_body = outer.arms[0]
+    assert isinstance(outer_header, IfRecord)
+    assert outer_header.operand1 == "TestVar"
+
+    assert len(outer_body) == 1
+    inner = outer_body[0]
+    assert isinstance(inner, ConditionalNode)
+    assert len(inner.arms) == 1
+    inner_header, inner_body = inner.arms[0]
+    assert isinstance(inner_header, IfRecord)
+    assert inner_header.operand1 == "InnerVar"
+    assert inner_body == []
