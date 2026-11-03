@@ -196,3 +196,9 @@ END
 `EXIT LOOP`/`NEXT LOOP`はいずれも`WAIT`と同系統の単純なベアキーワードで、`KeywordRecord(name="EXIT"/"NEXT", args=["LOOP"])`としてそのまま表現できる。ブロックを開かず、`LOOP`系の本体内に通常のリーフとして出現するだけなので、`build_block_tree()`への変更は不要だった(`_KNOWN_KEYWORDS`に`"EXIT"`/`"NEXT"`を追加するだけで対応完了)。`tests/test_pad_dsl_parser.py`で実データ検証済み。
 
 なお検証の過程で、「Exit loop」アクションをループの外側に誤って配置すると、design-timeに`Exit loop can't be outside loop.`というバリデーションエラーが出ることを確認した——ただし「コピーとして貼り付け」自体はこのエラーがあっても正常に実行できる(G1/G2検証と同様、design-timeエラーはコピー操作をブロックしない)。
+
+## 13. 複合条件式(AND/OR): `If`アクションのUIレベルでは非対応(否定的知見)
+
+`IF`/`LOOP WHILE`で使われている「First operand/Operator/Second operand」ダイアログを再度開いて確認したところ、**この3フィールド構成が唯一の入力形態**であり、AND/OR等で複数条件を組み合わせるUIは存在しなかった(「Add condition」のような追加ボタンや、Simple/Advancedモード切り替えも見当たらない)。
+
+したがって、PADで複合条件(例:「AかつB」)を表現する場合、**単一の`IF`アクションのDSLとしては表現されず**、`IF`のネスト(`IF A THEN IF B THEN ... END END`)や、`ELSE IF`チェーンによる代替表現になっていると推測される。これはトランスパイラ設計にとって重要な意味を持つ: ソースのPADフローにAND/OR相当のロジックがあっても、DSL/IRの文法要素としては独立した`AndRecord`/`OrRecord`のようなものは不要で、既存の`ConditionalNode`のネスト(知見11)だけで表現が完結する可能性が高い。ただし「ネストしたIFで代替している」という推測自体は、複合条件を含む実際のフローを作成してDSLを確認するまでは未確定(今回はIfダイアログのUI調査のみで、実際にネストIFを組んでAND相当のロジックを検証するには至っていない)。
