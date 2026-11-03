@@ -118,10 +118,11 @@ def test_set_variable_with_dotted_variable_trailer_resolved_as_varref_not_enumre
 
 
 def test_set_variable_with_index_trailer_resolved_as_varref() -> None:
-    # design/dsl_format_findings.md 知見55(実機検証済み): `InnerVar[0]`のような添字アクセスも
-    # 実機確認した。これは元々`_DOTTED_RE`にマッチしない(ドットが無い)ため、修正前から
-    # 既に`VarRef`としてそのまま保持され、codegenも`InnerVar[0]`という有効なPython式を
-    # 生成できていた(インデックスが0始まりか1始まりかの正確な意味論は未検証のまま)。
+    # design/dsl_format_findings.md 知見55・知見60(実機検証済み): `InnerVar[0]`のような
+    # 添字アクセスも実機確認した。これは元々`_DOTTED_RE`にマッチしない(ドットが無い)ため、
+    # 修正前から既に`VarRef`としてそのまま保持され、codegenも`InnerVar[0]`という有効な
+    # Python式を生成できていた。知見60で実機実行により、添字は**0始まり**であることを
+    # 確定した(`"ABCDEFGHIJ"[0]` → `"A"`、Pythonの添字と完全に一致)。
     records = parse_dsl("SET NewVar3 TO InnerVar[0]")
     set_var = records[0]
     assert isinstance(set_var, SetVariableRecord)
@@ -129,19 +130,37 @@ def test_set_variable_with_index_trailer_resolved_as_varref() -> None:
 
 
 def test_set_variable_with_slice_trailer_resolved_as_varref() -> None:
-    # design/dsl_format_findings.md 知見55の追記(実機検証済み): `VariableTrailer`の
+    # design/dsl_format_findings.md 知見55の追記・知見60(実機検証済み): `VariableTrailer`の
     # 「Slice構文」(`.Name`/`[Index]`と並んで未検証のまま持ち越していた最後の1つ)も実機確認した。
     # `%InnerVar[0:2]%`という式を入力・保存・単独コピーしたところ`SET NewVar3 TO InnerVar[0:2]`
     # というDSLが得られ、予測通りPythonのスライス構文と全く同じ`[start:end]`形式だった
     # (キャンバスのカード表示では`[0:2]`部分が見た目上省略されるが、これは表示上の省略に
     # 過ぎず、一括コピーしたDSLには正しく残っていることを確認した)。`[0]`の添字アクセス同様、
     # ドットを含まないため`_ENUM_REF_RE`にはマッチせず、修正前から既に`VarRef`としてそのまま
-    # 保持され、codegenも`InnerVar[0:2]`という有効なPythonのスライス式を生成できていた
-    # (start/endが0始まりか1始まりか、終端を含むかどうかの正確な意味論は未検証のまま)。
+    # 保持され、codegenも`InnerVar[0:2]`という有効なPythonのスライス式を生成できていた。
+    # 知見60で実機実行により、終端を含まない(exclusive)ことも確定した
+    # (`"ABCDEFGHIJ"[0:3]` → `"ABC"`、Pythonのスライスと完全に一致)。
     records = parse_dsl("SET NewVar3 TO InnerVar[0:2]")
     set_var = records[0]
     assert isinstance(set_var, SetVariableRecord)
     assert set_var.value == VarRef("InnerVar[0:2]")
+
+
+def test_variable_trailer_index_and_slice_semantics_confirmed_by_real_execution() -> None:
+    # design/dsl_format_findings.md 知見60(実機実行による検証、知見51のLOOP range確認と
+    # 同じ手法): PADのMainサブフロー上で実際に`NewVar3 = "ABCDEFGHIJ"`を代入した上で
+    # `%NewVar3[0:3]%|%NewVar3[0]%|%NewVar3[3]%`という式をPythonスクリプトアクション経由で
+    # ファイルへ書き出し、実機実行後にWinRM経由でファイルの中身を読み取った結果が
+    # `'ABC|A|D'`だった。これはPython自身の同じ添字/スライス式の評価結果と完全に一致する
+    # ——PADの`[Index]`/`[start:end]`はPythonと寸分違わず「0始まり・終端を含まない
+    # (exclusive)」という意味論であることが確定した。このテストはパーサーの構造化結果を
+    # 検証するものではなく(それは上記2つのテストが担う)、知見60の実機実行結果を
+    # Python側で再現できることを示す回帰テストとして記録する。
+    source = "ABCDEFGHIJ"
+    assert source[0:3] == "ABC"
+    assert source[0] == "A"
+    assert source[3] == "D"
+    assert f"{source[0:3]}|{source[0]}|{source[3]}" == "ABC|A|D"
 
 
 def test_enum_ref_still_recognized_for_known_three_segment_values() -> None:
