@@ -793,3 +793,15 @@ Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\'']
 各`Attributes`要素は`{Ignore: bool, IsOrdinal: bool, IsDisabledAttribute: bool, Name: str, Operation: str(例:"EqualTo"), Value: any}`という形で、**`Ignore: false`のものだけが実際にPADの要素特定ロジックで使われる絞り込み条件**(ウィンドウは`Name`+`Process`の論理積、コントロールは`Class`のみ)。属性名の語彙(`Class`/`Enabled`/`Id`/`Name`/`Ordinal`/`Password`/`Process`/`Visible`)は、知見39で確認した「UI element picker」の「Public Attributes」パネルの語彙(`automationText`/`class`/`controlName`等、camelCase)とは**別物**——あちらはライブ要素インスペクタの表示用語彙、こちらは実際にリポジトリへ保存されるセレクタ構築用の語彙だと判明した。この語彙(特に`Class`/`Name`/`Process`)はpywinautoの`title`/`class_name`/`process`といった既存パラメータへほぼ1対1で対応しており、将来的に実際のpywinautoセレクタへ変換する際の土台になる。
 
 **今回は実装を見送った部分**: `parse_control_repository()`で取得できる`ControlRepositoryEntry`情報を実際にpywinautoセレクタへ変換する配線は、今回のティックでは行っていない(確認できた実例がまだ2件——特殊ケース1件+通常ケース1件——のみで、複数階層のウィンドウ探索(`Desktop().window(...)` → `.child_window(...)`のチェーン)やWindow以外のコンテナ種別でのAttributes語彙の一般化に確証が持てないため)。`pad_codegen.py`のTODOコメントは、知見46のフルパス(`"Window 'Untitled - Notepad'" > "Document 'Text Editor'"`)を表示するよう更新したのみ。
+
+## 47. 実機でLOOPの範囲両端含む仮定を検証しようとして断念——`Main`が`LoopTest`を一切呼んでいないことが判明
+
+`pad_codegen.py`冒頭から一貫して「未検証の前提」として持ち越している「PADの`LOOP X FROM 1 TO 3 STEP 1`は両端を含むと仮定し`range(start, end+1, step)`としている」という前提を、生成したPythonではなく**PAD自体を実際に実行**して検証しようと試みた。
+
+調査の過程で判明した事実:
+- `LoopTest`サブフロー単体を実行する手段(タブの右クリックメニュー・アクション行の右クリックメニュー「Run from here with default values」)はいずれも見当たらない、または常にグレーアウトしていた。
+- ツールバーの実行(▶)ボタンをクリックしても何も起きなかった——`Main`に既知のエラー(`For each CurrentItem in TestVar`で`TestVar`がリストでないためのバリデーションエラー、知見に残る「Main subflowの意図的に壊れたアクション」そのもの)が1件でも存在する限り、パッケージ全体の実行がブロックされる仕様だと判明した(Errors listで`Errors (1)`、`Status: Errors found`の表示が常に出ている)。
+- `Main`サブフロー(35アクション、知見14のg1g2_testフィクスチャの出どころ)を全て確認したが、**`LoopTest`サブフローを呼び出す「Run subflow」アクションは1つも存在しない**。つまりこのブロッキングエラーを仮に修正して`Main`の実行に成功したとしても、`LoopTest`のLoopは一切実行されない。
+- `Main`自身にも`Loop LoopIndex FROM 1 TO 3 STEP 1`(29行目のForEachの直後、31行目)が存在するが、本体が空(内部にアクションが無い)で、カウンタ検証の役には立たない。
+
+**今回は見送った判断**: `Main`の壊れた`For each`を修正し、`LoopTest`を呼び出す「Run subflow」アクションを新たに追加して実行・検証し、終わったら元に戻す、という手順も検討したが、確立済みの`Main`フロー(過去の複数の知見のフィクスチャの出どころ)への変更を伴う上に、「直して→呼び出しを足して→実行して→戻す」という複数ステップの往復が必要になり、このティックの残り時間で安全に完結させる確証が持てなかったため、**今回は実施を見送った**。LOOPの範囲両端含む仮定の実機検証は、専用のティックを設けて取り組むべき独立したタスクとして持ち越す——候補としては、(a) `Main`の修正+`Run subflow`追加+実行+復元を1ティックで計画的に行う、(b) 代わりに全く新しい使い捨てのサブフロー(例: `LoopVerify`)を作り、空の`Main`相当として単独で検証してから削除する、のいずれか。
