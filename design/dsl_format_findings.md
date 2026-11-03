@@ -474,3 +474,9 @@ UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle WindowInsta
 
 - `FocusWindowBase`(`Id="FocusWindow"`)+`FocusWindowByTitleClassSelector`(`UseName("FocusByTitleClass")`)から`UIAutomation.FocusWindow.FocusByTitleClass`を導出——これは知見27で実機確認済みの「Focus window」(5件目のByTitleClassパターン確認、詳細省略としていた)の正式なaction_idだった。`CloseWindowBase`/`CloseWindowByTitleClassSelector`から同様に`UIAutomation.CloseWindow.CloseByTitleClass`を導出(こちらは実機未確認、他4つと同一パターンからの推論)。両方とも`pad_codegen.py`に`.set_focus()`/`.close()`への変換を追加した。
 - **副発見**: `IsFocusedByTitleClass`等4つのSelectorが対象にする`IfWindowAction`クラスには、通常の`[Action]`ではなく**`[ConditionAction(Id="IfWindow")]`**という別の属性が付いている。これは知見18-2の`Contains`系と同じ「`IF <Name>(args) THEN`という関数呼び出し条件として使われるアクション」のカテゴリだと判断できる——つまりウィンドウの状態チェック系アクションの一部は、独立したアクション行ではなく条件式として現れる。`Contains`自体もPython変換方法が未確定のままなのと同じ理由で、今回は発見の記録のみとし、パーサー/codegenへの実装は見送った。
+
+## 32. アクション属性の3つ目のカテゴリ`[WaitAction]`を発見、新たなByTitleClass系アクション(SetWindowVisibility)を確認
+
+`[Action]`/`[ConditionAction]`に続く3つ目の属性カテゴリ`[WaitAction]`を発見した。`WaitForWindowAction`(「Wait for window」、`ToBecomeFocusedByTitleClass`等4バリアント)に付いており、`ConditionAction`と同じく`Result`出力を持つが、通常の`[Action]`と同様に独立したアクション行として振る舞う——条件が真になるまでポーリングして待つ、タイムアウト/リトライ内包のブロッキング待機アクション固有の属性と推測される(実行時セマンティクスは未確認)。詳細はdesign/robin_language_source_findings.mdの該当節を参照。
+
+新たなByTitleClassパターンの通常アクションとして`SetWindowVisibility`(action_id: `UIAutomation.SetWindowVisibility.SetVisibilityByTitleClass`、パラメータTitle/Class/Visibility)も確認した。ただし今回はcodegen実装を見送った——「ウィンドウの表示/非表示」に対応する確実なpywinauto公開APIの心当たりが無く、`.maximize()`等と同程度の確信を持てないまま架空のAPI呼び出しをでっち上げるリスクを避けた。また`CloseWindow`/`FocusWindow`の`ByInstanceOrHandle`(Window instance変数を使う3つ目のFind window mode)も見つけたが、「window instance」をPython側でどう表現するかという設計判断(`GetWindow`のcodegen未実装と連動)が必要なため見送った。
