@@ -30,6 +30,9 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   実機検証済みの`ClickType: LeftClick`のときだけ変換し、それ以外(Right click/Double click等
   7種、未検証)は`# TODO`のままにする。`MillisecondsDelay`が0でなければクリック前に
   `time.sleep(...)`を挿入する)
+- `ActionRecord`(`MouseAndKeyboard.PressReleaseKey.PressKey`/`...ReleaseKey`) →
+  `pyautogui.keyDown(...)`/`pyautogui.keyUp(...)`(知見23。Control/Alt/Shift/Winのうち
+  ちょうど1つだけ`True`の場合のみ変換し、0個または複数同時`True`(未検証)は`# TODO`のまま)
 - 他のUI automationアクションも含め、未対応のものは架空のAPI呼び出しをでっち上げず
   `# TODO`コメントを出力する
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
@@ -79,6 +82,14 @@ _OPERATOR_MAP = {
     ">=": ">=",
     "<": "<",
     "<=": "<=",
+}
+
+# MouseAndKeyboard.PressReleaseKey.*のBoolパラメータ名 → pyautoguiのキー名。
+_MODIFIER_TO_PYAUTOGUI_KEY = {
+    "Control": "ctrl",
+    "Alt": "alt",
+    "Shift": "shift",
+    "Win": "win",
 }
 
 # PAD変数名として実機で確認した形(常に有効なPython識別子)とみなす。
@@ -276,4 +287,16 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
                 lines.append(f"{prefix}time.sleep({delay_ms / 1000!r})")
             lines.append(f"{prefix}pyautogui.click()")
             return lines
+    if node.action_id in (
+        "MouseAndKeyboard.PressReleaseKey.PressKey",
+        "MouseAndKeyboard.PressReleaseKey.ReleaseKey",
+    ):
+        # Control/Alt/Shift/Winのうちどれか1つだけがTrueの組み合わせのみ実機検証済み
+        # (design/dsl_format_findings.md 知見23)。0個または複数同時Trueの場合の意味論は
+        # 未検証のため推測しない。
+        active = [name for name in _MODIFIER_TO_PYAUTOGUI_KEY if node.params.get(name) is True]
+        if len(active) == 1:
+            pyautogui_key = _MODIFIER_TO_PYAUTOGUI_KEY[active[0]]
+            func = "keyDown" if node.action_id.endswith("PressKey") else "keyUp"
+            return [f"{prefix}pyautogui.{func}({pyautogui_key!r})"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]

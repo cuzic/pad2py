@@ -255,3 +255,32 @@ def test_generate_python_raises_clearly_for_contains_function_condition() -> Non
     tree = build_block_tree(parse_dsl(dsl))
     with pytest.raises(NotImplementedError, match="Contains"):
         generate_python(tree)
+
+
+# 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
+# 続けてAction to perform=Releaseに切り替えて再キャプチャした生データ(知見23)。
+PRESS_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.PressKey Control: True Alt: False Shift: False Win: False"
+RELEASE_CONTROL_DSL = "MouseAndKeyboard.PressReleaseKey.ReleaseKey Control: True Alt: False Shift: False Win: False"
+
+
+def test_generate_python_maps_press_key_to_pyautogui_keydown() -> None:
+    tree = build_block_tree(parse_dsl(PRESS_CONTROL_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "pyautogui.keyDown('ctrl')" in code
+
+
+def test_generate_python_maps_release_key_to_pyautogui_keyup() -> None:
+    tree = build_block_tree(parse_dsl(RELEASE_CONTROL_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "pyautogui.keyUp('ctrl')" in code
+
+
+def test_generate_python_leaves_press_key_as_todo_when_no_modifier_is_true() -> None:
+    # 0個のモディファイアがTrue(未検証の組み合わせ)の場合は推測でマッピングしないこと。
+    dsl = "MouseAndKeyboard.PressReleaseKey.PressKey Control: False Alt: False Shift: False Win: False"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: MouseAndKeyboard.PressReleaseKey.PressKey" in code
+    assert "pyautogui.keyDown" not in code
