@@ -487,11 +487,15 @@ def _ui_element_hint(node: ActionRecord) -> str:
     せめて表示名だけでもTODOコメントに残すことで、ユーザーが手動でpywinautoのセレクタを
     補う際の手がかりにする。
     """
-    names = [v.name for v in node.params.values() if isinstance(v, UiElementRef)]
-    if not names:
+    # design/dsl_format_findings.md 知見46: 対象が別要素の子孫の場合、`UiElementRef.path`は
+    # 祖先から対象までの表示名のタプルになる(例: `("Window 'Untitled - Notepad'",
+    # "Document 'Text Editor'")`)。フルパスをそのまま見せた方が、ユーザーが手動で
+    # pywinautoのセレクタを組み立てる際の手がかりとして有用。
+    paths = [v.path for v in node.params.values() if isinstance(v, UiElementRef)]
+    if not paths:
         return ""
-    joined = ", ".join(repr(name) for name in names)
-    return f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43 — fill in manually)"
+    joined = ", ".join(" > ".join(repr(name) for name in path) for path in paths)
+    return f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43/46 — fill in manually)"
 
 
 def _window_lookup_expr(node: ActionRecord) -> str | None:

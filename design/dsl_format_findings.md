@@ -759,3 +759,37 @@ with an organizational account.
 これは知見40(同種の構造をトップレベル、つまり両方ともindent0の状態でしか実機確認していなかった)で導いた「`BLOCK`と`ON BLOCK ERROR`は1つの`END`を共有する」という結論と矛盾する。indentが一致しないため、トップレベルでは区別のつかなかった「`BLOCK`自身を閉じる`END`」と「`ON BLOCK ERROR`を閉じる`END`」が、ネストした場合は実は**別々の2つの`END`**であり、知見40の「共有」という理解は**たまたま`BLOCK`と`ON BLOCK ERROR`が同じindentで両方とも閉じていたために1つに見えていただけ**だった可能性が高い——あるいは、`ON BLOCK ERROR`のインデント計算自体がPAD側のシリアライザのバグで、本来`BLOCK`と同じ深さになるべきところが常に(文脈に依存せず)誤った深さで出力されている、という可能性もある。いずれが正しいかは今回の1例だけでは判別できない。
 
 **パーサーの挙動(現状維持、意図的に未修正)**: `build_block_tree()`の既存ロジックは、`ON BLOCK ERROR`のindentが直前の`BLOCK`ヘッダーのindentと**完全一致**する場合だけそれを保護対象として紐付ける仕様のため、今回のようにindentが食い違う実例では「孤立した`ON BLOCK ERROR`」として扱われ、直前の兄弟ノード(今回のケースではLOOP全体)を`GuardedNode`でラップしてしまう——意図より広い範囲を`try`/`except`で包んでしまうが、クラッシュはせず、構文的に正しいPythonを生成し続ける(`compile()`は成功する)。取り残された13行目の`END`は`# TODO: unmapped keyword: END`という無害なコメントとして出力される。たった1つの(それも特殊ケースの)実例から場当たり的な「indent不一致でも直前のBLOCKに紐付け直す」という特殊処理を追加すると、確認していない別のケースで誤ってON BLOCK ERRORを紐付けてしまう恐れがあるため、**意図的にパーサーは変更せず**、既知の未解決の構造的な曖昧さとして記録するに留める。`tests/fixtures/looptest_whole_subflow_with_control_repository.txt`(実機生データそのもの)に対する回帰テストで、最低限「クラッシュせず`compile()`可能なPythonを生成する」ことだけは保証する。
+
+## 46. 【知見44の直接の続き】UI要素参照`appmask[...]`は複数階層をエスケープ付きで連結できると判明——ふつうのアプリ内コントロールの`Attributes`配列も初めて実機確認(パーサーバグを修正)
+
+知見44の「一般的なアプリ内コントロールの`Attributes`配列がどう埋まるか未確認」という課題に取り組んだ。既存の`Click UI element in window`アクション(Start Button参照)の編集ダイアログから「UI element」コンボボックス→「Add UI element」でUI要素ピッカーを開き、メモ帳(`notepad.exe`、起動済み)のテキスト編集領域を実機で新たにキャプチャし直した(前回のドラッグ&ドロップでの新規アクション追加は失敗したため、既存アクションの参照先を差し替える経路に変更——成功)。
+
+このとき**ピッカーのhover検出がsynthetic input(単発の`SetCursorPos`)では反応せず**、`win32api.SetCursorPos()`を複数回に分けて段階的に移動させる(知見38のStart Button捕獲時と同じ手法)ことで初めて成功した——単発ジャンプでは検出されない、という運用上の知見も得た。
+
+**新発見その1: `appmask[...]`は複数階層を連結できる**。対象要素が別ウィンドウの子孫の場合、DSLは:
+
+```
+Element: appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\'']
+```
+
+という形になった——`['<祖先の表示名>']['<対象の表示名>']`のように`['...']`セグメントが複数連なり、祖先(ウィンドウ)から対象(コントロール)までのパスを表す。さらに、**各セグメントの表示名自体に含まれる`'`は`\'`でエスケープされる**(`Window 'Untitled - Notepad'`という表示名そのものに`'`が含まれるため)。これは「UI elements」パネルのツリー表示("Local computer > Window 'Untitled - Notepad' > Document 'Text Editor'")の各ノード名がそのままパスのセグメントになっていることを意味する。
+
+**パーサーバグその2を発見・修正**: 既存の`_UI_ELEMENT_RE = re.compile(r"appmask\['([^']*)'\]")`は単一セグメントしか想定しておらず、しかも`[^']*`はエスケープを理解しないため、`\'`の直後の`'`で早期にマッチが崩れ、このネスト形式を正しく拾えなかった(実機データで確認済みの、知見15・26・36・38と同種の「フィクスチャの多様性不足」パターンの再発)。`_UI_ELEMENT_RE`を`appmask(?:\['(?:\\.|[^'\\])*'\])+`という、エスケープ済み文字を許容しつつ`['...']`セグメントを1個以上連続してマッチする形に修正し、`UiElementRef`を単一の`name: str`から`path: tuple[str, ...]`(祖先→対象の順)に変更した(`name`は`path[-1]`を返すプロパティとして後方互換を維持)。
+
+**新発見その2: `Attributes`配列の実際の中身(ふつうのコントロールで初確認)**。知見44のStart Button(特殊な`:startbutton`タグ、`Attributes: []`)とは違う、ふつうのUIA属性ベースのセレクタの実例が得られた:
+
+```jsonc
+// Window "Untitled - Notepad" のAttributes(抜粋、Ignore:falseのみが実際の絞り込み条件)
+{"Name": "Class", "Value": "Notepad", "Ignore": true}
+{"Name": "Name", "Value": "Untitled - Notepad", "Ignore": false}
+{"Name": "Process", "Value": "notepad", "Ignore": false}
+// (Enabled/Id/Ordinal/Visibleは全てIgnore:true)
+
+// Document "Text Editor" のAttributes(抜粋)
+{"Name": "Class", "Value": "Edit", "Ignore": false}
+// (Enabled/Id/Name/Ordinal/Password/Visibleは全てIgnore:true)
+```
+
+各`Attributes`要素は`{Ignore: bool, IsOrdinal: bool, IsDisabledAttribute: bool, Name: str, Operation: str(例:"EqualTo"), Value: any}`という形で、**`Ignore: false`のものだけが実際にPADの要素特定ロジックで使われる絞り込み条件**(ウィンドウは`Name`+`Process`の論理積、コントロールは`Class`のみ)。属性名の語彙(`Class`/`Enabled`/`Id`/`Name`/`Ordinal`/`Password`/`Process`/`Visible`)は、知見39で確認した「UI element picker」の「Public Attributes」パネルの語彙(`automationText`/`class`/`controlName`等、camelCase)とは**別物**——あちらはライブ要素インスペクタの表示用語彙、こちらは実際にリポジトリへ保存されるセレクタ構築用の語彙だと判明した。この語彙(特に`Class`/`Name`/`Process`)はpywinautoの`title`/`class_name`/`process`といった既存パラメータへほぼ1対1で対応しており、将来的に実際のpywinautoセレクタへ変換する際の土台になる。
+
+**今回は実装を見送った部分**: `parse_control_repository()`で取得できる`ControlRepositoryEntry`情報を実際にpywinautoセレクタへ変換する配線は、今回のティックでは行っていない(確認できた実例がまだ2件——特殊ケース1件+通常ケース1件——のみで、複数階層のウィンドウ探索(`Desktop().window(...)` → `.child_window(...)`のチェーン)やWindow以外のコンテナ種別でのAttributes語彙の一般化に確証が持てないため)。`pad_codegen.py`のTODOコメントは、知見46のフルパス(`"Window 'Untitled - Notepad'" > "Document 'Text Editor'"`)を表示するよう更新したのみ。

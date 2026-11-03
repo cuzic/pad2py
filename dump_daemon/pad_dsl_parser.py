@@ -152,8 +152,14 @@ _COMMENT_ESCAPE_RE = re.compile(r"\\(#/|\\)")
 # design/dsl_format_findings.md 知見38(実機検証済み)——UI要素セレクタの実体(SelectorElement等の
 # CSS風セレクタ文字列)はActionRecordのパラメータ値に直接は現れず、「UI要素」リポジトリへの
 # 名前参照`appmask['<表示名>']`として埋め込まれる。表示名に空白を含みうる(`'Start Button'`等)ため、
-# `$'''...'''`と同じくマスキングしてから行分割する必要がある。
-_UI_ELEMENT_RE = re.compile(r"appmask\['([^']*)'\]")
+# `$'''...'''`と同じくマスキングしてから行分割する必要がある。知見46(実機検証済み)で、対象が
+# 別要素の子孫の場合は`['<祖先の表示名>']['<対象の表示名>']`のように`['...']`が複数連なり、
+# 各セグメントの表示名自体に含まれる`'`は`\'`でエスケープされることが判明した
+# (例: `appmask['Window \'Untitled - Notepad\'']['Document \'Text Editor\'']`)。
+# `(?:\\.|[^'\\])*`でエスケープ済み文字(`\'`・`\\`等)をセグメント内の通常文字として許容し、
+# `(?:\[...\])+`で1個以上の`['...']`セグメントの連なり全体を1つのUI要素参照としてマッチさせる。
+_UI_ELEMENT_RE = re.compile(r"appmask(?:\['(?:\\.|[^'\\])*'\])+")
+_UI_ELEMENT_SEGMENT_RE = re.compile(r"\['((?:\\.|[^'\\])*)'\]")
 # design/dsl_format_findings.md 知見44(実機検証済み)——フロー内のアクション群を一括選択して
 # コピーすると、クリップボードテキストの末尾にこの区切り行から始まるUI要素リポジトリ全体の
 # JSONが同梱される。`parse_dsl()`はこの行以降を通常のDSLレコード列から除外し(除外しないと
@@ -170,6 +176,16 @@ def _unescape(raw: str) -> str:
     """
     dequoted = _ESCAPE_RE.sub(lambda m: m.group(0)[-1], raw)
     return dequoted.replace("%%", "%")
+
+
+def _unescape_ui_element_segment(raw: str) -> str:
+    """`appmask['...']`の1セグメント内の`\\'`→`'`・`\\\\`→`\\`を解除する(知見46)。
+
+    `_unescape()`と違い`%%`→`%`の解除は行わない——UI要素の表示名が`$'''...'''`の
+    `InterpolatedStringAtom`由来という確証は無く、`%`の二重化規則が適用される根拠が
+    無いため、確認できた`\\'`/`\\\\`のエスケープ解除だけに留める。
+    """
+    return _ESCAPE_RE.sub(lambda m: m.group(0)[-1], raw)
 
 
 def _unescape_comment(raw: str) -> str:
@@ -221,9 +237,19 @@ class UiElementRef:
     自体はこの参照の先(UI要素リポジトリ側)にあり、ActionRecordのパラメータ値には
     **表示名への参照だけ**が直接埋め込まれる——以前の調査で解明したセレクタ文字列の
     フォーマットは、リポジトリ内部の格納形式であり、DSLテキスト上の直接の値ではなかった。
+
+    対象要素が別のウィンドウ/要素の子孫である場合、`appmask['<親の表示名>']['<対象の表示名>']`
+    のように`['...']`が複数連なり、祖先から対象までのパスを表す(**実機検証済み**——
+    design/dsl_format_findings.md 知見46)。各セグメントの表示名自体に`'`を含みうる場合は
+    `\\'`でエスケープされる(例: `appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']`)。
+    `path`は祖先から対象までの表示名のタプル、`name`はそのうち対象(末尾)の表示名。
     """
 
-    name: str
+    path: tuple[str, ...]
+
+    @property
+    def name(self) -> str:
+        return self.path[-1]
 
 
 _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
@@ -776,7 +802,7 @@ def parse_control_repository(text: str) -> dict[str, dict[str, ControlRepository
 
 def parse_dsl(text: str) -> list[Record]:
     text, _ = _split_control_repository(text)
-    placeholders: dict[str, str] = {}
+    placeholders: dict[str, str | tuple[str, ...]] = {}
 
     def _stash_comment(m: re.Match[str]) -> str:
         key = f"\x00CMT{len(placeholders)}\x00"
@@ -790,7 +816,11 @@ def parse_dsl(text: str) -> list[Record]:
 
     def _stash_ui_element(m: re.Match[str]) -> str:
         key = f"\x00UIE{len(placeholders)}\x00"
-        placeholders[key] = m.group(1)
+        # 知見46: 各`['...']`セグメントを個別に取り出し、それぞれエスケープを解除してから
+        # パス(祖先→対象の順のタプル)として保持する。
+        placeholders[key] = tuple(
+            _unescape_ui_element_segment(seg) for seg in _UI_ELEMENT_SEGMENT_RE.findall(m.group(0))
+        )
         return key
 
     # コメントを先に退避する(本文中に`$'''`等が含まれていても文字列リテラルとして
@@ -839,11 +869,15 @@ def _merge_not_in(tokens: list[str]) -> list[str]:
     return merged
 
 
-def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
+def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -> Any:
     if token.startswith("\x00UIE") and token in placeholders:
-        return UiElementRef(placeholders[token])
+        path = placeholders[token]
+        assert isinstance(path, tuple)
+        return UiElementRef(path)
     if token in placeholders:
-        return _unescape(placeholders[token])
+        value = placeholders[token]
+        assert isinstance(value, str)
+        return _unescape(value)
     if token == "True":
         return True
     if token == "False":
@@ -857,13 +891,15 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
     return VarRef(token)
 
 
-def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
+def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], indent: int = 0) -> Record:
     if line.startswith("\x00CMT") and line in placeholders:
         # `CommentStatement.ToString()`は常に`"/# " + escaped + "#/"`という形で
         # `/#`の直後に1文字の空白を固定で挿入する(コメント本文自体が空白で始まる
         # 場合でも区別なく追加される)。そのためここでは「空白なら剥がす」のような
         # 条件分岐ではなく、常に先頭1文字をデリミタの一部として取り除く。
-        return CommentRecord(text=_unescape_comment(placeholders[line][1:]), indent=indent)
+        comment_raw = placeholders[line]
+        assert isinstance(comment_raw, str)
+        return CommentRecord(text=_unescape_comment(comment_raw[1:]), indent=indent)
     if line.startswith("# "):
         return CommentRecord(text=line[2:], indent=indent)
     if line == "#":
