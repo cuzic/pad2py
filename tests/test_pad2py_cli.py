@@ -131,7 +131,9 @@ def test_cli_handles_real_goto_label_whole_subflow_capture(tmp_path) -> None:
 def test_cli_handles_real_wait_for_window_whole_subflow_capture(tmp_path) -> None:
     # design/dsl_format_findings.md 知見50: `WAIT (<ActionId> ...) FOR <秒数>`構文を含む
     # 実機の一括コピー生データをCLIにそのまま渡しても、compileできるPythonを生成することを
-    # 確認する。
+    # 確認する。このフィクスチャは`FOR 5`(タイムアウト指定あり)かつセレクタがリポジトリから
+    # 解決できるため、知見56のセレクタ組み立てと組み合わせて`.wait("exists", timeout=5)`と
+    # いう実行コードに変換されるようになった(TODOコメントではない)。
     fixture = FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt"
     output_path = tmp_path / "out.py"
 
@@ -139,7 +141,11 @@ def test_cli_handles_real_wait_for_window_whole_subflow_capture(tmp_path) -> Non
 
     assert exit_code == 0
     code = output_path.read_text(encoding="utf-8")
-    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".wait('exists', timeout=5)" in code
+    )
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
     compile(code, "<generated>", "exec")
 
 

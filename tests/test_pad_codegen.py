@@ -115,6 +115,38 @@ def test_generate_python_inlines_run_python_script_body() -> None:
     assert 'req = urllib.request.Request("http://127.0.0.1:8765/capture"' in code
 
 
+def test_generate_python_binds_script_output_to_captured_stdout() -> None:
+    # 公開ドキュメント(Microsoft Learn関連の解説記事・コミュニティ記事、複数ソースで一致)に
+    # よれば、PADの「Run Python script」のScriptOutputはスクリプトがprint()で標準出力に
+    # 書き出した内容がそのまま値になる。末尾改行・型変換の詳細は未確認のため、生のテキストを
+    # そのまま代入するだけの最小限の変換(でっち上げたstrip/型変換は行わない)。
+    dsl = "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: $'''print(1 + 1)''' ScriptOutput=> Out1"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "import contextlib" in code
+    assert "import io" in code
+    assert "with contextlib.redirect_stdout(io.StringIO()) as _pyscript_stdout:" in code
+    assert "Out1 = _pyscript_stdout.getvalue()" in code
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    # 実行して、実際にprint()の内容が変数に渡ることを確認する(構文チェックだけでなく
+    # 実際のランタイム挙動まで検証する)。
+    assert namespace["Out1"] == "2\n"
+
+
+def test_generate_python_run_python_script_without_output_var_stays_unwrapped() -> None:
+    # 出力変数束縛(ScriptOutput=>)が無い場合は、stdoutを捕捉する必要が無いので
+    # 従来通りスクリプト本体をそのままインラインに展開するだけ(余計なラップをしない)。
+    dsl = "Scripting.RunPythonScript.RunPythonScriptCPython PythonCode: $'''x = 1 + 1'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "contextlib" not in code
+    assert "x = 1 + 1" in code
+
+
 def test_generate_python_renders_wait_as_time_sleep() -> None:
     tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
     code = generate_python(tree)
@@ -626,6 +658,98 @@ def test_generate_python_names_ui_element_in_todo_without_fabricating_selector()
     assert "appmask" not in code
 
 
+def test_generate_python_converts_click_click_to_click_input_when_selector_resolves() -> None:
+    # design/dsl_format_findings.md 知見56: セレクタ式自体は実機(Notepadの実ウィンドウ)で
+    # 対象要素を一意に特定できると確認済みで、`.click_input()`自体もpad_ui_helpers.pyで
+    # G1/G2実機検証済みのpywinauto操作。確認済みのパラメータの組み合わせ(ClickType:
+    # LeftClick等)でセレクタが解決できる場合に限り、TODOコメントではなく実行コードとして
+    # 生成されるようになったことを確認する。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').click_input()" in code
+    )
+    assert "# TODO: map PAD action: UIAutomation.Click.Click" not in code
+    assert "appmask" not in code
+
+
+def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
+    # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
+    # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別
+    # (Right click等)はPythonでの対応が未検証のため、セレクタが解決できる場合でも
+    # でっち上げた変換はせず安全なTODOのままにする。
+    dsl = (
+        "UIAutomation.Click.Click Element: appmask['Window \\'Untitled - Notepad\\'']"
+        "['Document \\'Text Editor\\''] ClickType: UIAutomation.ClickType.RightClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 0 OffsetY: 0"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
+    assert "click_input" not in code
+
+
+def test_generate_python_keeps_click_click_as_todo_when_offset_unverified() -> None:
+    # design/dsl_format_findings.md 知見38のDSLキャプチャ全件で確認済みなのは
+    # OffsetX/OffsetY: 0のみ。非ゼロオフセットの実機挙動(pywinautoのcoords=指定が
+    # 対応するか等)は未検証のため、セレクタが解決できてもTODOのままにする。
+    dsl = (
+        "UIAutomation.Click.Click Element: appmask['Window \\'Untitled - Notepad\\'']"
+        "['Document \\'Text Editor\\''] ClickType: UIAutomation.ClickType.LeftClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 5 OffsetY: 0"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
+    assert "click_input" not in code
+
+
+def test_generate_python_converts_wait_for_window_to_real_wait_when_timeout_given() -> None:
+    # design/dsl_format_findings.md 知見50・56: セレクタがリポジトリから解決でき、かつ
+    # 「Fail with timeout error」がONでタイムアウト秒数が実際に分かっている場合に限り、
+    # pywinautoの`.wait("exists", timeout=...)`という実行コードを生成するようにした。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".wait('exists', timeout=5)" in code
+    )
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
+
+
+def test_generate_python_keeps_wait_for_window_as_todo_when_timeout_is_none() -> None:
+    # design/dsl_format_findings.md 知見50の追記: 「Fail with timeout error」OFFで
+    # `timeout_seconds`が`None`の場合、PADが実際に無期限に待つのか・内部的な既定値が
+    # あるのかは未確認(公開資料・実機いずれでも確証無し)。pywinauto側の`.wait()`は
+    # timeout省略時に有限のデフォルトにフォールバックしてしまい、PADの実際の挙動と
+    # 食い違う(異なる時間で待ちが終わる)恐れがあるため、でっち上げたタイムアウト値を
+    # 埋め込まず安全なTODOのままにする——セレクタが解決できる場合でも変換しない。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_no_timeout.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen (timeout: none)" in code
+    assert ".wait(" not in code
+
+
 def test_generate_python_from_real_whole_subflow_capture_compiles() -> None:
     # design/dsl_format_findings.md 知見44・45: LoopTestサブフロー8アクションを一括選択して
     # コピーした実機生データ(UI要素リポジトリのJSONを含む)をフルパイプラインに通した
@@ -834,9 +958,14 @@ def test_generate_python_chains_all_elements_of_a_multi_element_internal_selecto
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
     compile(code, "<generated>", "exec")
+    # このフィクスチャの電卓「7」ボタンへのUIAutomation.Click.Clickは、確認済みの
+    # パラメータの組み合わせ(ClickType: LeftClick等)なので、知見56のチェーン修正後の
+    # 正しいセレクタ式を使った実行コード(.click_input())として生成されるようになった
+    # (以前はTODOコメント中の提案止まりだった——詳細は_generate_action()のコメント参照)。
     assert (
-        'verified pywinauto selector: Desktop(backend="uia").window(title=\'Calculator\')'
-        ".child_window(class_name='CalcFrame').child_window(class_name='Button', title='7')" in code
+        'Desktop(backend="uia").window(title=\'Calculator\')'
+        ".child_window(class_name='CalcFrame').child_window(class_name='Button', title='7')"
+        ".click_input()" in code
     )
     # バグがあった頃の誤った(中間のpane止まりの)式が生成されていないことも確認する。
     assert 'window(title=\'Calculator\').child_window(class_name=\'CalcFrame\'))' not in code

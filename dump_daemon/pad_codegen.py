@@ -30,10 +30,16 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   `parse_control_repository()`の結果を`repository`引数として渡すと、`Ignore: False`の
   `Attributes`(`Class`/`Name`)から組み立てた`Desktop(backend="uia").window(...)
   .child_window(...)`形式のセレクタ式を、実際に実機で対象要素を一意に特定できることを
-  確認した上でTODOコメントへの**提案**として追記する(`_build_pywinauto_selector_expr()`)。
-  生成される実行コード自体は変えない——リポジトリに情報が無い場合は何も付け足さない。
-  ユーザーはそのTODOコメント(と付記された提案)を見て、該当するUI要素のセレクタを手動で
-  補う前提。
+  確認した(`_build_pywinauto_selector_expr()`)。当初はこの式をTODOコメントへの**提案**
+  (実行コード自体は変えない)として追記するだけに留めていたが、`UIAutomation.Click.Click`に
+  限っては、(1)このセレクタ式自体が実機で対象要素を一意に特定できると確認済みであること、
+  (2)`.click_input()`自体も`pad_ui_helpers.py`でG1/G2実機検証済みのpywinauto操作であること、
+  の2つの既に確証済みの要素を組み合わせるだけなので、確認済みのパラメータの組み合わせ
+  (`ClickType: LeftClick`・`MousePositionRelativeToElement: MiddleCenter`・
+  `OffsetX`/`OffsetY: 0`、知見38のDSLキャプチャ全件で確認済みの唯一の組み合わせ)かつ
+  セレクタが実際に解決できる場合に限り、実行コードそのものを生成するよう拡張した。
+  それ以外のクリック種別・位置基準・オフセットや、セレクタが解決できない場合は、
+  依然として安全なTODO+ヒントのままにする——でっち上げた変換は一切しない。
 
 対応範囲:
 - `SetVariableRecord` → 代入文
@@ -232,10 +238,13 @@ def generate_python(
 ) -> str:
     """ブロック木からスタンドアロンのPythonソースを生成する(末尾改行付き)。
 
-    `repository`は`parse_control_repository()`の戻り値(知見44)。渡された場合、
-    `# TODO`コメント中のUI要素ヒントに、実機検証済み(知見56)のpywinautoセレクタ式の
-    提案を付記する——あくまでコメント内の提案であり、実行されるコードそのものを
-    変えることはしない(でっち上げたセレクタで動くコードを生成することは無い)。
+    `repository`は`parse_control_repository()`の戻り値(知見44)。渡された場合、大半の
+    未対応UI要素アクションでは`# TODO`コメント中のUI要素ヒントに、実機検証済み(知見56)の
+    pywinautoセレクタ式の提案を付記するだけ(あくまでコメント内の提案であり、実行される
+    コードそのものは変えない)。例外は`UIAutomation.Click.Click`で、確認済みのパラメータの
+    組み合わせ(ClickType: LeftClick等)かつセレクタが解決できる場合に限り、`.click_input()`
+    を使った実行コードを生成する(`_generate_action()`内のコメント参照)。でっち上げたセレクタで
+    動くコードを生成することは無い。
     省略時(`None`)は従来通りの挙動(ヒント無し)のまま完全に後方互換。
     """
     global _active_repository
@@ -252,6 +261,9 @@ def generate_python(
         imports.append("import pyautogui")
     if any("Desktop(" in line for line in body):
         imports.append("from pywinauto import Desktop")
+    if any("contextlib.redirect_stdout(" in line for line in body):
+        imports.append("import contextlib")
+        imports.append("import io")
     imports.sort()
     header = [*imports, ""] if imports else []
     return "\n".join(header + body) + "\n"
@@ -458,12 +470,27 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
     if node.action_id.startswith("Scripting.RunPythonScript"):
         code = node.params.get("PythonCode")
         if isinstance(code, str):
-            lines = [f"{prefix}{line}" if line else "" for line in code.splitlines()]
             if node.output_var:
-                # PADのScriptOutputは専用の仕組みであり、単純な戻り値束縛ではないため
-                # 自動では生成しない——TODOとして明示する。
-                lines.append(f"{prefix}# TODO: bind {node.output_var} to this script's output if needed")
-            return lines
+                # PADの公開ドキュメント(Microsoft公式Learnの関連解説記事・コミュニティ記事、
+                # 複数の第三者ソースで一致)によれば、ScriptOutputはスクリプトが`print()`で
+                # 標準出力に書き出した内容がそのまま値になる、という仕組みが確認できる。
+                # ただし末尾改行の有無・複数回print()時の結合・型変換(常に文字列固定か、
+                # 数値へ変換されるか)は公開資料・実機のいずれでも確認できなかったため、
+                # 余計な推測(stripやint変換等)を加えず、標準出力の生テキストを
+                # そのまま代入する最小限の変換に留める(`# NOTE`は安全側の注意書きであり、
+                # `# TODO`ではない——変換自体は実行可能なコードとして生成されるため)。
+                inner_prefix = prefix + INDENT
+                lines = [f"{prefix}with contextlib.redirect_stdout(io.StringIO()) as _pyscript_stdout:"]
+                lines.extend(
+                    f"{inner_prefix}{line}" if line else "" for line in code.splitlines()
+                )
+                lines.append(f"{prefix}{node.output_var} = _pyscript_stdout.getvalue()")
+                lines.append(
+                    f"{prefix}# NOTE: {node.output_var} is the script's raw stdout text; "
+                    "trailing newline / type coercion are not verified against real PAD"
+                )
+                return lines
+            return [f"{prefix}{line}" if line else "" for line in code.splitlines()]
     if node.action_id == "MouseAndKeyboard.SendKeys.FocusAndSendKeys":
         text = node.params.get("TextToSend")
         if isinstance(text, str):
@@ -541,23 +568,75 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
         window_expr = _window_lookup_expr(node)
         if window_expr:
             return [f"{prefix}{window_expr}.close()"]
+    if node.action_id == "UIAutomation.Click.Click":
+        # design/dsl_format_findings.md 知見56で、`_build_pywinauto_selector_expr()`が
+        # 組み立てるセレクタ式自体は実機(Notepad/Calculatorの実ウィンドウ)で対象要素を
+        # 一意に特定できると確認済み。これまでは知見38の方針(セレクタがDSLから直接
+        # 取得できない)を理由に、この確証済みの式をTODOコメント中の「提案」止まりにしていたが、
+        # 知見56がその制約自体を解消した(リポジトリ経由でセレクタが実際に得られる)ため、
+        # 以下の条件を全て満たす場合——(1)セレクタが実機で解決できる、(2)実機で確認済みの
+        # パラメータの組み合わせ(ClickType: LeftClick・MousePositionRelativeToElement:
+        # MiddleCenter・OffsetX/OffsetY: 0、知見38のDSLキャプチャ全件で確認済みの唯一の組み合わせ)
+        # である——に限り、`.click_input()`(`pad_ui_helpers.py`でG1/G2実機検証済みの
+        # pywinautoクリック方式)を使った実コードを生成する。それ以外のクリック種別・
+        # 位置基準・オフセット(未検証)やセレクタが解決できない場合は、従来通り安全な
+        # TODO+ヒントのままにする。
+        element = node.params.get("Element")
+        if (
+            isinstance(element, UiElementRef)
+            and node.params.get("ClickType") == EnumRef("UIAutomation.ClickType.LeftClick")
+            and node.params.get("MousePositionRelativeToElement")
+            == EnumRef("UIAutomation.RectangleEdgePoint.MiddleCenter")
+            and node.params.get("OffsetX") == 0
+            and node.params.get("OffsetY") == 0
+        ):
+            selector_expr = _build_pywinauto_selector_expr(element.path)
+            if selector_expr is not None:
+                return [f"{prefix}{selector_expr}.click_input()"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}{_ui_element_hint(node)}"]
+
+
+# action_id → (UiElementRefを持つパラメータ名, pywinautoの.wait()/.wait_not()どちらを
+# 使うか, 渡すwait_for文字列)。知見50・52で実機確認したWaitActionの全5バリアント。
+# "active"は`WindowSpecification.wait()`が受け付ける標準の状態名(pywinauto自身のAPI、
+# 「ウィンドウがアクティブ(フォーカスを持つ)か」の意味でPAD側のToBecomeFocused/
+# ToLoseFocusの意味とそのまま対応する)。
+_WAIT_ACTION_TARGETS: dict[str, tuple[str, str, str]] = {
+    "UIAutomation.WaitForWindow.ToOpen": ("Window", "wait", "exists"),
+    "UIAutomation.WaitForWindow.ToClose": ("Window", "wait_not", "exists"),
+    "UIAutomation.WaitForWindow.ToBecomeFocused": ("Window", "wait", "active"),
+    "UIAutomation.WaitForWindow.ToLoseFocus": ("Window", "wait_not", "active"),
+    "UIAutomation.WaitForWindowContent.WindowToContainElement": ("Element", "wait", "exists"),
+}
 
 
 def _generate_wait_action(node: WaitActionRecord, indent: int) -> list[str]:
     """`WaitActionRecord`(design/dsl_format_findings.md 知見50で実機確認した
-    `WAIT (<ActionId> ...) FOR <秒数>`構文) → `# TODO`コメント。
+    `WAIT (<ActionId> ...) FOR <秒数>`構文) → pywinautoの`.wait()`/`.wait_not()`、
+    またはそれが安全に組み立てられない場合は`# TODO`コメント。
 
     `UIAutomation.WaitForWindow.ToOpen`等はpywinautoの`WindowSpecification.wait("exists",
-    timeout=...)`に自然に対応しそうに見えるが、対象ウィンドウのセレクタ自体は`Window`
-    パラメータの`UiElementRef`が指す名前参照でしかなく、実セレクタがDSLから取得できない
-    (知見38・46と同じ制約)。でっち上げたセレクタを埋め込まず、action_id・タイムアウト秒数・
-    関連UI要素の表示名をTODOコメントに残すだけに留める。`timeout_seconds`は「Fail with
-    timeout error」トグルがOFFの場合`None`になる(知見50の追記——`FOR <秒数>`句自体が
-    DSLから省略される、実機確認済み)。
+    timeout=...)`に自然に対応する。対象のセレクタは知見56の`_build_pywinauto_selector_expr()`
+    (Click.Clickで実際の実行コード生成に使っているのと同じ、実機で一意特定を確認済みの仕組み)
+    で解決できる場合のみ使う。`timeout_seconds`は「Fail with timeout error」トグルがOFFの
+    場合`None`になる(知見50の追記)が、その場合PAD側が実際に無期限に待つのか・内部的な
+    既定値があるのかは公開資料・実機のいずれでも確証が持てておらず、pywinauto側の
+    `.wait()`はtimeout省略時に有限のデフォルト(`Timings.window_find_timeout`)にフォール
+    バックしてしまい「無期限待ち」と「有限待ちで静かに失敗」という異なる挙動になりうる
+    ため、`timeout_seconds`が実際に数値で確認できる場合に限り変換する——`None`の場合は
+    でっち上げたタイムアウト値を埋め込まず、安全なTODOのままにする。
     """
     prefix = INDENT * indent
     timeout_desc = f"{render_value(node.timeout_seconds)}s" if node.timeout_seconds is not None else "none"
+    target = _WAIT_ACTION_TARGETS.get(node.action_id)
+    if target is not None and node.timeout_seconds is not None:
+        param_name, method, wait_for = target
+        element = node.params.get(param_name)
+        if isinstance(element, UiElementRef):
+            selector_expr = _build_pywinauto_selector_expr(element.path)
+            if selector_expr is not None:
+                timeout = render_value(node.timeout_seconds)
+                return [f"{prefix}{selector_expr}.{method}({wait_for!r}, timeout={timeout})"]
     return [
         f"{prefix}# TODO: map PAD wait action: {node.action_id} "
         f"(timeout: {timeout_desc}){_ui_element_hint(node)}"
