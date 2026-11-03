@@ -332,3 +332,15 @@ MouseAndKeyboard.SendKeys.FocusAndSendKeys TextToSend: $'''Hello World''' DelayB
 重要な発見: **デフォルト値のまま変更しなかったフィールド(`Send keys to`)はDSLに一切現れない**——`TextToSend`/`DelayBetweenKeystrokes`/`SendTextAsHardwareKeys`の3パラメータしか出力されず、ダイアログに見えていた「Send keys to: Foreground window」フィールドに対応するパラメータ名は一切登場しなかった。つまり`ActionRecord.params`は**そのアクションが持つ全パラメータの一部(変更されたものだけ)しか含まない**可能性がある——`SendTo`のような項目は、変更されない限りDSLから省略され、PAD側のデフォルト値が暗黙に適用されると解釈するしかない。これはコード生成が「見えているパラメータだけで完全な変換ができるとは限らない」ことを示す重要な制約で、今後UI操作アクションへの対応を広げる際は、各アクションのデフォルト値を公式ドキュメント等で別途把握する必要がある。
 
 `pad_codegen.py`に`MouseAndKeyboard.SendKeys.FocusAndSendKeys` → `pyautogui.typewrite(text, interval=delay_ms/1000)`の変換を追加した(`generate_python()`は使用時のみ`import pyautogui`を先頭に出力する)。**既知の未対応ケース(要注意)**: 今回実機確認したのは「Insert special keys」を使わない素のリテラルテキスト("Hello World")の場合のみ。特殊キー(Enter/Tab等)を挿入した場合のDSL表現(pywinautoの`{ENTER}`構文と同じか、PAD独自の別構文か)はまだ実機確認していない。**現在の実装はこの違いを検出していない**——`TextToSend`が文字列でありさえすれば、中身を問わず無条件に`pyautogui.typewrite()`へ変換してしまうため、もし特殊キー記法が異なる構文だった場合、気づかれないまま誤った(あるいは単に動かない)コードを生成するリスクが残る。安全側に倒すなら本来は特殊キー記法を検出して`# TODO`に倒すべきだが、その記法自体が未確認のため検出ロジックを書けず、今回はこのリスクを許容してスコープ外にした。次に特殊キーを使うSend keysを実機確認した際に、検出・分岐処理を追加する必要がある。
+
+## 20. 2つ目のUI automationアクション(`Move mouse`)——「デフォルト値は省略される」という前提が崩れた
+
+座標ベースでセレクタが不要な「Move mouse」(`Mouse and keyboard`カテゴリ)を実機で追加した。ダイアログは「Position X」「Position Y」「Relative to」(Screen/Window等のドロップダウン、既定Screen)「Move mouse from previous position」(Instant/Smoothly、既定Instant)という構成。X=500, Y=300だけ入力し、残り2つは既定値のまま保存して再コピーしたところ、DSL上は**4パラメータ全てが明示的に出力された**:
+
+```
+MouseAndKeyboard.MoveMouse X: 500 Y: 300 RelativeTo: MouseAndKeyboard.PositionRelativeTo.Screen MovementStyle: MouseAndKeyboard.MovementStyle.Instant
+```
+
+これは知見19で立てた「デフォルト値のまま変更しなかったフィールドはDSLに現れない」という仮説と矛盾する——「Send keys」の`Send keys to`(デフォルトのまま)は省略されたのに、「Move mouse」の`RelativeTo`/`MovementStyle`(同じくデフォルトのまま)は省略されなかった。つまり**「変更されていないフィールドが省略されるかどうかはアクション・フィールドの種類によって異なり、普遍的なルールではない**」。この挙動差の正確な条件(ドロップダウン/Enum型かテキスト型か、アクションの実装次第か等)はまだ特定できておらず、今後もアクションごとに個別に実機確認する必要がある——「このフィールドはDSLに出ていないから対応不要」と安易に判断してはいけないことを示す重要な教訓。
+
+`pad_codegen.py`に`MouseAndKeyboard.MoveMouse` → `pyautogui.moveTo(x, y)`の変換を追加した。**スコープを絞った安全策**: `RelativeTo: Screen`かつ`MovementStyle: Instant`の組み合わせ(今回実機確認した唯一のケース)のときだけ変換し、それ以外(`Window`基準や`Smoothly`移動等、未検証)は従来通り`# TODO`コメントのままにする——架空の座標変換ロジックをでっち上げないための明示的なガード。`tests/test_pad_codegen.py`には、このガードが実際に機能して意図せぬ変換をしないことを確認する否定的テストケースも追加した。
