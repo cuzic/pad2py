@@ -5,6 +5,8 @@
 ### Takeaway
 PAD(クラウド接続版)のフロー定義の正本は Dataverse の `workflow` テーブル(カテゴリ値 6 = Desktop Flow)に **JSON/テキストとして** 格納されており、ローカルディスク上に単純な `.flow`/`.pad` 単体ファイルとしてエクスポートされる公式な仕組みは見当たらなかった。ローカルキャッシュはバイナリではなくフォルダ構造として存在し、クラウド同期が前提になっている。これは Power Apps の `.msapp`(ZIPアーカイブ)とは明確に異なる仕組みである。
 
+> **【実機検証による重要な訂正・追記】** design/dsl_format_findings.md 知見43(実機検証済み)。上記のDataverse `workflow`テーブル説明は、**組織(Entra IDテナント)に紐づいたDataverse環境を持つ場合にのみ成立する**ことが実機で判明した。個人用Microsoftアカウント(MSA、例: `xxx@hotmail.com`)でPADにサインインして使っている場合、`make.powerautomate.com`等のPower Platformメーカーポータル自体が`AADSTS500200: User account is a personal Microsoft account. Personal Microsoft accounts are not supported for this application unless explicitly invited to an organization.`というエラーで拒否され、そもそもDataverse環境にアクセスできない。本ドキュメント下部で触れている「1つのフローにつきOneDrive上に2つのファイルが保存される」というコミュニティ報告の方が、個人アカウント利用時の実態に近い可能性がある——個人アカウントでのPAD利用時のフロー格納場所は、Dataverseではなく(組織向けとは別の)簡素化されたバックエンド(OneDrive等)である可能性が高く、未調査のまま残っている。
+
 ### Cited Findings
 - Dataverse の `workflow` テーブルには `clientdata` という Memo 型カラムがあり、これは「流定义及其 connectionReferences 的字符串编码的 JSON」(フロー定義とその connectionReferences をエンコードした JSON 文字列)と説明されている — [Process (Workflow) table/entity reference (zh-cn)](https://learn.microsoft.com/zh-cn/power-apps/developer/data-platform/reference/entities/workflow)
 - `workflow` テーブルには `desktopflowmodules` という Memo 型カラムが別途あり、「このワークフローに関連するデスクトップフローモジュール」と説明されている。この列は "Power Automate Workflow Table Extensions" という追加ソリューションによって追加されたものである — [Process (Workflow) table/entity reference](https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/workflow); [es-es 版](https://learn.microsoft.com/es-es/powerapps/developer/data-platform/reference/entities/workflow)

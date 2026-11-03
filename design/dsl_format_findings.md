@@ -677,3 +677,22 @@ END
 4. **稼働中プロセスの棚卸し**を行い、PADの内部アーキテクチャを把握した: `PAD.Designer.exe`(デザイナーUI)・`PAD.AutomationServer.exe`(×2、実行エンジン)・`PAD.BridgeToUIAutomation2.exe`(×2、UIAブリッジ——おそらくUI要素ピッカーの実体)・`UIFlowService.exe`・`Microsoft.Flow.RPA.LauncherService.exe`等が別プロセスとして稼働している。これらがクライアント側で完結したローカルキャッシュを持たず、保存のたびにクラウド(Dataverseの`workflow`テーブル、research_notes/の調査で確認済み)とやり取りしている可能性が高い構成であることが、プロセス分割からも裏付けられた。
 
 **結論**: UI要素セレクタの実体を取得する手段のうち、**このセッションでエージェント単独(2FA無し)で試せる経路は全て潰した**。残る唯一の既知の経路は、「LoopTest」フローをクラウドに保存すること(2FA承認がユーザーの携帯端末でのみ完了できるため、エージェント単独では実行不可)であり、保存できれば(a) UI要素リポジトリが同期されたDataverse側のデータを何らかの形で覗く、(b) 保存後にPADの「Export」機能やUI要素リポジトリのエクスポート機能が使えるかを確認する、といった次の調査に進める見込みがある。この2FAブロッカーの解消は、UI要素セレクタ対応アクション(Click/SendKeys等、実際のPADフローの大半を占めると推測される種類)をcodegenで実装するための事実上の前提条件であり、ユーザーへの確認が必要な分岐点として記録する。
+
+## 43. 【重大な構造上の発見】個人用Microsoftアカウント(MSA)はPower Platformメーカーポータルに一切アクセスできない——`.msapp`相当の調査経路そのものが個人アカウントでは存在しない可能性
+
+知見42の続き。ユーザー本人に2FA承認してもらい(`cuzic@hotmail.com`、携帯のMicrosoft Authenticatorで番号一致コードを承認)、「LoopTest」フローのクラウド保存に初めて成功した。保存後、ローカルにUI要素リポジトリらしきキャッシュが新たに出現しないか再探索したが、知見39・42同様に見つからなかった(`DefaultValues.json`等、無関係なデザイナー状態ファイルの更新のみ)。PADのFileメニューにもExport機能は無い(Save/Save as/Exitのみ)。
+
+次善策として、ユーザーの許可を得てブラウザ(実機の実際にサインイン済みのEdgeプロファイル)で`make.powerautomate.com`(Power Platformメーカーポータル、research_notes/で「フローはDataverseの`workflow`テーブルに格納される」と調査済みの画面)を`cuzic@hotmail.com`で開こうとしたところ、サインイン後に以下のエラーで拒否された:
+
+```
+AADSTS500200: User account 'cuzic@hotmail.com' is a personal Microsoft account.
+Personal Microsoft accounts are not supported for this application unless
+explicitly invited to an organization. Try signing out and signing back in
+with an organizational account.
+```
+
+`flow.microsoft.com`(レガシーな個人向けPower AutomateのURL)にアクセスしても同じ`/organizations/`のOAuthエンドポイントにリダイレクトされ、同じ制約にぶつかると推測される(同一エンドポイントへの再サインインフローが再度始まったのを確認し、エラーを確実視するための2回目のサインイン試行は行わなかった)。
+
+**意義**: これは単なる「このティックで見つからなかった」というネガティブな知見ではなく、**プロジェクトの前提そのものに関わる構造的な発見**である。research_notes/の初期調査(`01_flow_file_format.md`)が述べる「フローはDataverseの`workflow`テーブルの`clientdata`列に格納される」という説明は、**組織(Entra ID テナント)に紐づいたDataverse環境を持つ場合の話**であり、`cuzic@hotmail.com`のような**個人用Microsoftアカウント単体でのPAD利用**では、そもそもメーカーポータル自体にアクセスできない——つまりDataverseの`workflow`テーブルを直接覗くという調査経路も、個人アカウントでは成立しない可能性が高い。個人アカウントでのPower Automate Desktop利用が、組織向けとは異なる(簡素化された、Dataverseを介さない)バックエンドに保存されている可能性があり、これは本プロジェクトが前提としてきた「フロー定義の格納場所」の理解そのものを見直す必要があることを意味する。
+
+**今後の調査候補**: (a) 個人向けPower Automateには別の消費者向けポータル面(モバイルアプリ等)が存在する可能性があり、そちらでのフロー閲覧・UI要素リポジトリ参照を試す、(b) 組織アカウント(`rosettaworks`/`seera-networks`等、ユーザーが実際に保有する組織アカウント)でPADにサインインし直してフローを作成・保存すれば、Dataverseベースの経路(メーカーポータル・Dataverse Web API)が使えるようになる可能性がある(ただし今回捕まえた「LoopTest」フロー自体は個人アカウント側にあるため、この経路では別フローでの再検証になる)、(c) そもそも個人アカウントでのPAD利用は本プロジェクトが実際にターゲットとするユーザー層(典型的なPAD個人利用者)の大半を占めると推測されるため、「組織アカウントなら解決する」では実用上の解決にならない可能性が高く、UI要素セレクタ問題の長期的な解決策としては「v1スコープからUI要素アクションを除外し、要素名付きTODOとして出力する」という代替方針の優先度が相対的に上がった。
