@@ -9,7 +9,9 @@ from dump_daemon.pad_dsl_parser import (
     ActionRecord,
     IfRecord,
     KeywordRecord,
+    LoopForeachRecord,
     LoopRecord,
+    LoopWhileRecord,
     SetVariableRecord,
     parse_dsl,
 )
@@ -162,3 +164,33 @@ def test_loop_record_parsed_with_bounds_and_step() -> None:
     assert loop_record.indent == 0
     assert isinstance(end_record, KeywordRecord)
     assert end_record.name == "END"
+
+
+# 実機で「For each」(Value to iterate=%TestVar%, Store into=CurrentItem)を
+# 追加して再キャプチャした生データ。
+FOREACH_DSL = "LOOP FOREACH CurrentItem IN TestVar\nEND"
+
+
+def test_loop_foreach_record_parsed_with_bare_variable_reference() -> None:
+    records = parse_dsl(FOREACH_DSL)
+    assert len(records) == 2
+    foreach_record = records[0]
+    assert isinstance(foreach_record, LoopForeachRecord)
+    assert foreach_record.item_var == "CurrentItem"
+    assert foreach_record.collection == "TestVar"
+
+
+# 実機で「Loop condition」(First operand=%LoopIndex%, Operator=Less than (<),
+# Second operand=10)を追加して再キャプチャした生データ。
+WHILE_DSL = "LOOP WHILE (LoopIndex) < (10)\nEND"
+
+
+def test_loop_while_record_strips_parens_around_operands() -> None:
+    records = parse_dsl(WHILE_DSL)
+    assert len(records) == 2
+    while_record = records[0]
+    assert isinstance(while_record, LoopWhileRecord)
+    # IfRecordと異なり、オペランドは丸括弧で囲まれているためこれを剥がして解決する
+    assert while_record.operand1 == "LoopIndex"
+    assert while_record.operator == "<"
+    assert while_record.operand2 == "10"

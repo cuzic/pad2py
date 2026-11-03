@@ -18,10 +18,17 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 - `LOOP <VarName> FROM <start> TO <end> STEP <step>` / `END` 形式のカウントループ
   (実機検証で `LOOP LoopIndex FROM 1 TO 3 STEP 1` ... `END` の形を確認。`IF`と同じく
   ベアキーワード行+`END`で閉じる)
+- `LOOP FOREACH <itemVar> IN <collection>` / `END` 形式のコレクション反復(実機検証で
+  `LOOP FOREACH CurrentItem IN TestVar` ... `END` の形を確認)
+- `LOOP WHILE (<operand1>) <operator> (<operand2>)` / `END` 形式の条件ループ(実機検証で
+  `LOOP WHILE (LoopIndex) < (10)` ... `END` の形を確認。**`IF`と異なりオペランドが
+  丸括弧で囲まれる**——同じ「First operand/Operator/Second operand」ダイアログ形状でも
+  アクションの種類によってDSL表現が異なる例)
 
-未対応(今後の実機確認が必要): LOOP FOREACH、ELSE/ELSE IF、複合式(AND/OR)、
+未対応(今後の実機確認が必要): ELSE/ELSE IF、複合式(AND/OR)、
 インデント情報からの木構造組み立て(現状は`indent`を保持した**フラットな**
-レコード列を返すのみで、`IfRecord`/`LoopRecord`と対応する`END`を自動的にグルーピングしない)。
+レコード列を返すのみで、`IfRecord`/`LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`と
+対応する`END`を自動的にグルーピングしない)。
 """
 from __future__ import annotations
 
@@ -78,12 +85,36 @@ class LoopRecord:
 
 
 @dataclass
+class LoopForeachRecord:
+    item_var: str
+    collection: Any
+    indent: int = 0
+
+
+@dataclass
+class LoopWhileRecord:
+    operand1: Any
+    operator: str
+    operand2: Any
+    indent: int = 0
+
+
+@dataclass
 class RawRecord:
     text: str
     indent: int = 0
 
 
-Record = ActionRecord | KeywordRecord | SetVariableRecord | IfRecord | LoopRecord | RawRecord
+Record = (
+    ActionRecord
+    | KeywordRecord
+    | SetVariableRecord
+    | IfRecord
+    | LoopRecord
+    | LoopForeachRecord
+    | LoopWhileRecord
+    | RawRecord
+)
 
 _ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _KNOWN_KEYWORDS = {"WAIT", "END"}
@@ -107,6 +138,13 @@ def parse_dsl(text: str) -> list[Record]:
         indent = (len(raw_line) - len(stripped)) // 4
         records.append(_parse_line(stripped.rstrip(), placeholders, indent))
     return records
+
+
+def _strip_parens(token: str) -> str:
+    """`LOOP WHILE`のオペランド(`(LoopIndex)`等)を囲む丸括弧を取り除く。"""
+    if token.startswith("(") and token.endswith(")"):
+        return token[1:-1]
+    return token
 
 
 def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
@@ -135,6 +173,21 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
             operand1=_resolve_value(tokens[1], placeholders),
             operator=tokens[2],
             operand2=_resolve_value(tokens[3], placeholders),
+            indent=indent,
+        )
+
+    if first == "LOOP" and len(tokens) >= 5 and tokens[1] == "FOREACH" and tokens[3] == "IN":
+        return LoopForeachRecord(
+            item_var=tokens[2],
+            collection=_resolve_value(tokens[4], placeholders),
+            indent=indent,
+        )
+
+    if first == "LOOP" and len(tokens) >= 5 and tokens[1] == "WHILE":
+        return LoopWhileRecord(
+            operand1=_resolve_value(_strip_parens(tokens[2]), placeholders),
+            operator=tokens[3],
+            operand2=_resolve_value(_strip_parens(tokens[4]), placeholders),
             indent=indent,
         )
 
