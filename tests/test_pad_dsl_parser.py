@@ -15,7 +15,9 @@ from dump_daemon.pad_dsl_parser import (
     LoopForeachRecord,
     LoopRecord,
     LoopWhileRecord,
+    EnumRef,
     SetVariableRecord,
+    VarRef,
     build_block_tree,
     parse_dsl,
 )
@@ -58,9 +60,10 @@ def test_display_message_action_parsed_correctly() -> None:
     msg = records[0]
     assert isinstance(msg, ActionRecord)
     assert msg.action_id == "Display.ShowMessageDialog.ShowMessage"
-    assert msg.params["Icon"] == "Display.Icon.None"
-    assert msg.params["Buttons"] == "Display.Buttons.OK"
-    assert msg.params["DefaultButton"] == "Display.DefaultButton.Button1"
+    # Namespace.Enum.Value形式の列挙値はEnumRefとして区別される(VarRefとは別型)
+    assert msg.params["Icon"] == EnumRef("Display.Icon.None")
+    assert msg.params["Buttons"] == EnumRef("Display.Buttons.OK")
+    assert msg.params["DefaultButton"] == EnumRef("Display.DefaultButton.Button1")
     assert msg.params["IsTopMost"] is False
     assert msg.output_var == "ButtonPressed"
 
@@ -114,8 +117,8 @@ def test_if_record_parsed_with_bare_variable_reference_and_string_literal() -> N
     assert len(records) == 2
     if_record = records[0]
     assert isinstance(if_record, IfRecord)
-    # 変数参照は %...% ではなく裸のトークンとしてDSLに現れる
-    assert if_record.operand1 == "TestVar"
+    # 変数参照は %...% ではなく裸のトークンとしてDSLに現れ、VarRefとして区別される
+    assert if_record.operand1 == VarRef("TestVar")
     assert if_record.operator == "="
     assert if_record.operand2 == "hello"
 
@@ -162,9 +165,9 @@ def test_loop_record_parsed_with_bounds_and_step() -> None:
     loop_record, end_record = records
     assert isinstance(loop_record, LoopRecord)
     assert loop_record.loop_var == "LoopIndex"
-    assert loop_record.start == "1"
-    assert loop_record.end == "3"
-    assert loop_record.step == "1"
+    assert loop_record.start == 1
+    assert loop_record.end == 3
+    assert loop_record.step == 1
     assert loop_record.indent == 0
     assert isinstance(end_record, KeywordRecord)
     assert end_record.name == "END"
@@ -181,7 +184,7 @@ def test_loop_foreach_record_parsed_with_bare_variable_reference() -> None:
     foreach_record = records[0]
     assert isinstance(foreach_record, LoopForeachRecord)
     assert foreach_record.item_var == "CurrentItem"
-    assert foreach_record.collection == "TestVar"
+    assert foreach_record.collection == VarRef("TestVar")
 
 
 # 実機で「Loop condition」(First operand=%LoopIndex%, Operator=Less than (<),
@@ -195,9 +198,9 @@ def test_loop_while_record_strips_parens_around_operands() -> None:
     while_record = records[0]
     assert isinstance(while_record, LoopWhileRecord)
     # IfRecordと異なり、オペランドは丸括弧で囲まれているためこれを剥がして解決する
-    assert while_record.operand1 == "LoopIndex"
+    assert while_record.operand1 == VarRef("LoopIndex")
     assert while_record.operator == "<"
-    assert while_record.operand2 == "10"
+    assert while_record.operand2 == 10
 
 
 def test_build_block_tree_leaves_flat_records_unchanged() -> None:
@@ -265,7 +268,7 @@ def test_elseif_record_parsed_with_bare_variable_reference_and_string_literal() 
     records = parse_dsl(IF_ELSEIF_ELSE_DSL)
     elseif_record = records[1]
     assert isinstance(elseif_record, ElseIfRecord)
-    assert elseif_record.operand1 == "TestVar"
+    assert elseif_record.operand1 == VarRef("TestVar")
     assert elseif_record.operator == "="
     assert elseif_record.operand2 == "world"
     assert elseif_record.indent == 0
@@ -358,7 +361,7 @@ def test_build_block_tree_handles_if_nested_inside_if_arm() -> None:
     assert len(outer.arms) == 1
     outer_header, outer_body = outer.arms[0]
     assert isinstance(outer_header, IfRecord)
-    assert outer_header.operand1 == "TestVar"
+    assert outer_header.operand1 == VarRef("TestVar")
 
     assert len(outer_body) == 1
     inner = outer_body[0]
@@ -366,5 +369,5 @@ def test_build_block_tree_handles_if_nested_inside_if_arm() -> None:
     assert len(inner.arms) == 1
     inner_header, inner_body = inner.arms[0]
     assert isinstance(inner_header, IfRecord)
-    assert inner_header.operand1 == "InnerVar"
+    assert inner_header.operand1 == VarRef("InnerVar")
     assert inner_body == []

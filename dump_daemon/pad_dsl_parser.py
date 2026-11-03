@@ -41,6 +41,12 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   `KeywordRecord(name="EXIT"/"NEXT", args=["LOOP"])`としてそのまま表現できる。
   `LOOP`系ブロックの本体内に通常のリーフとして現れるため、`build_block_tree()`に
   特別な対応は不要)
+- 値の種別区別: `$'''...'''`由来の文字列リテラル、裸の数値トークン(`int`/`float`)、
+  `Namespace.Enum.Value`形式の列挙値(`EnumRef`)、それ以外の裸トークン(`VarRef`——変数参照)
+  を区別して返す。例えば`IF TestVar = $'''hello''' THEN`では`TestVar`は`VarRef("TestVar")`、
+  `hello`はPython文字列`"hello"`になる。コード生成時に「変数名としてそのまま出力するか」
+  「文字列リテラルとして`repr()`するか」を判別するために必須の区別(両者とも字面上は
+  識別子のように見えうるため、プレースホルダ経由かどうかでしか判別できない)。
 
 未対応(今後の実機確認が必要): 複合式(AND/OR)。
 """
@@ -57,6 +63,35 @@ _ESCAPE_RE = re.compile(r'\\\\|\\"')
 def _unescape(raw: str) -> str:
     """DSL文字列リテラル内の `\\"` → `"`、`\\\\` → `\\` を解除する。"""
     return _ESCAPE_RE.sub(lambda m: '"' if m.group(0) == '\\"' else "\\", raw)
+
+
+@dataclass(frozen=True)
+class VarRef:
+    """DSL上の裸トークンが変数参照であることを表すマーカー型。
+
+    `$'''...'''`で囲まれていない裸トークンは、数値リテラル/`Namespace.Enum.Value`型の
+    列挙値でなければ変数参照(実機検証: design/dsl_format_findings.md 知見6・9——UI上の
+    `%VarName%`はDSL上`%`記号なしの裸トークンとして出力される)。文字列リテラル
+    ("hello"等)と字面上は区別がつかないため、専用の型でラップして明示する。
+    """
+
+    name: str
+
+
+@dataclass(frozen=True)
+class EnumRef:
+    """`Namespace.Enum.Value`形式(例: `Display.Icon.None`)の列挙値を表すマーカー型。
+
+    ドット区切りの完全修飾名という見た目でPAD変数参照(ドットを含まない裸識別子)と
+    区別できるため、`VarRef`とは別の型にしている。
+    """
+
+    value: str
+
+
+_DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
+_INT_RE = re.compile(r"-?\d+")
+_FLOAT_RE = re.compile(r"-?\d+\.\d+")
 
 
 @dataclass
@@ -223,7 +258,7 @@ def build_block_tree(records: list[Record]) -> list[Node]:
     return parse_level(0)
 
 
-_ACTION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
+_ACTION_ID_RE = _DOTTED_RE
 _KNOWN_KEYWORDS = {"WAIT", "END", "ELSE", "EXIT", "NEXT"}
 
 
@@ -261,7 +296,13 @@ def _resolve_value(token: str, placeholders: dict[str, str]) -> Any:
         return True
     if token == "False":
         return False
-    return token
+    if _FLOAT_RE.fullmatch(token):
+        return float(token)
+    if _INT_RE.fullmatch(token):
+        return int(token)
+    if _DOTTED_RE.fullmatch(token):
+        return EnumRef(token)
+    return VarRef(token)
 
 
 def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Record:
