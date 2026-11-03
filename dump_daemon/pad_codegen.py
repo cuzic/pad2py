@@ -18,7 +18,12 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - `KeywordRecord(WAIT)` → `time.sleep(...)`
 - `KeywordRecord(EXIT LOOP)` / `KeywordRecord(NEXT LOOP)` → `break`/`continue`
 - `ActionRecord`(`Scripting.RunPythonScript.*`) → `PythonCode`パラメータの中身をそのまま展開
-  (他のUI automationアクションはまだ対応していないため`# TODO`コメントを出力する)
+- `ActionRecord`(`MouseAndKeyboard.SendKeys.FocusAndSendKeys`) → `pyautogui.typewrite(...)`
+  (design/dsl_format_findings.md 知見19。**未検証の前提**: `TextToSend`が特殊キー記法
+  (「Insert special keys」で挿入される`{ENTER}`等)を含まない、素のリテラルテキストである
+  場合のみを対象にしている——特殊キー記法のDSL表現自体をまだ実機確認していないため、
+  含んでいた場合の変換は未対応。他のUI automationアクションも含め、未対応のものは
+  架空のAPI呼び出しをでっち上げず`# TODO`コメントを出力する)
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
   (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
@@ -124,8 +129,13 @@ def render_condition(operand1: object, operator: str, operand2: object) -> str:
 def generate_python(nodes: list[Node]) -> str:
     """ブロック木からスタンドアロンのPythonソースを生成する(末尾改行付き)。"""
     body = _generate_block_body(nodes, indent=0)
-    needs_time = any("time.sleep(" in line for line in body)
-    header = ["import time", ""] if needs_time else []
+    imports = []
+    if any("time.sleep(" in line for line in body):
+        imports.append("import time")
+    if any("pyautogui." in line for line in body):
+        imports.append("import pyautogui")
+    imports.sort()
+    header = [*imports, ""] if imports else []
     return "\n".join(header + body) + "\n"
 
 
@@ -212,4 +222,10 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
                 # 自動では生成しない——TODOとして明示する。
                 lines.append(f"{prefix}# TODO: bind {node.output_var} to this script's output if needed")
             return lines
+    if node.action_id == "MouseAndKeyboard.SendKeys.FocusAndSendKeys":
+        text = node.params.get("TextToSend")
+        if isinstance(text, str):
+            delay_ms = node.params.get("DelayBetweenKeystrokes", 10)
+            interval = delay_ms / 1000 if isinstance(delay_ms, (int, float)) else 0.01
+            return [f"{prefix}pyautogui.typewrite({render_value(text)}, interval={interval!r})"]
     return [f"{prefix}# TODO: map PAD action: {node.action_id}"]

@@ -150,3 +150,27 @@ def test_generate_python_interpolates_text_template_set_variable() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert 'InterpVar = f"""Hello {TestVar} world, LoopIndex is {LoopIndex}"""' in code
+
+
+# 実機で「Send keys」(Text to send="Hello World", Delay between keystrokes=10,
+# Send Text as hardware keys=False)を追加して再キャプチャした生データ(知見19)。
+SEND_KEYS_DSL = (
+    "MouseAndKeyboard.SendKeys.FocusAndSendKeys TextToSend: $'''Hello World''' "
+    "DelayBetweenKeystrokes: 10 SendTextAsHardwareKeys: False"
+)
+
+
+def test_generate_python_maps_send_keys_to_pyautogui_typewrite() -> None:
+    tree = build_block_tree(parse_dsl(SEND_KEYS_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "import pyautogui" in code
+    assert "pyautogui.typewrite('Hello World', interval=0.01)" in code
+
+
+def test_generate_python_full_flow_still_marks_display_message_as_todo() -> None:
+    # SendKeysのマッピング追加後も、まだ対応していないアクション(Display message)は
+    # 引き続きでっち上げずTODOのままであること(回帰確認)。
+    tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" in code
