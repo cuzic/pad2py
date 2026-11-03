@@ -1019,3 +1019,34 @@ SET NewVar3 TO InnerVar.SomeProperty
 **添字アクセスも確認**: `%InnerVar[0]%`という式も同じ手順で確認した。`SET NewVar3 TO InnerVar[0]`というDSLが得られたが、これは元々ドットを含まないため`_DOTTED_RE`/`_ENUM_REF_RE`のどちらにもマッチせず、修正前から既に`VarRef(name='InnerVar[0]')`として正しく保持されていた——codegenも`InnerVar[0]`という有効なPython式(リスト/辞書の添字アクセスと同じ構文)を偶然にも正しく生成できていた。
 
 **未検証のまま残る項目**: この修正は完全な曖昧性解消ではない——3セグメント以上の`VariableTrailer`(`MyObj.Prop1.Prop2`のような多段プロパティアクセス)や2セグメントの`EnumRef`が実在すれば依然として誤判定しうる、実機証拠に基づく暫定的な最善の判断に留まる。添字`[0]`が0始まりか1始まりか(知見51のLOOP range同様、実機での動作確認が必要)、`VariableTrailer`がリスト/データテーブル/カスタムオブジェクトのどの型でどう振る舞うか、はいずれも未確認のまま持ち越し。
+
+## 56. 【本プロジェクト2番目に大きい発見】知見46で確認したAttributes(Class/Name/Process)から実際にpywinautoセレクタを組み立て、実機で実要素を一意に特定できることを初めて実証——`pad_codegen.py`が初めて「架空でない」UI要素セレクタ提案を出力するようになった
+
+知見46で「`ControlRepositoryEntry`情報を実際にpywinautoセレクタへ変換する配線は、確認できた実例がまだ2件のみのため実装を見送った」としていた課題に、改めて取り組んだ。これまでは`appmask[...]`のデータ(表示名・`Attributes`配列)を**取得できる**ことまでは実機確認済みだったが、そのデータから組み立てたpywinautoセレクタが**実際に実機の本物の要素を正しく特定できるか**は一度も検証していなかった——「データの実在」と「データの有用性」は別の主張であり、後者がこのプロジェクトにとって最終的に一番重要な問いだった。
+
+**検証方法**: `pad_run`(clipwireの対話的セッション内pywinauto実行)経由で、知見46でキャプチャ済みの実際の属性値をそのまま使ったpywinautoコードをVM上で直接実行した:
+
+```python
+from pywinauto import Desktop
+d = Desktop(backend="uia")
+win = d.window(title="Untitled - Notepad")  # 知見46のWindow Attributes: Name(Ignore:false)
+print(win.exists())  # → True
+edit = win.child_window(class_name="Edit")  # 知見46のDocument Attributes: Class(Ignore:false)
+print(edit.exists())  # → True
+```
+
+**結果**: `win.exists()`/`edit.exists()`ともに`True`——`title="Untitled - Notepad"`だけ(`Process`属性は使わずとも)で実際のメモ帳ウィンドウを一意に特定でき、そこから`child_window(class_name="Edit")`で実際のテキスト編集領域も一意に特定できることを実機で確認した。`win.element_info.class_name`は`"Notepad"`(PAD側では`Ignore: true`だが実際の値としては整合)、`win.element_info.process_id`から`psutil`で引いたプロセス名は`"notepad.exe"`(PAD側の`Process: "notepad"`と拡張子以外一致)だった。これは知見46で「将来的に実際のpywinautoセレクタへ変換する際の土台になる」と予測していた`Class`/`Name`/`Process`属性の対応付けが**実際に機能する**ことを示す、初めての実機的根拠である。
+
+**実装内容**: `pad_codegen.py`の`generate_python()`に任意の`repository`引数(`parse_control_repository()`の戻り値)を追加した。各`UiElementRef.path`のセグメントをリポジトリ内のエントリ名と照合し、各エントリの`selectors[0][0].attributes`から`Ignore: False`の属性だけを`Class`→`class_name`/`Name`→`title`に対応付けて(`Process`属性はpywinautoの`window()`/`child_window()`がプロセス**名**を直接受け付けない——`process=`はPIDを要求するため、意図的に使わない)、`Desktop(backend="uia").window(...)`から始まり`.child_window(...)`を連ねるセレクタ式の文字列を組み立てる(`_build_pywinauto_selector_expr()`)。リポジトリに情報が無い・使える属性が1つも無い(知見44の`:startbutton`のような特殊タグで`Attributes`が空の場合等)場合は`None`を返し、呼び出し元は何も付け足さない——**でっち上げたセレクタを返すことは無い**。
+
+この提案は、既存の`# TODO`コメント(`_ui_element_hint()`)に`; verified pywinauto selector: <式>`として**追記するだけ**であり、生成される実行コード自体(`# TODO`行そのもの)は一切変えていない——あくまで「ユーザーが手動でTODOを埋める際の、実機検証済みの出発点」を提供するに留め、「このコードは動く」という誤った確信を与えないようにした。`pad2py_cli.py`の`convert()`も、入力テキストから自動的に`parse_control_repository()`を呼んで`generate_python()`へ橋渡しするよう更新したため、ユーザーは一括コピーした生データをそのまま`pad2py`コマンドに渡すだけでこの提案を得られる(追加の手順は不要)。
+
+実例(知見52の「Wait for window content」フィクスチャに対する実際の出力):
+
+```python
+# TODO: map PAD wait action: UIAutomation.WaitForWindowContent.WindowToContainElement (timeout: none) (UI element: "Window 'Untitled - Notepad'" > "Document 'Text Editor'"; selector not available from DSL, see knowledge 38/39/42/43/46 — fill in manually; verified pywinauto selector: Desktop(backend="uia").window(title='Untitled - Notepad').child_window(class_name='Edit'))
+```
+
+**設計上の判断(後方互換性)**: `generate_python()`の`repository`引数は省略可能(既定`None`)で、深く再帰する内部のcodegenヘルパー群全ての関数シグネチャを変更するのを避けるため、`generate_python()`の呼び出し期間中だけ有効なモジュールレベルの状態(`_active_repository`、`try`/`finally`で必ず復元)として実装した——`generate_python()`は単一スレッド・同期実行・非再入の公開APIである前提に基づく意図的なトレードオフ。省略時は既存の全167件のテストが無改修でそのまま通ることを確認済み(完全な後方互換)。
+
+**未検証のまま残る項目**: 今回実機確認できたのは「ウィンドウ+直接の子コントロール」という2階層の組み合わせ1パターンのみ。3階層以上のネスト・`Window`以外のコンテナ種別(ダイアログ等)での`Attributes`語彙の一般化・複数の同名候補が存在する場合の曖昧性解消(`found_index`等)は、いずれも実機未検証のまま持ち越し。

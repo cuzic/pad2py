@@ -23,14 +23,23 @@ import sys
 from pathlib import Path
 
 from .pad_codegen import generate_python
-from .pad_dsl_parser import build_block_tree, parse_dsl
+from .pad_dsl_parser import build_block_tree, parse_control_repository, parse_dsl
 
 
 def convert(dsl_text: str) -> str:
-    """クリップボードDSLテキストをPythonソースへ変換する(ライブラリとしても使える薄い関数)。"""
+    """クリップボードDSLテキストをPythonソースへ変換する(ライブラリとしても使える薄い関数)。
+
+    知見44の通り、対象アクションを含む範囲を一括選択してコピーした入力には
+    `# [ControlRepository][PowerAutomateDesktop]`セクションが同梱されうる。含まれていれば
+    `parse_control_repository()`で解析し、知見56のpywinautoセレクタヒント機能
+    (`generate_python()`の`repository`引数)に渡す——単体アクションのコピー等、
+    セクションが無い入力では`parse_control_repository()`が空の辞書を返すため、
+    従来通りヒント無しの出力になる。
+    """
     records = parse_dsl(dsl_text)
     tree = build_block_tree(records)
-    return generate_python(tree)
+    repository = parse_control_repository(dsl_text)
+    return generate_python(tree, repository=repository)
 
 
 def _read_input(path: str | None) -> str:

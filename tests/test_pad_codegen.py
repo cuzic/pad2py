@@ -16,7 +16,13 @@ from dump_daemon.pad_codegen import (
     render_text_template,
     render_value,
 )
-from dump_daemon.pad_dsl_parser import EnumRef, VarRef, build_block_tree, parse_dsl
+from dump_daemon.pad_dsl_parser import (
+    EnumRef,
+    VarRef,
+    build_block_tree,
+    parse_control_repository,
+    parse_dsl,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -757,3 +763,53 @@ def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -
     compile(code, "<generated>", "exec")
     assert "# label: MyLabel" in code
     assert "# TODO: unmapped keyword: GOTO MyLabel" in code
+
+
+def test_generate_python_adds_verified_pywinauto_selector_hint_when_repository_given() -> None:
+    # design/dsl_format_findings.md 知見56(実機検証済み): 知見46でAttributesの中身
+    # (Window: Name/Process、子コントロール: Class)を確認した後も、その情報から実際に
+    # pywinautoセレクタを組み立てて実機の要素を特定できるかはこれまで未検証のまま、
+    # pad_codegen.pyはTODOコメントに表示名パスを出すだけに留めていた。
+    # 実際にDesktop(backend="uia").window(title="Untitled - Notepad").child_window(
+    # class_name="Edit")を実機(GCP Windows VM)で実行し、メモ帳の実ウィンドウ・実テキスト
+    # 編集領域を正しく一意に特定できることを確認した。これを踏まえ、`generate_python()`に
+    # 任意の`repository`引数(`parse_control_repository()`の戻り値)を追加し、
+    # 渡された場合はTODOコメントに検証済みのpywinautoセレクタ式を提案として付記する
+    # ようにした——あくまでコメント内の提案であり、生成される実行コード自体を変えることは
+    # 無い(でっち上げたセレクタで動くコードを出力することは無い、という方針は維持)。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        'verified pywinauto selector: Desktop(backend="uia").window(title=\'Untitled - '
+        "Notepad\').child_window(class_name='Edit')" in code
+    )
+
+
+def test_generate_python_omits_selector_hint_when_repository_not_given() -> None:
+    # design/dsl_format_findings.md 知見56: `repository`省略時は完全に従来通りの挙動
+    # (ヒント無し)で、後方互換性を保つ。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    assert "verified pywinauto selector" not in code
+
+
+def test_generate_python_omits_selector_hint_for_special_pseudo_selector() -> None:
+    # design/dsl_format_findings.md 知見56: 知見44の「Start Button」のような特殊な
+    # 擬似セレクタ(`CustomValue: ":startbutton"`、`Attributes: []`)は、使える属性が
+    # 1つも無いため、でっち上げたセレクタを提案せずヒント無しにフォールバックする。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert "verified pywinauto selector" not in code
+    assert "Start Button" in code
