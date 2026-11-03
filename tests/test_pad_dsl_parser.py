@@ -1448,3 +1448,26 @@ def test_close_window_by_instance_handle_parsed_from_real_capture() -> None:
     assert isinstance(rec, ActionRecord)
     assert rec.action_id == "UIAutomation.CloseWindow.CloseByInstanceOrHandle"
     assert rec.params["WindowInstance"] == VarRef("AutomationWindow2")
+
+
+def test_get_window_foreground_mode_has_two_output_variables() -> None:
+    # design/dsl_format_findings.md 知見57の追記(実機検証済み): 「Get window」の
+    # 「Get window:」ドロップダウンは「Specific window」(知見57本文)「Foreground window」の
+    # 2択だけだった。「Foreground window」を選ぶと、1つのアクションが**2つの`=>`出力変数
+    # 束縛を同時に持つ**という、これまで一度も実機確認していなかったパターンに遭遇した
+    # (`WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2`)。
+    # `SetVariableRecord.output_var`は「後方互換のため最後に見つかったものを保持する」設計に
+    # 当初から意図的になっていた(dump_daemon/pad_dsl_parser.pyの既存コメント参照)ため、
+    # 実際に複数`=>`を持つ実例に遭遇した今回も、既存の`output_vars`辞書(複数キー対応)で
+    # 一切のコード変更無しで正しくパースできることを確認した。
+    dsl = "UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2"
+    records = parse_dsl(dsl)
+    assert len(records) == 1
+    rec = records[0]
+    assert isinstance(rec, ActionRecord)
+    assert rec.action_id == "UIAutomation.GetWindow.GetForegroundWindow"
+    assert rec.output_vars == {
+        "WindowTitle": "WindowTitle2",
+        "WindowInstance": "AutomationWindow2",
+    }
+    assert rec.output_var == "AutomationWindow2"
