@@ -22,9 +22,11 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 - 文字列値中の`%VarName%`マーカー(design/dsl_format_findings.md 知見16)→ f-string化
   (`render_text_template()`。マーカーを含まない文字列は通常の`repr()`のまま)
 
-演算子は実機検証済みの`=`/`<`のみ`_OPERATOR_MAP`に登録している。未検証の演算子
-(`<>`/`>`/`>=`/`<=`/文字列の`contains`等)に遭遇した場合は、誤った意味論を生成しないよう
-`ValueError`を送出する。
+演算子は実機検証済みの6つの比較演算子(`=`/`<>`/`>`/`>=`/`<`/`<=`、design/dsl_format_findings.md
+知見18)のみ`_OPERATOR_MAP`に登録している。`Contains`等のテキスト演算子は中置記法ではなく
+`FunctionName(operand1, operand2, caseFlag)`という別の構文であり(知見18-2)、パーサー
+(`pad_dsl_parser.py`)がまだこれを正しく構造化できないため、本モジュールでも未対応。
+未知の演算子に遭遇した場合は、誤った意味論を生成しないよう`ValueError`を送出する。
 """
 from __future__ import annotations
 
@@ -52,7 +54,11 @@ INDENT = "    "
 # 実機検証済みの演算子のみ(design/dsl_format_findings.md 知見6・9)。
 _OPERATOR_MAP = {
     "=": "==",
+    "<>": "!=",
+    ">": ">",
+    ">=": ">=",
     "<": "<",
+    "<=": "<=",
 }
 
 # PAD変数名として実機で確認した形(常に有効なPython識別子)とみなす。
