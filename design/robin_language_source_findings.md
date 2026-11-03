@@ -578,8 +578,10 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   `UIAutomationActionBase`等の追跡にはさらなるDLL取得が必要)
 - ~~`SWITCH`/`CASE`/`DEFAULT`の実機検証~~ → 完了(design/dsl_format_findings.md 知見33。
   類推していたインデント規則は誤りだったと判明し、修正済み)
-- 名前付き`ON ERROR <Case>`ケース・複数ケース構成・`REPEAT ACTION`/`NEXT ACTION`の
-  実機検証(catch-allケース1つだけの構造は確認済み——本セクション参照)
+- ~~名前付き`ON ERROR <Case>`ケース・複数ケース構成の実機検証~~ → 完了
+  (design/dsl_format_findings.md 知見36。`stop_at_on_error`での区切りバグを修正、
+  パーサー/codegenとも実装済み)。`REPEAT ACTION`/`NEXT ACTION`・「Throw error」・
+  `ON BLOCK ERROR`は未検証のまま持ち越し
 - `AND`/`OR`/`XOR`/`NOT`による複合条件式、`+`/`-`/`*`/`/`/`mod`による算術式(構文は確定済み——
   本セクション参照)を表現できるよう、`IfRecord`等のフラットな構造を再帰的な式木に
   再設計すること。優先順位・結合性も実機/文法でさらに確認が必要

@@ -463,3 +463,24 @@ def test_generate_python_renders_guarded_node_as_try_except() -> None:
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["Result"] == "recovered"
+
+
+def test_generate_python_leaves_multi_arm_on_error_as_todo() -> None:
+    # design/dsl_format_findings.md 知見36(実機確認済み): 名前付きケース+catch-allが
+    # 区切り無しに連続しうる。どのPAD内部エラーケース名がどのPython例外型に対応するか
+    # 分からないため、複数アーム・名前付きケースはでっち上げず`# TODO`に倒す——保護対象の
+    # 文自体は(try/exceptでラップせず)普通に出力する。
+    dsl = (
+        "SET Result TO $'''a'''\n"
+        "ON ERROR RunPythonScriptError\n"
+        "SET Result TO $'''b'''\n"
+        "ON ERROR\n"
+        "SET Result TO $'''c'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "Result = 'a'" in code
+    assert "# TODO: ON ERROR handling not converted" in code
+    assert "try:" not in code
