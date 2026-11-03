@@ -216,11 +216,17 @@ class RawExpr:
     design/dsl_format_findings.md 知見53(実機検証済み)で確認した通り、これらの演算子は
     予測通りのベアキーワード(`AND`/`OR`/`XOR`/`NOT`は大文字に正規化される、`mod`は
     小文字のまま)としてDSLに出力される。Pythonへの意味論的に正しい変換(演算子の優先順位、
-    `mod`/`XOR`の境界値での挙動差異等)は未検証のため、ここではトークン列を失わずに
-    そのままテキストとして保持するにとどめ、codegen側で安全にTODO化する。
+    `mod`/`XOR`の境界値での挙動差異等)は未検証のため、`text`は失わずにそのまま保持し、
+    codegen側で安全にTODO化する(方針は変更していない)。
+
+    `tree`は`pad_expr_parser.py`のLark文法で構文解析した構造化表現(`ExprNode`、解析に
+    失敗した場合は`None`)。演算子の優先順位は実機未検証の仮定でしかないため、現時点では
+    codegenはまだ`tree`を使わず`text`だけを見ている——将来、優先順位が実機確認された際に
+    `tree`から実際のPython式を生成できるようにするための先行投資。
     """
 
     text: str
+    tree: Any = None
 
 
 @dataclass(frozen=True)
@@ -1035,10 +1041,12 @@ def _stringify_resolved_expr_token(value: Any) -> str:
 
 
 def _render_raw_expr(tokens: list[str], placeholders: dict[str, str | tuple[str, ...]]) -> RawExpr:
-    pieces = [
-        _stringify_resolved_expr_token(_resolve_value(tok, placeholders)) for tok in tokens
-    ]
-    return RawExpr(text=" ".join(pieces))
+    # pad_expr_parser.py がpad_dsl_parser.py側のヘルパー(_resolve_value等)を参照するため、
+    # モジュール読み込み順の循環を避けて呼び出し時に遅延importする。
+    from .pad_expr_parser import parse_expr
+
+    tree, text = parse_expr(tokens, placeholders)
+    return RawExpr(text=text, tree=tree)
 
 
 def _parse_action_call_body(

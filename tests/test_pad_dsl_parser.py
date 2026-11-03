@@ -192,6 +192,9 @@ def test_set_variable_with_compound_and_or_not_expression_captured_as_raw_expr()
     assert isinstance(set_var, SetVariableRecord)
     assert isinstance(set_var.value, RawExpr)
     assert set_var.value.text == "1 = 1 AND 2 = 2 OR NOT 3 = 4"
+    # pad_expr_parser.py(Lark文法)での構造化にも成功しているはず(素朴なトークン結合への
+    # フォールバックに陥っていないことの確認。構造の詳細はtest_pad_expr_parser.pyで検証)。
+    assert set_var.value.tree is not None
 
 
 def test_set_variable_with_xor_and_parentheses_preserves_parens_in_raw_expr() -> None:
@@ -202,6 +205,7 @@ def test_set_variable_with_xor_and_parentheses_preserves_parens_in_raw_expr() ->
     assert isinstance(set_var, SetVariableRecord)
     assert isinstance(set_var.value, RawExpr)
     assert set_var.value.text == "(1 = 1 XOR 2 = 2) AND (3 = 3)"
+    assert set_var.value.tree is not None
 
 
 def test_set_variable_with_arithmetic_expression_keeps_mod_lowercase() -> None:
@@ -213,6 +217,7 @@ def test_set_variable_with_arithmetic_expression_keeps_mod_lowercase() -> None:
     assert isinstance(set_var, SetVariableRecord)
     assert isinstance(set_var.value, RawExpr)
     assert set_var.value.text == "1 + 2 * 3 - 4 / 2 mod 3"
+    assert set_var.value.tree is not None
 
 
 def test_run_python_script_string_literal_unescaped() -> None:
