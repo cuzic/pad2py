@@ -324,11 +324,44 @@ END
 (保護対象のアクション行の直後に続くという理解で合っているか)、および実機での出力例が
 一つも無いことだけ。
 
+## `SWITCH`/`CASE`/`DEFAULT`のブロックネスト構造をANTLR文法から類推し、パーサー/codegenに実装
+
+前回のティックで最優先課題としていた「`SWITCH`/`CASE`/`DEFAULT`のネスト構造(indent規則)」を、
+Printer側ではなく**ANTLRパーサー側**(`Microsoft.Flow.RPA.Desktop.Robin.Language.Parsing.Language.cs`、
+ANTLR4で生成されたパーサー本体)から確認した。`Small_statementContext`(=「1つの単純文」という
+文法規則)の子ルールアクセサを見ると:
+
+```csharp
+public If_statementContext if_statement() { ... }
+public Elseif_statementContext elseif_statement() { ... }
+public Else_statementContext else_statement() { ... }
+public Switch_statementContext switch_statement() { ... }
+public Case_statementContext case_statement() { ... }
+public Case_defaultContext case_default() { ... }
+public While_statementContext while_statement() { ... }
+public Loop_statementContext loop_statement() { ... }
+// ...
+```
+
+**`switch_statement`/`case_statement`/`case_default`は、`if_statement`/`elseif_statement`/
+`else_statement`/`while_statement`/`loop_statement`と全く同じ文法規則(`small_statement`の
+選択肢)として並列に定義されている**——つまりSWITCH/CASE/DEFAULTにも専用のブロック構造(ANTLRの
+サブルール経由の入れ子)は存在せず、IF/ELSE IF/ELSEと全く同じ設計(フラットな文の並びを
+indentだけで解釈する)になっていることが文法レベルで確定した。
+
+この文法上の並列性を根拠に、`pad_dsl_parser.py`に`SwitchRecord`/`CaseRecord`/`CaseDefaultRecord`と
+`SwitchNode`(`ConditionalNode`と同型——`arms: list[tuple[header, body]]`)を追加し、
+`build_block_tree()`で`IF`/`ELSE IF`/`ELSE`と同じ規則(ヘッダー群は同じindent、各アームの本体は
+indent+1、`END`は構文全体に1つ)を適用した。`pad_codegen.py`にも`if`/`elif`/`else`(`==`による
+等価比較)への変換を追加した。
+
+**明示しておくべき限界**: この実装は確認済みの文法的並列性からの合理的な類推であり、
+SWITCH自身が実機で実際にこのインデント規則で出力されるかを直接確認したDSL例は無い
+(`LOOP`のrange両端含む仮定と同種の、明示的に文書化された未検証の前提として扱う)。
+
 ## 今後の調査候補(未着手)
 
-- `SWITCH`/`CASE`/`CASE DEFAULT`文のブロックネスト構造(indent規則)の特定——`SwitchStatement`等を
-  出力する上位の印字ロジック(Robin.Language.dll内の別クラス、またはPrinter/Formatter相当のもの)
-  をさらに追う必要がある。実機でのDSL出力例が無いため最優先の確認事項。
+- `SWITCH`/`CASE`/`DEFAULT`(構造はANTLR文法から類推実装済み——本セクション参照)の実機検証
 - `ON ERROR`/`ON BLOCK ERROR`ブロック(構造は解明済み——本セクション参照)の実機検証、
   および`REPEAT ACTION`/`NEXT ACTION`が本体内のどこに出現しうるかの確認
 - `In`/`Not in`演算子を実機のどのUI経路で使えるかの特定、および`NOT IN`(2トークン)にパーサーが対応していないギャップの解消

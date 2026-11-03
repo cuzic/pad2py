@@ -81,13 +81,22 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
 存在を確認したが、実機でどのUI経由で使えるかは未確認。`NOT IN`は2トークンのため現状の
 `_parse_line`では誤パースする既知のギャップがある)。
 
-`SWITCH <expr>` / `CASE <value>` / `DEFAULT` / `ON ERROR <Case>` / `ON BLOCK ERROR <Case>`
-(design/robin_language_source_findings.md——`SwitchStatement`/`CaseStatement`/
-`CaseDefaultStatement`/`ExceptionCaseStatement`のソースで各ステートメント単体の
-`ToString()`出力は確認済みだが、**ブロックとしてのネスト構造(indent深さの規則)は
-ソース上のBlock/Scopeクラスからは確認できず、実機でのDSL出力例もまだ無い**。IF文の
-ConditionalNode構造のような決め打ちを安易に適用すると誤った意味論を生成する恐れがあるため、
-文単体のパース/コード生成は意図的に未実装のまま(`RawRecord`として保持される)。
+- `SWITCH <expr>` / `CASE <value>` / `DEFAULT` / `END` 形式の多分岐(design/robin_language_source_findings.md——
+  ANTLR生成パーサー`Language.cs`の`Small_statementContext`を読み、`switch_statement`/
+  `case_statement`/`case_default`が`if_statement`/`elseif_statement`/`else_statement`/
+  `while_statement`/`loop_statement`と**全く同じ文法規則(grammar rule)の選択肢として並列**
+  であることを確認した——つまりSWITCH/CASE/DEFAULTにも専用のネスト構造(Block/Scopeクラス)は
+  存在せず、IF/ELSE IF/ELSEと同様、フラットな文の並びをindentだけで解釈する設計になっている。
+  この文法上の並列性から類推し、`IF`/`ELSE IF`/`ELSE`で確認済みの規則(ヘッダー群は同じindent、
+  各アームの本体はindent+1、`END`は構文全体に1つ)を`SWITCH`/`CASE`/`DEFAULT`にもそのまま適用した。
+  **注意**: この類推自体は確認済みの文法的並列性に基づく合理的な推論だが、SWITCH自身の
+  実機でのインデント規則そのものを直接確認したDSL出力例はまだ無い——`LOOP`の両端含むrange仮定
+  (このモジュールの別箇所)と同種の「明示的に文書化された未検証の前提」として扱うこと。
+
+`ON ERROR <Case>` / `ON BLOCK ERROR <Case>`(design/robin_language_source_findings.md——
+`ExceptionStatementBase`のソースでブロック構造自体は解明できたが、実機でのDSL出力例が
+まだ無く、保護対象のアクションとの結びつき方も実証されていないため、本モジュールでは
+未実装のまま(`RawRecord`として保持される)。
 """
 from __future__ import annotations
 
@@ -214,11 +223,9 @@ class ElseIfFunctionRecord:
 
 @dataclass
 class CommentRecord:
-    """`# <comment>`形式の単一行コメント(design/robin_language_source_findings.md参照、
-
-    `CommentStatement.ToString()`のソースコードで確認)。複数行コメント
-    (`/# ... #/`)は改行をまたぐため、既存の`$'''...'''`マスキングとの相互作用が
-    未検証であり、今回は意図的に未対応(パーサーは壊れず`RawRecord`として保持する)。
+    """`# <comment>`形式の単一行コメント、および`/# ... #/`形式の複数行コメント
+    (design/robin_language_source_findings.md——`CommentStatement.ToString()`の
+    ソースコードで両方の構文を確認。複数行の場合`text`に改行が含まれる)。
     """
 
     text: str
@@ -250,6 +257,32 @@ class LoopWhileRecord:
 
 
 @dataclass
+class SwitchRecord:
+    """`SWITCH <expr>`(design/robin_language_source_findings.md——`SwitchStatement.ToString()`
+    のソースで構文を確認。ブロックとしてのネスト規則はIF/ELSE IF/ELSEとの文法上の並列性から
+    類推した未検証の前提——モジュールdocstring参照)。
+    """
+
+    expression: Any
+    indent: int = 0
+
+
+@dataclass
+class CaseRecord:
+    """`CASE <value>`(`SwitchRecord`のアーム。`SwitchRecord`と同じindentに並ぶ)。"""
+
+    value: Any
+    indent: int = 0
+
+
+@dataclass
+class CaseDefaultRecord:
+    """`DEFAULT`(ベアキーワード。`SwitchRecord`のcatch-allアーム)。"""
+
+    indent: int = 0
+
+
+@dataclass
 class RawRecord:
     text: str
     indent: int = 0
@@ -267,6 +300,9 @@ Record = (
     | LoopRecord
     | LoopForeachRecord
     | LoopWhileRecord
+    | SwitchRecord
+    | CaseRecord
+    | CaseDefaultRecord
     | RawRecord
 )
 
@@ -299,7 +335,25 @@ class ConditionalNode:
     arms: list[tuple[ConditionalArmHeader, list[Node]]] = field(default_factory=list)
 
 
-Node = Record | BlockNode | ConditionalNode
+SwitchArmHeader = CaseRecord | CaseDefaultRecord
+_CASE_ARM_TYPES = (CaseRecord, CaseDefaultRecord)
+
+
+@dataclass
+class SwitchNode:
+    """`SWITCH <expr>`/`CASE <value>`*/`DEFAULT`?/`END`全体を1つの構文単位として表す。
+
+    `ConditionalNode`と同じ理由([`IF`/`ELSE IF`/`ELSE`と同じく`switch_statement`/
+    `case_statement`/`case_default`も文法上並列な単なる文であり、専用のブロック構造を
+    持たない——モジュールdocstring参照)で、`CASE`/`DEFAULT`アームを個別の`BlockNode`
+    にせず、`SWITCH`全体を1つの`SwitchNode`としてまとめる。
+    """
+
+    expression: Any
+    arms: list[tuple[SwitchArmHeader, list[Node]]] = field(default_factory=list)
+
+
+Node = Record | BlockNode | ConditionalNode | SwitchNode
 
 
 def build_block_tree(records: list[Record]) -> list[Node]:
@@ -309,6 +363,9 @@ def build_block_tree(records: list[Record]) -> list[Node]:
     再帰下降パース:
     - `LOOP`系はブロック開始行と対応する`END`が同じindent深さ、本体だけがその1段内側。
     - `IF`/`ELSE IF`/`ELSE`は同じindent深さの1つの構文で、`END`は構文全体に1つだけ。
+    - `SWITCH`/`CASE`/`DEFAULT`も同様に扱う(design/robin_language_source_findings.md——
+      文法上`IF`/`ELSE IF`/`ELSE`と並列な構造であることをANTLR文法から確認したため、
+      同じ規則を類推適用。SWITCH自身のインデント規則は未検証の前提——モジュールdocstring参照)。
     対応する`END`が見つからないまま入力が尽きた場合(壊れたデータ等)は、例外を出さず
     そこまでの本体を返す。
     """
@@ -347,6 +404,19 @@ def build_block_tree(records: list[Record]) -> list[Node]:
                 if pos < len(records) and is_end(records[pos], level):
                     pos += 1
                 body.append(ConditionalNode(arms=arms))
+            elif isinstance(rec, SwitchRecord):
+                switch_arms: list[tuple[SwitchArmHeader, list[Node]]] = []
+                while pos < len(records):
+                    nxt = records[pos]
+                    if nxt.indent != level or not isinstance(nxt, _CASE_ARM_TYPES):
+                        break
+                    pos += 1
+                    switch_arms.append((nxt, parse_level(level + 1)))
+                    if isinstance(nxt, CaseDefaultRecord):
+                        break
+                if pos < len(records) and is_end(records[pos], level):
+                    pos += 1
+                body.append(SwitchNode(expression=rec.expression, arms=switch_arms))
             elif isinstance(rec, _SIMPLE_BLOCK_HEADER_TYPES):
                 block_body = parse_level(level + 1)
                 # parse_level(level + 1)はこのブロック自身の閉じENDを消費できない
@@ -493,6 +563,15 @@ def _parse_line(line: str, placeholders: dict[str, str], indent: int = 0) -> Rec
             step=_resolve_value(tokens[7], placeholders),
             indent=indent,
         )
+
+    if first == "SWITCH" and len(tokens) == 2:
+        return SwitchRecord(expression=_resolve_value(tokens[1], placeholders), indent=indent)
+
+    if first == "CASE" and len(tokens) == 2:
+        return CaseRecord(value=_resolve_value(tokens[1], placeholders), indent=indent)
+
+    if first == "DEFAULT" and len(tokens) == 1:
+        return CaseDefaultRecord(indent=indent)
 
     if first in _KNOWN_KEYWORDS:
         return KeywordRecord(name=first, args=tokens[1:], indent=indent)

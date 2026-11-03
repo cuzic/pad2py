@@ -23,6 +23,9 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
 対応範囲:
 - `SetVariableRecord` → 代入文
 - `ConditionalNode` → `if`/`elif`/`else`
+- `SwitchNode` → `if`/`elif`/`else`(`==`比較。design/robin_language_source_findings.md——
+  SWITCH文法自体がIF/ELSE IF/ELSEと文法上並列であることをANTLR文法から確認した上での類推に
+  基づく実装であり、SWITCH自身のインデント規則・比較セマンティクスは実機未検証の前提)
 - `BlockNode(LoopRecord)` → `for ... in range(...)`
   (**未検証の前提**: PADの`Start from`〜`End to`は両端を含むと仮定し`range(start, end+1, step)`
   としている。実際にループ本体が複数回実行されるか実機で確認するまでは未確定)
@@ -76,6 +79,7 @@ import re
 from .pad_dsl_parser import (
     ActionRecord,
     BlockNode,
+    CaseDefaultRecord,
     CommentRecord,
     ConditionalNode,
     ElseIfFunctionRecord,
@@ -90,6 +94,7 @@ from .pad_dsl_parser import (
     Node,
     RawRecord,
     SetVariableRecord,
+    SwitchNode,
     VarRef,
 )
 
@@ -208,6 +213,8 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return [f"{prefix}{node.var_name} = {render_value(node.value)}"]
     if isinstance(node, ConditionalNode):
         return _generate_conditional(node, indent)
+    if isinstance(node, SwitchNode):
+        return _generate_switch(node, indent)
     if isinstance(node, BlockNode):
         return _generate_loop_block(node, indent)
     if isinstance(node, KeywordRecord):
@@ -245,6 +252,24 @@ def _generate_conditional(node: ConditionalNode, indent: int) -> list[str]:
             )
         else:
             raise TypeError(f"Unexpected conditional arm header: {header!r}")
+        lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
+    return lines
+
+
+def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
+    """`SwitchNode` → `if`/`elif`/`else`(`==`による等価比較、design/robin_language_source_findings.md
+    参照——実機でのSWITCH文の比較セマンティクスは未検証の前提。`CASE`の値との比較に`==`以外の
+    演算子を使う可能性もゼロではないが、他に手がかりが無いため、最も妥当な解釈として採用する)。
+    """
+    prefix = INDENT * indent
+    switch_expr = render_value(node.expression)
+    lines: list[str] = []
+    for i, (header, arm_body) in enumerate(node.arms):
+        if isinstance(header, CaseDefaultRecord):
+            lines.append(f"{prefix}else:")
+        else:
+            keyword = "if" if i == 0 else "elif"
+            lines.append(f"{prefix}{keyword} {switch_expr} == {render_value(header.value)}:")
         lines.extend(_generate_block_body(arm_body, indent + 1) or [f"{INDENT * (indent + 1)}pass"])
     return lines
 
