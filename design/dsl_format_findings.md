@@ -222,3 +222,17 @@ END
 内側の`IF...END`は外側`IF`アームの本体(indent+1)に完全に収まり、外側の`ELSE IF`/`ELSE`/`END`は外側の深さ(indent 0)のまま正しく継続している。これは知見13で立てた「複合条件はIFのネストで代替される」という仮説を裏付ける直接的な実機証拠である。
 
 重要な点: `build_block_tree()`(知見10・11)は**1行もコードを変更せずに**この2階層のネストを正しく木構造化できた。`IfRecord`を見つけた時点で`parse_level(level+1)`を呼んでアーム本体を再帰的にパースする設計になっており、その本体の中にさらに`IfRecord`が現れても同じロジックが再帰的に適用されるため。`tests/test_pad_dsl_parser.py`に`NESTED_IF_INSIDE_IF_DSL`として回帰テストを追加し、2段ネストの`ConditionalNode`が正しく得られることを確認した。
+
+## 15. コード生成の試作中に発覚した`build_block_tree()`の重大バグ: LOOP系ブロックの後続兄弟が黙って消える
+
+検証済みのIR(`Record`/`BlockNode`/`ConditionalNode`)からPythonコードを生成する最小限のジェネレーター(`dump_daemon/pad_codegen.py`)を試作し、これまで確認した全構文を含む結合テスト用フロー(`LOOP FOREACH`の直後に`LOOP`(カウント)が続き、さらにアクションと`WAIT`が続く)でエンドツーエンドにテストしたところ、`LOOP FOREACH`より後ろの全レコード(カウント`LOOP`・`Scripting.RunPythonScript`アクション・`WAIT`)が木構造から**黙って消えている**ことが発覚した。
+
+**根本原因**: `build_block_tree()`の`LoopRecord`/`LoopForeachRecord`/`LoopWhileRecord`(`_SIMPLE_BLOCK_HEADER_TYPES`)用の分岐は、本体を`parse_level(level + 1)`で再帰的に取得するだけで、**ブロック自身の閉じ`END`を明示的に消費していなかった**(`ConditionalNode`側は`if pos < len(records) and is_end(records[pos], level): pos += 1`で明示的に消費しており、`IfRecord`はこのバグの影響を受けない)。
+
+この`END`はブロックヘッダ自身と同じ深さ(`level`)にあるため、`level + 1`で動いている再帰呼び出しからは「自分の担当範囲外(`indent < level + 1`)」として素通りされ、消費されないまま呼び出し元に制御が戻る。呼び出し元のwhileループは次の反復でこの同じ`END`を再び見ることになるが、呼び出し元自身も`level`という同じ深さで終端`END`を探しているため、**「ブロック自身の終端」と「呼び出し元自身の終端」を区別できず、後者だと誤認してその場で`return`してしまう**——結果、そのブロックより後ろにある同じ深さの兄弟要素が全て読み飛ばされる。
+
+**これまでの全フィクスチャで見逃されていた理由**: このバグは「同じ深さでLOOP系ブロックの直後にさらに兄弟要素が続く」場合にのみ顕在化する。知見8・9・12で使ったテストフィクスチャは、たまたまどれも検証対象のLOOP系ブロックがその深さにおける**最後の要素**だったため(例: `LOOP_WHILE_INSIDE_IF_DSL`はIfアームの最後がLOOP WHILE、`EXIT_NEXT_LOOP_DSL`はフィクスチャ全体の最後がLOOP WHILE)、「誤って早期returnする」ことと「正しく処理が終わる」ことの結果が偶然一致しており、バグが表面化しなかった。
+
+**修正**: `_SIMPLE_BLOCK_HEADER_TYPES`の分岐にも、`ConditionalNode`と同様に`parse_level(level + 1)`の呼び出し直後に`END`の明示的な消費処理を追加した。回帰テストとして、`LOOP FOREACH`と`LOOP`(カウント)を兄弟として連続させ、さらに`WAIT`を後続させた最小フィクスチャ(`tests/test_pad_dsl_parser.py`の`TWO_SIBLING_LOOPS_WITH_TRAILING_ACTION_DSL`)を追加し、3つとも木構造に残ることを確認した。
+
+**教訓**: 単体テストのフィクスチャが毎回「検証対象の構文が末尾に来る」形になっていたため、构造化ロジックの境界条件(複数の同種ブロックが兄弟として連続するケース)が長期間カバーされていなかった。実際にエンドツーエンドでコード生成まで試すことで初めて発覚した——パーサーの単体テストだけでなく、実際に使う形(複数アクションを含む完全なフロー)での結合テストが重要であることを示す一例。
