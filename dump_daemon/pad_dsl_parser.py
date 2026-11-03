@@ -69,8 +69,10 @@ design/dsl_format_findings.md で実機検証した文法に基づく。対応�
   2引数+真偽フラグ、`Is empty`系は引数の個数が異なると推測されるが未確認であり、
   安易に同じ形式だと仮定しない)
 
-- `# <comment>` 形式の単一行コメント、および `/# ... #/` 形式の複数行コメント
-  (design/robin_language_source_findings.md——`CommentStatement.ToString()`のソースで
+- `# <comment>` 形式の単一行コメント、および `/# ... #/` 形式の複数行コメント(**実機検証済み**
+  design/dsl_format_findings.md 知見35——本文中に`#/`を含む3行コメントを実機で確認し、
+  エスケープ(`#/`をバックスラッシュ付きの形に変換)を含めソース通りの挙動と完全に一致した)。
+  design/robin_language_source_findings.md——`CommentStatement.ToString()`のソースで
   両方の形式と、複数行側の正確なエスケープ規則(`EscapeRobinComment`: `#/`とバックスラッシュの
   直前にバックスラッシュを挿入)を確認した。`$'''...'''`の複数行文字列マスキングと同じ手法(DOTALLで
   先に1トークンに退避してから行分割)を複数行コメントにも適用し、マスキングの順序は

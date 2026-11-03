@@ -568,6 +568,17 @@ def test_multiline_comment_does_not_corrupt_string_literal_masking() -> None:
     assert records[1].value == "real"
 
 
+def test_multiline_comment_matches_real_device_capture() -> None:
+    # 実機で「Comment」アクションに3行("line one"/"line two with #/ inside"/"line three")を
+    # 入力してキャプチャした生データ(design/dsl_format_findings.md 知見35)。ソースから実装した
+    # エスケープ規則(`#/`→`\#/`)が実機の出力と完全に一致することを確認した——コード変更は不要だった。
+    dsl = "    /# line one\nline two with \\#/ inside\nline three#/\nEND"
+    records = parse_dsl(dsl)
+    assert len(records) == 2
+    assert isinstance(records[0], CommentRecord)
+    assert records[0].text == "line one\nline two with #/ inside\nline three"
+
+
 # 実機で「Switch」「Case」「Default case」「Comment」(Caseの本体用)を追加してキャプチャ
 # した生データ(design/dsl_format_findings.md 知見33)。「Value to check」欄に裸の
 # "TestVar"(%で囲まない)と入力したため、変数参照ではなく文字列リテラルとして

@@ -537,3 +537,17 @@ design/robin_language_source_findings.mdで`ExceptionStatementBase`のソース(
 今回検証したのは名前無しcatch-allケース1つのみで、複数ケース・`REPEAT ACTION`/`NEXT ACTION`は未検証。
 
 **(後続のティックで実装)**: `pad_dsl_parser.py`に`OnErrorRecord`/`OnErrorNode`/`GuardedNode`(直前のノードをラップする新しいNode種別)を追加し、`build_block_tree()`で「本体は`ON ERROR`と同じlevelで再帰パース」という実機確認済みの規則を実装した。`pad_codegen.py`は`GuardedNode`を`try`/`except Exception`に変換する(「Continue flow run」の意味論にそのまま対応)。`except Exception`節が実際に例外を捕捉してハンドラを実行することをexecベースのテストで確認済み。
+
+## 35. 複数行コメント(`/# ... #/`)を実機検証——ソースから実装した構文・エスケープ規則が完全に一致
+
+ON ERRORと同じく「実行は不要、アクションの追加とコピーだけでDSLをキャプチャできる」ことを活かし、知見27でソース(`CommentStatement.ToString()`)のみに基づいて実装していた複数行コメント構文を実機検証した。「Comment」アクションに3行(`line one` / `line two with #/ inside` / `line three`、本文中にわざと`#/`というエスケープが必要な文字列を含めた)を入力してキャプチャしたところ:
+
+```
+/# line one
+line two with \#/ inside
+line three#/
+```
+
+`#/`が`\#/`にエスケープされている点を含め、design/robin_language_source_findings.mdで事前にソースから導出していた規則(`"/# " + EscapeRobinComment(text) + "#/"`)と**完全に一致**し、`pad_dsl_parser.py`のコード変更は一切不要だった(`parse_dsl()`にそのまま通して正しくデコードできることを確認)。知見27の「実機未検証」という注記は不要になったため解消した。
+
+ソースコード調査だけに基づく実装が実機で無修正のまま正確に動いた、数少ない(しかし重要な)成功例——知見33(SWITCH)・知見34(ON ERROR)の「インデント規則は実機で裏取りするまで確信しない」という教訓と対になる、「構文・エスケープ規則など局所的な文字列処理は、ソース1箇所の`ToString()`を正確に読めば実機と一致する」という逆の教訓。
