@@ -16,6 +16,12 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
   - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
 
+## v1スコープ: UI要素セレクタが必要なアクションは変換対象外
+
+PADのUI automationアクション(`Click UI element in window`等)は、DSLクリップボードテキスト上では`appmask['<表示名>']`というUI要素リポジトリへの名前参照でしか現れず、実際に自動化を動かすために必要なセレクタ文字列(CSS風、`[name="value"]`等)自体はDSLに含まれない(design/dsl_format_findings.md 知見38)。このセレクタの実体を取得できないか、(a) PADデザイナーUIの各種メニュー・UI要素インスペクタ、(b) ローカルディスクへのキャッシュ、(c) クラウド保存後のPower Platformメーカーポータル/Dataverse、の3経路を実機で調査したが、**いずれも行き止まりだった**(知見39・42・43)。特に(c)については、個人用Microsoftアカウントでは`make.powerautomate.com`等のメーカーポータル自体に`AADSTS500200`で弾かれ、組織(Entra IDテナント)アカウントでない限りそもそもアクセスできないことが実機で確認できた。
+
+これを踏まえ、**v1では意図的にスコープ外とする**: 変数代入・分岐・ループ・エラーハンドリング・Pythonスクリプト実行等(セレクタ不要なアクション)はPythonへ変換するが、UI要素セレクタが必要なアクションは、でっち上げたセレクタを埋め込む代わりに、参照されているUI要素の表示名を含む`# TODO`コメントを出力する(`pad_codegen.py`の`_ui_element_hint()`)。ユーザーはそのコメントを見て、該当要素のセレクタを手動で(pywinautoの`best_match`/`class_name`等を使って)補う前提。この制約が解消されるとすれば、組織アカウントでのDataverseアクセス、あるいはPAD自体の将来のエクスポート機能等、現時点では存在しない経路が必要になる。
+
 ## 主要ドキュメント
 
 | ドキュメント | 内容 |

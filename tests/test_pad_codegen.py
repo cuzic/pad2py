@@ -515,3 +515,23 @@ def test_generate_python_renders_throw_error_as_todo_without_fabricating_raise()
     compile(code, "<generated>", "exec")
     assert "# TODO: unmapped keyword: THROW ERROR" in code
     assert "raise" not in code
+
+
+def test_generate_python_names_ui_element_in_todo_without_fabricating_selector() -> None:
+    # design/dsl_format_findings.md 知見38・39・42・43: UI要素セレクタ(appmask['<表示名>']が
+    # 指す実際のCSS風セレクタ文字列)はDSLテキストにもPADデザイナーUI/ローカルキャッシュ/
+    # 個人アカウントでのPower Platformメーカーポータルのいずれにも存在せず、v1では変換不能と
+    # 確定した(本プロジェクトの意図的なスコープ外)。でっち上げたセレクタを埋め込む代わりに、
+    # `UiElementRef`の表示名だけをTODOコメントに残し、ユーザーが手動で補えるようにする。
+    dsl = (
+        "UIAutomation.Click.Click Element: appmask['Start Button'] "
+        "ClickType: UIAutomation.ClickType.LeftClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 0 OffsetY: 0"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
+    assert "UI element: 'Start Button'" in code
+    assert "appmask" not in code

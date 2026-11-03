@@ -20,9 +20,14 @@ design/dsl_format_findings.md で実機検証した文法のうち、`pad_dsl_pa
   もの)もpywinauto対応になる見込みだが、**DSLテキスト上のパラメータ値はUI要素リポジトリへの
   名前参照`appmask['<表示名>']`でしかなく、実際のセレクタ文字列(CSS風、design/robin_language_source_findings.md
   参照)自体はクリップボードコピーのDSLテキストには含まれない**(design/dsl_format_findings.md
-  知見38で実機確認済み)。セレクタの実体を得るには、PAD側の「UI要素」リポジトリを別の経路
-  (.msappやフローパッケージのXML/JSON、あるいはPAD自体のAPI)で取得する必要があり、
-  本モジュールはまだこの参照自体の解析(`UiElementRef`)までしか対応していない。
+  知見38で実機確認済み)。セレクタの実体を取得できないか知見39・42・43で実機調査を尽くした
+  (PADデザイナーUI上に閲覧経路が無い、ローカルにキャッシュされない、個人用Microsoftアカウントは
+  Power Platformメーカーポータル/Dataverseにそもそもアクセスできない、の3点を確認済み)が、
+  いずれも行き止まりだった。**これを本プロジェクトのv1スコープの意図的な線引きとして確定する**:
+  UI要素セレクタが必要なアクションはPythonへ変換せず、`UiElementRef`で参照されている表示名を
+  含む`# TODO`コメントとして明示的に出力する(でっち上げた架空のセレクタ文字列を埋め込むことは
+  絶対にしない)。ユーザーはそのTODOコメントを見て、該当するUI要素のセレクタを手動で
+  (pywinautoの`best_match`/`class_name`等で)補う前提。
 
 対応範囲:
 - `SetVariableRecord` → 代入文
@@ -111,6 +116,7 @@ from .pad_dsl_parser import (
     RawRecord,
     SetVariableRecord,
     SwitchNode,
+    UiElementRef,
     VarRef,
 )
 
@@ -468,7 +474,24 @@ def _generate_action(node: ActionRecord, indent: int) -> list[str]:
         window_expr = _window_lookup_expr(node)
         if window_expr:
             return [f"{prefix}{window_expr}.close()"]
-    return [f"{prefix}# TODO: map PAD action: {node.action_id}"]
+    return [f"{prefix}# TODO: map PAD action: {node.action_id}{_ui_element_hint(node)}"]
+
+
+def _ui_element_hint(node: ActionRecord) -> str:
+    """未対応アクションのTODOコメントに、関連するUI要素の表示名を付記する。
+
+    design/dsl_format_findings.md 知見38で確認した通り、`Click UI element in window`等の
+    パラメータ値は`UiElementRef`(`appmask['<表示名>']`への名前参照)であり、実際のセレクタ
+    文字列はDSLテキストに含まれない(知見39・42・43で取得経路を実機で探索し尽くし、v1では
+    変換不能と確定——本モジュール冒頭のdocstring参照)。架空のセレクタをでっち上げる代わりに、
+    せめて表示名だけでもTODOコメントに残すことで、ユーザーが手動でpywinautoのセレクタを
+    補う際の手がかりにする。
+    """
+    names = [v.name for v in node.params.values() if isinstance(v, UiElementRef)]
+    if not names:
+        return ""
+    joined = ", ".join(repr(name) for name in names)
+    return f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43 — fill in manually)"
 
 
 def _window_lookup_expr(node: ActionRecord) -> str | None:
