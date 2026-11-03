@@ -675,7 +675,11 @@ END消費も不要)。パースした本体を直前に`body`へ追加済みの�
   これまでの実機EnumRef captureが全て例外なく3セグメントだった実績に基づき、EnumRef判定を
   3セグメント以上に限定する`_ENUM_REF_RE`を新設して修正した(完全な解消ではない暫定対応)。
   `[Index]`添字は元々ドットを含まないため影響を受けず、`VarRef`としてそのままPythonの
-  添字アクセス構文に変換できていた。Slice構文・0始まりか1始まりかは未確認のまま持ち越し
+  添字アクセス構文に変換できていた。~~Slice構文~~ → 完了(design/dsl_format_findings.md
+  知見59): `%InnerVar[0:2]%` → `SET NewVar3 TO InnerVar[0:2]`、Pythonのスライス構文
+  `[start:end]`と字面上完全に一致することを実機確認した。これで`VariableTrailer`の
+  3形態(`.Name`/`[Index]`/Slice)全てが実機確認済みになった。0始まりか1始まりか・
+  終端を含むかどうかの意味論(実機実行による値の読み取りが必要)は未確認のまま持ち越し
 - `IExceptionStatement`の具象実装が本当に`ExceptionCaseStatement`と同じものかどうか、
   そして`StatementWithArguments.ToStringIgnoreMetadata()`末尾への連結がスペース無しに
   見える件(表記ミスか、実際には別の区切り規則があるのか)の確認
