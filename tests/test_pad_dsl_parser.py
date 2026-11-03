@@ -1246,3 +1246,26 @@ def test_if_action_record_parsed_from_real_if_window_whole_subflow_capture() -> 
     assert len(tree) > 0
     assert isinstance(tree[0], ConditionalNode)
     assert tree[0].arms[0][0] is rec
+
+
+def test_if_action_record_check_if_window_variants_use_distinct_action_ids() -> None:
+    # design/dsl_format_findings.md 知見54の追記(実機検証済み): 「Check if window」ドロップダウンは
+    # 「Is open」「Isn't open」「Is focused」「Isn't focused」の4択で、共有パラメータでの否定ではなく
+    # 4つの別々のaction_id(`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`)になる。
+    # robin_language_source_findings.mdが予測していた`IsFocusedByTitleClass`ではなく、
+    # 単純な`IsFocused`だった。
+    is_focused_dsl = (
+        "IF (UIAutomation.IfWindow.IsFocused Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN\nEND"
+    )
+    records = parse_dsl(is_focused_dsl)
+    assert isinstance(records[0], IfActionRecord)
+    assert records[0].action_id == "UIAutomation.IfWindow.IsFocused"
+
+    is_not_open_dsl = (
+        "IF (UIAutomation.IfWindow.IsNotOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN\nEND"
+    )
+    records = parse_dsl(is_not_open_dsl)
+    assert isinstance(records[0], IfActionRecord)
+    assert records[0].action_id == "UIAutomation.IfWindow.IsNotOpen"
