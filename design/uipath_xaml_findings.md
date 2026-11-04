@@ -766,6 +766,72 @@ P1項目7の一環として`Send Outlook Mail Message`(`UiPath.Mail.Activities`�
   (出力変数バインド)・`Copy Selected Text`(選択中のUI要素からの取得、`Target`
   セレクタを持つと予想される)は未確認。
 
+## 25. Libraryプロジェクトの`project.json`——`Process`との4つの構造的差分を確定
+
+P0項目4(project.jsonの全体スキーマ)のLibrary部分を実機確認した。Home画面の
+「New Project」から「Library」を選択して`xaml_probe_lib`という空のLibrary
+プロジェクトを新規作成し、生成された`project.json`を既存の`xaml_probe`
+(Process)の`project.json`(知見1)と比較した:
+
+```json
+// xaml_probe (Process)                    // xaml_probe_lib (Library)
+"main": "Main.xaml",                       "main": "NewActivity.xaml",
+"dependencies": {                          "dependencies": {
+  "UiPath.Excel.Activities": "[2.10.4]",     "UiPath.Excel.Activities": "2.10.4",
+  ...                                          ...
+},                                          },
+"designOptions": {                         "designOptions": {
+  "outputType": "Process",                   "outputType": "Library",
+  ...                                          ...
+},                                          },
+"entryPoints": [                           // ← entryPoints キー自体が存在しない
+  { "filePath": "Main.xaml", ... }
+],
+```
+
+ポイント(4つの構造的差分):
+
+1. **`main`のデフォルトファイル名が異なる**: Processは`Main.xaml`、Libraryは
+   `NewActivity.xaml`——Libraryプロジェクト新規作成時のプロジェクトツリーにも
+   `Main.xaml`ではなく`NewActivity.xaml`が生成される。
+2. **`dependencies`のバージョン表記から角括弧が消える**: Processは
+   `"[2.10.4]"`(NuGetの厳密固定レンジ構文)だが、Libraryは`"2.10.4"`
+   (角括弧なし、"この値以上"を意味する最小バージョン制約)になる。これは
+   Libraryが他プロジェクトに依存関係として取り込まれることを前提に、
+   消費側プロジェクトとのバージョン互換性解決の余地を残すための意図的な
+   違いだと考えられる——**同じ`UiPath.Excel.Activities`という依存関係文字列
+   でも、プロジェクト種別によって記法の意味が変わる**ため、トランスパイラが
+   `project.json`から依存バージョンを読み取る際はこの違いを区別する必要がある。
+3. **`designOptions.outputType`が`"Process"`→`"Library"`に変わる**——これが
+   P0調査当初に探していた「project.jsonのtargetFramework以外のプロジェクト
+   種別スイッチ」の正体だった。ただし**これはUI上のトグルではなく、
+   新規プロジェクト作成時にウィザードで選んだ種別がそのまま書き込まれる
+   だけの値**で、既存プロジェクトの種別を後から変更するUIはStudio上に
+   存在しない(作成後に`project.json`を手で書き換えるしかないと推測される)
+   ——これまでのP1 #9調査で「Project Settingsダイアログにそれらしいトグルが
+   見当たらない」という結果だったのも、探す場所が元々間違っていた
+   (プロジェクト作成ウィザードの選択肢であって、後からの設定項目ではない)
+   ことで説明がつく。
+4. **`entryPoints`キー自体がLibraryには存在しない**——Processでは
+   `[{filePath, uniqueId, input, output}]`という配列だったが(知見1)、
+   Libraryの`project.json`には`entryPoints`というキーそのものが無い。
+   Libraryは「どのワークフローも再利用可能な部品になりうる」という性質上、
+   単一の実行開始点という概念がそもそも無いためだと考えられる。
+5. (差分ではないが念のため) `targetFramework`は Library でも`"Legacy"`
+   のままで、知見1の既存調査候補(`Windows`/`Cross-platform`切り替えUIが
+   見当たらない)はLibraryプロジェクトでも再現しなかった——この項目は
+   引き続き本バージョンのStudioでは露出していないと考えられる。
+
+補足: 既定で生成される`NewActivity.xaml`の中身は、Processの`Main.xaml`
+(常に`<Sequence>`がルート、知見1)とは異なり**`<Activity>`直下に
+名前空間/アセンブリ参照だけがあり、ルートとなる子アクティビティが
+一切存在しない空のXAML**だった(空のLibraryなのでデザイン画面に何も
+配置していないため)。また`x:Class="Main"`になっており、ファイル名
+`NewActivity.xaml`とは一致しない——`x:Class`はファイル名から独立した
+論理クラス名で、Libraryでは既定で`Main`になるらしい(Processの
+`Main.xaml`でも同様に`x:Class="Main"`だったため、Studioの既定クラス名
+生成ロジックがファイル名に依存しないことが分かる)。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
