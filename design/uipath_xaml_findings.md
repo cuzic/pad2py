@@ -547,17 +547,71 @@ Break)が完了した。ただし**複数の子アクティビティをドロッ
 場合の構造**(Switchのcase本体、Parallelの各ブランチ)はドラッグ&ドロップ
 自動化が未解決のため引き続き未確認——この1点のみが今後の課題として残る。
 
+## 20. ドロップゾーンへのドラッグ&ドロップ自動化に成功——`Parallel`のブランチ構造を確定
+
+知見9・知見19で未解決だった「`Drop activity here`型ドロップゾーンへの
+アクティビティ追加」を、`pywinauto`での**真のドラッグ操作**
+(`mouse.press`→複数回の`mouse.move`→`mouse.release`)で解決した。
+
+これまでの「`+`(AddButton)クリック→検索ポップアップ→名前入力→Alt+N」という
+挿入方法は、キャンバス上の「アクティビティの直後に新規追加」専用の操作であり、
+`Parallel`のブランチや`Switch`のcase本体のような「汎用ドロップゾーン」はそもそも
+検索ポップアップ自体を開かない設計になっている——UiPath StudioのWPFキャンバスは
+これらのゾーンに対して本物のドラッグ&ドロップ(ツールボックスの`Activities`
+パネルからのドラッグ)だけを受け付ける。`press()`した直後に1回だけ`move()`で
+目的地へ飛ばすと、WPFのドラッグ開始閾値(数ピクセルの移動量)を下回り
+ドラッグとして認識されないことがあったため、中間地点を経由する複数回の`move()`
+を挟む必要があった(`dump_daemon/uipath_ui_helpers.py`の
+`drag_activity_from_panel()`として実装・一般化した)。
+
+この手法で`Parallel`に`Assign`(`To = content`, `Value = "branch1"`)を1つ
+ドラッグした結果:
+
+```xml
+<Parallel sap:VirtualizedContainerService.HintSize="497,106" sap2010:WorkflowViewState.IdRef="Parallel_1">
+  <Assign sap:VirtualizedContainerService.HintSize="262,60" sap2010:WorkflowViewState.IdRef="Assign_2">
+    <Assign.To>
+      <OutArgument x:TypeArguments="x:String">[content]</OutArgument>
+    </Assign.To>
+    <Assign.Value>
+      <InArgument x:TypeArguments="x:String">branch1</InArgument>
+    </Assign.Value>
+  </Assign>
+</Parallel>
+```
+
+ポイント:
+
+- **各ブランチは`<Parallel>`の直接の子`Activity`要素**であることが確定した
+  ——`Sequence`等のラッパーは強制されない(単一アクティビティのブランチは
+  そのアクティビティ自身がそのまま子になる)。複数ステップを1ブランチに
+  入れたい場合はユーザーが明示的に`Sequence`をドラッグする必要があると推測
+  されるが、これ自体は今回未検証。
+- `Assign.To`/`Assign.Value`は、知見13で確立した規則(`x:TypeArguments`が
+  `x:Object`以外の明示的型のときは`<InArgument>`/`<OutArgument>`要素+生テキスト)
+  通りの形で確認できた——`[content]`という角括弧形は`OutArgument`要素の
+  **中身のテキスト**として書かれており(属性値のショートハンドではない)、
+  `branch1`という`Value`も引用符なしの生テキストになっている。これは`Assign`
+  アクティビティ単体でこの明示要素形を見る初めての実例(これまでは知見12の
+  `Invoke Workflow File`引数`<InArgument x:Key="...">`でのみ確認していた)。
+- **2つ目以降のブランチの追加は今回未検証のまま残った**——1つ目のブランチ
+  (`Assign`)を追加した直後、2つ目のアクティビティ(`Write Line`)を隣接
+  ドロップゾーンへドラッグする試行では実際には追加されなかった(キャンバスが
+  横スクロールしていて座標がずれていた可能性が高い)。ドラッグ先の座標を
+  事前にスクリーンショットで確認してから実行する、という運用上の注意が必要
+  ——複数ブランチの子要素の並び方自体は「`<Parallel>`配下に複数の`Activity`
+  要素が並ぶだけ」という単純な構造になると予想されるが、実機未確認。
+- この手法は`Switch`のcase本体(知見9)にも同様に適用できるはずで、次の
+  実験候補とする。
+
 ## 今後の調査候補(未着手)
 
-- **ドラッグ&ドロップ専用ゾーンへのアクティビティ追加**(知見9・知見19で共通して
-  ブロックされている根本課題): Switchのcaseに実際にアクティビティを入れた場合の
-  `x:Null`以外の形、および`Parallel`に複数ブランチを追加した場合の子要素構造。
-  いずれも「検索ポップアップ経由の追加」(`+`ボタン/`Drop activity here`クリック
-  →名前入力→Alt+N)が機能しない「Drop activity here」型のドロップゾーンが
-  原因で未確認のまま——`pywinauto`での真のドラッグ&ドロップ
-  (`mouse.press`→`move`→`release`のシーケンス、ドラッグ元はツールボックスの
-  `Activities`タブ内のアクティビティ項目)のシミュレーション手法を確立する
-  必要がある。
+- **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
+  `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
+  (直接の子`Activity`要素、ラッパー無し)を確定した。残る派生課題:
+  - `Switch`のcase本体への同手法の適用(知見9、`x:Null`以外の実際の形がまだ未確認)
+  - `Parallel`に2つ目以降のブランチを追加した場合の複数子要素の並び(知見20、
+    1回目の追加試行はキャンバス座標ズレで失敗——事前のスクリーンショット確認が必要)
 - Libraryプロジェクト・Testプロジェクトの`project.json`の違い、および
   `targetFramework: "Windows"`/`"Cross-platform"`(Legacy以外)での依存関係の違い
   ※ 今回インストールしたバージョン(Studio app-21.4.4)のProject Settingsダイアログ

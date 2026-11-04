@@ -16,7 +16,7 @@ from typing import Any
 
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
-from pywinauto.mouse import click, double_click
+from pywinauto.mouse import click, double_click, move, press, release
 
 
 def find_studio_window() -> Any | None:
@@ -115,6 +115,44 @@ def set_datagrid_cell_value(coords: tuple[int, int], text: str) -> None:
         send_keys(ch, pause=0.2)
         time.sleep(0.15)
     time.sleep(1)
+
+
+def drag_activity_from_panel(
+    source_coords: tuple[int, int], target_coords: tuple[int, int], steps: int = 2
+) -> None:
+    """Activitiesパネル内のアクティビティ項目を、キャンバス上の「Drop activity
+    here」型ドロップゾーン(SwitchのcaseボディやParallelのブランチ追加欄など)へ
+    ドラッグ&ドロップする。
+
+    **解決した問題**(design/uipath_xaml_findings.md 知見9・19): これらの
+    ドロップゾーンは検索ポップアップ経由のアクティビティ追加(`+`ボタンクリック→
+    名前入力→Alt+N、`search_and_insert_activity()`参照)を受け付けない——
+    クリックしても何も起きない。真のドラッグ操作(`mouse.press`→複数回の
+    `mouse.move`→`mouse.release`)でのみ反応することを実機で確認した。
+
+    `move()`を1回だけ(press直後にtargetへ飛ばす)にすると、WPFのドラッグ開始
+    閾値(数ピクセルの移動)を下回ってドラッグとして認識されないことがあるため、
+    `steps`回の中間移動を入れて確実にドラッグジェスチャとして成立させる。
+
+    `source_coords`はActivitiesパネル(左下「Activities」タブ)内のFavorites/
+    Recent/Available階層に表示されているアクティビティ項目のスクリーン座標。
+    事前に`Activities`タブをクリックしてパネルを開いておくこと。
+    """
+    press(coords=source_coords)
+    time.sleep(0.3)
+    sx, sy = source_coords
+    tx, ty = target_coords
+    for i in range(1, steps + 1):
+        ix = sx + (tx - sx) * i // (steps + 1)
+        iy = sy + (ty - sy) * i // (steps + 1)
+        move(coords=(ix, iy))
+        time.sleep(0.2)
+    move(coords=target_coords)
+    time.sleep(0.4)
+    move(coords=(target_coords[0] + 1, target_coords[1] + 1))
+    time.sleep(0.4)
+    release(coords=(target_coords[0] + 1, target_coords[1] + 1))
+    time.sleep(0.8)
 
 
 def dump_tree(ctrl: Any, depth: int = 0, max_depth: int = 6) -> None:
