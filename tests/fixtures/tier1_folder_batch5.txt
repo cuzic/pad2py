@@ -1,0 +1,10 @@
+Folder.Copy Folder: $'''sample''' Destination: $'''sample''' IfFolderExists: Folder.IfExists.DoNothing CopiedFolder=> CopiedFolder
+Folder.Create FolderPath: $'''sample''' FolderName: $'''sample''' Folder=> NewFolder
+Folder.Delete Folder: $'''sample'''
+Folder.Empty Folder: $'''sample'''
+Folder.Move Folder: $'''sample''' Destination: $'''sample''' MovedFolder=> MovedFolder
+Folder.Rename Folder: $'''sample''' NewName: $'''sample''' RenamedFolder=> RenamedFolder
+Folder.GetSubfolders Folder: $'''sample''' FolderFilter: $'''*''' IncludeSubfolders: False FailOnAccessDenied: True SortBy1: Folder.SortBy.NoSort SortDescending1: False SortBy2: Folder.SortBy.NoSort SortDescending2: False SortBy3: Folder.SortBy.NoSort SortDescending3: False Subfolders=> Folders
+Folder.GetSpecialFolder SpecialFolder: Folder.SpecialFolder.DesktopDirectory SpecialFolderPath=> SpecialFolderPath
+IF (Folder.IfFolderExists.Exists Path: $'''sample''') THEN
+END

@@ -1369,3 +1369,31 @@ Variables.ConvertCustomObjectToJson CustomObject: $'''sample''' Json=> CustomObj
 **検証**: 11件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した。これにより`Text`の完了率は13/19→19/19(完了)、`Variables`は29/34→34/34(完了)まで進んだ。
 
 **今後**: 残るTier1/2の未キャプチャモジュール(File 0/16、Folder残り9件、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。
+
+## 68. Folder残り9件を実機キャプチャ(Folderモジュール完了)——「If folder exists」はIF文ブロックとして直列化されることを確認
+
+知見67の自動化バッチでFolderモジュールの残り9件を一括キャプチャした(`tests/fixtures/tier1_folder_batch5.txt`)。9件全て一度で成功。
+
+**実機キャプチャ結果**:
+```
+Folder.Copy Folder: $'''sample''' Destination: $'''sample''' IfFolderExists: Folder.IfExists.DoNothing CopiedFolder=> CopiedFolder
+Folder.Create FolderPath: $'''sample''' FolderName: $'''sample''' Folder=> NewFolder
+Folder.Delete Folder: $'''sample'''
+Folder.Empty Folder: $'''sample'''
+Folder.Move Folder: $'''sample''' Destination: $'''sample''' MovedFolder=> MovedFolder
+Folder.Rename Folder: $'''sample''' NewName: $'''sample''' RenamedFolder=> RenamedFolder
+Folder.GetSubfolders Folder: $'''sample''' FolderFilter: $'''*''' IncludeSubfolders: False FailOnAccessDenied: True SortBy1: Folder.SortBy.NoSort SortDescending1: False SortBy2: Folder.SortBy.NoSort SortDescending2: False SortBy3: Folder.SortBy.NoSort SortDescending3: False Subfolders=> Folders
+Folder.GetSpecialFolder SpecialFolder: Folder.SpecialFolder.DesktopDirectory SpecialFolderPath=> SpecialFolderPath
+IF (Folder.IfFolderExists.Exists Path: $'''sample''') THEN
+END
+```
+
+**確認できた事実**:
+- PAD.Designerのアクション検索パネル上では「If folder exists」のツリーノードauto_idが`If.Folder.IfFolderExists`(カテゴリが`Folder`ではなく`If`)だったが、実際にDSL化されたaction_idは`Folder.IfFolderExists.Exists`で、`IF (...) THEN ... END`という既存の`IfActionRecord`構文としてそのまま構造化できた——知見36以来の「条件分岐系アクションは`IfActionRecord`として扱う」という既存設計がこのアクションにもそのまま当てはまることを確認(decompile予測通り)。
+- `Folder.Copy`の`IfFolderExists: Folder.IfExists.DoNothing`——コピー先に同名フォルダが既に存在する場合の挙動を指定するenum(`Folder.IfExists`)で、`Folder.IfFolderExists`という条件分岐アクションのenum(別物)とは名前が似ているが異なる型。
+- `Folder.Delete`/`Folder.Empty`はパラメータ`Folder`のみで出力変数を持たない(破壊的操作で、対象フォルダ自体は`[Mutable]`ではなく単に戻り値が無い設計)。
+- `Folder.GetSubfolders`は知見64の`Folder.GetFiles`と全く同じ`SortBy1/2/3`・`SortDescending1/2/3`・`FailOnAccessDenied`パラメータ構成(フィルタ引数名が`FileFilter`ではなく`FolderFilter`になる点のみ異なる)。
+
+**検証**: 10件(8 ActionRecord + 1 IfActionRecord + 1 END KeywordRecord)全てが既存の汎用パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_folder_batch5_parses_as_generic_action_and_if_records`)。これにより`Folder`の完了率は1/10→10/10(完了)まで進んだ。
+
+**今後**: 残るTier1/2の未キャプチャモジュール(File 0/16、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。

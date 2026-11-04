@@ -1754,3 +1754,42 @@ def test_tier1_text_variables_batch4_parses_as_generic_action_records() -> None:
     increase_var = records[7]
     # IncreaseVariable/DecreaseVariableはValueがMutableなため=>束縛を持たない。
     assert increase_var.output_var is None  # type: ignore[union-attr]
+
+
+def test_tier1_folder_batch5_parses_as_generic_action_and_if_records() -> None:
+    # design/dsl_format_findings.md 知見68: Folder残り9件(うち1件はIf系ブロック)の
+    # 実機DSLキャプチャ。既存の汎用パーサーがコード変更無しで正しく構造化できることを
+    # 確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_folder_batch5.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 10
+    assert [type(r).__name__ for r in records] == [
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "IfActionRecord",
+        "KeywordRecord",
+    ]
+    action_ids = [getattr(r, "action_id", None) for r in records]
+    assert action_ids == [
+        "Folder.Copy",
+        "Folder.Create",
+        "Folder.Delete",
+        "Folder.Empty",
+        "Folder.Move",
+        "Folder.Rename",
+        "Folder.GetSubfolders",
+        "Folder.GetSpecialFolder",
+        "Folder.IfFolderExists.Exists",
+        None,
+    ]
+    delete_folder = records[2]
+    # Folder.Delete/Folder.Emptyは出力変数を持たない。
+    assert delete_folder.output_var is None  # type: ignore[union-attr]
+    if_folder_exists = records[8]
+    assert isinstance(if_folder_exists, IfActionRecord)
