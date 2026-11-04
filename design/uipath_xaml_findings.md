@@ -759,6 +759,12 @@ P1項目7の一環として`Send Outlook Mail Message`(`UiPath.Mail.Activities`�
   (`System.Collections.Generic.List<InArgument<string>>`)で、**空コレクション
   は具象型で明示直列化される**という知見23の規則がここでも再現されている。
   複数ファイルを追加した場合の子要素形(`<InArgument>`が並ぶだけか)は未検証。
+- 併せて`Set To Clipboard`(`UiPath.System.Activities`、Available > System >
+  Clipboard)も実機確認した: `<ui:SetToClipboard Text="..." />`という、
+  `Append Line`/`ExcelWriteCell`と同じ最小の「生の属性値」形のみで、プロパティ
+  は`Text`1つだけの単純なアクティビティだった。`Get From Clipboard`
+  (出力変数バインド)・`Copy Selected Text`(選択中のUI要素からの取得、`Target`
+  セレクタを持つと予想される)は未確認。
 
 ## 今後の調査候補(未着手)
 
