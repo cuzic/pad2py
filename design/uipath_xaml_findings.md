@@ -1052,6 +1052,85 @@ lib/net45/
    サブワークフロー)は従来通り解析可能——問題になるのはあくまで
    「外部配布されたLibrary」経由のロジックに限られる。
 
+## 29. HTTP Requestアクティビティ——DisplayNameと裏のCLR型名が一致しない例、`{x:Null}`による未設定引数の直列化パターン
+
+P1 #7(高頻度アクティビティの網羅)の残課題だった**HTTP Request**を確認した。
+Studio 2021.4.4標準の`UiPath.WebAPI.Activities` v1.18.0は
+「Studio 22.10.5以降が必要」という互換性エラーで追加できなかったため、
+Manage PackagesダイアログのVersionドロップダウンから**v1.6.0**を明示選択して
+インストールし直すことで追加できた(新しいバージョンがデフォルトで
+提示されても、古いStudioでは動かないことがある——`project.json`の
+`dependencies`は常に「使われているバージョン」であって「最新版」とは
+限らないことの実例)。
+
+キャンバスに追加すると、プロパティパネルでの編集を待たずに**専用の
+「HTTP Request Wizard」ダイアログ**が自動的に開いた(End point / Timeout /
+Request Method / Accept response as / Parameters / Attachments /
+Authentication等をまとめて設定できるウィザードUI)。これは設計時のみの
+UX上の便宜であり、確定したXAML構造には影響しない。
+
+確定したXAML(`If.Then`内、`EndPoint`は動作確認用のプレースホルダ値):
+
+```xml
+<ui:HttpClient Body="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}"
+    ContinueOnError="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}"
+    OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}"
+    ResponseHeaders="{x:Null}" Result="{x:Null}" StatusCode="{x:Null}"
+    Username="{x:Null}" AcceptFormat="ANY" BodyFormat="application/xml"
+    ClientCertificate="[Nothing]" ClientCertificatePassword="[Nothing]"
+    DisplayName="HTTP Request" EndPoint="https(example.com/api)"
+    sap:VirtualizedContainerService.HintSize="200,22"
+    sap2010:WorkflowViewState.IdRef="HttpClient_1" Method="GET" TimeoutMS="6000">
+  <ui:HttpClient.Attachments>
+    <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+  </ui:HttpClient.Attachments>
+  <ui:HttpClient.Cookies>
+    <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+  </ui:HttpClient.Cookies>
+  <ui:HttpClient.Headers>
+    <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+  </ui:HttpClient.Headers>
+  <ui:HttpClient.Parameters>
+    <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+  </ui:HttpClient.Parameters>
+  <ui:HttpClient.UrlSegments>
+    <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+  </ui:HttpClient.UrlSegments>
+</ui:HttpClient>
+```
+
+重要な発見:
+
+1. **DisplayName「HTTP Request」の裏のCLR要素名は`ui:HttpClient`であり、
+   `HttpRequest`ではない**。Studio UI上の表示名・Activitiesパネルの検索語と、
+   実際にXAMLへシリアライズされるクラス名が一致しない例——トランスパイラ側で
+   「アクティビティ名→生成コード」のマッピング表を作る際、UI表示名だけでなく
+   実際のXML要素名(`ui:HttpClient`)を正としてマッピングキーに使う必要が
+   あることを示す実例。
+2. **未設定のまま触れられなかった引数は`{x:Null}`という WPF markup extension
+   リテラルで直列化される**——これは知見16・23等で見てきた「値が入っている
+   引数は`[VarName]`や`"literal"`のInArgument短縮記法になる」パターンとは別の、
+   「そもそも一度もUIで値を設定していない(=未使用)引数」専用の表現。
+   一方`ClientCertificate`/`ClientCertificatePassword`は同じく未設定なのに
+   `[Nothing]`(VB.NETのNull値をInArgument短縮記法で表した形)になっており、
+   **同じ「未設定」でも、プロパティの定義のされ方(既定値を持つかどうか等)に
+   よって`{x:Null}`と`[Nothing]`の2通りの直列化がありうる**ことが分かった。
+   トランスパイラは両方を「未設定/None」として同一視して読み飛ばせる必要がある。
+3. **5つの`Dictionary`型コレクションプロパティ(Attachments / Cookies /
+   Headers / Parameters / UrlSegments)が全て同じ空コレクション直列化
+   パターン(`<scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />`)
+   を使う**——知見17・24で確認した「空のコレクションは具象型を明示した
+   自己完結タグになる」パターンが、1つのアクティビティに複数の同種
+   コレクションプロパティがある場合でも一律に適用されることを確認した。
+4. `EndPoint`は他の単純文字列プロパティ同様、ラッパー無しの生属性値
+   (`EndPoint="..."`)で表現される——`InArgument`要素化されるのは値を
+   式(変数参照等)で設定した場合のみという、既存知見と一貫した結果。
+
+これでP1 #7の高頻度アクティビティ確認(Append Line・Read Text File・
+Invoke Code・Excel Application Scope+Write Cell・Send Outlook Mail Message・
+Set To Clipboard・HTTP Request)はひとまず主要なものを一巡した。
+残るWord/PDF/Databaseは今後の調査候補とする。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

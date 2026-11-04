@@ -34,6 +34,8 @@
       <x:String>UiPath.Mail.Outlook.Activities</x:String>
       <x:String>UiPath.Mail.Activities</x:String>
       <x:String>xaml_probe_lib</x:String>
+      <x:String>UiPath.Web</x:String>
+      <x:String>UiPath.Web.Activities</x:String>
     </sco:Collection>
   </TextExpression.NamespacesForImplementation>
   <TextExpression.ReferencesForImplementation>
@@ -71,6 +73,8 @@
       <AssemblyReference>UiPath.Mail.Activities</AssemblyReference>
       <AssemblyReference>UiPath.Mail.Activities.Design</AssemblyReference>
       <AssemblyReference>xaml_probe_lib</AssemblyReference>
+      <AssemblyReference>UiPath.Web</AssemblyReference>
+      <AssemblyReference>UiPath.Web.Activities</AssemblyReference>
     </sco:Collection>
   </TextExpression.ReferencesForImplementation>
   <sap:WorkflowViewStateService.ViewState>
@@ -96,7 +100,27 @@
         <InArgument x:TypeArguments="x:Object">["ok"]</InArgument>
       </Assign.Value>
     </Assign>
-    <If Condition="[result=&quot;ok&quot;]" sap:VirtualizedContainerService.HintSize="497,237" sap2010:WorkflowViewState.IdRef="If_1" />
+    <If Condition="[result=&quot;ok&quot;]" sap:VirtualizedContainerService.HintSize="497,237" sap2010:WorkflowViewState.IdRef="If_1">
+      <If.Then>
+        <ui:HttpClient Body="{x:Null}" ConsumerKey="{x:Null}" ConsumerSecret="{x:Null}" ContinueOnError="{x:Null}" OAuth1Token="{x:Null}" OAuth1TokenSecret="{x:Null}" OAuth2Token="{x:Null}" Password="{x:Null}" ResourcePath="{x:Null}" ResponseHeaders="{x:Null}" Result="{x:Null}" StatusCode="{x:Null}" Username="{x:Null}" AcceptFormat="ANY" BodyFormat="application/xml" ClientCertificate="[Nothing]" ClientCertificatePassword="[Nothing]" DisplayName="HTTP Request" EndPoint="https(example.com/api)" sap:VirtualizedContainerService.HintSize="200,22" sap2010:WorkflowViewState.IdRef="HttpClient_1" Method="GET" TimeoutMS="6000">
+          <ui:HttpClient.Attachments>
+            <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+          </ui:HttpClient.Attachments>
+          <ui:HttpClient.Cookies>
+            <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+          </ui:HttpClient.Cookies>
+          <ui:HttpClient.Headers>
+            <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+          </ui:HttpClient.Headers>
+          <ui:HttpClient.Parameters>
+            <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+          </ui:HttpClient.Parameters>
+          <ui:HttpClient.UrlSegments>
+            <scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)" />
+          </ui:HttpClient.UrlSegments>
+        </ui:HttpClient>
+      </If.Then>
+    </If>
     <ui:ForEach x:TypeArguments="x:Object" CurrentIndex="{x:Null}" DisplayName="For Each" sap:VirtualizedContainerService.HintSize="497,285" sap2010:WorkflowViewState.IdRef="ForEach`1_1" Values="[{&quot;a&quot;,&quot;b&quot;,&quot;c&quot;}]">
       <ui:ForEach.Body>
         <ActivityAction x:TypeArguments="x:Object">
