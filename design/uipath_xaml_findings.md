@@ -343,6 +343,32 @@ ExpressionText="..." /></X.Property>`)で書かれるか、`Condition="[...]"`�
 **両方の形(`[...]`属性と`<mva:VisualBasicValue ExpressionText="...">`要素)を
 同じVB式として扱う正規化ステップ**を最初に挟むのが筋が良さそうだ。
 
+## 15. 高頻度アクティビティの例(`Append Line`)と、文字列リテラルの直列化形がさらに増えた
+
+PADで既に116件実機キャプチャ済みのFile/Folderカテゴリと概念対応が強いUiPathの
+`Append Line`(`UiPath.System.Activities`、`ui:AppendLine`)を実機確認した:
+
+```xml
+<ui:AppendLine DisplayName="Append Line" FileName="out.txt" Text="hello"
+    UseDefaultEncoding="False" />
+```
+
+`Text`欄にも`FileName`欄にも、Studio上では(MessageBoxの`Text`と同じく)
+`"hello"`のように引用符付きで入力したにもかかわらず、生成されたXAMLは
+**引用符すら無い生の属性値**(`Text="hello"`)になった。知見13で見た
+「生テキストを`<InArgument>`要素の中に書く」形よりもさらに圧縮された、
+**属性値に直接リテラルを書く第4の形**が存在することになる。
+
+同じ「文字列リテラルをStringプロパティに設定する」操作でも、MessageBoxの
+`Text`は`[&quot;Hello from pad2py&quot;]`(角括弧VB式)になり、AppendLineの
+`Text`/`FileName`は`hello`(生の属性値)になった——**入力方法(クォート付きで
+VBエディタに入力)が同じでも、どのアクティビティのどのプロパティかによって
+最終的な直列化形が変わる**ことが実機で確認できた。これはおそらくプロパティ
+ごとに割り当てられたXAML値コンバータ/デザイナーの実装差によるもので、
+入力方法だけから出力形式を予測することはできない——トランスパイラの式/
+リテラル判定ロジックは、知見13の3形式に加えてこの「生の属性値」形も
+同列に扱う必要がある。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
