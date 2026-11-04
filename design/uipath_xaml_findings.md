@@ -1370,6 +1370,40 @@ Object Repositoryは今後の調査候補として残る。
   `ConnectorKeys`)。Publishダイアログの「Include Sources」チェックボックス
   (知見28)の状態がここに保存されている可能性が高い。
 
+## 31. Object Repositoryを有効化する条件を確認——「UIAutomationパッケージのアップグレード」+「Modern Design Experience」の両方が必要(P2 #12)
+
+`xaml_probe`(Process、Legacy)プロジェクトで右下の「Object Repository」
+タブを開くと次の案内が表示された:
+
+> To enable Object Repository, upgrade your UIAutomation package and enable
+> Modern Design Experience from Project Settings.
+
+「Manage Packages」「Project Settings」の2つのボタンが並んでおり、
+Object Repositoryの有効化には**2つの条件を同時に満たす必要がある**ことが
+分かる: (1) `UiPath.UIAutomation.Activities`パッケージを(おそらくModern
+Design Experience対応版に)アップグレードすること、(2) Project Settings
+ダイアログの「General」タブ最下段にある**「Modern Design Experience」
+トグル**(既定で`No`)を`Yes`にすること。
+
+Project Settingsダイアログ自体は`General`・`Workflow Analyzer`・
+`Activities Settings`(配下に`OCR`・`Computer Vision`・`Excel Business`・
+**`UI Automation Modern`**・**`UI Automation Classic`**・`System`の
+サブカテゴリ)という構成で、「UI Automation Modern」と「UI Automation
+Classic」が別々のサブカテゴリとして存在することも確認できた——Modern
+Design Experienceは単なる見た目の切り替えではなく、セレクタ/ターゲティング
+方式そのものが「Modern」と「Classic」で分岐する設計であることが伺える
+(詳細な差分は今回は未確認)。
+
+「Modern Design Experience」トグルをクリックすると即座に
+「The Modern Design Experience has changed. Reload project to apply
+changes.」という確認ダイアログが出た(Reload/Cancel)。**この切り替えは
+プロジェクト全体のリロードを要する重い操作**であり、今回は既存の
+知見1〜30で確立したXAML構造(Classic UI Automation前提)を壊さないよう、
+あえてCancelして実際のリロードは行わなかった。Object Repository配下の
+`.objects/`構造、Modern方式のセレクタXAML表現は今後の調査候補として残す
+——調査する場合は`xaml_probe`を汚さず、専用の新規プローブプロジェクトを
+別途作成してから試すのが安全。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
