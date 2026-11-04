@@ -302,6 +302,46 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
 依存する表面上の違い**で、意味論上はどちらも同じ「コンパイル時リテラル」を表す
 ——トランスパイラ側はこの2形式を同列に扱ってよい。
 
+## 14. `While`の実体は`ui:InterruptibleWhile`、`[...]`角括弧式の正体は`VisualBasicValue`の省略記法だと判明
+
+`While`アクティビティを追加し、条件に`result<>"x"`(`result`は知見2のAssignで
+暗黙生成した`x:Object`型変数)を設定したところ、2つの重要な発見があった。
+
+**(1) `While`は`ui:InterruptibleWhile`として直列化される**——検索候補の表示名は
+単に「While」だが、実体は一時停止/再開・キャンセルに対応したUiPath独自の
+`ui:`名前空間アクティビティで、素のWF`While`ではない。知見5で「If/TryCatch/
+Assign/Sequenceは素のWF型、ForEach/MessageBoxはUiPath独自型」と整理したが、
+Whileも後者(UiPath独自)側に入ることが分かった——制御フロー系は個別に確認が
+必要という方針を改めて裏付ける結果。
+
+**(2) `[...]`角括弧式の正体が判明した。** これまで多くの箇所で見てきた
+`Condition="[result=&quot;ok&quot;]"`のような角括弧記法は、実は次の冗長形の
+**省略記法(XAMLのMarkup Extension的な糖衣構文)** だったと分かった:
+
+```xml
+<ui:InterruptibleWhile.Condition>
+  <mva:VisualBasicValue x:TypeArguments="x:Boolean" ExpressionText="result&lt;&gt;&quot;x&quot;" />
+</ui:InterruptibleWhile.Condition>
+```
+
+`mva:VisualBasicValue`(`Microsoft.VisualBasic.Activities`名前空間、知見1から
+既に`xmlns:mva`としてルート要素に宣言済み)は、WF4.5以降の標準機能である
+VB式評価アクティビティで、`ExpressionText`属性に生のVB式テキストを保持する
+(代入可能な式の場合は`VisualBasicReference`になる、と推測される——未確認)。
+`[...]`角括弧構文は、Studioがこの`VisualBasicValue`/`VisualBasicReference`
+アクティビティをXAML属性1つに圧縮して書くための省略記法であり、**同じ
+VB式エンジンの2つの異なる直列化表現**に過ぎない——知見13までで「別物」として
+扱っていた区別のうち、角括弧式についてはここで実体が統一的に理解できた
+(ただし知見13の`<Literal>`要素・生テキストは、式ではなくコンパイル時定数という
+本質的に別の仕組みなので、この統合には含まれない)。
+
+**実務上の含意**: `While`の条件のように、冗長形(`<X.Property><mva:VisualBasicValue
+ExpressionText="..." /></X.Property>`)で書かれるか、`Condition="[...]"`の
+省略形で書かれるかはアクティビティ・プロパティごとに異なるらしい(`If.Condition`は
+省略形、`InterruptibleWhile.Condition`は冗長形だった)。トランスパイラの式パーサーは
+**両方の形(`[...]`属性と`<mva:VisualBasicValue ExpressionText="...">`要素)を
+同じVB式として扱う正規化ステップ**を最初に挟むのが筋が良さそうだ。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
