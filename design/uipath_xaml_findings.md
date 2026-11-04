@@ -458,13 +458,16 @@ VB式を1文字ずつ`send_keys`で入力する際に特別なエスケープ(`{
   整形/正規化が行われている可能性がある(未検証: VB.NETパーサーによる
   再フォーマットか、単なる入力欄のトリミングか)。
 - `Invoke Code`の`Arguments`(引数の受け渡し、`Edit Arguments`ボタン経由)は、
-  知見12で確認した`Invoke Workflow File`の`Arguments`(`InArgument`/
-  `OutArgument`を`x:Key`で紐付ける辞書的コレクション)とは**異なる型**で、
-  `scg:Dictionary x:TypeArguments="x:String, Argument"`
-  (`System.Collections.Generic.Dictionary<string, Argument>`の素の直列化)に
-  なる。今回は引数を1つも追加しなかったため空の`<scg:Dictionary .../>`要素
-  のみで、実際に引数を1つ以上追加した場合の`<scg:Dictionary>`子要素の形
-  (キー/値ペアがどう表現されるか)は未確認——次の調査候補とする。
+  **空のときだけ**`scg:Dictionary x:TypeArguments="x:String, Argument"`
+  (`System.Collections.Generic.Dictionary<string, Argument>`の素の直列化、
+  自己終了タグ`<scg:Dictionary .../>`)になる。知見20で1件追加して検証した
+  ところ、**値が1つ以上あるときは`scg:Dictionary`という型名自体がXAML上から
+  消え**、知見12の`Invoke Workflow File`や知見21の`Switch`のcaseと同じ
+  `x:Key`付き子要素の並びに切り替わることが判明した(詳細は知見23)。
+  つまり「空コレクションのときだけ具象型`scg:Dictionary`で明示的に直列化され、
+  要素が入ると`IDictionary<TKey,TValue>`共通の`x:Key`タグ付き子要素列という
+  WF標準の表現に統一される」という規則だと考えられる——当初の想定(知見17執筆時)
+  とは逆の結果だった。
 - `ContinueOnError="{x:Null}"`は他のアクティビティ(知見12の`Invoke Workflow
   File`)と同じ「未設定のNullable(Of Boolean)は`{x:Null}`」パターン。
 - **移行上重要な意味論の発見**: 保存後にデザイナーへ戻ると、Propertiesパネル上部に
@@ -689,6 +692,48 @@ Integration > Excel)を実機確認した。`WorkbookPath`に`"wb.xlsx"`を設�
   `Append Line`と同じ「生の属性値」直列化形(知見7/13の4形式のうち最も
   圧縮された形)になっている。
 
+## 23. `Invoke Code`のArgumentsに値を1つ追加すると`scg:Dictionary`が消え、`x:Key`付き子要素列になる(知見17の積み残しを解決)
+
+知見17で「空の`<scg:Dictionary x:TypeArguments="x:String, Argument" />`しか
+確認できなかった」としていた`Invoke Code`の`Arguments`に、`Edit Arguments`
+ダイアログから`myArg`(方向`In`、型`String`、値`content`)という引数を1つ
+追加して保存した結果:
+
+```xml
+<ui:InvokeCode ContinueOnError="{x:Null}" Code="content=content.ToUpper()" DisplayName="Invoke code">
+  <ui:InvokeCode.Arguments>
+    <InArgument x:TypeArguments="x:String" x:Key="myArg">
+      <mva:VisualBasicValue x:TypeArguments="x:String" ExpressionText="content" />
+    </InArgument>
+  </ui:InvokeCode.Arguments>
+</ui:InvokeCode>
+```
+
+ポイント:
+
+- 予想に反して`scg:Dictionary`という型名は一切現れず、知見12の`Invoke
+  Workflow File`・知見21の`Switch`のcaseと**全く同じ**「`x:Key`付き
+  `InArgument`/`OutArgument`要素が並ぶだけ」という表現になった。「空コレクション
+  は具象型`scg:Dictionary`で明示直列化され、要素が入るとWF標準の`IDictionary`
+  表現(`x:Key`付き子要素列)に切り替わる」という規則だと考えられる——XAML
+  シリアライザが、コレクションが空の場合にのみ具象型のデフォルトコンストラクタ
+  呼び出しとして表現し、要素があるときは型を問わず統一的な`IDictionary`
+  構文を使う、という挙動の一例。トランスパイラの実装上は「`x:Key`を持つ兄弟
+  要素の並び」を見れば型(`scg:Dictionary`か`InArgument`の辞書かを問わず)に
+  関わらず同じパーサーで処理できる、という割り切りが可能。
+- 引数の値`content`(変数参照)は、`<mva:VisualBasicValue
+  x:TypeArguments="x:String" ExpressionText="content" />`という**知見14で
+  確認したネスト要素形**になった。`[content]`角括弧属性値のショートハンドでは
+  ない——角括弧ショートハンドは属性値コンテキスト(`Text="[content]"`のように
+  XML属性として書く場所)でのみ使える表記であり、ここでは`<InArgument>`の
+  子要素という非属性コンテキストなので、知見21の`Assign.Value`(属性値ではなく
+  要素中のプレーンテキスト、リテラルの場合)とも異なり、**式(変数参照)の
+  場合はネスト要素形に戻る**ことが分かった。まとめると、値の表現は
+  (1) 属性値コンテキストなら`[...]`角括弧、(2) 要素コンテキストでリテラルなら
+  生テキストまたは`<Literal>`要素(知見13)、(3) 要素コンテキストで式(変数参照
+  等)なら`<mva:VisualBasicValue>`/`VisualBasicReference`のネスト要素、という
+  3方向の使い分けがある。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
@@ -713,7 +758,7 @@ Integration > Excel)を実機確認した。`WorkbookPath`に`"wb.xlsx"`を設�
   使われるケース)は知見11では未確認
 - C#式言語プロジェクト(`expressionLanguage: "CSharp"`)でのInArgument/
   OutArgumentの直列化形式の違い(VB.NETと同じ`[...]`規約を使うのか)
-- `Invoke Code`に実際に1つ以上の`Argument`を追加した場合の
-  `<scg:Dictionary x:TypeArguments="x:String, Argument">`子要素の形
-  (知見17は空コレクションのみ確認。キー/値ペアの表現、方向(In/Out/InOut)
-  の指定方法が未確認)
+- **(解決)** ~~`Invoke Code`に実際に1つ以上の`Argument`を追加した場合の形~~
+  → 知見23で解決(`x:Key`付き`InArgument`要素列になる)。残る派生課題:
+  方向`Out`/`InOut`の引数を追加した場合に`OutArgument`/`InOutArgument`の
+  どちらになるか(今回は`In`のみ確認)

@@ -201,7 +201,9 @@
     <ui:ReadTextFile Content="[content]" DisplayName="Read Text File" FileName="out.txt" sap:VirtualizedContainerService.HintSize="497,79" sap2010:WorkflowViewState.IdRef="ReadTextFile_1" />
     <ui:InvokeCode ContinueOnError="{x:Null}" Code="content=content.ToUpper()" DisplayName="Invoke code" sap:VirtualizedContainerService.HintSize="497,164" sap2010:WorkflowViewState.IdRef="InvokeCode_1">
       <ui:InvokeCode.Arguments>
-        <scg:Dictionary x:TypeArguments="x:String, Argument" />
+        <InArgument x:TypeArguments="x:String" x:Key="myArg">
+          <mva:VisualBasicValue x:TypeArguments="x:String" ExpressionText="content" />
+        </InArgument>
       </ui:InvokeCode.Arguments>
     </ui:InvokeCode>
     <ui:Break sap:VirtualizedContainerService.HintSize="497,22" sap2010:WorkflowViewState.IdRef="Break_1" />
