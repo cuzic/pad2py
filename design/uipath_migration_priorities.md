@@ -47,14 +47,24 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | 15 | State Machineワークフロー種別 | **完了**(知見30): REFrameworkテンプレートのMain.xamlで実機確認。`StateMachine`/`State`/`Transition`要素、`x:Name`/`x:Reference`によるグラフ参照(初出時のみインライン展開、以降は参照のみ)、`State.Entry`/`State.Transitions`/`Transition.Condition`/`Transition.Action`/`IsFinal`属性を確定 |
 | 16 | Computer Vision/画像ベースセレクタ | 未着手(`# TODO`対象として扱う方針は維持) |
 | 17 | Marketplaceカスタムアクティビティパッケージ | 対象外方針を維持(`# TODO`) |
-| 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | 未着手 |
+| 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | **部分的に解決・ネガティブ**: Studio 2021.4.4には式言語を切り替えるUIが(New Project時にもグローバルSettingsにも)一切存在せず、このバージョンは全プロジェクトVB.NET固定と判明。`project.json`に`expressionLanguage`フィールド自体は存在する(知見30でVisualBasic値を実例確認)ので、より新しいStudioバージョンでの実機確認が必要 |
 | 19 | Test Suite(データ駆動テスト・アサーション) | 未着手(優先度低のまま) |
 
-## 次の一手の候補(優先度順)
+## 次の一手の候補(優先度順、2026-11-04時点で更新)
 
-1. **P0 #1の残り**(While/DoWhile/Parallel/Break)——制御フローを完全に揃える
-2. **P1 #8**(Invoke Workflow File)——PADのサブフローに相当する重要な構造
-3. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・`<Literal>`要素・
-   比較演算子`=`等)を整理してドキュメント化するだけでも価値がある
-4. **P1 #7**(高頻度アクティビティ)——PADで既に116件実機キャプチャ済みのFile/Folder等との
-   概念対応が強く、知見の使い回しが効く
+P0は全項目完了。P1はほぼ完了(#7のWord/PDF/Databaseのみ残り、優先度は低め——
+既存7アクティビティで直列化パターンの型は出尽くした可能性が高い)。
+現時点で情報価値が高い残項目:
+
+1. **P2 #11**(Coded Workflows)——REFrameworkテンプレートで雛形ファイルの
+   存在は確認済み(知見30)だが、実際のCoded Workflow本体(ビジネスロジックを
+   C#で書いたワークフロー)の記法・XAMLとの連携方法は未確認。より新しい
+   Studioバージョンが必要になる可能性が高い
+2. **P2 #12の続き**(Object Repository)——`.objects/`の中身とModern方式の
+   セレクタXAML表現。別の専用プローブプロジェクトでUIAutomationパッケージ
+   アップグレード+Modern Design Experience有効化を試す
+3. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・
+   `<Literal>`要素・比較演算子`=`等)を整理してドキュメント化するだけでも価値がある
+4. **P2 #13**(Orchestratorアセット/キュー連携)——未着手。ただし実際の
+   Orchestrator接続を伴うため、共有状態への副作用リスクを要検討
+5. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
