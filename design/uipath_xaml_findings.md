@@ -312,7 +312,8 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
 `ui:`名前空間アクティビティで、素のWF`While`ではない。知見5で「If/TryCatch/
 Assign/Sequenceは素のWF型、ForEach/MessageBoxはUiPath独自型」と整理したが、
 Whileも後者(UiPath独自)側に入ることが分かった——制御フロー系は個別に確認が
-必要という方針を改めて裏付ける結果。
+必要という方針を改めて裏付ける結果。同じ理由で`Do While`も`ui:InterruptibleDoWhile`
+として直列化されることを確認した(命名規則から予想通り)。
 
 **(2) `[...]`角括弧式の正体が判明した。** これまで多くの箇所で見てきた
 `Condition="[result=&quot;ok&quot;]"`のような角括弧記法は、実は次の冗長形の
