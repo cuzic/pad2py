@@ -1882,3 +1882,41 @@ def test_tier1_crypto_database_batch7_parses_as_generic_action_records() -> None
     # 同じ空のバックティック文字列``構文がExecuteSqlStatementのStatementにも
     # 使われている。
     assert execute_sql.params["Statement"] == VarRef(name="``")  # type: ignore[union-attr]
+
+
+def test_tier1_web_xml_batch8_parses_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見71: Database残り1件・Compression残り1件・
+    # Web全3件・XML全10件(計15件)の実機DSLキャプチャ。既存の汎用パーサーが
+    # コード変更無しで正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_web_xml_batch8.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 15
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "Database.Close",
+        "Compression.UnzipFiles",
+        "Web.DownloadFromWeb.Download",
+        "Web.InvokeWebService.InvokeWebService",
+        "Web.InvokeSoapService.InvokeSoapService",
+        "XML.ReadFromFile",
+        "XML.WriteXmlToFile.WriteToFileFormatted",
+        "XML.GetXmlElementValue.GetElementValue",
+        "XML.SetElementValue",
+        "XML.GetXmlElementAttribute.GetElementAttribute",
+        "XML.SetElementAttribute",
+        "XML.RemoveElementAttribute",
+        "XML.InsertElement",
+        "XML.RemoveElement",
+        "XML.ExecuteXPathQuery.ExecuteXPath",
+    ]
+    get_element_value = records[7]
+    # design/dsl_format_findings.md 知見71: XML.ReadFromFileが生成したXmlDocument型の
+    # 変数が1つだけスコープにある場合、後続アクションのDocumentパラメータはPAD側が
+    # 自動的にその変数への参照で事前入力する(自動化スクリプトが埋めた"sample"文字列
+    # ではなくVarRef(XmlDocument)になる)。
+    assert get_element_value.params["Document"] == VarRef(name="XmlDocument")  # type: ignore[union-attr]
+    write_xml = records[6]
+    # design/dsl_format_findings.md 知見66・67・70と同じ空のバックティック文字列``
+    # 構文がXML.WriteXmlToFileのXmlにも使われている。
+    assert write_xml.params["Xml"] == VarRef(name="``")  # type: ignore[union-attr]

@@ -1470,3 +1470,36 @@ Database.ExecuteSqlStatement.Execute Connection: SQLConnection Statement: `` Tim
 **検証**: 12件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_crypto_database_batch7_parses_as_generic_action_records`)。これにより`File`の完了率は12/16→14/16、`Cryptography`は0/8→8/8(完了)、`Database`は0/3→2/3まで進んだ。
 
 **今後**: これにより`File`は16/16(完了)まで進んだ。残る`Database.CloseConnection`(検索語の見直しが必要、例えば「Close database connection」等でFTPと区別する)、および残るTier1/2の未キャプチャモジュール(Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。
+
+## 71. Database残り1件・Compression残り1件・Web全3件・XML全10件を実機キャプチャ——事前UIプローブと「名前の完全一致優先」自動化修正により15/15を一度で成功
+
+知見70で判明した「検索語の部分文字列一致による誤爆」問題(`Close connection`→`FTP.CloseConnection`)に対処するため、今回のバッチ実行前にUIAutomationツリーを直接プローブして全15項目の正確なUI表示名を確認した(例: Database側は`Close SQL connection`、XPathアクションは`Execute XPath expression`——`search_term`案の「Execute XPath query」とは異なる、`Invoke SOAP service`ではなく`Invoke SOAP web service`)。さらに自動化スクリプトのリーフ選択ロジックを「ドットを含み展開ボタンを持たない最初のリーフ」から「**名前が検索語と完全一致(大小無視)するものを優先**、無ければ最初の候補にフォールバック(その場合は警告ログを出力)」に変更した。この2つの対策により、`Database.Close`・`Compression.UnzipFiles`・Web全3件・XML全10件の計15件を警告ゼロで一度で正しくキャプチャできた(`tests/fixtures/tier1_web_xml_batch8.txt`)。
+
+**実機キャプチャ結果**:
+```
+Database.Close Connection: SQLConnection
+Compression.UnzipFiles ArchivePath: $'''sample''' DestinationFolder: $'''sample''' Password: P'<DPAPI base64>' IncludeMask: $'''sample''' ExcludeMask: $'''sample'''
+Web.DownloadFromWeb.Download Url: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False WebPageText=> WebPageText
+Web.InvokeWebService.InvokeWebService Url: $'''sample''' Method: Web.Method.Get Accept: $'''application/xml''' ContentType: $'''application/xml''' CustomHeaders: $'''sample''' RequestBody: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False FailOnErrorStatus: False EncodeRequestBody: True UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True ResponseHeaders=> WebServiceResponseHeaders Response=> WebServiceResponse StatusCode=> StatusCode
+Web.InvokeSoapService.InvokeSoapService Endpoint: $'''sample''' CustomHeaders: $'''sample''' RequestBody: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False FailOnErrorStatus: False UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True ResponseHeaders=> SoapServiceResponseHeaders Response=> SoapServiceResponse StatusCode=> StatusCode2
+XML.ReadFromFile File: $'''sample''' Encoding: XML.FileEncoding.DefaultEncoding XmlDocument=> XmlDocument
+XML.WriteXmlToFile.WriteToFileFormatted File: $'''sample''' Xml: `` Encoding: XML.FileEncoding.DefaultEncoding Indentation: 2
+XML.GetXmlElementValue.GetElementValue Document: XmlDocument XPathQuery: $'''sample''' TextValue=> XmlElementValue
+XML.SetElementValue Document: XmlDocument XPathQuery: $'''sample''' ElementValue: $'''sample'''
+XML.GetXmlElementAttribute.GetElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample''' TextValue=> XmlAttributeValue
+XML.SetElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample''' AttributeValue: $'''sample'''
+XML.RemoveElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample'''
+XML.InsertElement Document: XmlDocument XPathQuery: $'''sample''' Element: $'''sample'''
+XML.RemoveElement Document: XmlDocument XPathQuery: $'''sample'''
+XML.ExecuteXPathQuery.ExecuteXPath XmlDocument: $'''sample''' XPathQuery: $'''sample''' XPathResults=> XPathResults
+```
+
+**確認できた事実**:
+- **自動変数参照の補完**: `XML.ReadFromFile`で`XmlDocument`という出力変数を作った直後、以降の`XML.GetXmlElementValue`等の`Document`パラメータを一切編集せずに保存したところ、空文字列や未入力エラーにはならず、既に生成済みの`XmlDocument`変数への参照(`Document: XmlDocument`、`$'''...'''`でラップされない裸の`VarRef`)が自動的に事前入力されていた。これは文字列型パラメータ(常に空の`Edit`として露出し`"sample"`で埋められる)とは異なる挙動で、**オブジェクト型パラメータは、スコープ内に型が一致する変数が1つだけ存在する場合、PAD側がそれを自動的にデフォルト選択する**ことを示す——自動化スクリプトの「空のEditを`"sample"`で埋める」ロジックがこれらのパラメータに触れなかったにもかかわらず、有効な値(既存変数参照)が入っていたことから判明した新知見。
+- `Web.InvokeWebService`/`Web.InvokeSoapService`の`UserAgent`デフォルト値が、ブラウザのUser-Agent文字列を模した具体的な文字列(`Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6`)であることを確認——古いFirefoxのUser-Agentがハードコードされたデフォルト値になっている。
+- `XML.WriteXmlToFile.WriteToFileFormatted`の`Xml`パラメータは、知見66・67・70で確認した空のバックティック文字列`` `` ``構文。
+- `Compression.UnzipFiles`の`Password`は知見65で確認した`P'<DPAPI base64>'`構文——Zip/Unzip双方の暗号化パスワードが同じ構文で統一されている。
+
+**検証**: 15件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_web_xml_batch8_parses_as_generic_action_records`)。これにより`Database`は2/3→3/3(完了)、`Compression`は1/2→2/2(完了)、`Web`は0/3→3/3(完了)、`XML`は0/10→10/10(完了)まで進んだ。全体は96/116→111/116(96%)に到達し、残るのは`Cmd`モジュール(0/5)のみとなった。
+
+**今後**: 残る`Cmd`モジュール5件(`OpenCmdSession`/`WriteToCmdSession`/`ReadFromCmdSession`/`WaitForTextOnCmdSession`/`CloseCmdSession`)を同じ自動化バッチでキャプチャすれば、Tier1/2の116件全ての実機キャプチャが完了する。

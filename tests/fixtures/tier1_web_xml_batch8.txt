@@ -1,0 +1,15 @@
+Database.Close Connection: SQLConnection
+Compression.UnzipFiles ArchivePath: $'''sample''' DestinationFolder: $'''sample''' Password: P'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAWO5tuuCEIUiYIkQ+hIDxiwQAAAACAAAAAAAQZgAAAAEAACAAAADOr2q56TA8GqXjSnQqyGCP8zy/SLGCLbzW+VZ3mZ5IuAAAAAAOgAAAAAIAACAAAAAVqYjOvxlPI9nOtJJNlKkLkudL8gUxVyntyigPfxDCiRAAAACrXpN5PUhHCjU//i/ATinIQAAAAC7EVXoamJmMjXuoDt7dmKQDjO/Sb+76Ug0OwxgvLag7Qm+j8ga/z+E2WLBYOfHmgvCfqAHc41FfKXOoC2kFPCg=' IncludeMask: $'''sample''' ExcludeMask: $'''sample'''
+Web.DownloadFromWeb.Download Url: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False WebPageText=> WebPageText
+Web.InvokeWebService.InvokeWebService Url: $'''sample''' Method: Web.Method.Get Accept: $'''application/xml''' ContentType: $'''application/xml''' CustomHeaders: $'''sample''' RequestBody: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False FailOnErrorStatus: False EncodeRequestBody: True UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True ResponseHeaders=> WebServiceResponseHeaders Response=> WebServiceResponse StatusCode=> StatusCode
+Web.InvokeSoapService.InvokeSoapService Endpoint: $'''sample''' CustomHeaders: $'''sample''' RequestBody: $'''sample''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False FailOnErrorStatus: False UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True ResponseHeaders=> SoapServiceResponseHeaders Response=> SoapServiceResponse StatusCode=> StatusCode2
+XML.ReadFromFile File: $'''sample''' Encoding: XML.FileEncoding.DefaultEncoding XmlDocument=> XmlDocument
+XML.WriteXmlToFile.WriteToFileFormatted File: $'''sample''' Xml: `` Encoding: XML.FileEncoding.DefaultEncoding Indentation: 2
+XML.GetXmlElementValue.GetElementValue Document: XmlDocument XPathQuery: $'''sample''' TextValue=> XmlElementValue
+XML.SetElementValue Document: XmlDocument XPathQuery: $'''sample''' ElementValue: $'''sample'''
+XML.GetXmlElementAttribute.GetElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample''' TextValue=> XmlAttributeValue
+XML.SetElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample''' AttributeValue: $'''sample'''
+XML.RemoveElementAttribute Document: XmlDocument XPathQuery: $'''sample''' AttributeName: $'''sample'''
+XML.InsertElement Document: XmlDocument XPathQuery: $'''sample''' Element: $'''sample'''
+XML.RemoveElement Document: XmlDocument XPathQuery: $'''sample'''
+XML.ExecuteXPathQuery.ExecuteXPath XmlDocument: $'''sample''' XPathQuery: $'''sample''' XPathResults=> XPathResults
