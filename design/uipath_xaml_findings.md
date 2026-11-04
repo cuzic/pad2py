@@ -1131,6 +1131,223 @@ Invoke Code・Excel Application Scope+Write Cell・Send Outlook Mail Message・
 Set To Clipboard・HTTP Request)はひとまず主要なものを一巡した。
 残るWord/PDF/Databaseは今後の調査候補とする。
 
+## 30. Robotic Enterprise Framework(REFramework)テンプレートを実機確認——State Machine構造の確定、`targetFramework: "Portable"`の実例、そしてUiPath自身がAI向け`AGENTS.md`/`CLAUDE.md`をテンプレートに同梱している発見(P2 #10・P0#4・P2#17)
+
+Studio 2021.4.4のStart画面「New from Template」→「Robotic Enterprise Framework」から
+テンプレート(バージョン26.10.1、クラウドから都度ダウンロードされる——インストール
+済みStudioのバージョンとは独立に最新版が配布される)を使ってプロジェクトを作成した。
+
+**重要な前提**: プロジェクト作成直後、Studioが「プロジェクトを開けない」エラーを
+出した:
+
+```
+The project 'C:\Users\tomoya_kaw\Documents\UiPath\xaml_probe_reframework\project.json'
+could not be opened: Could not find a part of the path 'C:\Users\tomoya_kaw\AppData\
+Local\UiPath\app-21.4.4\net5.0'..
+```
+
+これは、公式テンプレート自体がインストール済みStudioよりもはるかに新しい
+バージョン向けに作られていることを示す実例である(後述の`project.json`の
+依存パッケージバージョンが軒並み2025〜2026年のものであることからも裏付けられる)。
+Studioはプロジェクトを開けなかったが、**テンプレートのファイル一式はディスクに
+展開済み**だったため、ファイルシステム経由で直接内容を確認できた。
+
+### 30-1. ディレクトリ構造——知見25(Library)からさらに増えた新要素
+
+```text
+xaml_probe_reframework/
+  project.json
+  entry-points.json          ← 新規(project.jsonのentryPointsと別に存在)
+  Main.xaml                  ← State Machine
+  Main.xaml.json             ← 新規(ワークフロー単位のサイドカーファイル)
+  README.md / LICENSE
+  Data/Config.json, Data/Input|Output|Temp/placeholder.txt
+  Framework/*.xaml(8ファイル)+ AGENTS.md + CLAUDE.md
+  Tests/*.xaml(6ファイル)+ Tests.xlsx
+  .codedworkflows/ConnectionsFactory.cs, ConnectionsManager.cs  ← Coded Workflows(C#)
+  .project/design.json, CodedBindingsMetadata.json, PackageBindingsMetadata.json
+  .entities/   .local/   .tmh/config.json
+```
+
+`entry-points.json`は`project.json`の`entryPoints`と内容が重複するが別ファイルで、
+`"$schema": "https://cloud.uipath.com/draft/2024-12/entry-point"`を参照する——
+Orchestrator/Cloud側がプロジェクト全体をパースせずエントリポイントだけ読む用の
+軽量サイドカーだと推測される。`.codedworkflows/*.cs`はUiPathの「Coded Workflows」
+(XAMLではなくC#で書くワークフロー)の雛形で、P2項目「Coded Workflows」の存在を
+実機で確認できたことになる(中身は空の接続管理クラスのみで詳細な記法までは
+未確認)。
+
+### 30-2. `project.json`の新フィールド
+
+```json
+{
+  "dependencies": {
+    "UiPath.Excel.Activities": "[3.6.1]",
+    "UiPath.System.Activities": "[26.6.3]",
+    "UiPath.Testing.Activities": "[25.10.2]",
+    "UiPath.UIAutomation.Activities": "[26.10.3]"
+  },
+  "studioVersion": "21.4.4.0",
+  "designOptions": {
+    "fileInfoCollection": [
+      {"editingStatus": "InProgress", "testCaseId": "793c8ea8-...", "fileName": "Tests\\GetTransactionDataTestCase.xaml"}
+    ],
+    "modernBehavior": false
+  },
+  "expressionLanguage": "VisualBasic",
+  "targetFramework": "Portable"
+}
+```
+
+- **`targetFramework: "Portable"`** ——P0#4で「UI上に切替トグルが見当たらない」と
+  した`Windows`/`Cross-platform`の実際のJSON値をついに実例で確認できた。知見28で
+  確認した`"Legacy"`(→`.NETFramework4.6.1`、nuspecの`targetFramework`属性)とは
+  別の値で、Studio UI上の表記「Cross-platform (Portable)」がそのまま
+  `"Portable"`という文字列になる。依存パッケージのバージョンも軒並り新しく、
+  Portableプロジェクトは.NET Framework世代のLegacyパッケージ群とは別の
+  パッケージラインを要求することが分かる。
+- **`expressionLanguage: "VisualBasic"`**——フィールド自体は存在し明示的に
+  書かれている(P3#18の「C#式言語」はこのフィールドの値を変えるだけの
+  話である可能性が高いが、Studio UIからの切替手段は今回も発見できず)。
+- **`fileInfoCollection`**——Test Manager連携用に、各テストケースXAMLファイルへ
+  `testCaseId`(GUID)をマッピングするテーブルが`project.json`内に埋め込まれる
+  ことが判明。プロジェクトファイルとテストケースの対応はファイルパスではなく
+  このGUIDで管理されている可能性がある。
+- **`studioVersion: "21.4.4.0"`**——興味深いことに、これだけ新しい依存関係を
+  持つテンプレートであるにもかかわらず`studioVersion`フィールドの値は
+  今回使った実機のStudio(21.4.4)のバージョンがそのまま書き込まれている。
+  おそらく「プロジェクトを作成した時に使ったStudioのバージョン」を記録する
+  だけのメタデータであり、実際の互換性検証には使われていない(だからこそ
+  開けないプロジェクトが作成できてしまった)と考えられる。
+
+### 30-3. ルート直下の`AGENTS.md`/`CLAUDE.md`は存在しない——Studioが開いた時に生成される
+
+今回はStudioがプロジェクトを開けなかったため、ルート直下には`AGENTS.md`/
+`CLAUDE.md`は存在しなかった(ディレクトリ一覧で確認済み)。ただし
+`Framework/AGENTS.md`の冒頭に次の記述がある:
+
+> This guide lives in `Framework/` because Studio overwrites the root
+> `AGENTS.md`/`CLAUDE.md` with generic files.
+
+つまり**UiPath Studioは、プロジェクトを開いた際にルート直下へ汎用的な
+`AGENTS.md`/`CLAUDE.md`を自動生成する**挙動を持つ(今回は開けなかったため
+未確認・今後の課題)。テンプレート側はそれを見越して、REFramework固有の
+詳しい手引きを`Framework/AGENTS.md`に退避させ、ルートの`CLAUDE.md`は
+`@AGENTS.md`という1行(Claude Code方言の`@`インポート記法)だけの
+中継ファイルになっている。
+
+### 30-4. `Framework/AGENTS.md`の中身——UiPath自身がAIコーディングエージェント向けガイドを公式テンプレートに同梱していた(重要なビジネス文脈上の発見)
+
+全文は約130行。目次的に要約すると::
+
+- 冒頭の互換性表で`Language: VisualBasic, fixed for every workflow`、
+  `.NET: Minimum Robot version 24.10 = .NET 8 / 26.10 = .NET 10`と明記。
+- 「`.xaml`/`.cs`は手で編集せず**uipath-rpaという名のSkill**を使い、
+  `uip rpa analyze .`で検証せよ」という指示——**UiPathが`uip`という
+  統一CLIツールと、Claude Code等のコーディングエージェント向け`Skill`機構
+  (本セッションで使っているものと同種の概念)を前提にした開発フローを
+  公式に用意している**ことを意味する。`uip rpa pack`・`uip solution
+  projects add`・`uip solution pack/publish/deploy`といったサブコマンドも
+  言及されている。
+- State Machineの4状態(Initialization/Get Transaction Data/Process
+  Transaction/End Process)の役割、`Config`辞書・`TransactionItem`等の
+  共有変数、`Framework/*.xaml`各ファイルの引数一覧を表形式で説明——
+  実際のMain.xamlの構造(30-5参照)と完全に一致している。
+- 「`Process.xaml`を囲む catch-all Try Catchを作るな、Global Exception
+  Handlerも使うな、フレームワークが例外を分類・ルーティングする」という
+  設計原則の明文化。
+
+**戦略上の含意**: pad2pyが想定する「AIコーディングエージェントがRPAプロジェクトを
+読み書きする」というワークフローを、UiPath自身が公式テンプレートレベルで
+先取りして用意し始めている。これはUiPath→Python移行ツールの競合・隣接領域の
+話に留まらず、「UiPathを使い続けながらAIエージェントで開発効率化する」という
+道がUiPath自身によって強化されつつある、というbusiness context上の新しい
+シグナルである(=移行せず居座るインセンティブが増す方向)。
+
+### 30-5. State Machineの XAML構造(P2「State Machineワークフロー種別」が初めて実機で確認できた)
+
+`Main.xaml`のルートは`<StateMachine>`で、構造は次の通り:
+
+```xml
+<StateMachine InitialState="{x:Reference __ReferenceID3}" DisplayName="General Business Process" ...>
+  <State x:Name="__ReferenceID0" DisplayName="Get Transaction Data" ...>
+    <State.Entry>
+      <Sequence>...</Sequence>
+    </State.Entry>
+    <State.Transitions>
+      <Transition DisplayName="New Transaction" ...>
+        <Transition.To>
+          <State x:Name="__ReferenceID2" DisplayName="Process Transaction" ...>
+            <!-- 初出の参照先は中身をインラインで展開 -->
+            ...
+            <State.Transitions>
+              <Transition DisplayName="Successful" ...>
+                <Transition.To>
+                  <x:Reference>__ReferenceID0</x:Reference>
+                  <!-- 2回目以降の参照はx:Referenceだけになる -->
+                </Transition.To>
+                <Transition.Action>
+                  <ui:Comment Text="Default transition is picked up if there are no errors during initialization" />
+                </Transition.Action>
+                <Transition.Condition>[SystemException is Nothing]</Transition.Condition>
+              </Transition>
+            </State.Transitions>
+          </State>
+        </Transition.To>
+      </Transition>
+      <Transition DisplayName="No Data" .../>
+    </State.Transitions>
+  </State>
+  <StateMachine.Variables>...</StateMachine.Variables>
+</StateMachine>
+```
+
+確定した構造規則:
+
+1. **状態は標準XAMLの`x:Name`/`x:Reference`機構で相互参照される**——
+   `StateMachine`の`InitialState`属性、各`Transition.To`の参照先は
+   いずれも`{x:Reference __ReferenceIDn}`属性構文、または子要素形の
+   `<x:Reference>__ReferenceIDn</x:Reference>`のいずれか。
+2. **状態の本体(`<State x:Name="...">...</State>`)は、XAML文書中で最初に
+   その状態が登場する箇所に1回だけインラインで書かれ、2回目以降の参照は
+   `x:Reference`だけになる**——Switch(知見21)やInvoke Code(知見23)の
+   ような「同じ構造が繰り返される」パターンとは異なり、グラフ構造(状態が
+   複数の遷移元から参照されうる)を表現するための標準XAML機能を転用している。
+   これはトランスパイラ実装上、素直な木構造のトップダウン走査だけでは
+   対応できず、`x:Name`→実体のマップを一度構築してから`x:Reference`を
+   解決する2パスの処理が必要になることを意味する。
+3. **`<State.Entry>`が状態進入時に実行されるアクティビティツリー**(今回は
+   常に`Sequence`)を保持する。
+4. **`<State.Transitions>`は`<Transition>`要素の並び**——各`Transition`は
+   `DisplayName`・`Transition.To`(遷移先)・`Transition.Condition`(VB式、
+   既存の`[...]`角括弧規約)・`Transition.Action`(遷移時に実行する任意の
+   アクティビティ、ここでは`ui:Comment`)を持つ。`Transition.Condition`が
+   無い`Transition`は無条件遷移(デフォルト遷移)として扱われる。
+5. **終了状態には`IsFinal="True"`属性が付く**(`End Process`状態で確認)。
+
+### 30-6. 名前空間の違い——`Portable`プロジェクトは`System.Private.CoreLib`、`Legacy`プロジェクトは`mscorlib`
+
+今回のPortableプロジェクトの`Main.xaml`ルート要素の名前空間宣言:
+
+```xml
+xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.Private.CoreLib"
+xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
+```
+
+これまでのLegacyプロジェクト(`xaml_probe`等)では一貫して
+`xmlns:s="clr-namespace:System;assembly=mscorlib"`だった(知見1等)。
+**`targetFramework`の値(`"Legacy"` vs `"Portable"`)によって、同じ
+`System`名前空間でも参照先アセンブリ名がCLRランタイムの違い(.NET Framework
+の`mscorlib` vs .NET(Core)の`System.Private.CoreLib`)に応じて変わる**ことを
+確定できた。トランスパイラがXAMLの名前空間宣言から型を解決する際、
+アセンブリ名の違いだけで同一視できるようにする正規化が必要になる。
+
+これでP2「REFramework」・P0#4の`targetFramework`実例・P2「State Machine
+ワークフロー種別」が一通り確認できた。`.codedworkflows/`(Coded Workflows)
+の詳細な記法、Test Manager連携(`fileInfoCollection`・`Tests/*.xaml`)、
+Object Repositoryは今後の調査候補として残る。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

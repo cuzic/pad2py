@@ -18,7 +18,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **完了**: If・ForEach・TryCatch+Catch・Switch(知見5・6・9・11、caseへのアクティビティ追加時の実XAML形=`x:Key`はアクティビティ要素自身の属性になる、を知見21で確定)・While/DoWhile(知見14、実体は`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`)・Break(知見18、属性なしの自己終了タグ)・Parallel(知見19、`ui:`プレフィックスを持たない素のWFアクティビティ、知見20でブランチ構造も確定=直接の子`Activity`要素)。ドロップゾーンへのドラッグ&ドロップ自動化も知見20で解決(`drag_activity_from_panel()`)。**残課題**: Parallelの複数ブランチの並び、1ブランチ/case内に複数ステップを入れる場合のSequenceラップ(今後の調査候補参照) |
 | 2 | VB.NET式 → Python式の変換ルール | **机上整理に着手+一部検証済み**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に初期の変換表を作成。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。演算子・型変換・`And`/`Or`と`AndAlso`/`OrElse`の非短絡/短絡の違い等は大半まだ未検証 |
 | 3 | Variables/Argumentsの正式宣言のXAML形 | **完了**: Variablesは知見8(`<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)、Argumentsは知見12(ファイル先頭の`<x:Members><x:Property Name="..." Type="InArgument(x:String)" /></x:Members>`) |
-| 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Process/Library完了**(知見1・知見25)。LibraryはProcessと4点の構造差分(`main`の既定ファイル名、`dependencies`バージョン記法の角括弧有無、`designOptions.outputType`、`entryPoints`キーの有無)を確定。Testプロジェクト、`targetFramework: Windows/Cross-platform`は未着手——インストール済みバージョン(Studio 2021.4.4)のUIには切替箇所が見当たらなかった |
+| 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Process/Library完了**(知見1・知見25)。LibraryはProcessと4点の構造差分(`main`の既定ファイル名、`dependencies`バージョン記法の角括弧有無、`designOptions.outputType`、`entryPoints`キーの有無)を確定。`targetFramework`は**知見30でPortable側の実例を確認完了**(`"Legacy"`=知見28/`.NETFramework4.6.1`、`"Portable"`=知見30/UI表記「Cross-platform」、`System.Private.CoreLib`名前空間を使用)。Studio UI自体に切替箇所が無いのは変わらず(REFrameworkテンプレート等、テンプレート側が指定する形でのみ実例を確認できた)。Testプロジェクトのみ未着手 |
 | 5 | 捕獲用ツールの内製化(pywinauto操作のスクリプト化) | **着手**: 繰り返し使った操作パターンを[dump_daemon/uipath_ui_helpers.py](../dump_daemon/uipath_ui_helpers.py)に関数として切り出した(`pad_ui_helpers.py`のUiPath版)。`pad_dsl_parser.py`/`codegen_coverage.py`に相当する本格的なキャプチャ自動化ツール(アクティビティ名を渡すだけで単独ワークフロー生成→XAML差分取得)はまだ無い |
 
 ## P1: 実務フローのカバレッジに必須
@@ -34,8 +34,8 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 
 | # | 項目 | 状況 |
 |---|---|---|
-| 10 | REFramework(Robotic Enterprise Framework)のXAML構造 | 未着手 |
-| 11 | Coded Workflows(C#/VB code-behindの新機能) | 未着手——もし広く使われていれば、WFアクティビティ木の変換よりコード→コード変換の方が簡単という切り口の転換もあり得る |
+| 10 | REFramework(Robotic Enterprise Framework)のXAML構造 | **着手**(知見30): テンプレート一式(Framework/8ファイル+Tests/6ファイル+Data/)の構成、project.jsonの新フィールド(`targetFramework: "Portable"`実例、`fileInfoCollection`等)、Main.xamlがState Machineである構造を確認。重大な副産物: UiPath公式テンプレートが`Framework/AGENTS.md`(`uip`統一CLI・コーディングエージェント向けSkill前提の開発フロー解説)を同梱していると発覚——business context memoryに反映済み |
+| 11 | Coded Workflows(C#/VB code-behindの新機能) | 未着手——REFrameworkテンプレートに`.codedworkflows/ConnectionsFactory.cs`等の雛形ファイルの存在のみ確認(知見30)、中身の記法は未調査。もし広く使われていれば、WFアクティビティ木の変換よりコード→コード変換の方が簡単という切り口の転換もあり得る |
 | 12 | Object Repository(`.objects/`配下の構造化セレクタストア) | 未着手。今回のサンプルプロジェクトでは「Object Repositoryを有効化しますか」という案内のみ確認(知見11とは別方式) |
 | 13 | Orchestratorアセット/キュー連携アクティビティ | 未着手 |
 | 14 | `.nupkg`パッケージ構造 | **完了**(知見28): OPC形式のZIP、`lib/net45/`配下にコンパイル済み`.dll`(本体+VB式専用の別アセンブリ)。**重大な発見: 元の`.xaml`ソースは同梱されない**——外部Library依存のロジックはXAML解析ができず.NETデコンパイルが必要という、移行戦略上の制約を確認 |
@@ -44,7 +44,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 
 | # | 項目 | 状況 |
 |---|---|---|
-| 15 | State Machineワークフロー種別 | 未着手(優先度低のまま) |
+| 15 | State Machineワークフロー種別 | **完了**(知見30): REFrameworkテンプレートのMain.xamlで実機確認。`StateMachine`/`State`/`Transition`要素、`x:Name`/`x:Reference`によるグラフ参照(初出時のみインライン展開、以降は参照のみ)、`State.Entry`/`State.Transitions`/`Transition.Condition`/`Transition.Action`/`IsFinal`属性を確定 |
 | 16 | Computer Vision/画像ベースセレクタ | 未着手(`# TODO`対象として扱う方針は維持) |
 | 17 | Marketplaceカスタムアクティビティパッケージ | 対象外方針を維持(`# TODO`) |
 | 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | 未着手 |
