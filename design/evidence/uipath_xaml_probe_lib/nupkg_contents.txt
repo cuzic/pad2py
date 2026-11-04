@@ -1,0 +1,20 @@
+xaml_probe_lib.1.0.1.nupkg の展開結果(ZIP/OPCパッケージとして展開)
+
+xaml_probe_lib.nuspec
+[Content_Types].xml
+_rels/.rels
+package/services/metadata/core-properties/51457308e5e64123be46d0549e298d4c.psmdcp
+lib/net45/
+  xaml_probe_lib.dll
+  xaml_probe_lib_Expressions_43412436.dll
+  project.json
+  .settings/Release/settings-1a5b880a.json
+  .settings/Release/settings-5190454b.json
+  .settings/Release/settings-590bb27b.json
+  .settings/Release/settings-9e9290da.json
+  .settings/Release/settings-a1b2dac1.json
+  .settings/Release/settings-afad0842.json
+
+重要: *.xaml ファイルは一切含まれていない(Publishダイアログの
+"Include Sources" をオンにしたまま公開したにもかかわらず)。
+詳細は design/uipath_xaml_findings.md 知見28を参照。

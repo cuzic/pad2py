@@ -985,6 +985,73 @@ InvokeWorkflowFile`、知見12)と「パッケージとして配布されるワ�
 公式名前空間ではないかどうか)を`project.json`の`dependencies`と突き合わせて
 判定する、という設計になりそうである。
 
+## 28. `.nupkg`の中身を実機確認——**公開されたLibraryには元のXAMLソースが含まれない**(移行戦略上の重大な制約)
+
+知見27で公開した`xaml_probe_lib.1.0.1.nupkg`(実体はZIP形式のOPCパッケージ、
+NuGetパッケージそのもの)を展開して中身を確認した(P2項目14)。
+
+```
+xaml_probe_lib.nuspec
+[Content_Types].xml
+_rels/.rels
+package/services/metadata/core-properties/{guid}.psmdcp
+lib/net45/
+  xaml_probe_lib.dll                            ← コンパイル済み本体アセンブリ
+  xaml_probe_lib_Expressions_43412436.dll        ← VB式だけを集めた別アセンブリ
+  project.json                                    (そのまま同梱)
+  .settings/Release/settings-*.json × 6           (デザイン時既定値のスナップショット)
+```
+
+`xaml_probe_lib.nuspec`の内容(抜粋):
+
+```xml
+<dependencies>
+  <group targetFramework=".NETFramework4.6.1">
+    <dependency id="UiPath.Excel.Activities" version="2.10.4" />
+    ...
+  </group>
+</dependencies>
+```
+
+ポイント(移行ツール設計への影響が大きい、重要度の高い発見):
+
+1. **`.nupkg`は標準的なOPC(Open Packaging Conventions)形式のZIPで、
+   中身は`[Content_Types].xml`・`_rels/.rels`・`package/services/
+   metadata/core-properties/*.psmdcp`という、.docx/.xlsx等と同じ
+   Microsoftパッケージング規格に準拠している**——`project.json`の
+   `"targetFramework": "Legacy"`は、実際のNuGetパッケージでは
+   `targetFramework=".NETFramework4.6.1"`という具体的なTFM
+   (Target Framework Moniker、フォルダ名としては`lib/net45/`という
+   慣用の短縮形)に対応することが確定した。
+2. **ワークフローのロジックは`xaml_probe_lib.dll`という単一のコンパイル済み
+   .NETアセンブリにビルドされ、VB式(`[...]`角括弧式)は
+   `{ライブラリ名}_Expressions_{ハッシュ}.dll`という別アセンブリに
+   さらに分離コンパイルされる**——知見14で解明した「`[...]`=
+   `VisualBasicValue`の省略記法」という式の仕組みは、Library公開時には
+   ついに「動的評価されるVB式インタープリタ呼び出し」から「事前コンパイル
+   された.NET IL」に変換される、という最終形態が確認できた。
+3. **最も重要な発見: `project.json`は同梱されるが、元の`.xaml`ソース
+   ファイルは一切含まれていない**——Publishダイアログの「Include Sources」
+   チェックボックス(知見23時点では未検証、既定でオンになっていた)は
+   オンのまま公開したにもかかわらず、展開したパッケージ内のどこにも
+   `*.xaml`が見つからなかった。これは「Include Sources」が別の意味
+   (おそらくPDBデバッグシンボル、または別の配布経路)を指しており、
+   **公開されたLibraryパッケージを入手しただけでは、ワークフローの元の
+   XAML構造(=知見1〜27で解析してきたアクティビティ木)を取り出す手段が
+   無い**ことを意味する。
+4. **移行戦略上の帰結**: PAD→Python移行(pad2py)では「ユーザーが保有する
+   `.pad`ファイル(≒ソースそのもの)を直接解析する」という前提が成立したが、
+   UiPath→Python移行では、**対象プロジェクトが外部Library(自作の
+   `.nupkg`、Marketplace製アクティビティ等)に依存している場合、そのLibrary
+   内部のワークフローロジックはXAML解析の対象にできず、`.dll`の.NET
+   デコンパイル(ILSpy等)という全く別の技術スタックが必要になる**。
+   これは「UiPath→Pythonは開いた隙間(niche)だが、依存Libraryを多用する
+   大規模プロジェクトでは追加の障壁がある」という business context上の
+   重要な留保事項であり、今後の調査候補・ビジネス文脈メモリに反映する
+   価値がある。自プロジェクト内の`.xaml`(Process本体やファイルパス参照の
+   サブワークフロー)は従来通り解析可能——問題になるのはあくまで
+   「外部配布されたLibrary」経由のロジックに限られる。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
