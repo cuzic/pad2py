@@ -1348,6 +1348,28 @@ xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"
 の詳細な記法、Test Manager連携(`fileInfoCollection`・`Tests/*.xaml`)、
 Object Repositoryは今後の調査候補として残る。
 
+### 30-7. 付随して確認した小粒ファイル群(Coded Workflowsの雛形・ワークフロー単位サイドカー)
+
+- **`.codedworkflows/ConnectionsFactory.cs`・`ConnectionsManager.cs`**——
+  いずれも`namespace UiPath_REFramework`(プロジェクト名由来と思われる)配下の
+  空の雛形。`ConnectionsManager`は`ICodedWorkflowsServiceContainer`を受け取る
+  コンストラクタのみで中身は空。今回のテンプレートには実際のCoded Workflow
+  (ビジネスロジックをC#で書いたワークフロー本体)は含まれておらず、外部
+  接続(Excel/Webサービス等)をC#側で登録するための結線ポイントだけが
+  スキャフォールドされている段階だと分かった——Coded WorkflowsはXAMLの
+  `Main.xaml`を置き換えるものではなく、`.cs`ファイルとXAMLワークフローが
+  並存するプロジェクト構造(C#側はあくまで「外部サービスへの接続定義」の
+  置き場)という位置づけらしい。実際のCoded Workflow本体の記法は未確認。
+- **`Main.xaml.json`**——ワークフロー1つにつき1つ生成されるサイドカー
+  JSON。中身は`DisplayName`/`Tooltip`/`HelpLink`/`Color`/
+  `OriginalIconFileName`/`Arguments`のみで、XAML本体から見た目のメタデータ
+  (アイコン・色等のデザイン情報)を分離して持っているだけと見られ、
+  ロジック・構造には影響しない。
+- **`.project/design.json`**——プロジェクト全体の設計時設定
+  (`Tags`・`SeparateRuntimeDependencies`・`IncludeSources`・
+  `ConnectorKeys`)。Publishダイアログの「Include Sources」チェックボックス
+  (知見28)の状態がここに保存されている可能性が高い。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
