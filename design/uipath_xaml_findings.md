@@ -642,6 +642,53 @@ Break)が完了した。ただし**複数の子アクティビティをドロッ
   完了した。`drag_activity_from_panel()`ヘルパーは`Switch`のcase、`Parallel`の
   ブランチの両方で同じ呼び出し方で機能することが実証された。
 
+## 22. `Excel Application Scope`——「スコープ」系アクティビティの実XAML形(`ActivityAction`+`DelegateInArgument`をForEachと共用)
+
+P1項目7(高頻度アクティビティ)の一環として、Excel/Mail/Database等で共通する
+「スコープ(接続を開いて配下のアクティビティで使い、閉じる)」構造の代表例として
+`Excel Application Scope`(`UiPath.Excel.Activities`、Available > App
+Integration > Excel)を実機確認した。`WorkbookPath`に`"wb.xlsx"`を設定し、
+内部に`Write Cell`(`Sheet1`のセル`A1`に`"hello"`を書き込み)を1つ追加した結果:
+
+```xml
+<ui:ExcelApplicationScope Password="{x:Null}" DisplayName="Excel Application Scope"
+    InstanceCachePeriod="3000" WorkbookPath="wb.xlsx">
+  <ui:ExcelApplicationScope.Body>
+    <ActivityAction x:TypeArguments="ui:WorkbookApplication">
+      <ActivityAction.Argument>
+        <DelegateInArgument x:TypeArguments="ui:WorkbookApplication" Name="ExcelWorkbookScope" />
+      </ActivityAction.Argument>
+      <Sequence DisplayName="Do">
+        <ui:ExcelWriteCell Cell="A1" DisplayName="Write Cell" SheetName="Sheet1" Text="hello" />
+      </Sequence>
+    </ActivityAction>
+  </ui:ExcelApplicationScope.Body>
+</ui:ExcelApplicationScope>
+```
+
+ポイント:
+
+- **「スコープ」アクティビティの中身は知見8の`ForEach`のループ本体と全く同じ
+  `ActivityAction`+`ActivityAction.Argument`+`DelegateInArgument`の構造**で
+  表現される——「配下のアクティビティに暗黙のコンテキスト変数を1つ渡す」という
+  WFの仕組みを、ループ変数(ForEachの`item`)にもスコープの接続ハンドル
+  (Excel Application Scopeの`ExcelWorkbookScope`、型`ui:WorkbookApplication`)
+  にも同じように使い回している。これはUiPathの実装方針の一般原則だと考えられ、
+  他のスコープ系アクティビティ(Outlook、Database、SAPなど)も同型の構造に
+  なると推測できる(個別の実機確認はまだ)。
+- `ExcelWorkbookScope`という`DelegateInArgument`は宣言されるものの、配下の
+  `ui:ExcelWriteCell`のXAML属性(`Cell="A1"`、`SheetName="Sheet1"`、
+  `Text="hello"`)のどこにも**明示的には参照されていない**——スコープ内の
+  アクティビティは暗黙のうちに「最も近い祖先の`ExcelApplicationScope`」を
+  対象にする設計で、デリゲート変数を直接使うのはむしろ稀なケース(複数の
+  Excelインスタンスを明示的に使い分けたい場合など)だと考えられる。この点は
+  `ForEach`の`item`(全ての子アクティビティから明示的に`[item]`参照する)とは
+  対照的——同じ`ActivityAction`機構でも、ループ変数は明示参照が必須、
+  スコープハンドルは暗黙参照が既定、という利用パターンの違いがある。
+- `ExcelWriteCell`自体の属性(`Cell`/`SheetName`/`Text`)は、知見15の
+  `Append Line`と同じ「生の属性値」直列化形(知見7/13の4形式のうち最も
+  圧縮された形)になっている。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
