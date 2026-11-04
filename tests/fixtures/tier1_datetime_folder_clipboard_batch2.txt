@@ -1,0 +1,8 @@
+DateTime.GetCurrentDateTime.Local DateTimeFormat: DateTime.DateTimeFormat.DateAndTime CurrentDateTime=> CurrentDateTime
+DateTime.Add DateTime: $'''sample''' TimeToAdd: $'''sample''' TimeUnit: DateTime.TimeUnit.Seconds ResultedDate=> ResultedDate
+DateTime.Subtract FromDate: $'''sample''' SubstractDate: $'''sample''' TimeUnit: DateTime.DifferenceTimeUnit.Days TimeDifference=> TimeDifference
+Folder.GetFiles Folder: $'''sample''' FileFilter: $'''*''' IncludeSubfolders: False FailOnAccessDenied: True SortBy1: Folder.SortBy.NoSort SortDescending1: False SortBy2: Folder.SortBy.NoSort SortDescending2: False SortBy3: Folder.SortBy.NoSort SortDescending3: False Files=> Files
+Compression.ZipFiles ArchivePath: $'''sample''' FilesOrFoldersToZip: $'''sample''' CompressionLevel: Compression.CompressionLevel.BestBalanceOfSpeedAndCompression Password: P'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAWO5tuuCEIUiYIkQ+hIDxiwQAAAACAAAAAAAQZgAAAAEAACAAAAATP1QOI0xAh/j3LzDapFy6TlnrOzKh7FFIom+fArhjrgAAAAAOgAAAAAIAACAAAAAFVc4vy18vtiGxcSUHV2YjkZihDN44a5TsrlC6eddEvRAAAABoRCSHbo9SO/L4NJuOrGePQAAAADspd8IEJzb2el6E9mTJyZ3BJ2Sd9RHuYKjPRUu/DwG4KXPzxAQKsra0mdtsumNhZyNXJzXKnMtmCZtwa5ernDQ=' ArchiveComment: $'''sample''' ZipFile=> ZipFile
+Clipboard.GetText Text=> ClipboardText
+Clipboard.SetText Text: $'''sample'''
+Clipboard.Clear _

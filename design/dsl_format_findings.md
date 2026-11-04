@@ -1262,3 +1262,33 @@ Variables.GenerateRandomNumber.RandomNumber MinimumValue: 0 MaximumValue: 100 Ra
 **検証**: `parse_dsl()`に通したところ、この15件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_text_variables_actions_parse_as_generic_action_records`)——知見36以来の「汎用パーサー設計は未知の新アクションに対して自動的に対応できる」という方針を、Tier1モジュールでも改めて裏付けた。
 
 **今後**: 同じ自動化スクリプトでDateTime/File/Folder/Compression/Cryptography(Tier1)、Database/Web/XML/Cmd/Clipboard(Tier2)の残りのアクションについてもバッチキャプチャを継続する。
+
+## 64. DateTime/Folder/Clipboard系9件を実機キャプチャ——`SubstractDate`のtypoがそのまま直列化されることを確認
+
+知見63の自動化バッチで続けて9件(`DateTime.GetCurrentDateTime`/`Add`/`Subtract`、`Folder.GetFiles`、`Compression.ZipFiles`、`Clipboard.GetText`/`SetText`/`Clear`、「Create new folder」のみ検索結果の特定に失敗)を追加・キャプチャした(`tests/fixtures/tier1_datetime_folder_clipboard_batch2.txt`)。
+
+**確認できた事実**:
+- `DateTime.GetCurrentDateTime.Local`——`TimeZoneMode: System`に対応するセレクタ名が`Local`であることをdecompile予測通り確認。
+- `DateTime.Subtract FromDate: ... SubstractDate: ...`——decompileで発見した`SubstractDate`という**プロパティ名そのもののtypo**が、実機のDSL直列化にもそのまま現れることを確認した(ソースコードのtypoが単なる内部実装の話ではなく、DSLの外部契約の一部になっている)。
+- `Folder.GetFiles`(`GetFilesInFolder`ではない、短縮名)——`SortBy1/2/3`・`SortDescending1/2/3`・`FileFilter`(既定`"*"`)・`IncludeSubfolders`(既定`False`)・`FailOnAccessDenied`(既定`True`)の全パラメータがdecompile予測通り。
+- `Clipboard.GetText`/`Clipboard.Clear`はパラメータを一切持たない(前者は`=>`出力束縛のみ)。
+
+**`Compression.ZipFiles`の`Password`パラメータで新しいDSL構文を発見**(詳細は次の知見65)。
+
+## 65. 【重要・セキュリティ関連】`Sensitive`扱いの引数(暗号化キー等)は`P'<DPAPI暗号化Base64>'`という、既存の`$'''...'''`とは全く別のDSL構文で直列化される
+
+`Compression.ZipFiles`の`Password`(decompile調査で`[ArgumentStyling(Sensitive = true)]`付きの`EncryptableObject`型と確認済み)に、ダイアログ上で平文`"sample"`を入力・保存・コピーしたところ、DSL上の値は以下のようになった:
+
+```
+Password: P'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAWO5tuuCEIUiYIkQ+hIDxiwQAAAACAAAAAAAQZgAAAAEAACAAAAATP1QOI0xAh/j3LzDapFy6TlnrOzKh7FFIom+fArhjrgAAAAAOgAAAAAIAACAAAAAFVc4vy18vtiGxcSUHV2YjkZihDN44a5TsrlC6eddEvRAAAABoRCSHbo9SO/L4NJuOrGePQAAAADspd8IEJzb2el6E9mTJyZ3BJ2Sd9RHuYKjPRUu/DwG4KXPzxAQKsra0mdtsumNhZyNXJzXKnMtmCZtwa5ernDQ='
+```
+
+**確認できた事実**:
+- 平文の`"sample"`(7バイト)ではなく、**Base64エンコードされた大きなバイナリblob**になっている。
+- プレフィックスバイト列(Base64デコード後の先頭)`01 00 00 00 D0 8C 9D DF 01 15 D1 11 8C 7A 00 C0 4F C2 97 EB`は、Windows DPAPI(`System.Security.Cryptography.ProtectedData.Protect()`)が生成するblobの**既知の固定シグネチャ**と一致する。つまり`Sensitive`な引数は、保存時にPAD自身がDPAPIで暗号化してからDSLテキストに埋め込んでいる。
+- DSL上の構文は`$'''...'''`(文字列リテラル)ではなく、**`P'<base64>'`という見慣れない形**(シングルクォート1つのみ、前置に`P`)。既存の`_STRING_RE`等はこの構文を認識せず、現状のパーサーは全体を`VarRef`としてフォールバックする(クラッシュもデータ欠落も起きないが、`Password`という変数が実在するという誤った解釈になる——`tests/test_pad_dsl_parser.py::test_tier1_datetime_folder_clipboard_actions_parse_without_crashing`で現状の挙動を回帰テスト化した)。
+
+**重要な設計上の含意**:
+- DPAPIの既定モード(`DataProtectionScope.CurrentUser`想定)で暗号化されたblobは、**暗号化した時と同じWindowsユーザーアカウント・同じマシンでなければ復号できない**。つまりこの`P'...'`blobを別のマシン・別のユーザーでコピー&ペーストしても、元の平文には絶対に戻せない。
+- `pad2py`がこの構文を将来サポートする場合も、**復号を試みるようなコード(でっち上げたDPAPI復号ロジック)を実装してはならない**——そもそも実行環境が変われば復号不可能であり、知見36以来の「架空のAPI/ロジックをでっち上げない」という方針そのものに加えて、センシティブな値を平文化しようとする試み自体がセキュリティ上好ましくない。`Sensitive`な引数は常に`# TODO`で安全側に倒し、ユーザーに手動で値を補ってもらう設計が妥当。
+- 同様の`Sensitive`マーキングは`Cryptography.Actions`(`EncryptionKey`/`HashKey`等)にも多数あり、同じ`P'...'`構文で直列化される可能性が高い(未確認、今後のキャプチャで検証予定)。
