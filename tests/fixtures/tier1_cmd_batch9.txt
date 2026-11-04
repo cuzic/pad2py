@@ -1,0 +1,5 @@
+Cmd.Open.Open Directory: $'''sample''' Session=> CmdSession
+Cmd.Write Session: CmdSession Command: $'''sample''' SendEnter: True
+Cmd.ReadFromCmdSession.Read Session: CmdSession CmdOutput=> CmdOutput
+Cmd.WaitForText Session: CmdSession Text: $'''sample''' IsRegEx: False IgnoreCase: True Timeout: 0
+Cmd.Close Session: CmdSession

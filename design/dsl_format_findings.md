@@ -1503,3 +1503,24 @@ XML.ExecuteXPathQuery.ExecuteXPath XmlDocument: $'''sample''' XPathQuery: $'''sa
 **検証**: 15件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_web_xml_batch8_parses_as_generic_action_records`)。これにより`Database`は2/3→3/3(完了)、`Compression`は1/2→2/2(完了)、`Web`は0/3→3/3(完了)、`XML`は0/10→10/10(完了)まで進んだ。全体は96/116→111/116(96%)に到達し、残るのは`Cmd`モジュール(0/5)のみとなった。
 
 **今後**: 残る`Cmd`モジュール5件(`OpenCmdSession`/`WriteToCmdSession`/`ReadFromCmdSession`/`WaitForTextOnCmdSession`/`CloseCmdSession`)を同じ自動化バッチでキャプチャすれば、Tier1/2の116件全ての実機キャプチャが完了する。
+
+## 72. Cmdモジュール全5件を実機キャプチャ——Tier1/2対象116件の実機DSLキャプチャが完了(100%)
+
+事前にUIプローブで全5件の正確なUI表示名を確認してから(全て`search_term`案と完全一致)実行し、5/5を警告ゼロで一度で正しくキャプチャした(`tests/fixtures/tier1_cmd_batch9.txt`)。これにより`capture_coverage.py`の計測結果が**116/116(100%)**に到達し、知見62から始まったTier1/2実機DSLキャプチャの取り組みが完了した。
+
+**実機キャプチャ結果**:
+```
+Cmd.Open.Open Directory: $'''sample''' Session=> CmdSession
+Cmd.Write Session: CmdSession Command: $'''sample''' SendEnter: True
+Cmd.ReadFromCmdSession.Read Session: CmdSession CmdOutput=> CmdOutput
+Cmd.WaitForText Session: CmdSession Text: $'''sample''' IsRegEx: False IgnoreCase: True Timeout: 0
+Cmd.Close Session: CmdSession
+```
+
+**確認できた事実**:
+- `Cmd.WaitForText`(「Wait for text on CMD session」)は、知見50・57で確立した`WAIT (<ActionId> ...) FOR <秒数>`構文(`WaitActionRecord`)を使わず、`Timeout: 0`という**通常のパラメータ**を持つ普通の`ActionRecord`として直列化される。つまり「名前に`Wait`を含むアクション」が必ず`WaitActionRecord`になるわけではなく、`[WaitAction]`カテゴリに属するかどうかという実装上の分類が決め手になる——decompile調査で確認していた区分が実機でも裏付けられた。
+- `Cmd.Open.Open`/`Cmd.Write`/`Cmd.ReadFromCmdSession.Read`/`Cmd.Close`は全て`Session`パラメータで同一の`CmdSession`変数を参照する(知見71で確認した「オブジェクト型パラメータの自動補完」がここでも働き、2つ目以降のアクションでは`Session: CmdSession`が自動入力された)。
+
+**検証**: 5件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_cmd_batch9_parses_as_generic_action_records`)。これにより`Cmd`は0/5→5/5(完了)となり、`capture_coverage.py`の全体完了率は111/116→**116/116(100%)**に到達した。
+
+**総括**: 知見62(2026年、`Text.Trim`の初回手動キャプチャ)から始まり、知見63でUIAutomation自動化バッチスクリプトを確立、知見64・65でDPAPI暗号化構文(`P'...'`)を発見、知見66-72で9回のバッチ実行を経て、Text/DateTime/Variables/File/Folder/Compression/Cryptography(Tier1)、Database/Web/XML/Cmd/Clipboard(Tier2)の全12モジュール・116アクションの実機DSLキャプチャが完了した。この過程で、既存の汎用パーサー設計(`ActionRecord`/`IfActionRecord`/`WaitActionRecord`/`KeywordRecord`)が未知のアクションに対しても一切のコード変更なしで正しく構造化できることが一貫して確認され、知見36以来の「汎用パーサー設計」方針の正しさが実機データで裏付けられた。同時に、バックティック文字列`` `` ``・`{ }`配列リテラル・`P'...'`DPAPI構文という3つの「パーサー未対応だがクラッシュもデータ欠落もしない」構文が発見され、今後の拡張課題として記録されている。自動化そのものについても、検索語の部分文字列一致による誤爆(知見70)とその対策(名前の完全一致優先、知見71)、ダイアログ種別によるSave/Cancelボタンauto_idの違い(知見67)、ネストした挿入位置の残留(知見69)という再利用可能な知見が蓄積された。

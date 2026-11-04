@@ -1920,3 +1920,29 @@ def test_tier1_web_xml_batch8_parses_as_generic_action_records() -> None:
     # design/dsl_format_findings.md 知見66・67・70と同じ空のバックティック文字列``
     # 構文がXML.WriteXmlToFileのXmlにも使われている。
     assert write_xml.params["Xml"] == VarRef(name="``")  # type: ignore[union-attr]
+
+
+def test_tier1_cmd_batch9_parses_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見72: Cmdモジュール全5件の実機DSLキャプチャ。
+    # これでTier1/2対象116件全ての実機キャプチャが完了する。既存の汎用パーサーが
+    # コード変更無しで正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_cmd_batch9.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 5
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "Cmd.Open.Open",
+        "Cmd.Write",
+        "Cmd.ReadFromCmdSession.Read",
+        "Cmd.WaitForText",
+        "Cmd.Close",
+    ]
+    wait_for_text = records[3]
+    # design/dsl_format_findings.md 知見72: Cmd.WaitForTextは知見50・57の
+    # WAIT (...) FOR構文ではなく、Timeoutという通常のパラメータを持つ普通の
+    # ActionRecordとして直列化される——「Wait」を名前に含むアクションが必ず
+    # WaitActionRecordになるとは限らないことを確認。
+    assert wait_for_text.params["Timeout"] == 0  # type: ignore[union-attr]
+    open_session = records[0]
+    assert open_session.output_var == "CmdSession"  # type: ignore[union-attr]
