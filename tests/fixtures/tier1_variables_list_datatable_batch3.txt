@@ -1,0 +1,27 @@
+Variables.CreateNewList List=> List
+Variables.AddItemToList Item: $'''sample''' List: $'''sample'''
+Variables.RemoveItemFromList.RemoveItemFromListByIndex ItemIndex: $'''sample''' List: $'''sample'''
+Variables.ClearList List: $'''sample'''
+Variables.ShuffleList List: $'''sample'''
+Variables.MergeLists FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> OutputList
+Variables.SubtractLists FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> ListDifference
+Variables.FindCommonListItems FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> IntersectionList
+Variables.RemoveDuplicateItemsFromList List: $'''sample''' IgnoreCase: False
+Variables.SortList.SortList List: $'''sample'''
+Variables.CreateNewDatatable InputTable: { } DataTable=> DataTable
+Variables.AddRowToDataTable.AppendRowToDataTable DataTable: $'''sample''' RowToAdd: $'''sample'''
+Variables.DeleteEmptyRowsFromDataTable DataTable: $'''sample'''
+Variables.ModifyDataTableItem DataTable: $'''sample''' ColumnNameOrIndex: $'''sample''' RowIndex: $'''sample''' Value: $'''sample'''
+Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere DataTable: $'''sample''' AllMatches: True ValueToFind: $'''sample''' MatchCase: False MatchEntireCellContents: False DataTableMatches=> DataTableMatches
+Variables.AddColumnToDataTable.AppendColumnToDataTable DataTable: $'''sample''' ColumnName: $'''sample'''
+Variables.DeleteColumnFromDataTable.DeleteColumnWithName DataTable: $'''sample''' ColumnName: $'''sample'''
+Variables.DeleteDuplicateRowsFromDataTable DataTable: $'''sample'''
+Variables.ClearDataTable DataTable: $'''sample'''
+Variables.SortDataTable.SortWithColumnName DataTable: $'''sample''' ColumnName: $'''sample''' Order: Variables.SortDirection.Ascending
+Variables.FilterDataTable DataTable: $'''sample''' FilterParameters: `` MatchCase: True FilteredDataTable=> FilteredDataTable
+Variables.MergeDataTables FirstDataTable: $'''sample''' SecondDataTable: $'''sample''' MergeMode: Variables.MergeMode.AddExtraColumns
+Variables.JoinDataTable FirstDataTable: $'''sample''' SecondDataTable: $'''sample''' JoinOperation: Variables.JoinOperationType.Inner JoinParameters: `` JoinedDataTable=> JoinedDataTable
+Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator DataTable: $'''sample''' IncludeColumnNames: False ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVText=> CSVText
+Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: $'''sample''' TrimFields: True FirstLineContainsColumnNames: False ReadFieldsAsText: False ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> CSVTable
+Variables.RetrieveDataTableColumnIntoList DataTable: $'''sample''' ColumnNameOrIndex: $'''sample''' ColumnAsList=> ColumnAsList
+Variables.DeleteRowFromDataTable DataTable: $'''sample''' RowIndex: $'''sample'''

@@ -1663,3 +1663,62 @@ def test_tier1_datetime_folder_clipboard_actions_parse_without_crashing() -> Non
     # 実機のパラメータ名として確認できた(ソース上のプロパティ名のtypoが直列化にも
     # そのまま反映される)。
     assert "SubstractDate" in date_subtract.params  # type: ignore[union-attr]
+
+
+def test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見66: Variables.List系10件・Variables.DataTable系17件
+    # (計27件)の実機DSLキャプチャ。既存の汎用ActionRecordパーサーがコード変更無しで
+    # 正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_variables_list_datatable_batch3.txt").read_text(
+        encoding="utf-8"
+    )
+    records = parse_dsl(text)
+    assert len(records) == 27
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "Variables.CreateNewList",
+        "Variables.AddItemToList",
+        "Variables.RemoveItemFromList.RemoveItemFromListByIndex",
+        "Variables.ClearList",
+        "Variables.ShuffleList",
+        "Variables.MergeLists",
+        "Variables.SubtractLists",
+        "Variables.FindCommonListItems",
+        "Variables.RemoveDuplicateItemsFromList",
+        "Variables.SortList.SortList",
+        "Variables.CreateNewDatatable",
+        "Variables.AddRowToDataTable.AppendRowToDataTable",
+        "Variables.DeleteEmptyRowsFromDataTable",
+        "Variables.ModifyDataTableItem",
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
+        "Variables.AddColumnToDataTable.AppendColumnToDataTable",
+        "Variables.DeleteColumnFromDataTable.DeleteColumnWithName",
+        "Variables.DeleteDuplicateRowsFromDataTable",
+        "Variables.ClearDataTable",
+        "Variables.SortDataTable.SortWithColumnName",
+        "Variables.FilterDataTable",
+        "Variables.MergeDataTables",
+        "Variables.JoinDataTable",
+        "Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator",
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator",
+        "Variables.RetrieveDataTableColumnIntoList",
+        "Variables.DeleteRowFromDataTable",
+    ]
+    create_new_list = records[0]
+    # design/dsl_format_findings.md 知見66: CreateNewListは非破壊で=>束縛を持つ。
+    assert create_new_list.output_var == "List"  # type: ignore[union-attr]
+    clear_list = records[3]
+    # AddItemToList/ClearList等はListがMutableなため=>束縛を持たない。
+    assert clear_list.output_var is None  # type: ignore[union-attr]
+    merge_lists = records[5]
+    assert merge_lists.output_var == "OutputList"  # type: ignore[union-attr]
+    create_new_datatable = records[10]
+    # design/dsl_format_findings.md 知見66: 空の2次元配列は`{ }`と直列化されるが、
+    # `{`/`}`という配列リテラル構文は現状のパーサーが未対応で、`{`がVarRef名として
+    # フォールバックする(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
+    assert create_new_datatable.params["InputTable"] == VarRef(name="{")  # type: ignore[union-attr]
+    assert create_new_datatable.output_var == "DataTable"  # type: ignore[union-attr]
+    delete_row = records[26]
+    # DeleteRowFromDataTableもDataTableがMutableなため=>束縛を持たない。
+    assert delete_row.output_var is None  # type: ignore[union-attr]

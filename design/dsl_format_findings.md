@@ -1292,3 +1292,49 @@ Password: P'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAWO5tuuCEIUiYIkQ+hIDxiwQAAAACAAAAAAAQ
 - DPAPIの既定モード(`DataProtectionScope.CurrentUser`想定)で暗号化されたblobは、**暗号化した時と同じWindowsユーザーアカウント・同じマシンでなければ復号できない**。つまりこの`P'...'`blobを別のマシン・別のユーザーでコピー&ペーストしても、元の平文には絶対に戻せない。
 - `pad2py`がこの構文を将来サポートする場合も、**復号を試みるようなコード(でっち上げたDPAPI復号ロジック)を実装してはならない**——そもそも実行環境が変われば復号不可能であり、知見36以来の「架空のAPI/ロジックをでっち上げない」という方針そのものに加えて、センシティブな値を平文化しようとする試み自体がセキュリティ上好ましくない。`Sensitive`な引数は常に`# TODO`で安全側に倒し、ユーザーに手動で値を補ってもらう設計が妥当。
 - 同様の`Sensitive`マーキングは`Cryptography.Actions`(`EncryptionKey`/`HashKey`等)にも多数あり、同じ`P'...'`構文で直列化される可能性が高い(未確認、今後のキャプチャで検証予定)。
+
+## 66. Variables.List系10件・Variables.DataTable系17件を自動バッチで実機キャプチャ——`[Mutable]`な引数しか持たないアクション(出力束縛`=>`なし)が多数存在することを確認
+
+知見63の自動化スクリプトで、`Variables`モジュールの残り(List操作10件、DataTable操作17件、計27件)を2回のバッチ実行で一括キャプチャした(`tests/fixtures/tier1_variables_list_datatable_batch3.txt`)。1回目のバッチ(DataTable系17件)では、検索結果の`TreeItem`走査ロジックが「auto_idにドットを含む最初の`TreeItem`」を基準にしていたため、ネストしたカテゴリノード(`Variables.DataTable`自身もドットを含む)を誤ってリーフと判定し6件を取り逃がした。候補ノードが子に`Expand`という名前の`Button`を持たないこと(=真のリーフである証拠)を追加条件にして自動化スクリプトを修正し、取り逃がした6件(`DeleteRowFromDataTable`/`FilterDataTable`/`MergeDataTables`/`JoinDataTable`/`ConvertDataTableToCSV`/`GenerateDataTableFromCSV`)を再実行して全て成功させた。
+
+**実機キャプチャ結果**(値は全て自動入力した`"sample"`またはダイアログの初期値のまま):
+```
+Variables.CreateNewList List=> List
+Variables.AddItemToList Item: $'''sample''' List: $'''sample'''
+Variables.RemoveItemFromList.RemoveItemFromListByIndex ItemIndex: $'''sample''' List: $'''sample'''
+Variables.ClearList List: $'''sample'''
+Variables.ShuffleList List: $'''sample'''
+Variables.MergeLists FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> OutputList
+Variables.SubtractLists FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> ListDifference
+Variables.FindCommonListItems FirstList: $'''sample''' SecondList: $'''sample''' OutputList=> IntersectionList
+Variables.RemoveDuplicateItemsFromList List: $'''sample''' IgnoreCase: False
+Variables.SortList.SortList List: $'''sample'''
+Variables.CreateNewDatatable InputTable: { } DataTable=> DataTable
+Variables.AddRowToDataTable.AppendRowToDataTable DataTable: $'''sample''' RowToAdd: $'''sample'''
+Variables.DeleteEmptyRowsFromDataTable DataTable: $'''sample'''
+Variables.ModifyDataTableItem DataTable: $'''sample''' ColumnNameOrIndex: $'''sample''' RowIndex: $'''sample''' Value: $'''sample'''
+Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere DataTable: $'''sample''' AllMatches: True ValueToFind: $'''sample''' MatchCase: False MatchEntireCellContents: False DataTableMatches=> DataTableMatches
+Variables.AddColumnToDataTable.AppendColumnToDataTable DataTable: $'''sample''' ColumnName: $'''sample'''
+Variables.DeleteColumnFromDataTable.DeleteColumnWithName DataTable: $'''sample''' ColumnName: $'''sample'''
+Variables.DeleteDuplicateRowsFromDataTable DataTable: $'''sample'''
+Variables.ClearDataTable DataTable: $'''sample'''
+Variables.SortDataTable.SortWithColumnName DataTable: $'''sample''' ColumnName: $'''sample''' Order: Variables.SortDirection.Ascending
+Variables.FilterDataTable DataTable: $'''sample''' FilterParameters: `` MatchCase: True FilteredDataTable=> FilteredDataTable
+Variables.MergeDataTables FirstDataTable: $'''sample''' SecondDataTable: $'''sample''' MergeMode: Variables.MergeMode.AddExtraColumns
+Variables.JoinDataTable FirstDataTable: $'''sample''' SecondDataTable: $'''sample''' JoinOperation: Variables.JoinOperationType.Inner JoinParameters: `` JoinedDataTable=> JoinedDataTable
+Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator DataTable: $'''sample''' IncludeColumnNames: False ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVText=> CSVText
+Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: $'''sample''' TrimFields: True FirstLineContainsColumnNames: False ReadFieldsAsText: False ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> CSVTable
+Variables.RetrieveDataTableColumnIntoList DataTable: $'''sample''' ColumnNameOrIndex: $'''sample''' ColumnAsList=> ColumnAsList
+Variables.DeleteRowFromDataTable DataTable: $'''sample''' RowIndex: $'''sample'''
+```
+
+**確認できた事実**:
+- `AddItemToList`/`ClearList`/`ShuffleList`/`RemoveDuplicateItemsFromList`/`SortList`/`AddRowToDataTable`/`DeleteEmptyRowsFromDataTable`/`ModifyDataTableItem`/`AddColumnToDataTable`/`DeleteColumnFromDataTable`/`DeleteDuplicateRowsFromDataTable`/`ClearDataTable`/`SortDataTable`/`FilterDataTable`(置換後を上書き)/`MergeDataTables`/`JoinDataTable`/`DeleteRowFromDataTable`は`List`/`DataTable`引数が`[Mutable]`で、出力変数束縛`=>`を一切持たない——知見63で確認した`Variables.ReverseList`と同じパターンがDataTable操作全体に広く適用されている。pad2pyのcodegen側は「Mutable引数を取るアクションは代入文を生成せず、既存変数への破壊的操作(例: `list.append(item)`相当)としてコード化する」という既存方針をそのままDataTable系にも適用できる。
+- 一方で`CreateNewList`/`CreateNewDatatable`/`MergeLists`/`SubtractLists`/`FindCommonListItems`/`FindOrReplaceInDataTable`/`SortDataTable`(ソート結果ではなく`SortWithColumnName`自体は実はMutable、要再確認)/`ConvertDataTableToCSV`/`GenerateDataTableFromCSV`/`RetrieveDataTableColumnIntoList`は非破壊(新しい値を生成)で`=>`束縛を持つ——同じモジュール内でも操作ごとにMutable/非Mutableが混在することを実機で裏付けた。
+- `Variables.CreateNewDatatable`の`InputTable: { }`——decompileで予測した「2次元配列リテラル」構文が、空配列の場合は`{ }`と直列化されることを確認。ただし現状のパーサーはこの`{`/`}`配列リテラル構文自体に未対応で、`{`がトークンとして単独で`VarRef(name="{")`にフォールバックし、後続の`}`は読み捨てられる(クラッシュもデータ欠落も起きないが、正しく配列として構造化されるわけではない——`tests/test_pad_dsl_parser.py::test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records`で現状の挙動を回帰テスト化した。配列リテラル構文への本格対応は今後の課題)。
+- `FilterDataTable`/`JoinDataTable`の`FilterParameters`/`JoinParameters`は、UI上の複合パラメータ(複数条件行)がダイアログで何も設定されなかった場合、空のバックティック文字列 `` `` `` として直列化される——既存の`$'''...'''`や通常のenum値とは異なる第3の文字列的構文(詳細未調査、今後のキャプチャ課題)。
+- `Variables.SortDataTable.SortWithColumnName`の`Order`パラメータは`Variables.SortDirection.Ascending`という、`Folder.SortBy`等とは別のenum型(`SortDirection`)を使う。
+
+**検証**: 27件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records`)。これにより`Variables`モジュールの完了率は5/34→29/34(`capture_coverage.py`)まで進んだ。
+
+**今後**: 残るTier1/2の未キャプチャモジュール(Text残り6件、File 0/16、Folder残り9件、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5、Variables残り5件)を同じ自動化バッチで継続する。
