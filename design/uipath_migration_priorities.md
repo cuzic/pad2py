@@ -26,7 +26,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | # | 項目 | 状況 |
 |---|---|---|
 | 6 | UI Automationセレクタの実XAML形 | **完了**(知見11): `ui:Click`の`Selector`属性が擬似XML文字列として埋め込まれることを実機確認 |
-| 7 | 高頻度アクティビティカテゴリ(Excel/File/Folder/Mail/HTTP Request/Word/PDF/Clipboard/Database) | **着手**: File系の`Append Line`(知見15)で1件確認。属性値への直接リテラル埋め込みという第4の直列化形を発見。他のカテゴリは未着手 |
+| 7 | 高頻度アクティビティカテゴリ(Excel/File/Folder/Mail/HTTP Request/Word/PDF/Clipboard/Database) | **着手**: File系の`Append Line`(知見15、属性値への直接リテラル埋め込みという第4の直列化形)・`Read Text File`(知見16、`OutArgument`も`[VarName]`角括弧形で直列化、Propertiesパネル経由のIntelliSense入力の罠)の2件確認。他のカテゴリは未着手 |
 | 8 | Invoke Workflow File(サブワークフロー呼び出し)とLibraryプロジェクト | **ファイルパス直接参照は完了**(知見12: `ui:InvokeWorkflowFile`+`.Arguments`のキー付き辞書、`<Literal>`vs`[...]`の使い分けに新たな仮説)。**Library参照経由の呼び出しは未着手** |
 | 9 | 例外処理の全体像(TryCatch本体 + プロジェクト設定の自動リトライ) | **TryCatch本体は完了**(知見9)。プロジェクト全体のエラーハンドリング設定は未確認 |
 

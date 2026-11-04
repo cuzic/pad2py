@@ -369,6 +369,61 @@ VBエディタに入力)が同じでも、どのアクティビティのどの�
 リテラル判定ロジックは、知見13の3形式に加えてこの「生の属性値」形も
 同列に扱う必要がある。
 
+## 16. `OutArgument`(出力引数)も`[VarName]`角括弧形で直列化される——`Read Text File`で確認
+
+知見14で判明した「`[...]`角括弧式 = `VisualBasicValue`/`VisualBasicReference`の
+省略記法」は`InArgument`(入力引数)の文脈で確認したものだったが、`OutArgument`
+(出力引数)でも同じ省略記法が使われることを`Read Text File`
+(`UiPath.Core.Activities.ReadTextFile`)で確認した。
+
+手順: `Read Text File`をキャンバスに追加 → `Filename`欄に`"out.txt"`を入力
+→ Propertiesパネルの`Output`グループに現れる`Output to`欄(=`Content`
+プロパティ、型は`OutArgument<String>`)にスコープ`Sequence`の`String`型変数
+`content`を新規作成して束縛 → 保存。生成されたXAML:
+
+```xml
+<ui:ReadTextFile Content="[content]" DisplayName="Read Text File"
+    FileName="out.txt" sap2010:WorkflowViewState.IdRef="ReadTextFile_1" />
+```
+
+対応する変数宣言(`Sequence.Variables`):
+
+```xml
+<Variable x:TypeArguments="x:String" Name="content" />
+```
+
+ポイント:
+
+- `Content`(OutArgument)の直列化形は`FileName`(InArgument、知見15で見た
+  「生の属性値」形とは別物)とは異なり、**単純な変数参照は角括弧属性値
+  `[content]`になる**——知見14の`VisualBasicValue`省略記法が入力/出力の
+  引数方向を問わず同じ構文で扱われることが確認できた。
+- 複雑な式(知見14の`While`条件のような)は`<mva:VisualBasicValue>`/
+  `VisualBasicReference`のネスト要素形になったが、単純な識別子1個の参照
+  (今回の`content`)は属性値ショートハンドで済んでいる。おそらくXAMLシリアライザ
+  が式の複雑さ(あるいは単純な識別子かどうか)によって属性値形とネスト要素形を
+  使い分けている——境界条件(例: プロパティアクセス`foo.Bar`は属性値のままか、
+  ネスト要素になるか)は未確認。
+- UI操作上の注意点(ハマりどころ): Propertiesパネルの`Output to`欄は単なる
+  テキスト入力ではなく**IntelliSense/オートコンプリート付きのVB式エディタ**
+  になっている。`pywinauto`で1文字ずつ`send_keys`した後に`{TAB}`で確定しようと
+  すると、**入力中の文字列ではなくオートコンプリート候補(例: WPFの
+  `ContentAlignment`列挙型)が採用されてしまう**という罠があった
+  (実際に`Output to="ContentAlig..."`というコンパイルエラーが発生した)。
+  正しい確定方法は、入力後に`{ESC}`でIntelliSenseドロップダウンだけを閉じてから
+  (フィールド自体の編集は破棄されない)、別の場所をクリックしてフォーカスを
+  外す、という手順。これは知見10のVisualBasicEditor入力の注意点に追加される
+  新しいパターンで、`uipath_ui_helpers.py`の`set_vb_expression_field()`の
+  ドキュメントに反映する必要がある。
+- `Read Text File`のキャンバス上インラインカード表示には`Filename`欄しか
+  現れず、`Output to`(出力変数束縛)はキャンバス上では操作できない——
+  Propertiesパネル(右側ペイン、`Output`グループ)を開く必要がある。これは
+  「メインの入力プロパティだけがキャンバスにインライン表示され、出力プロパティ
+  やその他の設定はPropertiesパネル行き」という、UiPathデザイナーUIの一般的な
+  パターンだと考えられる(`MessageBox`の`Text`、`Assign`の左辺=`To`、
+  `ForEach`の`CurrentIndex`などでも同様の構造が予想されるが、各アクティビティ
+  ごとの実機確認はまだ網羅していない)。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
