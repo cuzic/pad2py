@@ -506,12 +506,58 @@ P0項目の残りだった制御フロー系アクティビティのうち`Break
 
 P0項目「制御フロー一式」の残りは`Parallel`のみとなった(知見1参照)。
 
+## 19. `Parallel`は`ui:`名前空間を持たない「素の」WFアクティビティ
+
+P0の制御フロー一式の最後の未着手項目だった`Parallel`
+(Available > Workflow > Control)を実機確認した。キャンバスに追加しただけ
+(ブランチを1つも追加しない状態)で保存した結果:
+
+```xml
+<Parallel sap:VirtualizedContainerService.HintSize="497,101" sap2010:WorkflowViewState.IdRef="Parallel_1" />
+```
+
+ポイント:
+
+- **`ui:`プレフィックスを持たない**——`If`/`TryCatch`/`Assign`/`Sequence`と同じ
+  `System.Activities.Statements.Parallel`で、`Parallel`はUiPathによる再実装が
+  無く素のWindows Workflow Foundationの標準アクティビティがそのまま使われている
+  ことを実機確認できた(Propertiesパネルの型表示も`System.Activities.Statements.
+  Parallel`)。知見14で判明した「`While`/`DoWhile`はUiPath独自実装(`ui:
+  InterruptibleWhile`等)」とは対照的——**どの制御フローがUiPath再実装でどれが
+  素のWFかはアクティビティごとに個別に確認する必要がある**、という知見14の
+  教訓がここでも裏付けられた。
+- プロパティは`Condition`(VB式、任意)と`Private`のみ。ブランチ(並列実行する
+  複数の子アクティビティ)はデザイナー上「Drop activity here」という**ドラッグ
+  &ドロップ専用のゾーン**になっており、今回使っている検索ポップアップ経由の
+  アクティビティ追加操作(`+`ボタンクリック→名前入力→Alt+N)が機能しなかった
+  ——クリックしても検索ポップアップが開かない。これは知見9の「Switchのcase本体
+  へのアクティビティ追加が反映されない」という既知の未解決問題と**同じ種類の
+  UI自動化上の制約**だと考えられる(両方とも「ドロップゾーン」という特殊な
+  挿入先UI)。そのため`Parallel`に複数ブランチを追加した場合の実際のXAML構造
+  (`<Parallel>`の子要素として複数のActivityが並ぶと推測されるが未確認)は
+  今回も確認できなかった——真のドラッグ&ドロップ(mouse press/move/release)の
+  シミュレーションが必要な、共通の今後の課題として記録する。
+- `Parallel For Each`(`ForEach`の並列版)、`Run Parallel Process`
+  (別プロセスとして並列実行、`UiPath.System.Activities`配下)という関連
+  アクティビティも検索結果で見つかった——いずれも未確認。
+
+P0項目1「制御フロー一式のXAML確認」は、単体アクティビティとしての型・プロパティ
+確認という意味では全項目(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/
+Break)が完了した。ただし**複数の子アクティビティをドロップゾーンに追加した
+場合の構造**(Switchのcase本体、Parallelの各ブランチ)はドラッグ&ドロップ
+自動化が未解決のため引き続き未確認——この1点のみが今後の課題として残る。
+
 ## 今後の調査候補(未着手)
 
-- Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
-  UI操作のタイミングの都合で未確認のまま終わった)
-  ※ 知見9注記: 直近の試行ではcase本体へのアクティビティ追加操作が反映されず
-  空のまま保存された。UI操作手順の再検証が必要。
+- **ドラッグ&ドロップ専用ゾーンへのアクティビティ追加**(知見9・知見19で共通して
+  ブロックされている根本課題): Switchのcaseに実際にアクティビティを入れた場合の
+  `x:Null`以外の形、および`Parallel`に複数ブランチを追加した場合の子要素構造。
+  いずれも「検索ポップアップ経由の追加」(`+`ボタン/`Drop activity here`クリック
+  →名前入力→Alt+N)が機能しない「Drop activity here」型のドロップゾーンが
+  原因で未確認のまま——`pywinauto`での真のドラッグ&ドロップ
+  (`mouse.press`→`move`→`release`のシーケンス、ドラッグ元はツールボックスの
+  `Activities`タブ内のアクティビティ項目)のシミュレーション手法を確立する
+  必要がある。
 - Libraryプロジェクト・Testプロジェクトの`project.json`の違い、および
   `targetFramework: "Windows"`/`"Cross-platform"`(Legacy以外)での依存関係の違い
   ※ 今回インストールしたバージョン(Studio app-21.4.4)のProject Settingsダイアログ
