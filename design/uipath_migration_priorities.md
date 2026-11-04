@@ -1,0 +1,60 @@
+# UiPath→Python移行: 調査・リバースエンジニアリング項目の優先順位と進捗
+
+PADで使った手法(実機キャプチャ+pytest検証+知見ドキュメント化)を踏まえて整理した、
+UiPath→Python化に向けた調査項目の一覧。実データによる検証状況は
+[design/uipath_xaml_findings.md](uipath_xaml_findings.md)の知見1〜11を参照。
+
+**重要な前提**(知見1で確認済み): PADと違い、UiPathのXAML/WF自体はMicrosoftの
+公開技術で、アクティビティのパラメータも大半が公式ドキュメント
+(activities.uipath.com)にある。つまり多くの項目は「リバースエンジニアリング」
+ではなく「ドキュメントを読む+実機で1個ずつXAML化して確認(ドキュメントの記載漏れ・
+Studioが吐く暗黙のデフォルト値を確認する程度)」で済む——これはPADより調査コストが
+低いという発見自体が重要。
+
+## P0: 基盤
+
+| # | 項目 | 状況 |
+|---|---|---|
+| 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **一部完了**: If・ForEach・TryCatch+Catch・Switchは実機確認済み(知見5・6・9・11)。While/DoWhile/Parallel/Breakは未着手 |
+| 2 | VB.NET式 → Python式の変換ルール | **未着手**(変換ルールの体系化): 式が`[...]`角括弧記法で埋め込まれることは確認済み(知見2)だが、演算子・関数・型変換の変換表はまだ作っていない |
+| 3 | Variables/Argumentsの正式宣言のXAML形 | **Variablesは完了**(知見8: `<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)。**Argumentsは未着手**(ワークフロー自体の入出力引数、`x:Members`相当) |
+| 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Processのみ完了**(知見1・知見「今後の調査候補」)。Library/Testプロジェクト、`targetFramework: Windows/Cross-platform`は未着手——インストール済みバージョン(Studio app-21.4.4)のUIには切替箇所が見当たらなかった |
+| 5 | 捕獲用ツールの内製化(pywinauto操作のスクリプト化) | **未着手**: 今回は全て手作業のpywinautoスクリプトで実施。繰り返すなら`pad_dsl_parser.py`/`codegen_coverage.py`に相当する専用ツールへの投資価値あり |
+
+## P1: 実務フローのカバレッジに必須
+
+| # | 項目 | 状況 |
+|---|---|---|
+| 6 | UI Automationセレクタの実XAML形 | **完了**(知見11): `ui:Click`の`Selector`属性が擬似XML文字列として埋め込まれることを実機確認 |
+| 7 | 高頻度アクティビティカテゴリ(Excel/File/Folder/Mail/HTTP Request/Word/PDF/Clipboard/Database) | **未着手** |
+| 8 | Invoke Workflow File(サブワークフロー呼び出し)とLibraryプロジェクト | **未着手** |
+| 9 | 例外処理の全体像(TryCatch本体 + プロジェクト設定の自動リトライ) | **TryCatch本体は完了**(知見9)。プロジェクト全体のエラーハンドリング設定は未確認 |
+
+## P2: 本番運用フローへの対応・戦略判断
+
+| # | 項目 | 状況 |
+|---|---|---|
+| 10 | REFramework(Robotic Enterprise Framework)のXAML構造 | 未着手 |
+| 11 | Coded Workflows(C#/VB code-behindの新機能) | 未着手——もし広く使われていれば、WFアクティビティ木の変換よりコード→コード変換の方が簡単という切り口の転換もあり得る |
+| 12 | Object Repository(`.objects/`配下の構造化セレクタストア) | 未着手。今回のサンプルプロジェクトでは「Object Repositoryを有効化しますか」という案内のみ確認(知見11とは別方式) |
+| 13 | Orchestratorアセット/キュー連携アクティビティ | 未着手 |
+| 14 | `.nupkg`パッケージ構造 | 未着手 |
+
+## P3: 長期的・ニッチ、または明示的に対象外にする判断を早めにするための調査
+
+| # | 項目 | 状況 |
+|---|---|---|
+| 15 | State Machineワークフロー種別 | 未着手(優先度低のまま) |
+| 16 | Computer Vision/画像ベースセレクタ | 未着手(`# TODO`対象として扱う方針は維持) |
+| 17 | Marketplaceカスタムアクティビティパッケージ | 対象外方針を維持(`# TODO`) |
+| 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | 未着手 |
+| 19 | Test Suite(データ駆動テスト・アサーション) | 未着手(優先度低のまま) |
+
+## 次の一手の候補(優先度順)
+
+1. **P0 #1の残り**(While/DoWhile/Parallel/Break)——制御フローを完全に揃える
+2. **P1 #8**(Invoke Workflow File)——PADのサブフローに相当する重要な構造
+3. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・`<Literal>`要素・
+   比較演算子`=`等)を整理してドキュメント化するだけでも価値がある
+4. **P1 #7**(高頻度アクティビティ)——PADで既に116件実機キャプチャ済みのFile/Folder等との
+   概念対応が強く、知見の使い回しが効く
