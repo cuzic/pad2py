@@ -1844,3 +1844,41 @@ def test_tier1_file_batch6_parses_as_generic_action_if_and_wait_records() -> Non
     # WaitActionRecord(FOR句の有無で無期限ポーリングか否かを判定)としてそのまま
     # 構造化できる。
     assert isinstance(wait_for_file, WaitActionRecord)
+
+
+def test_tier1_crypto_database_batch7_parses_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見70: File残り2件・Cryptography 8件・
+    # Database 2件(計12件)の実機DSLキャプチャ。既存の汎用パーサーがコード変更
+    # 無しで正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_crypto_database_batch7.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 12
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "File.ConvertFromBinary",
+        "File.GetTempPath",
+        "Cryptography.EncryptText.EncryptTextWithAES",
+        "Cryptography.EncryptFromFile.EncryptFromFileWithAES",
+        "Cryptography.DecryptText.DecryptTextWithAES",
+        "Cryptography.DecryptToFile.DecryptToFileWithAES",
+        "Cryptography.HashText",
+        "Cryptography.HashFromFile",
+        "Cryptography.HashTextWithKey",
+        "Cryptography.HashFromFileWithKey",
+        "Database.Connect.Connect",
+        "Database.ExecuteSqlStatement.Execute",
+    ]
+    encrypt_text = records[2]
+    # design/dsl_format_findings.md 知見65の予測通り、CryptographyモジュールのKey系
+    # パラメータ(EncryptionKey/DecryptionKey/HashKey)もSensitive扱いのため同じ
+    # P'<DPAPI暗号化Base64>'構文で直列化され、現状のパーサーはVarRefにフォールバック
+    # する(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
+    encryption_key = encrypt_text.params["EncryptionKey"]  # type: ignore[union-attr]
+    assert isinstance(encryption_key, VarRef)
+    assert encryption_key.name.startswith("P'AQAAANCMnd8B")
+    execute_sql = records[11]
+    # design/dsl_format_findings.md 知見66のFilterParameters/知見67のHtmlEditorと
+    # 同じ空のバックティック文字列``構文がExecuteSqlStatementのStatementにも
+    # 使われている。
+    assert execute_sql.params["Statement"] == VarRef(name="``")  # type: ignore[union-attr]

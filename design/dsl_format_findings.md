@@ -1436,3 +1436,37 @@ END
 **今後**: 取り逃した`File.ConvertFromBinary`(Convert binary to file)・`File.GetTempPath`(Get temporary file path、検索語の見直しが必要)を次回リトライする。また自動化スクリプトに「バッチ開始前に挿入位置をトップレベルへリセットする」処理の追加を検討する。残るTier1/2の未キャプチャモジュール(Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)も同じ自動化バッチで継続する。
 
 **追記(計測ツール自体のバグ修正)**: `WaitForFile`(`File.WaitForFile.Created`)・`IfFile`(`File.IfFile.Exists`)を実機キャプチャ・テスト化した直後に`capture_coverage.py`で再計測したところ、両方とも未キャプチャ扱いのままだった。原因は`capture_coverage.py`の`collect_captured_action_ids()`が`isinstance(record, ActionRecord)`のみを集計対象にしており、`WaitActionRecord`/`IfActionRecord`(別のdataclass)を一切見ていなかったこと——知見68で確認した`Folder.IfFolderExists`も同じ理由で実際にはキャプチャ済みなのに未キャプチャ扱いになっていた。`_ACTION_ID_RECORD_TYPES = (ActionRecord, IfActionRecord, WaitActionRecord)`を対象に広げて修正し、`tests/test_capture_coverage.py::test_compute_report_counts_if_and_wait_action_records_too`で回帰テスト化した。この修正自体で全体の完了率が81/116→84/116に上がった(新規キャプチャによる増加ではなく、計測漏れの解消による)。
+
+## 70. File残り2件・Cryptography全8件・Database一部2件を実機キャプチャ——検索語の曖昧一致で別モジュールの同名アクションを誤検出
+
+事前にUIAutomationツリーを直接プローブして「Convert binary data to file」(`File.ConvertFromBinary`)・「Get temporary file」(`File.GetTempPath`、「...file path」ではなく「...file」が正しいUI表記)という正確な検索語を特定したうえで、File残り2件・Cryptography全8件・Database系3件(「Open connection」「Execute SQL statement」「Close connection」)を1バッチで実行した(`tests/fixtures/tier1_crypto_database_batch7.txt`)。
+
+**新たな自動化上の問題(検索語の曖昧一致で別モジュールのアクションを誤取得)**: 「Close connection」で検索したところ、意図した`Database.CloseConnection`ではなく**`FTP.CloseConnection`**(FTPモジュール、Tier1/2の対象外)がリーフとして検出・保存されてしまった。PADのアクション検索はモジュール名を考慮せず部分文字列一致するため、複数モジュールに同名アクション(`XXX.CloseConnection`)が存在する場合、検索結果の先頭に出たものを拾う現状のロジックでは区別できない。誤って捕捉した`FTP.CloseConnection`はpad2pyのTier1/2対象リストに無いため、フィクスチャには採用せず破棄した——知見36以来の「架空の情報を記録しない」方針に基づき、`Database.CloseConnection`は依然未キャプチャとして正直に記録する。
+
+**自動化上の既知の制約(挿入位置リセットの限界)**: 知見69でのバッチ開始前の「`ProgramItemsListBoxActions`の先頭要素をクリックして挿入位置をリセットする」対策を適用したが、今回も新規アクション全てが既存のネストした`IF (File.IfFile.Exists ...) THEN`ブロックの内側(`WAIT`の直後)に追加された。これは新規アクションの追加位置がリスト選択ではなく「フロー全体の末尾」(構造的に最も深くネストしたブロックの末尾)固定で決まる設計であることを示唆する——リスト項目のクリックによる挿入位置リセットは効果が無いと判明した。ただし、ネスト自体はキャプチャ内容の正確性には影響しない(`parse_dsl()`は既存のネスト構文をそのまま正しく構造化できる)ため、今後のバッチでは無理に挿入位置をトップレベルに戻そうとせず、ネストされたまま出力されることを前提にフィクスチャ化時に手動でデデントする運用で十分とわかった。
+
+**実機キャプチャ結果**(ネストを除去し、誤検出の`FTP.CloseConnection`を除外したもの):
+```
+File.ConvertFromBinary BinaryData: $'''sample''' File: $'''sample''' IfFileExists: File.IfExists.DoNothing
+File.GetTempPath TempFile=> TempFile
+Cryptography.EncryptText.EncryptTextWithAES Encoding: Cryptography.EncryptionEncoding.Unicode TextToEncrypt: $'''sample''' EncryptionKey: P'<DPAPI base64>' PaddingMode: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 EncryptedText=> EncryptedText
+Cryptography.EncryptFromFile.EncryptFromFileWithAES Encoding: Cryptography.EncryptionEncoding.Unicode FileToEncrypt: $'''sample''' EncryptionKey: P'<DPAPI base64>' PaddingMode: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 EncryptedText=> EncryptedText2
+Cryptography.DecryptText.DecryptTextWithAES Encoding: Cryptography.EncryptionEncoding.Unicode TextToDecrypt: $'''sample''' DecryptionKey: P'<DPAPI base64>' Padding: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 DecryptedText=> DecryptedText
+Cryptography.DecryptToFile.DecryptToFileWithAES Encoding: Cryptography.EncryptionEncoding.Unicode TextToDecrypt: $'''sample''' DecryptionKey: P'<DPAPI base64>' DecryptToFile: $'''sample''' IfFileExists: Cryptography.IfFileExists.AddSequentialSuffix Padding: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 DecryptedFile=> DecryptedFile
+Cryptography.HashText HashAlgorithm: Cryptography.HashAlgorithm.SHA256 Encoding: Cryptography.EncryptionEncoding.Unicode TextToHash: $'''sample''' HashedText=> HashedText
+Cryptography.HashFromFile HashAlgorithm: Cryptography.HashAlgorithm.SHA256 Encoding: Cryptography.EncryptionEncoding.Unicode File: $'''sample''' HashedText=> HashedText2
+Cryptography.HashTextWithKey HashAlgorithm: Cryptography.KeyedHashAlgorithm.HMACSHA256 Encoding: Cryptography.EncryptionEncoding.Unicode TextToHash: $'''sample''' HashKey: P'<DPAPI base64>' HashedText=> HashedText3
+Cryptography.HashFromFileWithKey KeyedHashAlgorithm: Cryptography.KeyedHashAlgorithm.HMACSHA256 Encoding: Cryptography.EncryptionEncoding.Unicode FileToHash: $'''sample''' HashKey: P'<DPAPI base64>' HashedText=> HashedText4
+Database.Connect.Connect ConnectionString: $'''sample''' Connection=> SQLConnection
+Database.ExecuteSqlStatement.Execute Connection: SQLConnection Statement: `` Timeout: 30 Result=> QueryResult
+```
+
+**確認できた事実**:
+- 知見65で予測した「`Sensitive`扱いの引数は`P'<DPAPI暗号化Base64>'`構文で直列化される」が、`Cryptography.EncryptText`/`EncryptFromFile`の`EncryptionKey`・`DecryptText`/`DecryptToFile`の`DecryptionKey`・`HashTextWithKey`/`HashFromFileWithKey`の`HashKey`全てで裏付けられた——decompile調査で`[ArgumentStyling(Sensitive = true)]`が付いていた全てのプロパティが、実機でも例外なく同じ構文を使うことを確認。
+- `Cryptography.HashText`/`HashFromFile`(キー無し版)は`HashAlgorithm`が`Cryptography.HashAlgorithm`(SHA256等の無印ハッシュ)、`HashTextWithKey`/`HashFromFileWithKey`(キー付き版)は`Cryptography.KeyedHashAlgorithm`(HMACSHA256等)という、似ているが異なるenum型を使う——キー付き/無しでハッシュアルゴリズムの選択肢自体が切り替わる設計。
+- `Cryptography.DecryptToFile`の`IfFileExists`パラメータは`Cryptography.IfFileExists.AddSequentialSuffix`という、File/Folderモジュールの`IfExists`/`IfFileExists`とは別の、Cryptographyモジュール独自のenum型。
+- `Database.ExecuteSqlStatement.Execute`の`Statement`パラメータは、知見66・67で確認した空のバックティック文字列`` `` ``構文——SQL文を編集しなかった場合のデフォルト値。`Timeout: 30`という数値の既定値も省略されず直列化される(知見62以来の一貫したパターン)。
+
+**検証**: 12件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_crypto_database_batch7_parses_as_generic_action_records`)。これにより`File`の完了率は12/16→14/16、`Cryptography`は0/8→8/8(完了)、`Database`は0/3→2/3まで進んだ。
+
+**今後**: これにより`File`は16/16(完了)まで進んだ。残る`Database.CloseConnection`(検索語の見直しが必要、例えば「Close database connection」等でFTPと区別する)、および残るTier1/2の未キャプチャモジュール(Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。
