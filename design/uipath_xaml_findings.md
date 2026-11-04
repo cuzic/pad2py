@@ -467,6 +467,21 @@ VB式を1文字ずつ`send_keys`で入力する際に特別なエスケープ(`{
   (キー/値ペアがどう表現されるか)は未確認——次の調査候補とする。
 - `ContinueOnError="{x:Null}"`は他のアクティビティ(知見12の`Invoke Workflow
   File`)と同じ「未設定のNullable(Of Boolean)は`{x:Null}`」パターン。
+- **移行上重要な意味論の発見**: 保存後にデザイナーへ戻ると、Propertiesパネル上部に
+  `No compiled code to run / error BC30451: 'content' is not declared.`という
+  コンパイルエラーが表示された。`content`はこの`Invoke Code`を含む`Sequence`の
+  スコープに宣言済みの変数(知見8の`<Container.Variables>`)だが、**`Code`ブロックは
+  それを暗黙に参照できない**——知見8で確認した「通常のVB式(`[...]`角括弧やActivity
+  プロパティ)はスコープ内の変数をクロージャ的に自由参照できる」という挙動とは
+  異なり、`Invoke Code`のコードは独立にコンパイルされる別アセンブリ相当の文脈で
+  実行され、外側のスコープの変数を使うには`Edit Arguments`経由で明示的に
+  `Argument`として宣言・束縛する必要がある、という設計だと考えられる。
+  トランスパイラにとっては「`Invoke Code`内で使われる識別子は、周囲のPythonスコープ
+  にある変数と同一視してはならず、必ず明示的な引数渡しとして扱う」という制約が
+  導ける——これはPAD側に存在しない概念で、UiPath固有の移行上の注意点。
+  (`Error List`パネルの"No errors found"は`Analyze Project`等を明示的に実行した
+  場合のlint結果であり、このコンパイルエラーとは別系統——後者はActivity自身の
+  デザイン時検証。両者の関係・トリガー条件は未確認。)
 
 ## 今後の調査候補(未着手)
 
