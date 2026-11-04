@@ -922,6 +922,69 @@ Libraryプロジェクト(`xaml_probe_lib`、知見25)の`NewActivity.xaml`に`A
 区別が生じるのは引数を追加した時点だと推測されるが、引数ゼロのまま
 Libraryとして公開した場合にどうなるかは未検証)。
 
+## 27. Library参照経由のアクティビティ呼び出しは`InvokeWorkflowFile`と全く別物——CLR名前空間エイリアス経由の直接要素呼び出しになる(P1 #8完結)
+
+知見25・26で作成・公開した`xaml_probe_lib`ライブラリ(ローカルNuGetフィード
+経由、知見末尾の「長時間処理」要領参照)を`xaml_probe`(Process)の依存関係に
+追加し、Activitiesパネルから実際にドラッグ&ドロップで`Main.xaml`に配置した
+結果、知見12の`ui:InvokeWorkflowFile`(ファイルパス参照)とは**全く異なる**
+直列化形になることが判明した:
+
+```xml
+<!-- ルートActivity要素のxmlns宣言に新しいエイリアスが追加される -->
+<Activity ... xmlns:p="clr-namespace:xaml_probe_lib;assembly=xaml_probe_lib" ...>
+  ...
+  <!-- 実際の呼び出し: 単一のXML要素、引数は生のXML属性 -->
+  <p:NewActivity sap:VirtualizedContainerService.HintSize="497,22"
+      sap2010:WorkflowViewState.IdRef="NewActivity_1"
+      in_greeting="hellofromlib" />
+```
+
+ポイント:
+
+1. **ライブラリは`clr-namespace:{ライブラリ名};assembly={ライブラリ名}`という
+   CLR名前空間アセンブリ参照として、XAMLのルート`xmlns:`宣言に追加される**
+   (今回のエイリアスは自動採番で`p:`)。`UiPath.Core.Activities`が`ui:`、
+   `System.Activities.Statements`が無接頭辞、という既知の名前空間と同列に、
+   **自作Libraryも「普通のコンパイル済み.NETアセンブリの名前空間」として
+   扱われる**ことが実機で確定した——知見26で確認した「Libraryのワークフローは
+   `ActivityBuilder`としてコンパイルされ独立したActivity型になる」という
+   推測が、消費側プロジェクトのXAMLでも完全に裏付けられた形になる。
+2. **呼び出しは`<p:{ワークフローファイル名}>`という単一のXML要素**になり、
+   知見12の`ui:InvokeWorkflowFile`+`WorkflowFileName`属性+
+   `<ui:InvokeWorkflowFile.Arguments>`という「ラッパーアクティビティ+
+   辞書コレクション」の2段構造が一切出てこない——ライブラリ参照のワークフロー
+   は、Message BoxやAppendLineのようなビルトインアクティビティと**全く同じ
+   直列化パターン**(単一要素+属性)で呼び出される。要素名はLibrary内の
+   XAMLファイル名(`NewActivity.xaml`→`NewActivity`)がそのままActivity型名
+   になっている(知見26で確認した`x:Class="Main"`ではなく、ファイル名が
+   採用される点に注意——`x:Class`はLibraryのコンパイル時に型名として
+   使われていない、または上書きされると考えられる)。
+3. **ワークフロー引数(`in_greeting`)は、`InArgument`/`[...]`角括弧のどちらでも
+   なく、プレーンなXML属性値**(`in_greeting="hellofromlib"`)になった——
+   これは知見7/13/15で確立した「コンパイル時定数リテラルは生の属性値」という
+   規則の延長で説明がつく(値が単純な文字列リテラルだったため)。変数参照や
+   式を渡した場合に`[...]`角括弧形になるかは今回未検証だが、知見13の規則
+   (属性値コンテキストでは式は角括弧ショートハンド)から類推すると、式を渡せば
+   `in_greeting="[someVar]"`になると予想される。
+4. 依存関係として追加されたLibraryは、Process側の`TextExpression.
+   NamespacesForImplementation`/`ReferencesForImplementation`コレクションにも
+   (他のUiPathパッケージと同列に)`xaml_probe_lib`という名前空間・
+   アセンブリ参照として自動追加されていた。
+
+**移行上の結論**: トランスパイラの観点では、「Library参照のアクティビティ
+呼び出し」は構造的には「サードパーティ/ビルトインのカスタムアクティビティ
+呼び出し」と区別する必要が無い——両方とも「XML要素名(`{alias}:{型名}`)+
+属性としての入力引数」という同じパターンで表現される。むしろ区別が必要
+なのは**「ファイルパスで直接参照されるサブワークフロー」(`ui:
+InvokeWorkflowFile`、知見12)と「パッケージとして配布されるワークフロー」
+(Library参照、本知見)の2つの呼び出し方式**であり、後者を見分ける唯一の
+手がかりは、要素の名前空間エイリアスがルート`xmlns:`宣言で
+`clr-namespace:{プロジェクト固有名};assembly={同名}`という自作ライブラリ
+らしいパターンになっているかどうか(`UiPath.*`や`System.*`等の既知の
+公式名前空間ではないかどうか)を`project.json`の`dependencies`と突き合わせて
+判定する、という設計になりそうである。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
