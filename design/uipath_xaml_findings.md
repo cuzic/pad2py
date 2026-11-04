@@ -213,6 +213,58 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
   (環境/マシン依存の設定ファイル)が生成される——いずれもGit管理対象外にすべき
   ローカル専用ファイル(通常`.gitignore`に入る)。
 
+## 12. Invoke Workflow File(サブワークフロー呼び出し)とワークフロー引数(Arguments)の実XAML形
+
+2つ目のワークフローファイル`Sub1.xaml`(Add > Sequence)を作り、`in_text`という
+`In`方向・`String`型の引数(Arguments)を宣言した。実XAML:
+
+```xml
+<Activity ... x:Class="Sub1" ...>
+  <x:Members>
+    <x:Property Name="in_text" Type="InArgument(x:String)" />
+  </x:Members>
+  ...
+```
+
+**変数(Variables)とは全く別の直列化形**であることが確認できた——Variablesは
+知見8の通り`<Container.Variables>`に活性化アクティビティのスコープ付きで
+宣言されるのに対し、ワークフロー自体の入出力引数(Arguments)は、ファイル先頭の
+`<x:Members>`に`<x:Property Name="..." Type="InArgument(x:String)"/>`
+(または`OutArgument(...)`/`InOutArgument(...)`)という形で宣言される。これは
+`x:Class`直下、名前空間コレクションより前に来る——WFの「このクラスはこういう
+公開プロパティを持つ」というXAMLメンバ宣言の仕組みをそのまま使っている。
+
+`Main.xaml`側で`Invoke Workflow File`アクティビティを追加し、ファイル名に
+`Sub1.xaml`を指定、「Import Arguments」で`in_text`を取り込んで値`"hello"`を
+設定した結果:
+
+```xml
+<ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" ContinueOnError="{x:Null}"
+    DisplayName="Invoke Workflow File" LogEntry="No" LogExit="No" UnSafe="False"
+    WorkflowFileName="Sub1.xaml">
+  <ui:InvokeWorkflowFile.Arguments>
+    <InArgument x:TypeArguments="x:String" x:Key="in_text">
+      <Literal x:TypeArguments="x:String">hello</Literal>
+    </InArgument>
+  </ui:InvokeWorkflowFile.Arguments>
+</ui:InvokeWorkflowFile>
+```
+
+- `WorkflowFileName`はプレーンな文字列属性(角括弧`[...]`式ではない)——呼び出し先
+  パスは基本的に静的なファイル名として扱われる。
+- 引数の受け渡しは`<ui:InvokeWorkflowFile.Arguments>`配下に、呼び出し先の引数名を
+  `x:Key`とした`InArgument`/`OutArgument`の辞書的なコレクションとして表現される。
+- **知見7の「リテラルは`<Literal>`要素、式は`[...]`角括弧」という区別に、さらに
+  重要な補足が必要だと判明した**: この`InArgument`は`x:TypeArguments="x:String"`
+  (厳密に型付けされている)で`<Literal>`要素になったが、知見2で見たAssignの
+  `InArgument x:TypeArguments="x:Object"`は同じ文字列リテラル値でも`["ok"]`という
+  角括弧式になっていた。つまり**`<Literal>`になるかどうかは「値がリテラルかどうか」
+  だけでなく「`x:TypeArguments`が厳密な型か`x:Object`か」にも左右される**らしい
+  (`x:Object`型はボックス化が必要なため、コンパイル時定数の`Literal`で直接表現
+  できず、VB式経由の評価に倒れると推測される——要検証)。
+- `ArgumentsVariable`(引数全体を1つの`Dictionary`変数で渡す代替手段)・
+  `ContinueOnError`は共に未指定で`{x:Null}`。`LogEntry`/`LogExit`は既定で`No`。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
@@ -225,7 +277,10 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
   (General/Workflow Analyzer/Activities Settings各種/System)には`targetFramework`を
   切り替えるUIが見当たらなかった——Cross-platformプロジェクト種別はNew Projectウィザード
   側(本調査では未確認)か、より新しいStudioバージョンでのみ露出する可能性がある
-- Invoke Workflow File(サブワークフロー呼び出し)とLibrary参照時の引数型
+- Library参照時(`ui:InvokeWorkflowFile`ではなくライブラリの`Activity`型として
+  直接ツールボックスに現れる場合)の引数型(知見12はファイルパス直接参照のみ確認)
+- `<Literal>`要素 vs `[...]`角括弧式の使い分けルール(知見12で「`x:TypeArguments`が
+  厳密な型かどうかに左右される」という仮説を立てたが未検証)
 - セレクタのフォールバック・複数候補(1つの`ui:Target`が複数セレクタを持つケース)、
   Computer Vision/画像ベースターゲティング(`ClippingRegion`/`Element`が実際に
   使われるケース)は知見11では未確認
