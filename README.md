@@ -55,7 +55,7 @@ PADのUI automationアクション(`Click UI element in window`等)は、DSLク�
 | [design/g1_g2_verification_protocol.md](design/g1_g2_verification_protocol.md) | G1/G2検証の手順書 |
 | [design/g1_g2_verification_result.md](design/g1_g2_verification_result.md) | G1/G2検証の結果(PADの「Run Python script」からのマーカー同期に成功) |
 | [design/uipath_migration_priorities.md](design/uipath_migration_priorities.md) | (将来のUiPath→Python検討に向けた予備調査)調査・リバースエンジニアリング項目の優先順位付きリストと進捗状況(P0〜P3) |
-| [design/uipath_xaml_findings.md](design/uipath_xaml_findings.md) | (将来のUiPath→Python検討に向けた予備調査)UiPath Studio実機での`.xaml`/`project.json`構造確認(知見1〜11: XAMLはPADのクリップボードDSLよりIR取得が容易・VB式の`[...]`角括弧記法・名前空間/アセンブリ参照のパッケージ単位自動増加・If/ForEach/TryCatch+Catch/Switchの実構造・「空」の3種類の直列化形式・Variable.Defaultの`<Literal>`要素・変数スコープの`<Container.Variables>`配下配置・Switchの型推論フォールバックとブロッキングダイアログ・`ui:Click`の実UI Automationセレクタ構造・Invoke Workflow Fileとワークフロー引数(Arguments)の`<x:Members>`宣言) |
+| [design/uipath_xaml_findings.md](design/uipath_xaml_findings.md) | (将来のUiPath→Python検討に向けた予備調査)UiPath Studio実機での`.xaml`/`project.json`構造確認(知見1〜11: XAMLはPADのクリップボードDSLよりIR取得が容易・VB式の`[...]`角括弧記法・名前空間/アセンブリ参照のパッケージ単位自動増加・If/ForEach/TryCatch+Catch/Switchの実構造・「空」の3種類の直列化形式・Variable.Defaultの`<Literal>`要素・変数スコープの`<Container.Variables>`配下配置・Switchの型推論フォールバックとブロッキングダイアログ・`ui:Click`の実UI Automationセレクタ構造・Invoke Workflow Fileとワークフロー引数(Arguments)の`<x:Members>`宣言・`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けを確定) |
 | [design/uipath_vb_expression_mapping.md](design/uipath_vb_expression_mapping.md) | (将来のUiPath→Python検討に向けた予備調査)VB.NET式→Python式の変換ルール初期整理(公開VB.NET仕様に基づく机上整理、大半は実機未検証) |
 | [design/schemas/](design/schemas/) | IR/UIツリーのJSON Schema |
 

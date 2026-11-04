@@ -16,7 +16,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | # | 項目 | 状況 |
 |---|---|---|
 | 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **一部完了**: If・ForEach・TryCatch+Catch・Switchは実機確認済み(知見5・6・9・11)。While/DoWhile/Parallel/Breakは未着手 |
-| 2 | VB.NET式 → Python式の変換ルール | **机上整理に着手**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に初期の変換表を作成。演算子・型変換・`And`/`Or`と`AndAlso`/`OrElse`の非短絡/短絡の違い等を整理したが、大半は未検証(公開VB.NET仕様に基づく机上整理)——実機XAMLでの裏取りはこれから |
+| 2 | VB.NET式 → Python式の変換ルール | **机上整理に着手+一部検証済み**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に初期の変換表を作成。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。演算子・型変換・`And`/`Or`と`AndAlso`/`OrElse`の非短絡/短絡の違い等は大半まだ未検証 |
 | 3 | Variables/Argumentsの正式宣言のXAML形 | **完了**: Variablesは知見8(`<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)、Argumentsは知見12(ファイル先頭の`<x:Members><x:Property Name="..." Type="InArgument(x:String)" /></x:Members>`) |
 | 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Processのみ完了**(知見1・知見「今後の調査候補」)。Library/Testプロジェクト、`targetFramework: Windows/Cross-platform`は未着手——インストール済みバージョン(Studio app-21.4.4)のUIには切替箇所が見当たらなかった |
 | 5 | 捕獲用ツールの内製化(pywinauto操作のスクリプト化) | **着手**: 繰り返し使った操作パターンを[dump_daemon/uipath_ui_helpers.py](../dump_daemon/uipath_ui_helpers.py)に関数として切り出した(`pad_ui_helpers.py`のUiPath版)。`pad_dsl_parser.py`/`codegen_coverage.py`に相当する本格的なキャプチャ自動化ツール(アクティビティ名を渡すだけで単独ワークフロー生成→XAML差分取得)はまだ無い |

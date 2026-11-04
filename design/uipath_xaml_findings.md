@@ -257,16 +257,50 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
   パスは基本的に静的なファイル名として扱われる。
 - 引数の受け渡しは`<ui:InvokeWorkflowFile.Arguments>`配下に、呼び出し先の引数名を
   `x:Key`とした`InArgument`/`OutArgument`の辞書的なコレクションとして表現される。
-- **知見7の「リテラルは`<Literal>`要素、式は`[...]`角括弧」という区別に、さらに
-  重要な補足が必要だと判明した**: この`InArgument`は`x:TypeArguments="x:String"`
-  (厳密に型付けされている)で`<Literal>`要素になったが、知見2で見たAssignの
-  `InArgument x:TypeArguments="x:Object"`は同じ文字列リテラル値でも`["ok"]`という
-  角括弧式になっていた。つまり**`<Literal>`になるかどうかは「値がリテラルかどうか」
-  だけでなく「`x:TypeArguments`が厳密な型か`x:Object`か」にも左右される**らしい
-  (`x:Object`型はボックス化が必要なため、コンパイル時定数の`Literal`で直接表現
-  できず、VB式経由の評価に倒れると推測される——要検証)。
+- **知見7の「リテラルは`<Literal>`要素、式は`[...]`角括弧」という区別について、
+  後続の実験(知見13)で仮説を検証し確定させた**。詳細は知見13参照——結論は
+  「`x:TypeArguments`が`x:Object`かどうか」が本質的な分岐点で、`<Literal>`要素か
+  生テキストかは同じ「コンパイル時定数」を表す2つの表面上のバリエーションに過ぎない。
 - `ArgumentsVariable`(引数全体を1つの`Dictionary`変数で渡す代替手段)・
   `ContinueOnError`は共に未指定で`{x:Null}`。`LogEntry`/`LogExit`は既定で`No`。
+
+## 13. `<Literal>`要素・生テキスト・`[...]`角括弧式の使い分け(知見7・12の仮説を検証)
+
+知見12で立てた仮説(「`x:TypeArguments`が厳密な型か`x:Object`かで決まるのでは」)を、
+`Sub1.xaml`に`Assign`を追加し、既存の`String`型引数`in_text`へリテラル`"test2"`を
+代入する実験で検証した:
+
+```xml
+<Assign.To>
+  <OutArgument x:TypeArguments="x:String">[in_text]</OutArgument>
+</Assign.To>
+<Assign.Value>
+  <InArgument x:TypeArguments="x:String">test2</InArgument>
+</Assign.Value>
+```
+
+ここで新たに**3つ目の直列化形**が確認できた——`x:TypeArguments="x:String"`の
+`InArgument`にリテラル値を入れると、`<Literal>`要素でも`[...]`角括弧式でもなく、
+**`<InArgument>`要素の中に生テキストをそのまま書く**形になった(`test2`、
+引用符すら無い)。一方`Assign.To`側の`[in_text]`(引数への変数参照)は、同じ
+`x:String`型でも当然ながら`[...]`角括弧式のまま(リテラルではなく参照なので)。
+
+これで3種類全てが実機で確認できたことになる:
+
+| 直列化形 | 確認した文脈 | 型 |
+|---|---|---|
+| `[...]`角括弧式 | `Assign.Value`(知見2)、`If.Condition`(知見5)、`ui:ForEach.Values`(知見5)、変数/引数参照全般 | `x:Object`、または任意の型の**参照**(リテラルでない式) |
+| `<Literal x:TypeArguments="...">text</Literal>` | `Variable.Default`(知見8)、`ui:InvokeWorkflowFile.Arguments`内の`InArgument`(知見12) | 厳密な型(`x:String`等)の**リテラル** |
+| `<InArgument>text</InArgument>`(生テキスト、ラップ無し) | `Assign.Value`の`InArgument`(知見13、この実験) | 厳密な型(`x:String`)の**リテラル** |
+
+**結論**: 本質的な分岐点は「`x:TypeArguments`が`x:Object`かどうか」の1点のみ
+——`x:Object`は常にVB式の`[...]`角括弧形式になり(ボックス化が必要なため
+コンパイル時定数として直接表現できない、と推測される)、厳密な型(`x:String`等)の
+リテラルは常に何らかの「コンパイル時定数」表現になる。ただし後者が`<Literal>`要素に
+なるか生テキストになるかは、**どのプロパティ/アクティビティがその値を保持しているか
+(Assignの汎用`Assign.Value` vs `InvokeWorkflowFile.Arguments`のキー付き辞書)に
+依存する表面上の違い**で、意味論上はどちらも同じ「コンパイル時リテラル」を表す
+——トランスパイラ側はこの2形式を同列に扱ってよい。
 
 ## 今後の調査候補(未着手)
 
@@ -282,8 +316,6 @@ Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実
   側(本調査では未確認)か、より新しいStudioバージョンでのみ露出する可能性がある
 - Library参照時(`ui:InvokeWorkflowFile`ではなくライブラリの`Activity`型として
   直接ツールボックスに現れる場合)の引数型(知見12はファイルパス直接参照のみ確認)
-- `<Literal>`要素 vs `[...]`角括弧式の使い分けルール(知見12で「`x:TypeArguments`が
-  厳密な型かどうかに左右される」という仮説を立てたが未検証)
 - セレクタのフォールバック・複数候補(1つの`ui:Target`が複数セレクタを持つケース)、
   Computer Vision/画像ベースターゲティング(`ClippingRegion`/`Element`が実際に
   使われるケース)は知見11では未確認
