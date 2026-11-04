@@ -1404,6 +1404,49 @@ changes.」という確認ダイアログが出た(Reload/Cancel)。**この切�
 ——調査する場合は`xaml_probe`を汚さず、専用の新規プローブプロジェクトを
 別途作成してから試すのが安全。
 
+## 32. VB.NET演算子9種を1つのAssign式にまとめて実機コンパイル確認——`Mod`/`\`/`^`/`And`/`AndAlso`/`Or`/`OrElse`/`Xor`/`Not`が全て`[...]`角括弧式としてそのまま直列化される
+
+[design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)で
+「未確認(机上整理)」としていた演算子のうち、構文としてUiPathのVB式コンパイラが
+受理するかどうかが最大の不確実性だった。そこで`xaml_probe`のMain.xaml先頭に
+テスト用の`Assign`を追加し、次の複合式を`result`(既存の`x:Object`型変数)に
+代入してみた:
+
+```vb
+CStr(1 Mod 3) & CStr(5 \ 2) & CStr(2 ^ 2) & CStr(True And False) &
+CStr(True AndAlso False) & CStr(True Or False) & CStr(True OrElse False) &
+CStr(True Xor False) & CStr(Not True)
+```
+
+保存した結果、Error Listは0件(エラー・警告・情報とも0)のまま正常に保存でき、
+XAMLには次の通りそのまま直列化された(`&`のみXMLエンティティエスケープ、
+VB側の記法自体への変換は一切無い):
+
+```xml
+<InArgument x:TypeArguments="x:Object">[CStr(1 Mod 3) &amp; CStr(5 \ 2) &amp;
+CStr(2 ^ 2) &amp; CStr(True And False) &amp; CStr(True AndAlso False) &amp;
+CStr(True Or False) &amp; CStr(True OrElse False) &amp; CStr(True Xor False) &amp;
+CStr(Not True)]</InArgument>
+```
+
+これにより、VB式変換マッピング表の「未確認」演算子(`Mod`・`\`・`^`・`And`・
+`AndAlso`・`Or`・`OrElse`・`Xor`・`Not`、および`&`連結・`CStr()`・`True`/
+`False`リテラル)が、**UiPath Studio上で実際に構文として受理され、既存の
+`[...]`角括弧省略記法のまま一切変換されずに直列化される**ことを確認できた
+(詳細はマッピング表側に反映済み)。なお今回確認したのは「コンパイルが通り、
+想定通りの生テキストとして直列化されるか」という構文・直列化レベルの話で
+あり、`And`/`Or`(非短絡)と`AndAlso`/`OrElse`(短絡)の実行時意味論の違い
+自体は公開のVB.NET言語仕様通りで変わらない(実行時トレースによる検証は
+別途必要だが、変換ルールとしての信頼度は上がった)。
+
+**UI操作上の小さな教訓**: `Assign`の`To`欄(変数名コンボボックス)は、
+`pywinauto.keyboard.send_keys()`で素早く複数文字を続けて送ると文字が
+欠落する(例: `content`→`cnnnnt`)——知見16で確認したIntelliSense絡みの
+罠とは別に、このコンボボックス自体が高速入力に弱いらしい。対策として
+(1) 1文字ずつ`pause`を長めに取って送る、または(2) 長い式はWindows
+クリップボードに積んで`Ctrl+V`で貼り付ける、の2通りが有効だった
+——特に(2)は今回の9演算子複合式のような長い入力で有効。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
