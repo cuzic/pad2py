@@ -832,6 +832,96 @@ P0項目4(project.jsonの全体スキーマ)のLibrary部分を実機確認し�
 `Main.xaml`でも同様に`x:Class="Main"`だったため、Studioの既定クラス名
 生成ロジックがファイル名に依存しないことが分かる)。
 
+## 26. Libraryのワークフローに引数を追加すると、ルート要素が`ActivityBuilder`に変わる——Processの`x:Class`付きワークフローとは別物
+
+Libraryプロジェクト(`xaml_probe_lib`、知見25)の`NewActivity.xaml`に`Assign`
+アクティビティ1つ(`in_greeting = "hi"`)を追加し、「To」欄に書いた未宣言の
+識別子`in_greeting`をVariablesパネルでいったん`String`型変数として正式宣言
+(知見10〜のパターン)したうえで、その変数の右クリックメニューから
+**`Convert to Argument`** を実行して`In`方向・`String`型の引数に昇格させた。
+保存後のXAML全文(抜粋)は以下の通りで、知見12で見た`Sub1.xaml`(Processの
+2つ目のワークフロー、`Invoke Workflow File`からファイルパス参照される側)とは
+**ルート要素の構造自体が異なる**という重大な違いが判明した:
+
+```xml
+<!-- xaml_probe_lib/NewActivity.xaml(Library、引数を持つ) -->
+<Activity mc:Ignorable="sap sap2010"
+    xmlns:this="clr-namespace:" ...>  <!-- x:Class 属性が無い! -->
+  <x:Members>
+    <x:Property Name="in_greeting" Type="InArgument(x:String)" />
+  </x:Members>
+  <this:Main.in_greeting>                        <!-- 新パターン -->
+    <InArgument x:TypeArguments="x:String" />
+  </this:Main.in_greeting>
+  ...
+  <sap2010:WorkflowViewState.IdRef>ActivityBuilder_1</sap2010:WorkflowViewState.IdRef>
+  ...
+  <Sequence ...>
+    <Assign ...>
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[in_greeting]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">hi</InArgument>
+      </Assign.Value>
+    </Assign>
+  </Sequence>
+</Activity>
+```
+
+```xml
+<!-- xaml_probe/Sub1.xaml(Process、Invoke Workflow Fileからファイルパス参照、知見12) -->
+<Activity ... x:Class="Sub1" ...>
+  <x:Members>
+    <x:Property Name="in_text" Type="InArgument(x:String)" />
+  </x:Members>
+  ...
+```
+
+ポイント:
+
+1. **`x:Class`属性が消え、代わりに`xmlns:this="clr-namespace:"`という空の
+   名前空間エイリアスが現れる**——Sub1.xamlでは`x:Class="Sub1"`という
+   具体的なクラス名が付いていたのに対し、Libraryの引数付きワークフローでは
+   クラス名による命名をやめ、無名の`this:`エイリアス経由でメンバーに
+   アクセスする形に変わっている。
+2. **`<this:Main.{引数名}>`という、知見12には無かった新しい要素が追加される**
+   ——`<x:Members>`での`x:Property`宣言(型だけの宣言)に加えて、この要素が
+   実際の`InArgument`インスタンス(空のプレースホルダ)をその名前付きメンバーに
+   紐付けている。Sub1.xamlでは型宣言だけで十分だったのに、Libraryの
+   ワークフローではこの追加のバインディング要素が必要になる——WFの
+   `ActivityBuilder`(名前付きActivityのビルダーパターン)が`x:Class`方式とは
+   別の、より明示的なメンバーバインディング機構を使っているためだと考えられる。
+3. **`sap2010:WorkflowViewState.IdRef`のルート要素が`ActivityBuilder_1`**
+   になっている——Sub1.xamlやMain.xamlのルートはシリアライズ上は`Activity`
+   要素のままIdRefも通常の活性化アクティビティ命名規則(`Sequence_N`等)
+   だったのに対し、Libraryの引数付きワークフローは明示的に`ActivityBuilder`
+   という型として識別子が振られている。これは「このXAMLはファイルパスで直接
+   実行されるワークフローではなく、再利用可能なActivity型としてコンパイルされる
+   設計時定義である」ということをStudio/WFランタイムが区別して扱っている
+   証拠だと考えられる——Libraryがビルドされると各ワークフローが実際に
+   `System.Activities.ActivityBuilder`からコンパイルされた個別のActivity型
+   (DLL内のクラス)になる、というUiPath Libraryの基本的な仕組み
+   (「このXAMLを他プロジェクトからツールボックスの1アクティビティとして
+   使えるようにする」)がXAMLの型注釈レベルでも確認できたことになる。
+4. (環境面のノイズ) `Convert to Argument`実行後、保存されたXAMLの
+   `TextExpression.ReferencesForImplementation`に`UiPath.Excel`・
+   `UiPath.Mail`・`System.ServiceModel`等、空のワークフロー作成時
+   (知見25)には無かった大量のアセンブリ参照が追加されていた——
+   Studioが最初のアクティビティ追加時にプロジェクト全体の依存関係から
+   必要になりうる参照を再計算・展開する挙動だと考えられ、意味のある
+   構造差分ではない。
+
+**移行上の意味**: トランスパイラがUiPathワークフローXAMLを解析する際、
+「ファイルパス参照される通常のワークフロー」(`x:Class`付き)と
+「Libraryとしてパッケージされ他プロジェクトからActivity型として使われる
+ワークフロー」(`ActivityBuilder`型、`this:`エイリアス経由のメンバー
+バインディング)を区別する必要がある——後者はLibraryプロジェクトの
+`NewActivity.xaml`のような、引数を1つ以上持つワークフローで出現する
+(知見25で確認した「空のLibraryワークフローにはこの区別が無い」ことから、
+区別が生じるのは引数を追加した時点だと推測されるが、引数ゼロのまま
+Libraryとして公開した場合にどうなるかは未検証)。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
