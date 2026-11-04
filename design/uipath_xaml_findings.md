@@ -174,6 +174,45 @@ Variablesパネル(Studio下部のタブ)でString型変数`myVar`(デフォル�
   プロセスを再起動(`C:\Users\<user>\AppData\Local\UiPath\app-<ver>\UiPath.Studio.exe`
   を再実行)すれば新しい認証状態を反映する。
 
+## 11. UI Automationセレクタの実XAML形(`ui:Click`)
+
+`Click`アクティビティ(`UiPath.UIAutomation.Activities`、`ui:Click`)を配置し、
+Studioの「Indicate on screen」(画面上で対象を指し示す)機能で実機のメモ帳
+(Notepad)のテキスト編集領域を実際に指し示して選択した。生成された実XAML:
+
+```xml
+<ui:Click.Target>
+  <ui:Target ClippingRegion="{x:Null}" Element="{x:Null}"
+      Id="08a8fa5e-3c19-4ee1-85fa-994c1ce9905c"
+      InformativeScreenshot="849d8ae2b957aedee203fee24ac85ff3"
+      Selector="&lt;wnd app='notepad.exe' cls='Notepad' title='Untitled - Notepad' /&gt;&lt;wnd aaname='Horizontal' cls='Edit' /&gt;&lt;ctrl name='Text Editor' role='editable text' /&gt;">
+    <ui:Target.TimeoutMS>
+      <InArgument x:TypeArguments="x:Int32" />
+    </ui:Target.TimeoutMS>
+    <ui:Target.WaitForReady>
+      <InArgument x:TypeArguments="ui:WaitForReady" />
+    </ui:Target.WaitForReady>
+  </ui:Target>
+</ui:Click.Target>
+```
+
+- `Selector`属性の中身は、HTMLエンティティでエスケープされた**擬似XML文字列**
+  (`&lt;wnd .../&gt;&lt;wnd .../&gt;&lt;ctrl .../&gt;`)で、`<wnd>`(トップレベル
+  ウィンドウ、`app`/`cls`/`title`属性)→`<wnd>`(子孫コンテナ、`aaname`/`cls`)→
+  `<ctrl>`(最終要素、`name`/`role`)という階層チェーン。PADの`appmask['...']`
+  (UI要素リポジトリへの名前参照)とは違い、セレクタの実体がそのままアクティビティの
+  属性値として埋め込まれる——別リポジトリを介さず単体のXAMLだけで完結する。
+- `ClippingRegion`/`Element`は未使用時`{x:Null}`(画像/直接要素参照など他の
+  ターゲティング方式用の予備フィールド)。`ui:Click.CursorPosition`
+  (`OffsetX`/`OffsetY`)はクリック位置オフセットで、指定無しなら空の`InArgument`。
+- `InformativeScreenshot`の値はファイル名で、プロジェクト直下の`.screenshots/`
+  フォルダに同名の`.png`として実体が保存される(Studioのデザイン時プレビュー用、
+  実行時には不要)。
+- プロジェクトフォルダには他に`.local/`(`AllDependencies.json`・
+  `PackageCache.json`・`references.db`等のNuGetキャッシュ)と`.settings/Debug|Release/`
+  (環境/マシン依存の設定ファイル)が生成される——いずれもGit管理対象外にすべき
+  ローカル専用ファイル(通常`.gitignore`に入る)。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
@@ -187,7 +226,8 @@ Variablesパネル(Studio下部のタブ)でString型変数`myVar`(デフォル�
   切り替えるUIが見当たらなかった——Cross-platformプロジェクト種別はNew Projectウィザード
   側(本調査では未確認)か、より新しいStudioバージョンでのみ露出する可能性がある
 - Invoke Workflow File(サブワークフロー呼び出し)とLibrary参照時の引数型
-- UI Automationセレクタ(`ui:Click`等)の実際のXAML形(今回は未着手、
-  UI操作アクティビティそのものを配置していない)
+- セレクタのフォールバック・複数候補(1つの`ui:Target`が複数セレクタを持つケース)、
+  Computer Vision/画像ベースターゲティング(`ClippingRegion`/`Element`が実際に
+  使われるケース)は知見11では未確認
 - C#式言語プロジェクト(`expressionLanguage: "CSharp"`)でのInArgument/
   OutArgumentの直列化形式の違い(VB.NETと同じ`[...]`規約を使うのか)
