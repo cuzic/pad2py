@@ -36,6 +36,22 @@ def test_format_report_includes_overall_percentage() -> None:
     assert "%" in text
 
 
+def test_compute_report_counts_if_and_wait_action_records_too() -> None:
+    # design/dsl_format_findings.md 知見69の修正: IfActionRecord/WaitActionRecordは
+    # ActionRecordとは別のdataclassのため、修正前はcollect_captured_action_ids()が
+    # これらを一切集計せず、実機キャプチャ済みのIfFolderExists/IfFile/WaitForFileが
+    # 永遠に未キャプチャ扱いになっていた回帰を防ぐ。
+    report = compute_report()
+    by_name = {
+        (target.module, target.name): done
+        for items in report.values()
+        for target, done in items
+    }
+    assert by_name[("Folder", "IfFolderExists")] is True
+    assert by_name[("File", "IfFile")] is True
+    assert by_name[("File", "WaitForFile")] is True
+
+
 def test_is_captured_matches_by_prefix_not_substring() -> None:
     from dump_daemon.capture_coverage import TargetAction
 

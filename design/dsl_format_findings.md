@@ -1397,3 +1397,42 @@ END
 **検証**: 10件(8 ActionRecord + 1 IfActionRecord + 1 END KeywordRecord)全てが既存の汎用パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_folder_batch5_parses_as_generic_action_and_if_records`)。これにより`Folder`の完了率は1/10→10/10(完了)まで進んだ。
 
 **今後**: 残るTier1/2の未キャプチャモジュール(File 0/16、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。
+
+## 69. Fileモジュール14件を実機キャプチャ——検索語の類似によるリーフ誤検出、挿入位置が前バッチのIFブロック内に残留する自動化上の問題を発見
+
+Fileモジュール16件を自動化バッチで一括実行したところ14件が新規に正しくキャプチャできたが、2件で問題が発生した(`tests/fixtures/tier1_file_batch6.txt`)。
+
+**問題1(検索語の類似によるリーフ誤検出)**: 「Convert binary to file」の検索で、直前の「Convert file to binary」と同じリーフ(`File.ConvertToBinary`)がもう一度ダブルクリックされてしまい、本来キャプチャすべき`File.ConvertFromBinary`(Base64版の`ConvertFromBase64`に相当する、バイナリ版の逆変換アクション)が取得できなかった。PADのアクション検索が部分文字列一致で、類似した2つの検索語(「Convert file to binary」「Convert binary to file」)が同じ検索結果リストを返し、リーフ検出ロジック(「ドットを含み、Expandボタンを持たない最初のTreeItem」)が毎回同じノードを拾ってしまったと考えられる。`File.ConvertFromBinary`(`ConvertBinaryToFile`)は本知見時点でも未キャプチャのまま残っている。
+
+**問題2(挿入位置の残留)**: 「Get temporary file path」は検索結果が見つからず(`no leaf TreeItem found in search results`、検索語がUI上のアクション名と一致していない可能性——`search_term`案の見直しが必要)、スキップされた。より重要な発見として、このバッチで追加された14件全てが、**前のバッチ(知見68)で開いたままだった`IF (Folder.IfFolderExists.Exists ...) THEN`ブロックの内側**に挿入されていた(さらに`File.IfFile.Exists`の`IF`ブロックも新たにネストして追加された)。PAD.Designerのフローキャンバスは「最後に選択されたアクションの直後」に新規アクションを挿入する仕様で、知見68のバッチ終了時に最後に追加されたアクションがIFブロックの内側だったため、挿入位置(カーソル相当)もブロック内側に残留したと考えられる。キャプチャ内容自体は欠落なく正しく取得できたが(`parse_dsl()`は既存のネストしたIF/WAITブロック構文をそのまま正しく構造化できる)、今後のバッチでは各バッチ開始前に「トップレベルの空行」を明示的に選択してから新規アクションを追加するなど、挿入位置をリセットする対策が望ましい。
+
+**実機キャプチャ結果**(前バッチのIFブロックから中身だけを取り出し、トップレベルに正規化。誤検出による重複`File.ConvertToBinary`は除外):
+```
+File.Copy Files: $'''sample''' Destination: $'''sample''' IfFileExists: File.IfExists.DoNothing CopiedFiles=> CopiedFiles
+File.Move Files: $'''sample''' Destination: $'''sample''' IfFileExists: File.IfExists.DoNothing MovedFiles=> MovedFiles
+File.Delete Files: $'''sample'''
+File.RenameFiles.Rename Files: $'''sample''' NewName: $'''sample''' KeepExtension: True IfFileExists: File.IfExists.DoNothing RenamedFiles=> RenamedFiles
+File.ConvertToBase64 File: $'''sample''' Base64Text=> Base64Text
+File.ConvertFromBase64 Base64Text: $'''sample''' File: $'''sample''' IfFileExists: File.IfExists.DoNothing
+File.ConvertToBinary File: $'''sample''' BinaryData=> BinaryData
+File.ReadTextFromFile.ReadText File: $'''sample''' Encoding: File.TextFileEncoding.UTF8 Content=> FileContents
+File.WriteText File: $'''sample''' TextToWrite: $'''sample''' AppendNewLine: True IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.Unicode
+File.ReadFromCSVFile.ReadCSV CSVFile: $'''sample''' Encoding: File.CSVEncoding.UTF8 TrimFields: True FirstLineContainsColumnNames: False ColumnsSeparator: File.CSVColumnsSeparator.SystemDefault CSVTable=> CSVTable
+File.WriteToCSVFile.WriteCSV VariableToWrite: $'''sample''' CSVFile: $'''sample''' CsvFileEncoding: File.CSVEncoding.UTF8 IncludeColumnNames: False IfFileExists: File.IfFileExists.Overwrite ColumnsSeparator: File.CSVColumnsSeparator.SystemDefault
+File.GetPathPart File: $'''sample''' RootPath=> RootPath Directory=> Directory FileName=> FileName FileNameWithoutExtension=> FileNameNoExtension Extension=> FileExtension
+IF (File.IfFile.Exists File: $'''sample''') THEN
+    WAIT (File.WaitForFile.Created File: $'''sample''')
+END
+```
+
+**確認できた事実**:
+- `File.Copy`/`File.Move`/`File.RenameFiles.Rename`は`IfFileExists: File.IfExists.DoNothing`という、知見68の`Folder.Copy`の`IfFolderExists: Folder.IfExists.DoNothing`と対になるenum(モジュールごとに同名パターンの`IfExists`enumを持つ)。
+- `File.WriteText`/`File.WriteToCSVFile.WriteCSV`の`IfFileExists`パラメータは、他と異なり`File.IfFileExists.Overwrite`という**別のenum型**(`File.IfExists`ではなく`File.IfFileExists`)を使う——書き込み系アクションのみ「上書き/追記等」の選択肢を持つ別のenumだと判明。
+- `File.WaitForFile.Created`は知見57で確立した`WaitActionRecord`(FOR句を伴う`WAIT (...)`構文)としてそのまま構造化できた。
+- `File.GetPathPart`は5つの出力変数(`RootPath`/`Directory`/`FileName`/`FileNameWithoutExtension`/`Extension`)を一度に生成する——既存の複数出力変数パーサー機構(知見46相当)がそのまま適用できる。
+
+**検証**: 15件(12 ActionRecord + 1 IfActionRecord + 1 WaitActionRecord + 1 END KeywordRecord)全てが既存の汎用パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_file_batch6_parses_as_generic_action_if_and_wait_records`)。これにより`File`の完了率は0/16→14/16まで進んだ。
+
+**今後**: 取り逃した`File.ConvertFromBinary`(Convert binary to file)・`File.GetTempPath`(Get temporary file path、検索語の見直しが必要)を次回リトライする。また自動化スクリプトに「バッチ開始前に挿入位置をトップレベルへリセットする」処理の追加を検討する。残るTier1/2の未キャプチャモジュール(Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)も同じ自動化バッチで継続する。
+
+**追記(計測ツール自体のバグ修正)**: `WaitForFile`(`File.WaitForFile.Created`)・`IfFile`(`File.IfFile.Exists`)を実機キャプチャ・テスト化した直後に`capture_coverage.py`で再計測したところ、両方とも未キャプチャ扱いのままだった。原因は`capture_coverage.py`の`collect_captured_action_ids()`が`isinstance(record, ActionRecord)`のみを集計対象にしており、`WaitActionRecord`/`IfActionRecord`(別のdataclass)を一切見ていなかったこと——知見68で確認した`Folder.IfFolderExists`も同じ理由で実際にはキャプチャ済みなのに未キャプチャ扱いになっていた。`_ACTION_ID_RECORD_TYPES = (ActionRecord, IfActionRecord, WaitActionRecord)`を対象に広げて修正し、`tests/test_capture_coverage.py::test_compute_report_counts_if_and_wait_action_records_too`で回帰テスト化した。この修正自体で全体の完了率が81/116→84/116に上がった(新規キャプチャによる増加ではなく、計測漏れの解消による)。

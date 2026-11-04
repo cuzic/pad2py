@@ -18,7 +18,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from .pad_dsl import ActionRecord, parse_dsl
+from .pad_dsl import ActionRecord, IfActionRecord, WaitActionRecord, parse_dsl
+
+_ACTION_ID_RECORD_TYPES = (ActionRecord, IfActionRecord, WaitActionRecord)
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
@@ -177,7 +179,7 @@ def collect_captured_action_ids(fixtures_dir: Path) -> set[str]:
         except Exception:
             continue
         for record in records:
-            if isinstance(record, ActionRecord):
+            if isinstance(record, _ACTION_ID_RECORD_TYPES):
                 ids.add(record.action_id)
     return ids
 

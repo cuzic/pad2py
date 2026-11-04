@@ -1,0 +1,15 @@
+File.Copy Files: $'''sample''' Destination: $'''sample''' IfFileExists: File.IfExists.DoNothing CopiedFiles=> CopiedFiles
+File.Move Files: $'''sample''' Destination: $'''sample''' IfFileExists: File.IfExists.DoNothing MovedFiles=> MovedFiles
+File.Delete Files: $'''sample'''
+File.RenameFiles.Rename Files: $'''sample''' NewName: $'''sample''' KeepExtension: True IfFileExists: File.IfExists.DoNothing RenamedFiles=> RenamedFiles
+File.ConvertToBase64 File: $'''sample''' Base64Text=> Base64Text
+File.ConvertFromBase64 Base64Text: $'''sample''' File: $'''sample''' IfFileExists: File.IfExists.DoNothing
+File.ConvertToBinary File: $'''sample''' BinaryData=> BinaryData
+File.ReadTextFromFile.ReadText File: $'''sample''' Encoding: File.TextFileEncoding.UTF8 Content=> FileContents
+File.WriteText File: $'''sample''' TextToWrite: $'''sample''' AppendNewLine: True IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.Unicode
+File.ReadFromCSVFile.ReadCSV CSVFile: $'''sample''' Encoding: File.CSVEncoding.UTF8 TrimFields: True FirstLineContainsColumnNames: False ColumnsSeparator: File.CSVColumnsSeparator.SystemDefault CSVTable=> CSVTable
+File.WriteToCSVFile.WriteCSV VariableToWrite: $'''sample''' CSVFile: $'''sample''' CsvFileEncoding: File.CSVEncoding.UTF8 IncludeColumnNames: False IfFileExists: File.IfFileExists.Overwrite ColumnsSeparator: File.CSVColumnsSeparator.SystemDefault
+File.GetPathPart File: $'''sample''' RootPath=> RootPath Directory=> Directory FileName=> FileName FileNameWithoutExtension=> FileNameNoExtension Extension=> FileExtension
+IF (File.IfFile.Exists File: $'''sample''') THEN
+    WAIT (File.WaitForFile.Created File: $'''sample''')
+END

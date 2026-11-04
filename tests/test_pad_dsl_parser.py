@@ -1793,3 +1793,54 @@ def test_tier1_folder_batch5_parses_as_generic_action_and_if_records() -> None:
     assert delete_folder.output_var is None  # type: ignore[union-attr]
     if_folder_exists = records[8]
     assert isinstance(if_folder_exists, IfActionRecord)
+
+
+def test_tier1_file_batch6_parses_as_generic_action_if_and_wait_records() -> None:
+    # design/dsl_format_findings.md 知見69: Fileモジュール14件(ネストしたIF/WAIT
+    # ブロックを含む)の実機DSLキャプチャ。既存の汎用パーサーがコード変更無しで
+    # 正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_file_batch6.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 15
+    assert [type(r).__name__ for r in records] == [
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "ActionRecord",
+        "IfActionRecord",
+        "WaitActionRecord",
+        "KeywordRecord",
+    ]
+    action_ids = [getattr(r, "action_id", None) for r in records]
+    assert action_ids == [
+        "File.Copy",
+        "File.Move",
+        "File.Delete",
+        "File.RenameFiles.Rename",
+        "File.ConvertToBase64",
+        "File.ConvertFromBase64",
+        "File.ConvertToBinary",
+        "File.ReadTextFromFile.ReadText",
+        "File.WriteText",
+        "File.ReadFromCSVFile.ReadCSV",
+        "File.WriteToCSVFile.WriteCSV",
+        "File.GetPathPart",
+        "File.IfFile.Exists",
+        "File.WaitForFile.Created",
+        None,
+    ]
+    delete_file = records[2]
+    assert delete_file.output_var is None  # type: ignore[union-attr]
+    wait_for_file = records[13]
+    # design/dsl_format_findings.md 知見69: WaitForFileは知見57以来の既存の
+    # WaitActionRecord(FOR句の有無で無期限ポーリングか否かを判定)としてそのまま
+    # 構造化できる。
+    assert isinstance(wait_for_file, WaitActionRecord)
