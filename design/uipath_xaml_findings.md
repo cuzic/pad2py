@@ -734,6 +734,32 @@ Integration > Excel)を実機確認した。`WorkbookPath`に`"wb.xlsx"`を設�
   等)なら`<mva:VisualBasicValue>`/`VisualBasicReference`のネスト要素、という
   3方向の使い分けがある。
 
+## 24. `Send Outlook Mail Message`——添付ファイルの空コレクションは`scg:List`(`scg:Dictionary`とは別型)
+
+P1項目7の一環として`Send Outlook Mail Message`(`UiPath.Mail.Activities`、
+`UiPath.Mail.Outlook.Activities`に依存)を実機確認した。`To`/`Subject`/
+`Body`に`"a@b.com"`/`"hi"`/`"body"`を設定した結果:
+
+```xml
+<ui:SendOutlookMail Account="{x:Null}" Bcc="{x:Null}" Cc="{x:Null}" MailMessage="{x:Null}"
+    ReplyTo="{x:Null}" TimeoutMS="{x:Null}" Body="body" DisplayName="Send Outlook Mail Message"
+    Importance="Normal" IsBodyHtml="False" IsDraft="False" Sensitivity="Normal"
+    Subject="hi" To="a@b.com">
+  <ui:SendOutlookMail.Files>
+    <scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />
+  </ui:SendOutlookMail.Files>
+</ui:SendOutlookMail>
+```
+
+- `To`/`Subject`/`Body`は知見15/22と同じ「生の属性値」形。`Importance`/
+  `Sensitivity`等のenum系プロパティも同様に生の属性値(`"Normal"`)。
+- 添付ファイル一覧(`Files`、UI上の「Attach Files」)は空のとき
+  `<scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />`になる
+  ——知見17/23で見た`Arguments`の`scg:Dictionary`とは別の具象コレクション型
+  (`System.Collections.Generic.List<InArgument<string>>`)で、**空コレクション
+  は具象型で明示直列化される**という知見23の規則がここでも再現されている。
+  複数ファイルを追加した場合の子要素形(`<InArgument>`が並ぶだけか)は未検証。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
