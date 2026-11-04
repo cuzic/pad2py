@@ -86,6 +86,24 @@ def generate_python(
     if any("contextlib.redirect_stdout(" in line for line in body):
         imports.append("import contextlib")
         imports.append("import io")
+    if any("os.path.split(" in line for line in body):
+        imports.append("import os")
+    for module_name in (
+        "text_actions",
+        "datetime_actions",
+        "variables_actions",
+        "file_actions",
+        "folder_actions",
+        "compression_actions",
+        "cryptography_actions",
+        "database_actions",
+        "web_actions",
+        "xml_actions",
+        "cmd_actions",
+        "clipboard_actions",
+    ):
+        if any(f"{module_name}." in line for line in body):
+            imports.append(f"from dump_daemon.pad_action_lib import {module_name}")
     imports.sort()
     header = [*imports, ""] if imports else []
     return "\n".join(header + body) + "\n"

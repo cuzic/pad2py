@@ -43,6 +43,16 @@ def generate(node: WaitActionRecord, indent: int, ctx: CodegenContext) -> list[s
     """
     prefix = INDENT * indent
     timeout_desc = f"{render_value(node.timeout_seconds)}s" if node.timeout_seconds is not None else "none"
+    if node.action_id == "File.WaitForFile.Created" and node.timeout_seconds is None:
+        # design/dsl_format_findings.md 知見69(実機確認済み): `File.WaitForFile.Created`は
+        # `IfFile.Exists`と同じ存在チェック(`pad_action_lib.file_actions.if_file_exists()`)を
+        # 無期限ポーリングするだけ——pywinautoのセレクタは不要。
+        path = node.params.get("File")
+        if isinstance(path, str):
+            return [
+                f"{prefix}while not file_actions.if_file_exists({render_value(path)}):",
+                f"{prefix}{INDENT}time.sleep(0.05)",
+            ]
     target = _WAIT_ACTION_TARGETS.get(node.action_id)
     if target is not None:
         param_name, method, wait_for = target

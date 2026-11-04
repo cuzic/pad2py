@@ -1,0 +1,218 @@
+"""`pad_codegen.actions`配下のTier1/Tier2(`pad_action_lib`)結線の単体テスト。
+
+design/dsl_format_findings.md 知見66-72で実機キャプチャした`tests/fixtures/
+tier1_*.txt`を実際に`generate_python()`へ通し、(a)構文的に正しいPythonが生成
+されること、(b)結線したアクションが`# TODO`に倒れず実コードになること、
+(c)意図的に未対応としたアクション(DPAPI保護値・バックティック/`{ }`未対応構文・
+比較/フィルタ/結合エンジン未確認等)は正直に`# TODO`のまま残ること、の両方を
+確認する(`dump_daemon/codegen_coverage.py`が集計する分岐点のソースコード側の
+裏付け)。
+
+これらのフィクスチャは実機キャプチャ時に全てのテキスト入力欄へ同じ`"sample"`を
+埋めたものなので、生成コードの値側は(変数参照ではなく)`'sample'`という文字列
+リテラルになる——アサーションはそれに合わせている。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from dump_daemon.pad_codegen import generate_python
+from dump_daemon.pad_dsl import build_block_tree, parse_dsl
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _generate(fixture_name: str) -> str:
+    text = (FIXTURES_DIR / fixture_name).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    return code
+
+
+def _todo(action_id: str) -> str:
+    return f"# TODO: map PAD action: {action_id}"
+
+
+def test_text_variables_batch1_all_actions_convert_without_todo() -> None:
+    code = _generate("tier1_text_variables_batch1.txt")
+    assert "# TODO: map PAD action:" not in code
+    assert "TrimmedText = text_actions.trim_text('helloworld', trim_option='Both')" in code
+    assert "TextWithNewCase = text_actions.change_case('sample', new_case='UpperCase')" in code
+    assert "variables_actions.reverse_list('sample')" in code
+    assert "PaddedText = text_actions.pad_text('sample', pad_position='Left', " in code
+    assert "JoinedText = text_actions.join_text('sample')" in code
+    assert "Result = text_actions.append_line('sample', 'sample')" in code
+    assert "EscapedText = text_actions.escape_for_regular_expression('sample')" in code
+    assert "ReversedText = text_actions.reverse_text('sample')" in code
+    assert "_crop_result = text_actions.crop_text('sample', mode='GetTextBeforeFlag', " in code
+    assert "CroppedText = _crop_result.cropped_text" in code
+    assert "IsFlagFound = _crop_result.is_flag_found" in code
+    assert "Subtext = text_actions.get_subtext('sample', start_index='AtSpecificCharacter', " in code
+    assert "TextList = text_actions.split_text('sample', standard_delimiter='Space', delimiter_times=1)" in code
+    assert "TextAsNumber = text_actions.text_to_number('sample')" in code
+    assert "FormattedNumber = text_actions.number_to_text('sample', decimal_places=2, " in code
+    assert "RandomText = text_actions.create_random_text(minimum_length=6, maximum_length=10, " in code
+    assert "RandomNumber = variables_actions.generate_random_number(0, 100)[0]" in code
+
+
+def test_datetime_folder_clipboard_batch2_converts_except_dpapi_zip_password() -> None:
+    code = _generate("tier1_datetime_folder_clipboard_batch2.txt")
+    assert "CurrentDateTime = datetime_actions.get_current_datetime(date_time_format='DateAndTime')" in code
+    assert "ResultedDate = datetime_actions.add_to_datetime('sample', 'sample', time_unit='Seconds')" in code
+    assert "TimeDifference = datetime_actions.subtract_dates('sample', 'sample', time_unit='Days')" in code
+    assert "Files = folder_actions.get_files_in_folder('sample', file_filter='*', " in code
+    assert "ClipboardText = clipboard_actions.get_clipboard_text()" in code
+    assert "clipboard_actions.set_clipboard_text('sample')" in code
+    assert "clipboard_actions.clear_clipboard()" in code
+    # Password is a DPAPI-protected `P'<base64>'` value -> unparseable identifier -> TODO.
+    assert _todo("Compression.ZipFiles") in code
+
+
+def test_variables_list_datatable_batch3_converts_except_unverified_engines() -> None:
+    code = _generate("tier1_variables_list_datatable_batch3.txt")
+    assert "List = variables_actions.create_new_list()" in code
+    assert "variables_actions.add_item_to_list('sample', 'sample')" in code
+    assert "variables_actions.remove_item_from_list_by_index('sample', 'sample')" in code
+    assert "variables_actions.clear_list('sample')" in code
+    assert "variables_actions.shuffle_list('sample')" in code
+    assert "OutputList = 'sample' + 'sample'" in code
+    assert "variables_actions.remove_duplicate_items_from_list('sample', ignore_case=False)" in code
+    assert "variables_actions.sort_list('sample')" in code
+    assert "variables_actions.add_row_to_datatable('sample', 'sample')" in code
+    assert "variables_actions.delete_empty_rows_from_datatable('sample')" in code
+    assert "variables_actions.modify_datatable_item('sample', row_index='sample', " in code
+    assert "variables_actions.add_column_to_datatable('sample', 'sample')" in code
+    assert "variables_actions.delete_column_from_datatable('sample', 'sample')" in code
+    assert "variables_actions.delete_duplicate_rows_from_datatable('sample')" in code
+    assert "variables_actions.clear_datatable('sample')" in code
+    assert "variables_actions.sort_datatable('sample', 'sample', descending=False)" in code
+    assert "variables_actions.merge_datatables('sample', 'sample')" in code
+    assert "ColumnAsList = variables_actions.retrieve_datatable_column_into_list('sample', 'sample')" in code
+    assert "variables_actions.delete_row_from_datatable('sample', 'sample')" in code
+    # Deliberately unconverted: PAD's ComparisonCalculator-dependent / unverified-schema actions,
+    # plus the `InputTable: { }` parser gap (empty array literal -> unparseable identifier).
+    for action_id in (
+        "Variables.SubtractLists",
+        "Variables.FindCommonListItems",
+        "Variables.CreateNewDatatable",
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
+        "Variables.FilterDataTable",
+        "Variables.JoinDataTable",
+        "Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator",
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator",
+    ):
+        assert _todo(action_id) in code
+
+
+def test_text_variables_batch4_converts_except_unverified_ones() -> None:
+    code = _generate("tier1_text_variables_batch4.txt")
+    assert "_parse_result = text_actions.parse_text('sample', 'sample', ignore_case=False, " in code
+    assert "Position = _parse_result.occurrence_position" in code
+    assert "Replaced = text_actions.replace_text('sample', 'sample', 'sample', " in code
+    assert "FormattedDateTime = text_actions.datetime_to_text('sample', standard_format='d')" in code
+    assert "TextAsDateTime = text_actions.text_to_datetime('sample')" in code
+    assert "TruncatedValue = variables_actions.truncate_number('sample', mode='GetIntegerPart')" in code
+    assert "JsonAsCustomObject = variables_actions.json_to_custom_object('sample')" in code
+    assert "CustomObjectAsJson = variables_actions.custom_object_to_json('sample')" in code
+    # RecognizeEntitiesInText always raises NotImplementedError in pad_action_lib -> never wired.
+    assert _todo("Text.RecognizeEntitiesInText") in code
+    # HtmlEditor is captured as the backtick-empty-string parser gap -> unparseable identifier.
+    assert _todo("Text.CreateHTMLContent") in code
+    # Value is captured as a literal placeholder string (not a variable) in this fixture,
+    # so there is no variable to reassign the increased/decreased value back into.
+    assert _todo("Variables.IncreaseVariable") in code
+    assert _todo("Variables.DecreaseVariable") in code
+
+
+def test_folder_batch5_converts_all_actions_and_if_folder_exists_condition() -> None:
+    code = _generate("tier1_folder_batch5.txt")
+    assert "# TODO: map PAD action:" not in code
+    assert "CopiedFolder = folder_actions.copy_folder('sample', 'sample', if_file_exists='DoNothing')" in code
+    assert "NewFolder = folder_actions.create_folder('sample', 'sample')" in code
+    assert "folder_actions.delete_folder('sample')" in code
+    assert "folder_actions.empty_folder('sample')" in code
+    assert "MovedFolder = folder_actions.move_folder('sample', 'sample')" in code
+    assert "RenamedFolder = str(folder_actions.rename_folder('sample', 'sample'))" in code
+    assert "Folders = folder_actions.get_subfolders_in_folder('sample', folder_filter='*', " in code
+    assert "SpecialFolderPath = folder_actions.get_special_folder('Desktop')" in code
+    assert "if folder_actions.if_folder_exists('sample'):" in code
+
+
+def test_file_batch6_converts_except_csv_actions() -> None:
+    code = _generate("tier1_file_batch6.txt")
+    assert "CopiedFiles = file_actions.copy_files((" in code
+    assert "MovedFiles = file_actions.move_files((" in code
+    assert "file_actions.delete_files((" in code
+    assert "RenamedFiles = []" in code
+    assert "_rename_dir, _rename_base = os.path.split(_rename_src)" in code
+    assert "file_actions.rename_set_new_name(_rename_base, 'sample', keep_extension=True)" in code
+    assert "file_actions.apply_rename(_rename_dir, _rename_base, _rename_new_base, " in code
+    assert "Base64Text = file_actions.file_to_base64('sample')" in code
+    assert "file_actions.base64_to_file('sample', 'sample', if_file_exists='DoNothing')" in code
+    assert "BinaryData = file_actions.file_to_binary('sample')" in code
+    assert "FileContents = file_actions.read_text_from_file('sample', encoding='UTF8')" in code
+    assert "file_actions.write_text_to_file('sample', 'sample', append_new_line=True, " in code
+    assert "_path_part = file_actions.get_file_path_part('sample')" in code
+    assert "RootPath = _path_part['RootPath']" in code
+    assert "FileNameNoExtension = _path_part['FileNameWithoutExtension']" in code
+    assert "if file_actions.if_file_exists('sample'):" in code
+    assert "while not file_actions.if_file_exists('sample'):" in code
+    assert "import os" in code
+    assert _todo("File.ReadFromCSVFile.ReadCSV") in code
+    assert _todo("File.WriteToCSVFile.WriteCSV") in code
+
+
+def test_crypto_database_batch7_converts_only_keyless_functions() -> None:
+    code = _generate("tier1_crypto_database_batch7.txt")
+    assert "file_actions.binary_to_file('sample', 'sample', if_file_exists='DoNothing')" in code
+    assert "TempFile = file_actions.get_temp_file_path()" in code
+    assert "HashedText = cryptography_actions.hash_text('sample', encoding='Unicode', " in code
+    assert "HashedText2 = cryptography_actions.hash_from_file('sample', encoding='Unicode', " in code
+    assert "SQLConnection = database_actions.open_connection('sample')" in code
+    # All of these carry a DPAPI-protected (P'<base64>') key/password parameter.
+    for action_id in (
+        "Cryptography.EncryptText.EncryptTextWithAES",
+        "Cryptography.EncryptFromFile.EncryptFromFileWithAES",
+        "Cryptography.DecryptText.DecryptTextWithAES",
+        "Cryptography.DecryptToFile.DecryptToFileWithAES",
+        "Cryptography.HashTextWithKey",
+        "Cryptography.HashFromFileWithKey",
+    ):
+        assert _todo(action_id) in code
+    # Statement is captured as the backtick-empty-string parser gap.
+    assert _todo("Database.ExecuteSqlStatement.Execute") in code
+
+
+def test_web_xml_batch8_converts_except_dpapi_password_and_backtick_xml() -> None:
+    code = _generate("tier1_web_xml_batch8.txt")
+    assert "database_actions.close_connection(SQLConnection)" in code
+    assert "WebPageText = web_actions.download_from_web('sample', connection_timeout=30, " in code
+    assert "_web_service_result = web_actions.invoke_web_service('sample', method='Get', " in code
+    assert "WebServiceResponse = _web_service_result.response" in code
+    assert "WebServiceResponseHeaders = _web_service_result.response_headers" in code
+    assert "StatusCode = _web_service_result.status_code" in code
+    assert "_soap_service_result = web_actions.invoke_soap_service('sample', " in code
+    assert "SoapServiceResponse = _soap_service_result.response" in code
+    assert "StatusCode2 = _soap_service_result.status_code" in code
+    assert "XmlDocument = xml_actions.read_xml_from_file('sample')" in code
+    assert "XmlElementValue = xml_actions.get_xml_element_value(XmlDocument, 'sample')" in code
+    assert "XmlDocument = xml_actions.set_xml_element_value(XmlDocument, 'sample', 'sample')" in code
+    assert "XmlAttributeValue = xml_actions.get_xml_element_attribute(XmlDocument, 'sample', 'sample')" in code
+    assert "XmlDocument = xml_actions.set_xml_element_attribute(XmlDocument, 'sample', 'sample', 'sample')" in code
+    assert "XmlDocument = xml_actions.remove_xml_element_attribute(XmlDocument, 'sample', 'sample')" in code
+    assert "XmlDocument = xml_actions.insert_xml_element(XmlDocument, 'sample', 'sample')" in code
+    assert "XmlDocument = xml_actions.remove_xml_element(XmlDocument, 'sample')" in code
+    assert "XPathResults = xml_actions.execute_xpath_query('sample', 'sample')" in code
+    assert _todo("Compression.UnzipFiles") in code
+    assert _todo("XML.WriteXmlToFile.WriteToFileFormatted") in code
+
+
+def test_cmd_batch9_converts_all_actions_as_session_method_calls() -> None:
+    code = _generate("tier1_cmd_batch9.txt")
+    assert "# TODO: map PAD action:" not in code
+    assert "CmdSession = cmd_actions.open_cmd_session('sample')" in code
+    assert "CmdSession.write('sample', send_enter=True)" in code
+    assert "CmdOutput = CmdSession.read()" in code
+    assert "CmdSession.wait_for_text('sample', timeout=0, is_regex=False, ignore_case=True)" in code
+    assert "CmdSession.close()" in code

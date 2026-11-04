@@ -1524,3 +1524,27 @@ Cmd.Close Session: CmdSession
 **検証**: 5件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_cmd_batch9_parses_as_generic_action_records`)。これにより`Cmd`は0/5→5/5(完了)となり、`capture_coverage.py`の全体完了率は111/116→**116/116(100%)**に到達した。
 
 **総括**: 知見62(2026年、`Text.Trim`の初回手動キャプチャ)から始まり、知見63でUIAutomation自動化バッチスクリプトを確立、知見64・65でDPAPI暗号化構文(`P'...'`)を発見、知見66-72で9回のバッチ実行を経て、Text/DateTime/Variables/File/Folder/Compression/Cryptography(Tier1)、Database/Web/XML/Cmd/Clipboard(Tier2)の全12モジュール・116アクションの実機DSLキャプチャが完了した。この過程で、既存の汎用パーサー設計(`ActionRecord`/`IfActionRecord`/`WaitActionRecord`/`KeywordRecord`)が未知のアクションに対しても一切のコード変更なしで正しく構造化できることが一貫して確認され、知見36以来の「汎用パーサー設計」方針の正しさが実機データで裏付けられた。同時に、バックティック文字列`` `` ``・`{ }`配列リテラル・`P'...'`DPAPI構文という3つの「パーサー未対応だがクラッシュもデータ欠落もしない」構文が発見され、今後の拡張課題として記録されている。自動化そのものについても、検索語の部分文字列一致による誤爆(知見70)とその対策(名前の完全一致優先、知見71)、ダイアログ種別によるSave/Cancelボタンauto_idの違い(知見67)、ネストした挿入位置の残留(知見69)という再利用可能な知見が蓄積された。
+
+## 73. `pad_action_lib`(Tier1/2の純粋関数コア、decompileベースの推定実装)を知見66-72で確認済みの実機action_id・パラメータ名へ結線し、`pad_codegen.py`のカバレッジを31%→80%へ引き上げた
+
+`pad_action_lib`自体は「action_idからこの結線を行うのは実機でDSL構文・パラメータ直列化形式を確認した後に別途行う」と自身のdocstringで明記していた、decompileベースの推定実装だった。知見62-72でTier1/2の116アクション全件の実機DSL(action_id文字列・パラメータ名・enum値の実際の表記)が確認できたため、この結線作業を実施した。`dump_daemon/pad_codegen/actions/`配下に`text.py`/`variables.py`/`file.py`/`folder.py`/`compression.py`/`cryptography.py`/`database.py`/`web.py`/`xml.py`/`cmd.py`/`clipboard.py`/`pad_datetime.py`を新設し、既存の`generate_action()`のchain-of-responsibilityディスパッチに追加した(各ファミリーは互いに疎結合、`None`を返せば次のファミリーへフォールスルーする既存の設計をそのまま踏襲)。
+
+**計測結果**: `dump_daemon/codegen_coverage.py`の全体カバレッジが31%(57/186)→**80%(149/186)**に到達した(`action`分岐点は21/137→109/137)。
+
+**安全策——でっち上げたコードを出さないための共通ガード(`actions/_support.py`)**:
+- 知見72で発見した3つの「パーサー未対応構文」(`P'<DPAPI base64>'`・空のバックティック文字列` `` `・`{ }`配列リテラル)は、いずれも正当なPython識別子にならない`VarRef`へのパーサーフォールバックとして現れる。全ファミリーモジュール共通の`safe_render()`がこれを検出して`None`を返し、呼び出し元はその場で`generate()`から`None`を返して既存の汎用`# TODO`フォールバックに委ねる——これにより`Cryptography.EncryptText`等のDPAPI鍵を持つ6アクション、`Compression.ZipFiles`/`UnzipFiles`のDPAPIパスワード、`Database.ExecuteSqlStatement.Execute`・`XML.WriteXmlToFile`のバックティック引数、`Variables.CreateNewDatatable`の`{ }`は、壊れた構文を出力せず自動的に未対応のまま残る。
+- `pad_action_lib`側が常に`NotImplementedError`を投げる関数(PAD独自の`ComparisonCalculator.Compare`比較エンジンに依存する`Variables.SubtractLists`/`FindCommonListItems`、フィルタ/結合条件のDataTableスキーマ未確認の`FilterDataTable`/`JoinDataTable`、外部NLPライブラリ未導入の`Text.RecognizeEntitiesInText`)は、呼び出しコードを生成すると「生成できたように見えて実行時に必ず壊れる」ためTODOコメントより悪い結果になる——これらは明示的に結線せず、恒久的にフォールバックへ委ねている。
+- `File.ReadFromCSVFile.ReadCSV`/`WriteToCSVFile.WriteCSV`・`Variables.ConvertDataTableToCSV.*`/`GenerateDataTableFromCSV.*`は、実機DSLで`FirstLineContainsColumnNames`/`IncludeColumnNames`が明示的に`False`だが、`pad_action_lib.datatable`のCSV変換は常にヘッダー行ありを仮定しており、結線すると見た目は動くが1行分データがずれる・余分なヘッダー行が混入するという静かな誤りになるため、意図的に未対応のまま残した。
+- `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`は実機の出力契約(`DataTableMatches`への一致結果)と`pad_action_lib.find_or_replace_in_datatable()`(置換件数の`int`を返す、`replace_value`必須)が一致しないため未対応。
+
+**既存のパーサー設計を再利用した非自明なマッピング**:
+- `Variables.IncreaseVariable`/`DecreaseVariable`・`XML`の各setter/mutator系(`SetElementValue`/`SetElementAttribute`/`RemoveElementAttribute`/`InsertElement`/`RemoveElement`)は、`=>`出力変数を持たない代わりに入力パラメータの変数へ実質的に再代入する意味論であることが実機DSLから読み取れたため、`Document`/`Value`パラメータが`VarRef`である場合のみ同じ変数名へ`{var} = pad_action_lib.func({var}, ...)`という再代入コードを生成する(リテラル値の場合は書き戻す先が無いため未対応のまま残る——`Variables.IncreaseVariable`/`DecreaseVariable`はこの理由で、サンプル値埋め込みにより`Value`が文字列リテラルになっている`tier1_text_variables_batch4.txt`では依然TODOのまま)。
+- `Text.GetSubtext.GetSubtext`は実機DSLに`StartIndexType`/`LengthType`相当のモード列挙値が出力されないが、`CharacterPosition`/`NumberOfChars`が明示的に指定されていることから「特定位置から指定文字数」モードが選ばれていたと判断し、`pad_action_lib.text_actions.get_subtext()`の`"StartOfText"`/`"EndOfText"`以外の任意文字列で"カスタム"分岐を選ぶ既定動作を使って変換した。
+- `Text.ConvertDateTimeToText.FromDateTime`の`StandardFormat`は、実機で確認できた`ShortDate`の1値だけを.NETの標準書式指定子`"d"`(`ShortDatePattern`、PAD固有のデコンパイル知識ではなく公開されている.NET仕様)へ対応付け、他の値は未確認としてフォールバックに委ねた。
+- `Variables.MergeDataTables`(`MergeMode: AddExtraColumns`)は、`merge_datatables()`が行を無条件連結するだけ(各行は独立した辞書のため列数の不一致があってもそのまま追加されるだけでエラー・欠落にならない)という実装が、確認できた唯一の値「余分な列があれば追加する」の意味と合致すると判断し、その場合のみ結線した。
+- `File.Copy`/`Move`/`Delete`/`RenameFiles.Rename`の`Files`パラメータは、複数ファイル(リスト変数)を渡すケースの実際の型が未確認のため、生成コードが実行時に`isinstance`で単一文字列/リストどちらでも動くよう正規化する(`Files if isinstance(Files, list) else [Files]`)——どちらか一方の型を決め打ちしない。
+- `Cmd.*`は`Open`以外、`Session`変数が`pad_action_lib.cmd_actions.CmdSession`インスタンスを保持する想定でそのメソッド呼び出し(`.write()`/`.read()`/`.wait_for_text()`/`.close()`)に変換する——`cmd_actions`モジュール自体の再importは不要。
+
+**`File.WaitForFile.Created`(wait_action)・`File.IfFile.Exists`/`Folder.IfFolderExists.Exists`(condition_action_call)**: いずれもUI要素セレクタを一切使わない単純な存在チェックで、`pad_action_lib.file_actions.if_file_exists()`/`folder_actions.if_folder_exists()`への素直な変換が可能だったため、既存の`actions/wait.py`・`actions/conditions.py`(`UIAutomation.IfWindow.*`用の既存の仕組み)にそれぞれ分岐を追加した。`WaitForFile`はタイムアウト指定なし(知見50と同じ無期限ポーリング)の場合のみ対応する。
+
+**検証**: `tests/test_pad_codegen_tier1_actions.py`(フィクスチャ9件それぞれについて、結線したアクションが`# TODO`に倒れず正しい呼び出しになること・意図的に未対応としたアクションが正直に`# TODO`のまま残ることの両方を確認)、および全フィクスチャの生成コードが`ast.parse`/`compile()`で構文的に正しいことを確認する回帰チェックを実施した。さらに`tests/test_codegen_coverage.py`で全体カバレッジ80%以上をロックする回帰テストを追加した。

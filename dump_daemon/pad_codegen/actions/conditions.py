@@ -8,6 +8,16 @@ from __future__ import annotations
 from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef
 from ..context import CodegenContext
 from ..selectors import _build_pywinauto_selector_expr
+from ._support import safe_render
+
+# design/dsl_format_findings.md 知見68/69(実機確認済み): `File.IfFile.Exists`/
+# `Folder.IfFolderExists.Exists`はUI要素セレクタを一切使わない単純な存在チェックで、
+# `pad_action_lib`の対応する関数呼び出し1つに素直に変換できる(`IfImage`/
+# `IfWindowContains`のような複数の設定可能なサブモードが無い)。
+_EXISTENCE_CHECKS: dict[str, tuple[str, str]] = {
+    "File.IfFile.Exists": ("File", "file_actions.if_file_exists"),
+    "Folder.IfFolderExists.Exists": ("Path", "folder_actions.if_folder_exists"),
+}
 
 
 def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx: CodegenContext) -> str | None:
@@ -24,6 +34,12 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
     `IsOpen`/`IsNotOpen`は`exists()`の直接確認・否定のみ。調査根拠は`docs-local/`配下の
     リポジトリ非管理メモを参照(ソースコメントには残さない方針)。
     """
+    existence_check = _EXISTENCE_CHECKS.get(header.action_id)
+    if existence_check is not None:
+        param_name, func_expr = existence_check
+        rendered = safe_render(header.params.get(param_name))
+        return f"{func_expr}({rendered})" if rendered is not None else None
+
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None
     window = header.params.get("Window")

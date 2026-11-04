@@ -11,9 +11,43 @@ from ...pad_dsl import ActionRecord
 from ..context import CodegenContext
 from ..render import INDENT
 from ..selectors import _ui_element_hint
-from . import mouse_keyboard, scripting, ui_element, window
+from . import (
+    clipboard,
+    cmd,
+    compression,
+    cryptography,
+    database,
+    file,
+    folder,
+    mouse_keyboard,
+    pad_datetime,
+    scripting,
+    text,
+    ui_element,
+    variables,
+    web,
+    window,
+    xml,
+)
 
-_FAMILIES = (scripting, mouse_keyboard, window, ui_element)
+_FAMILIES = (
+    scripting,
+    mouse_keyboard,
+    window,
+    ui_element,
+    text,
+    pad_datetime,
+    variables,
+    file,
+    folder,
+    compression,
+    cryptography,
+    database,
+    web,
+    xml,
+    cmd,
+    clipboard,
+)
 
 
 def generate_action(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str]:
