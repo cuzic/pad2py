@@ -1158,8 +1158,17 @@ Set To Clipboard・HTTP Request)はひとまず主要なものを一巡した。
 - セレクタのフォールバック・複数候補(1つの`ui:Target`が複数セレクタを持つケース)、
   Computer Vision/画像ベースターゲティング(`ClippingRegion`/`Element`が実際に
   使われるケース)は知見11では未確認
-- C#式言語プロジェクト(`expressionLanguage: "CSharp"`)でのInArgument/
-  OutArgumentの直列化形式の違い(VB.NETと同じ`[...]`規約を使うのか)
+- **(部分的に解決・ネガティブ)** C#式言語プロジェクト(`expressionLanguage: "CSharp"`)
+  でのInArgument/OutArgumentの直列化形式の違い(VB.NETと同じ`[...]`規約を使うのか)
+  → Studio 2021.4.4では「New Blank Process」ダイアログ(Name/Location/Description
+  のみ)にも、グローバルSettings(General/Design等の全タブ)にも式言語を選択する
+  UIが一切存在しないことを確認した。「Use Modern for new projects」はFlowchart
+  デザイナースタイルの切り替えであり式言語とは無関係。これはP0#4で確認した
+  `targetFramework`切り替えUIの不在と同じ傾向であり、**このバージョンの
+  Studioでは全プロジェクトがVB.NET固定**という結論になる。C#式言語の実機確認には
+  より新しいStudioバージョン(22.x以降と推定)のインストールが必要——
+  今回はインストール済みバージョンの範囲内での追加調査は打ち切り、優先度を
+  下げて保留する
 - **(解決)** ~~`Invoke Code`に実際に1つ以上の`Argument`を追加した場合の形~~
   → 知見23で解決(`x:Key`付き`InArgument`要素列になる)。残る派生課題:
   方向`Out`/`InOut`の引数を追加した場合に`OutArgument`/`InOutArgument`の
