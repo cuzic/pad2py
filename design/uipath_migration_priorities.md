@@ -15,7 +15,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 
 | # | 項目 | 状況 |
 |---|---|---|
-| 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **ほぼ完了**: If・ForEach・TryCatch+Catch・Switch(知見5・6・9・11)・While/DoWhile(知見14、実体は`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`)・Break(知見18、属性なしの自己終了タグ)・Parallel(知見19、`ui:`プレフィックスを持たない素のWFアクティビティ、知見20でブランチ構造も確定=直接の子`Activity`要素)。ドロップゾーンへのドラッグ&ドロップ自動化も知見20で解決(`drag_activity_from_panel()`)。**残課題**: Switchのcase本体への同手法適用、Parallelの複数ブランチの並び(今後の調査候補参照) |
+| 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **完了**: If・ForEach・TryCatch+Catch・Switch(知見5・6・9・11、caseへのアクティビティ追加時の実XAML形=`x:Key`はアクティビティ要素自身の属性になる、を知見21で確定)・While/DoWhile(知見14、実体は`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`)・Break(知見18、属性なしの自己終了タグ)・Parallel(知見19、`ui:`プレフィックスを持たない素のWFアクティビティ、知見20でブランチ構造も確定=直接の子`Activity`要素)。ドロップゾーンへのドラッグ&ドロップ自動化も知見20で解決(`drag_activity_from_panel()`)。**残課題**: Parallelの複数ブランチの並び、1ブランチ/case内に複数ステップを入れる場合のSequenceラップ(今後の調査候補参照) |
 | 2 | VB.NET式 → Python式の変換ルール | **机上整理に着手+一部検証済み**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に初期の変換表を作成。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。演算子・型変換・`And`/`Or`と`AndAlso`/`OrElse`の非短絡/短絡の違い等は大半まだ未検証 |
 | 3 | Variables/Argumentsの正式宣言のXAML形 | **完了**: Variablesは知見8(`<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)、Argumentsは知見12(ファイル先頭の`<x:Members><x:Property Name="..." Type="InArgument(x:String)" /></x:Members>`) |
 | 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Processのみ完了**(知見1・知見「今後の調査候補」)。Library/Testプロジェクト、`targetFramework: Windows/Cross-platform`は未着手——インストール済みバージョン(Studio app-21.4.4)のUIには切替箇所が見当たらなかった |

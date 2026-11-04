@@ -604,14 +604,55 @@ Break)が完了した。ただし**複数の子アクティビティをドロッ
 - この手法は`Switch`のcase本体(知見9)にも同様に適用できるはずで、次の
   実験候補とする。
 
+## 21. `Switch`のcaseにアクティビティを追加した実XAML形が確定——`x:Key`はアクティビティ要素自身の属性になる
+
+知見9・知見20で積み残しだった「`Switch`のcaseにアクティビティを実際に入れた
+場合の`x:Null`以外の形」を、知見20で確立した`drag_activity_from_panel()`で
+解決した。`Switch`(`Expression="[result]"`、Int32型、case `1`)のcase本体
+(Outlineパネル上は`Switch > Case: 1`として表示される)に`Assign`
+(`To = content`, `Value = "case1"`)をドラッグした結果:
+
+```xml
+<Switch x:TypeArguments="x:Int32" DisplayName="Switch" Expression="[result]" ...>
+  <Assign x:Key="1" sap:VirtualizedContainerService.HintSize="262,60" sap2010:WorkflowViewState.IdRef="Assign_3">
+    <Assign.To>
+      <OutArgument x:TypeArguments="x:String">[content]</OutArgument>
+    </Assign.To>
+    <Assign.Value>
+      <InArgument x:TypeArguments="x:String">case1</InArgument>
+    </Assign.Value>
+  </Assign>
+</Switch>
+```
+
+ポイント:
+
+- 知見9で確認した空caseの形`<x:Null x:Key="1" />`と比較すると、**`x:Key`属性は
+  `x:Null`要素ではなく、実際に配置したアクティビティ要素自身(`<Assign
+  x:Key="1" ...>`)に移動する**——`Switch`の内部表現は
+  `IDictionary<TKey, Activity>`で、case値(`x:Key`)はこの辞書のキーとして
+  どのActivity型の要素にも同じように付与される、という素直な構造だと確定した。
+  `x:Null`は「このキーに対応する値(Activity)がまだ無い」ことを表す
+  プレースホルダに過ぎず、`x:Key`自体はcase値のキャリアであって`x:Null`固有の
+  ものではなかった。
+- 1 caseに複数ステップを入れたい場合は(`Parallel`のブランチと同様)ユーザーが
+  明示的に`Sequence`をドラッグしてその中に複数アクティビティを入れる必要がある
+  と推測される(1 caseに対応する値は単一の`Activity`のため)——これ自体は未検証。
+- これで知見9・19・20で積み残していた「ドロップゾーン系」の構造確認はすべて
+  完了した。`drag_activity_from_panel()`ヘルパーは`Switch`のcase、`Parallel`の
+  ブランチの両方で同じ呼び出し方で機能することが実証された。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
-  (直接の子`Activity`要素、ラッパー無し)を確定した。残る派生課題:
-  - `Switch`のcase本体への同手法の適用(知見9、`x:Null`以外の実際の形がまだ未確認)
+  (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造
+  (`x:Key`はアクティビティ要素自身の属性になる、知見21)の両方を確定した。
+  残る派生課題:
   - `Parallel`に2つ目以降のブランチを追加した場合の複数子要素の並び(知見20、
     1回目の追加試行はキャンバス座標ズレで失敗——事前のスクリーンショット確認が必要)
+  - 1つのブランチ/caseに複数ステップを入れたい場合、ユーザーが明示的に
+    `Sequence`をドラッグする必要があるという推測(知見20・21)の実機検証
 - Libraryプロジェクト・Testプロジェクトの`project.json`の違い、および
   `targetFramework: "Windows"`/`"Cross-platform"`(Legacy以外)での依存関係の違い
   ※ 今回インストールしたバージョン(Studio app-21.4.4)のProject Settingsダイアログ
