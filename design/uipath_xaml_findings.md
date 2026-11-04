@@ -424,6 +424,50 @@ VBエディタに入力)が同じでも、どのアクティビティのどの�
   `ForEach`の`CurrentIndex`などでも同様の構造が予想されるが、各アクティビティ
   ごとの実機確認はまだ網羅していない)。
 
+## 17. `Invoke Code`——インラインVB.NETコードブロックの直列化形と、2種類目の`Arguments`コレクション形
+
+`Invoke Code`(`UiPath.Core.Activities.InvokeCode`、Available > Workflow > Invoke)
+を実機確認した。これはPADに無いUiPath特有のアクティビティで、デザイナー上の
+「Edit Code」ボタンから開く専用の`Code Editor`ダイアログ(VB.NET/C#選択可、既定
+`VBNet`)にインラインでコードを書けるものだが、**デザイナー上は単なるテキスト
+エディタ扱いで、変数名の補完・構文ハイライト以上の支援はなく、`()`を含む
+VB式を1文字ずつ`send_keys`で入力する際に特別なエスケープ(`{(}`/`{)}`)が
+必要**(`pywinauto`の`send_keys`特殊構文のため、知見10の罠と同系統)。
+
+`content = content.ToUpper()`というコードを入力して保存した結果:
+
+```xml
+<ui:InvokeCode ContinueOnError="{x:Null}" Code="content=content.ToUpper()"
+    DisplayName="Invoke code" sap2010:WorkflowViewState.IdRef="InvokeCode_1">
+  <ui:InvokeCode.Arguments>
+    <scg:Dictionary x:TypeArguments="x:String, Argument" />
+  </ui:InvokeCode.Arguments>
+</ui:InvokeCode>
+```
+
+ポイント:
+
+- `Code`プロパティは**プレーンな文字列属性**(`Code="content=content.ToUpper()"`)
+  として直列化され、知見14の`[...]`角括弧式(`VisualBasicValue`省略記法)にも
+  知見7/13の`<Literal>`要素にもならない。これは`Code`の型が`InArgument<String>`
+  ではなく単純な`String`プロパティだからだと考えられる——「コードそのもの」は
+  実行時に評価されるVB式ではなく、アクティビティが内部でコンパイルする
+  ソーステキストという扱い。デザイナー入力欄に空白を含むコードを入力したが
+  (`content = content.ToUpper()`)、保存後は**等号の前後の空白が自動的に除去**
+  されていた(`content=content.ToUpper()`)——Code Editorダイアログ側で何らかの
+  整形/正規化が行われている可能性がある(未検証: VB.NETパーサーによる
+  再フォーマットか、単なる入力欄のトリミングか)。
+- `Invoke Code`の`Arguments`(引数の受け渡し、`Edit Arguments`ボタン経由)は、
+  知見12で確認した`Invoke Workflow File`の`Arguments`(`InArgument`/
+  `OutArgument`を`x:Key`で紐付ける辞書的コレクション)とは**異なる型**で、
+  `scg:Dictionary x:TypeArguments="x:String, Argument"`
+  (`System.Collections.Generic.Dictionary<string, Argument>`の素の直列化)に
+  なる。今回は引数を1つも追加しなかったため空の`<scg:Dictionary .../>`要素
+  のみで、実際に引数を1つ以上追加した場合の`<scg:Dictionary>`子要素の形
+  (キー/値ペアがどう表現されるか)は未確認——次の調査候補とする。
+- `ContinueOnError="{x:Null}"`は他のアクティビティ(知見12の`Invoke Workflow
+  File`)と同じ「未設定のNullable(Of Boolean)は`{x:Null}`」パターン。
+
 ## 今後の調査候補(未着手)
 
 - Switchのcaseに実際にアクティビティを入れた場合の`x:Null`以外の形(今回は
@@ -443,3 +487,7 @@ VBエディタに入力)が同じでも、どのアクティビティのどの�
   使われるケース)は知見11では未確認
 - C#式言語プロジェクト(`expressionLanguage: "CSharp"`)でのInArgument/
   OutArgumentの直列化形式の違い(VB.NETと同じ`[...]`規約を使うのか)
+- `Invoke Code`に実際に1つ以上の`Argument`を追加した場合の
+  `<scg:Dictionary x:TypeArguments="x:String, Argument">`子要素の形
+  (知見17は空コレクションのみ確認。キー/値ペアの表現、方向(In/Out/InOut)
+  の指定方法が未確認)
