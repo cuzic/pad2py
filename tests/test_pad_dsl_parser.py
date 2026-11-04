@@ -1722,3 +1722,35 @@ def test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records(
     delete_row = records[26]
     # DeleteRowFromDataTableもDataTableがMutableなため=>束縛を持たない。
     assert delete_row.output_var is None  # type: ignore[union-attr]
+
+
+def test_tier1_text_variables_batch4_parses_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見67: Text残り6件・Variables残り5件(計11件)の
+    # 実機DSLキャプチャ。既存の汎用ActionRecordパーサーがコード変更無しで
+    # 正しく構造化できることを確認する回帰テスト。
+    text = (FIXTURES_DIR / "tier1_text_variables_batch4.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 11
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "Text.ParseText.ParseForFirstOccurrence",
+        "Text.Replace.ReplaceText",
+        "Text.RecognizeEntitiesInText",
+        "Text.CreateHTMLContent",
+        "Text.ConvertDateTimeToText.FromDateTime",
+        "Text.ConvertTextToDateTime.ToDateTime",
+        "Variables.TruncateNumber.GetIntegerPart",
+        "Variables.IncreaseVariable",
+        "Variables.DecreaseVariable",
+        "Variables.ConvertJsonToCustomObject",
+        "Variables.ConvertCustomObjectToJson",
+    ]
+    create_html = records[3]
+    # design/dsl_format_findings.md 知見67: 空のバックティック文字列``は知見66の
+    # FilterParameters同様、現状のパーサーが未対応で`` `` ``全体がVarRef名として
+    # フォールバックする(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
+    assert create_html.params["HtmlEditor"] == VarRef(name="``")  # type: ignore[union-attr]
+    increase_var = records[7]
+    # IncreaseVariable/DecreaseVariableはValueがMutableなため=>束縛を持たない。
+    assert increase_var.output_var is None  # type: ignore[union-attr]

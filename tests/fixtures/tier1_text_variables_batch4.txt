@@ -1,0 +1,11 @@
+Text.ParseText.ParseForFirstOccurrence Text: $'''sample''' TextToFind: $'''sample''' StartingPosition: 0 IgnoreCase: False OccurrencePosition=> Position
+Text.Replace.ReplaceText Text: $'''sample''' TextToFind: $'''sample''' IgnoreCase: False ReplaceWith: $'''sample''' ActivateEscapeSequences: False ComparisonType: Text.TextComparisonType.CultureSensitive Result=> Replaced
+Text.RecognizeEntitiesInText Text: $'''sample''' Mode: Text.RecognizerMode.DateTime Language: Text.RecognizerLanguage.English RecognizedEntities=> RecognizedEntities
+Text.CreateHTMLContent HtmlEditor: `` HtmlContent=> HtmlContent
+Text.ConvertDateTimeToText.FromDateTime DateTime: $'''sample''' StandardFormat: Text.WellKnownDateTimeFormat.ShortDate Result=> FormattedDateTime
+Text.ConvertTextToDateTime.ToDateTime Text: $'''sample''' DateTime=> TextAsDateTime
+Variables.TruncateNumber.GetIntegerPart Number: $'''sample''' Result=> TruncatedValue
+Variables.IncreaseVariable Value: $'''sample''' IncrementValue: $'''sample'''
+Variables.DecreaseVariable Value: $'''sample''' DecrementValue: $'''sample'''
+Variables.ConvertJsonToCustomObject Json: $'''sample''' CustomObject=> JsonAsCustomObject
+Variables.ConvertCustomObjectToJson CustomObject: $'''sample''' Json=> CustomObjectAsJson

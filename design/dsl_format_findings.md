@@ -1338,3 +1338,34 @@ Variables.DeleteRowFromDataTable DataTable: $'''sample''' RowIndex: $'''sample''
 **検証**: 27件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records`)。これにより`Variables`モジュールの完了率は5/34→29/34(`capture_coverage.py`)まで進んだ。
 
 **今後**: 残るTier1/2の未キャプチャモジュール(Text残り6件、File 0/16、Folder残り9件、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5、Variables残り5件)を同じ自動化バッチで継続する。
+
+## 67. Text残り6件・Variables残り5件(計11件)を実機キャプチャ——「ダイアログが閉じ残る」自動化上のバグと、第3の空文字列構文(バックティック)を発見
+
+知見66の自動化バッチで11件(`Text.ParseText`/`Replace`/`RecognizeEntitiesInText`/`CreateHTMLContent`/`ConvertDateTimeToText`/`ConvertTextToDateTime`、`Variables.TruncateNumber`/`IncreaseVariable`/`DecreaseVariable`/`ConvertJsonToCustomObject`/`ConvertCustomObjectToJson`)をまとめて実行したところ、最初の3件(`ParseText`/`Replace`/`RecognizeEntitiesInText`)のみ成功し、残り8件は「Save button not found, cancelling」で失敗した。
+
+**原因判明**: `Text.CreateHTMLContent`(リッチテキスト/HTMLエディタを埋め込む特殊なダイアログ)は、通常の`ActionDialogButtonSaveButton`/`ActionDialogButtonCloseButton`とは異なる`SaveButton`/`CancelButton`という(接頭辞`ActionDialogButton`を持たない)別のauto_idをSave/Cancelボタンに使っていた。自動化スクリプトは旧auto_idでのキャンセルに失敗し、このダイアログが開いたまま次のループへ進んでしまい、以後の検索ボックス操作が全てモーダルダイアログにブロックされ、同じ「Create HTML content」ダイアログを繰り返し検出するだけになっていた(UIAutomationツリーをダンプして確認)。自動化スクリプトを両方のauto_id(`["ActionDialogButtonSaveButton", "SaveButton"]`/`["ActionDialogButtonCloseButton", "CancelButton"]`)を順に試す実装に修正し、残り8件を再実行して全て成功させた(`tests/fixtures/tier1_text_variables_batch4.txt`)。
+
+**実機キャプチャ結果**:
+```
+Text.ParseText.ParseForFirstOccurrence Text: $'''sample''' TextToFind: $'''sample''' StartingPosition: 0 IgnoreCase: False OccurrencePosition=> Position
+Text.Replace.ReplaceText Text: $'''sample''' TextToFind: $'''sample''' IgnoreCase: False ReplaceWith: $'''sample''' ActivateEscapeSequences: False ComparisonType: Text.TextComparisonType.CultureSensitive Result=> Replaced
+Text.RecognizeEntitiesInText Text: $'''sample''' Mode: Text.RecognizerMode.DateTime Language: Text.RecognizerLanguage.English RecognizedEntities=> RecognizedEntities
+Text.CreateHTMLContent HtmlEditor: `` HtmlContent=> HtmlContent
+Text.ConvertDateTimeToText.FromDateTime DateTime: $'''sample''' StandardFormat: Text.WellKnownDateTimeFormat.ShortDate Result=> FormattedDateTime
+Text.ConvertTextToDateTime.ToDateTime Text: $'''sample''' DateTime=> TextAsDateTime
+Variables.TruncateNumber.GetIntegerPart Number: $'''sample''' Result=> TruncatedValue
+Variables.IncreaseVariable Value: $'''sample''' IncrementValue: $'''sample'''
+Variables.DecreaseVariable Value: $'''sample''' DecrementValue: $'''sample'''
+Variables.ConvertJsonToCustomObject Json: $'''sample''' CustomObject=> JsonAsCustomObject
+Variables.ConvertCustomObjectToJson CustomObject: $'''sample''' Json=> CustomObjectAsJson
+```
+
+**確認できた事実**:
+- `Text.CreateHTMLContent`の`HtmlEditor`パラメータは、リッチテキストエディタの内容を何も編集せずに保存した場合、知見66で発見した空のバックティック文字列`` `` ``で直列化される——`Variables.FilterDataTable`の`FilterParameters`と同じ「バックティック文字列」構文が、全く異なるモジュール(Text)の全く異なる種類のUI(リッチテキストエディタ)でも使われていることを確認した。現状のパーサーはこの構文に未対応で`` `` ``全体が`VarRef`名にフォールバックする(クラッシュもデータ欠落も起きないことを`tests/test_pad_dsl_parser.py::test_tier1_text_variables_batch4_parses_as_generic_action_records`で回帰テスト化)。
+- `Variables.IncreaseVariable`/`DecreaseVariable`は`Value`引数が`[Mutable]`で、出力変数束縛`=>`を一切持たない——知見66で確認したMutable引数パターンが数値変数の操作にも適用されることを確認。
+- `Text.ParseText.ParseForFirstOccurrence`/`Text.ConvertDateTimeToText.FromDateTime`/`Text.ConvertTextToDateTime.ToDateTime`は3セグメント/2セグメントのaction_idがdecompile予測通り。
+- (自動化上の教訓): PAD.Designerのアクションダイアログは、アクションの種類(通常のパラメータ入力/リッチテキストエディタ埋め込み等)によってSave/Cancelボタンのauto_idが異なる場合がある。今後のバッチでも「ダイアログが閉じ残って以降の全操作がブロックされる」という失敗モードに注意し、各バッチの最初にスタックしたダイアログが無いかを確認してから開始するのが安全。
+
+**検証**: 11件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した。これにより`Text`の完了率は13/19→19/19(完了)、`Variables`は29/34→34/34(完了)まで進んだ。
+
+**今後**: 残るTier1/2の未キャプチャモジュール(File 0/16、Folder残り9件、Cryptography 0/8、Database 0/3、Web 0/3、XML 0/10、Cmd 0/5)を同じ自動化バッチで継続する。
