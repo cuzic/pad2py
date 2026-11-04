@@ -10,6 +10,9 @@ UiPath Studio Community Edition(Automation Cloud個人アカウントでサイ�
 をインストールし、`xaml_probe`という空のProcessプロジェクトを作成。`clipwire`
 (対話的RDPセッション内で動くリモート実行デーモン)経由でpywinautoを駆動して
 Studio UIを直接操作し、生成された`Main.xaml`/`project.json`を読み取った。
+繰り返し使った操作パターン(アクティビティ検索ポップアップの開き方、VB式入力欄への
+文字送信、DataGridViewセルの編集等)は[dump_daemon/uipath_ui_helpers.py](../dump_daemon/uipath_ui_helpers.py)
+に再利用可能な関数として切り出してある(P0項目5、`pad_ui_helpers.py`のUiPath版)。
 実データは[design/evidence/uipath_xaml_probe/](evidence/uipath_xaml_probe/)に
 保存している(`Main.xaml`は本ドキュメントの知見5-9で参照する最終形)。
 

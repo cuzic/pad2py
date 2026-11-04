@@ -15,6 +15,7 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
   - `pad_codegen.py` — `build_block_tree()`の出力からPythonソースを生成する最小限のコードジェネレーター(プロトタイプ)。未対応のアクションは架空のAPI呼び出しをでっち上げず`# TODO`コメントを出力する
   - `pad2py_cli.py` — `parse_dsl()`→`build_block_tree()`→`generate_python()`を1コマンドで結ぶCLIエントリポイント(下記「CLIの使い方」参照)
   - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
+  - `uipath_ui_helpers.py` — UiPath Studio UI自動化のための pywinauto ヘルパー(design/uipath_xaml_findings.md知見1〜12の調査で実証済み、将来のUiPath本格調査用)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
 
 ## CLIの使い方
