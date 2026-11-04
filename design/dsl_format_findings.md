@@ -1205,3 +1205,60 @@ Pythonで同じ値に対して同じ添字/スライス式を評価した結果�
 - 両方の形について実機キャプチャをそのまま新規フィクスチャとして追加した: `tests/fixtures/on_error_nested_indent.txt`(本知見の新しい`ON ERROR`形、単体コピー)・`tests/fixtures/on_block_error_isolated.txt`(`ON BLOCK ERROR`が`BLOCK`と同じindentになる個別コピー形)。既存の`looptest_whole_subflow_with_calculator_button.txt`が「`BLOCK`より1段浅い`ON BLOCK ERROR`」の実例として既に手元にあったため、そちらは新規キャプチャ不要だった。
 
 **今後の課題**: どちらのインデント形が「現在の」PADの標準的な挙動なのか(あるいは両方とも状況依存で今後も両方出現し続けるのか)は未解明。もし今後、このプロジェクトが対象にするPADのバージョンが特定の1つに固定されるなら、この二重対応は単純化できる可能性がある。`ON BLOCK ERROR`が「なぜ`BLOCK`より1段浅くなりうるのか」(`ON ERROR`と同じ「+1段」パターンにも、知見40の「同じ段」パターンにも当てはまらない、独立した現象)についても、統一的な説明は得られていない。
+
+## 62. UIAutomationによるPADデザイナー自動操作を確立——`Text.Trim`で初のTier1/Tier2系アクション実機キャプチャに成功
+
+これまでの実機確認は全て人手(または別セッション)によるPADデザイナーのGUI操作に依存していたが、今回`pywinauto`(UIAバックエンド)でPADデザイナー自身のウィンドウを直接操作し、検索→アクション追加→パラメータ入力→保存→選択→コピーの全経路を自動化できることを確認した。実行環境は対話的RDPセッション(`clipwire`経由、WinRMは非対話セッションのためGUI操作不可——design/ci_verification_findings.md 知見9〜11の制約通り)。
+
+**確立した操作手順**:
+1. `SearchActionsSearchBox`(Actionsサイドパネルの検索欄)に`.set_edit_text()`で検索語を設定(`send_keys`でリテラルな空白を含む文字列を打つと空白が消える——`send_keys`の独自記法でスペースが特殊扱いされるため。値を直接設定したい場合は常に`set_edit_text()`を使うこと)
+2. 検索結果の`ActionsTreeView`から、`automation_id`にドットを含む`TreeItem`(カテゴリ見出しは`"Text"`のようにドット無し、具体的アクションは`"Text.Trim"`のようにドット付き)をリーフとして特定し`.double_click_input()`
+3. 開いたパラメータダイアログ(`DialogWindow`、メインウィンドウの子として存在——`Desktop(backend="uia").windows()`の別トップレベルウィンドウとしては出てこない点に注意)内の`EditableTextBox`等に値を設定
+4. `ActionDialogButtonSaveButton`をクリックして保存
+5. `ProgramItemsListBoxActions`(現在のサブフロー内のアクション一覧)から対象の`ListItem`を`.click_input()`→`.set_focus()`→`send_keys("^c")`でクリップボードへコピー
+6. `win32clipboard`(同じ対話的セッション内なので直接呼べる)で読み取り
+
+**実機キャプチャ結果**(`Text.Trim`、`Text to trim`に`"hello world"`相当・`What to trim`はデフォルト`Both`のまま保存):
+```
+Text.Trim Text: $'''helloworld''' TrimOption: Text.TrimOption.Both TrimmedText=> TrimmedText
+```
+
+**確認できた事実**:
+- action_id`Text.Trim`は、docs-local配下の逆コンパイル調査(`[Action(Name = "Trim")]`、モジュール`Text`)から予測した形とそのまま一致した。
+- 列挙値`TrimOption`は、ダイアログ上で一度も触らずデフォルトの`Both`のまま保存したにもかかわらず、`TrimOption: Text.TrimOption.Both`として**省略されずに出力された**——知見19〜21・23で確立した「一部のデフォルト値は省略される」というActionSelector経由の省略規則が、この(単一セレクタしか持たない)アクションの列挙型引数には適用されないことを示す新しい実機データ点。
+- 出力変数の既定名`TrimmedText`も、ダイアログ上の提案通りそのまま使われた。
+
+**今後**: この手順を一般化した自動化スクリプトで、Tier1/Tier2の残りのアクション(docs-local/pad_action_modules_findings.md記載)についても同様に実機キャプチャを進める。
+
+## 63. 汎用バッチ自動化で一括14アクションを実機キャプチャ——全て既存の`ActionRecord`汎用パーサーでコード変更無しに構造化できることを確認
+
+知見62の手順を汎用化し、検索語のリストを渡すだけで「検索→リーフの`TreeItem`(auto_idにドットを含む方)を特定→ダブルクリックで追加→ダイアログ内の空の`Edit`コントロール(出力変数名ボックス`ActionDialogVariableEditableTextBox`とメモ欄`ActionNoteEditTextBox`は除外)を全て`"sample"`で埋める→`ActionDialogButtonSaveButton`をクリック」を繰り返し、最後に`ProgramItemsListBoxActions`で全選択(Ctrl+A)して一括コピーする自動化スクリプトを作成した。2回のバッチ実行(6件・8件)で合計14件の新規アクション(`Text.Trim`含め15件)を一括取得できた——個別に選択・コピーする知見62の手順より大幅に効率的。
+
+**実機キャプチャ結果**(`tests/fixtures/tier1_text_variables_batch1.txt`、値は全て自動入力した`"sample"`またはダイアログの初期値のまま):
+```
+Text.ChangeCase Text: $'''sample''' NewCase: Text.CaseOption.UpperCase Result=> TextWithNewCase
+Variables.ReverseList List: $'''sample'''
+Text.Pad Text: $'''sample''' PadPosition: Text.PadPosition.Left PaddingText: $'''sample''' TotalLength: 10 PaddedText=> PaddedText
+Text.JoinText.Join List: $'''sample''' Result=> JoinedText
+Text.AppendLine Text: $'''sample''' LineToAppend: $'''sample''' Result=> Result
+Text.EscapeForRegularExpression Text: $'''sample''' EscapedText=> EscapedText
+Text.Reverse Text: $'''sample''' ReversedText=> ReversedText
+Text.CropText.CropTextBeforeFlag Text: $'''sample''' ToFlag: $'''sample''' IgnoreCase: False CroppedText=> CroppedText IsFlagFound=> IsFlagFound
+Text.GetSubtext.GetSubtext Text: $'''sample''' CharacterPosition: $'''sample''' NumberOfChars: $'''sample''' Subtext=> Subtext
+Text.SplitText.Split Text: $'''sample''' StandardDelimiter: Text.StandardDelimiter.Space DelimiterTimes: 1 Result=> TextList
+Text.ToNumber Text: $'''sample''' Number=> TextAsNumber
+Text.FromNumber Number: $'''sample''' DecimalPlaces: 2 UseThousandsSeparator: True FormattedNumber=> FormattedNumber
+Text.Random UseUpperCaseLetters: True UseLowerCaseLetters: True UseDigits: True UseSymbols: True MinimumLength: 6 MaximumLength: 10 RandomText=> RandomText
+Variables.GenerateRandomNumber.RandomNumber MinimumValue: 0 MaximumValue: 100 RandomNumber=> RandomNumber
+```
+
+**確認できた事実**:
+- docs-local配下の逆コンパイル調査で予測したaction_id・パラメータ名・enum直列化形式が、ほぼ全件そのまま実機で一致した。
+- 複数`ActionSelector`を持つアクションのaction_idは3セグメント形式(`Text.JoinText.Join`/`Text.CropText.CropTextBeforeFlag`/`Text.GetSubtext.GetSubtext`/`Text.SplitText.Split`/`Variables.GenerateRandomNumber.RandomNumber`)——末尾がセレクタ固有の名前になる。単一セレクタのアクションは2セグメント(`Text.ToNumber`/`Text.FromNumber`/`Text.Random`等)。
+- `Variables.ReverseList`は`[Mutable]`な`List`引数をその場で書き換えるため、`=>`による出力変数束縛を一切持たない——decompile調査で予測した「Mutable引数は既存の変数をその場で変更する」という理解を実機で裏付けた。
+- `Text.Random`・`Variables.GenerateRandomNumber.RandomNumber`は、チェックボックス・数値引数を一切触らずデフォルトのまま保存したが、知見62の`TrimOption`と同様、全てのデフォルト値が省略されずに出力された。
+- (自動化上の注意、副産物): `GetSubtext`の`CharacterPosition`/`NumberOfChars`のような数値引数も、ダイアログ上は`Text`引数と同じ`Edit`コントロールとして露出しており、文字列`"sample"`を入れても検証エラーにならずそのまま保存できた——PADの入力引数は型を問わず「式」として扱われ、設計時点では値の型チェックをしていない可能性を示唆する(実行時にどう振る舞うかは別問題、未検証)。
+
+**検証**: `parse_dsl()`に通したところ、この15件全てが既存の汎用`ActionRecord`パーサーでコード変更無しに正しく構造化できることを確認した(`tests/test_pad_dsl_parser.py::test_tier1_text_variables_actions_parse_as_generic_action_records`)——知見36以来の「汎用パーサー設計は未知の新アクションに対して自動的に対応できる」という方針を、Tier1モジュールでも改めて裏付けた。
+
+**今後**: 同じ自動化スクリプトでDateTime/File/Folder/Compression/Cryptography(Tier1)、Database/Web/XML/Cmd/Clipboard(Tier2)の残りのアクションについてもバッチキャプチャを継続する。

@@ -1,0 +1,15 @@
+Text.Trim Text: $'''helloworld''' TrimOption: Text.TrimOption.Both TrimmedText=> TrimmedText
+Text.ChangeCase Text: $'''sample''' NewCase: Text.CaseOption.UpperCase Result=> TextWithNewCase
+Variables.ReverseList List: $'''sample'''
+Text.Pad Text: $'''sample''' PadPosition: Text.PadPosition.Left PaddingText: $'''sample''' TotalLength: 10 PaddedText=> PaddedText
+Text.JoinText.Join List: $'''sample''' Result=> JoinedText
+Text.AppendLine Text: $'''sample''' LineToAppend: $'''sample''' Result=> Result
+Text.EscapeForRegularExpression Text: $'''sample''' EscapedText=> EscapedText
+Text.Reverse Text: $'''sample''' ReversedText=> ReversedText
+Text.CropText.CropTextBeforeFlag Text: $'''sample''' ToFlag: $'''sample''' IgnoreCase: False CroppedText=> CroppedText IsFlagFound=> IsFlagFound
+Text.GetSubtext.GetSubtext Text: $'''sample''' CharacterPosition: $'''sample''' NumberOfChars: $'''sample''' Subtext=> Subtext
+Text.SplitText.Split Text: $'''sample''' StandardDelimiter: Text.StandardDelimiter.Space DelimiterTimes: 1 Result=> TextList
+Text.ToNumber Text: $'''sample''' Number=> TextAsNumber
+Text.FromNumber Number: $'''sample''' DecimalPlaces: 2 UseThousandsSeparator: True FormattedNumber=> FormattedNumber
+Text.Random UseUpperCaseLetters: True UseLowerCaseLetters: True UseDigits: True UseSymbols: True MinimumLength: 6 MaximumLength: 10 RandomText=> RandomText
+Variables.GenerateRandomNumber.RandomNumber MinimumValue: 0 MaximumValue: 100 RandomNumber=> RandomNumber

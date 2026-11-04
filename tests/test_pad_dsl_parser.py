@@ -1599,3 +1599,40 @@ def test_if_image_exists_on_screen_parsed_from_real_capture() -> None:
     assert rec.params["Tolerance"] == 10
     assert rec.params["SearchAlgorithm"] == EnumRef("UIAutomation.ImageFinderAlgorithm.Legacy")
     assert rec.params["Images"] == VarRef("[imgrepo['Image']]")
+
+
+def test_tier1_text_variables_actions_parse_as_generic_action_records() -> None:
+    # design/dsl_format_findings.md 知見62以降: UIAutomationによるPADデザイナー自動操作で
+    # 初めてTier1(Text/Variables)系アクションの実機DSLキャプチャに成功した。既存の
+    # 汎用ActionRecordパーサーは、これらの未知のaction_idでもコード変更無しで正しく
+    # ActionRecordとして構造化できることを確認する回帰テスト(知見36以来の設計方針通り)。
+    text = (FIXTURES_DIR / "tier1_text_variables_batch1.txt").read_text(encoding="utf-8")
+    records = parse_dsl(text)
+    assert len(records) == 15
+    assert all(isinstance(r, ActionRecord) for r in records)
+    action_ids = [r.action_id for r in records]  # type: ignore[union-attr]
+    assert action_ids == [
+        "Text.Trim",
+        "Text.ChangeCase",
+        "Variables.ReverseList",
+        "Text.Pad",
+        "Text.JoinText.Join",
+        "Text.AppendLine",
+        "Text.EscapeForRegularExpression",
+        "Text.Reverse",
+        "Text.CropText.CropTextBeforeFlag",
+        "Text.GetSubtext.GetSubtext",
+        "Text.SplitText.Split",
+        "Text.ToNumber",
+        "Text.FromNumber",
+        "Text.Random",
+        "Variables.GenerateRandomNumber.RandomNumber",
+    ]
+    trim = records[0]
+    assert trim.params["Text"] == "helloworld"  # type: ignore[union-attr]
+    assert trim.params["TrimOption"] == EnumRef("Text.TrimOption.Both")  # type: ignore[union-attr]
+    assert trim.output_var == "TrimmedText"  # type: ignore[union-attr]
+    reverse_list = records[2]
+    # design/dsl_format_findings.md 知見62: Variables.ReverseListはMutable引数の
+    # インプレース操作で、出力変数束縛(=>)を一切持たない。
+    assert reverse_list.output_var is None  # type: ignore[union-attr]
