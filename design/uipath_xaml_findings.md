@@ -182,6 +182,10 @@ Variablesパネル(Studio下部のタブ)でString型変数`myVar`(デフォル�
   空のまま保存された。UI操作手順の再検証が必要。
 - Libraryプロジェクト・Testプロジェクトの`project.json`の違い、および
   `targetFramework: "Windows"`/`"Cross-platform"`(Legacy以外)での依存関係の違い
+  ※ 今回インストールしたバージョン(Studio app-21.4.4)のProject Settingsダイアログ
+  (General/Workflow Analyzer/Activities Settings各種/System)には`targetFramework`を
+  切り替えるUIが見当たらなかった——Cross-platformプロジェクト種別はNew Projectウィザード
+  側(本調査では未確認)か、より新しいStudioバージョンでのみ露出する可能性がある
 - Invoke Workflow File(サブワークフロー呼び出し)とLibrary参照時の引数型
 - UI Automationセレクタ(`ui:Click`等)の実際のXAML形(今回は未着手、
   UI操作アクティビティそのものを配置していない)
