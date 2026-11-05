@@ -2339,3 +2339,13 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **修正**: `copy_folder()`を実機の意味論に合わせて書き直した——`destination`自体の存在を検証(`dst.parent`ではなく)、実際のコピー先を`Path(destination) / Path(source).name`に変更、戻り値として`str(dst)`(ネストされた結果パス)を追加。既存テストを新しい意味論(`dst_parent`は事前に存在させる、結果は`dst_parent / "src"`)に書き直し、`destination`自体が存在しない場合に`InvalidDestinationFolderError`になる新規テストを追加した。`pad_codegen/actions/folder.py`側の代入文生成は変更不要(元から`{output_var} = folder_actions.copy_folder(...)`で正しい形だった)。`tests/test_pad_codegen.py`に実際に`exec()`してネストされたパスとファイル内容の両方を検証するend-to-endテストを追加した。
 
 **横展開の手法として記録**: 「`-> None`で常に`None`を返す関数が、codegen側で代入文(`{var} = func(...)`)に使われていないか」という機械的な突き合わせは、decompileもVMも使わずローカルのみで完結する低コストな監査であり、知見129のような潜在バグを体系的に見つけ出せる(今回は該当1件のみだったため横展開はこれで打ち切り)。
+
+## 131. 知見130で見送った次の調査対象——`Folder.Move`も`Destination`パラメータの意味論が実機と逆だったと確認(`MovedFolder`出力自体は元々`None`化バグは無かった)
+
+知見130の末尾で記録した「`Folder.Move`等、他のアクションも`Destination`的なパラメータが『正確なパス』か『既存の親フォルダ』かの意味論を同様に取り違えている可能性がある」を直接検証した。VM上で`MoveFolder`クラスを直接インスタンス化・`Execute(null)`を呼び出したところ、`CopyFolder`(知見130)と**全く同じパターン**だと確認した: `Destination`自体が存在しないと`ActionException`になり、結果は`Destination`直下に`Folder`と同じ名前でネストされ、`MovedFolder`出力はこのネストされたパスを指す。`MoveFolder`には`IfFolderExists`に相当するパラメータが無いこと(実機のプロパティ一覧で確認済み)も確認した。
+
+`pad_action_lib.folder_actions.move_folder()`自体は`-> str`で元から戻り値を返していたため知見129・130のような`None`化バグは無かったが、`destination`の意味論(「存在してはいけない正確な新パス」という既存実装の前提)が実機と完全に逆だった——つまり実機のPADフローを変換すると、現行実装では本来成功すべき移動が「destination already exists」という誤ったエラーになる(逆に、本来エラーになるべき「destinationの親フォルダが存在しない」ケースはチェックされず`shutil.move()`の分かりにくいエラーに委ねていた)。
+
+**修正**: `move_folder()`を`copy_folder()`と同じ構造に合わせて書き直した——`destination`自体の存在を検証(存在しなければ`InvalidDestinationFolderError`)、実際の移動先を`Path(destination) / Path(source).name`に変更、ネストされた移動先が既に存在する場合のみ`MoveFolderError`(従来の「上書きオプションが無い」チェックをネスト先に適用し直した)。既存テストを新しい意味論に書き直し、`destination`自体が存在しない場合の新規テストも追加した。`tests/test_pad_codegen.py`に実際に`exec()`してネストされたパス・移動元の消滅・ファイル内容を検証するend-to-endテストを追加した。
+
+この2件(知見130・131)で`Folder.*`モジュール内の「既存の親フォルダに同名でネストする」という`Destination`系パラメータの意味論パターンは出尽くした——`Folder.Rename`は`new_name`(同じ親フォルダ内での改名)で同種のパラメータを持たないため対象外、`Folder.Create`/`Folder.Delete`/`Folder.Empty`も`Destination`的なパラメータを持たない。

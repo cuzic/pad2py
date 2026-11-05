@@ -2502,3 +2502,32 @@ def test_generate_python_from_folder_copy_nests_under_destination_and_returns_pa
         expected = dest_parent / "src"
         assert namespace["CopiedFolder"] == str(expected)
         assert (expected / "a.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_generate_python_from_folder_move_nests_under_destination_and_returns_path() -> None:
+    # design/dsl_format_findings.md 知見131(VM上の直接呼び出しで実機確認済み): `Folder.Copy`
+    # (知見130)と全く同じ意味論——`Destination`は既存の親フォルダで、結果は
+    # `Destination/<Folderの名前>`にネストされる。`move_folder()`は元から戻り値を返していたが
+    # (`None`化のバグはなかった)、`Destination`自体の意味論が実機と逆だった。
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "a.txt").write_text("hello", encoding="utf-8")
+        dest_parent = tmp_path / "dst"
+        dest_parent.mkdir()
+
+        dsl = (
+            f"Folder.Move Folder: $'''{src_dir}''' Destination: $'''{dest_parent}''' "
+            "MovedFolder=> MovedFolder"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        expected = dest_parent / "src"
+        assert namespace["MovedFolder"] == str(expected)
+        assert not src_dir.exists()
+        assert (expected / "a.txt").read_text(encoding="utf-8") == "hello"

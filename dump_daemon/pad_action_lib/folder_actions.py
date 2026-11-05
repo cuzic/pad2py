@@ -110,13 +110,26 @@ def empty_folder(folder: str) -> None:
 
 
 def move_folder(source: str, destination: str) -> str:
+    """`destination`は`copy_folder()`(知見130)と全く同じ意味論——移動先の正確なパスではなく
+    既存の親フォルダで、結果は`destination`直下に`source`と同じ名前でネストされる。
+
+    design/dsl_format_findings.md 知見131(VM上での直接呼び出しで実機確認済み): `MoveFolder`
+    クラスを直接インスタンス化・`Execute()`を呼び出し、`destination`自体が存在しないと
+    `ActionException`になり、結果は`destination/<sourceのフォルダ名>`に作られ、
+    `MovedFolder`出力はこのネストされたパスを指すと確認した(`CopyFolder`と全く同じパターン)。
+    `IfFolderExists`に相当するパラメータは`MoveFolder`には無い(実機のプロパティ一覧で確認済み)
+    ため、ネストされた結果パスが既に存在する場合は従来通り上書きせずエラー化する。
+    """
     src = Path(source)
-    dst = Path(destination)
+    dst_parent = Path(destination)
     if not src.is_dir():
         raise InvalidSourceFolderError(str(source))
+    if not dst_parent.is_dir():
+        raise InvalidDestinationFolderError(str(destination))
+    dst = dst_parent / src.name
     if dst.exists():
         # 上書きオプションが無い——既存ならエラー化する。
-        raise MoveFolderError(f"destination already exists: {destination}")
+        raise MoveFolderError(f"destination already exists: {dst}")
     try:
         shutil.move(str(src), str(dst))
     except OSError as exc:

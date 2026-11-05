@@ -66,22 +66,36 @@ def test_empty_folder_removes_children_but_keeps_folder(tmp_path: Path) -> None:
 
 
 def test_move_folder(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見131(実機確認済み): `destination`は`copy_folder()`
+    # (知見130)と同じく既存の親フォルダで、結果は`destination/<sourceの名前>`にネストされる。
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.txt").write_text("a")
-    dst = tmp_path / "dst"
-    fo.move_folder(str(src), str(dst))
+    dst_parent = tmp_path / "dst"
+    dst_parent.mkdir()
+    result = fo.move_folder(str(src), str(dst_parent))
+    moved = dst_parent / "src"
+    assert result == str(moved)
     assert not src.exists()
-    assert (dst / "a.txt").read_text() == "a"
+    assert (moved / "a.txt").read_text() == "a"
 
 
-def test_move_folder_existing_destination_raises(tmp_path: Path) -> None:
+def test_move_folder_requires_existing_destination(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
-    dst = tmp_path / "dst"
-    dst.mkdir()
+    missing_dst = tmp_path / "does_not_exist"
+    with pytest.raises(fo.InvalidDestinationFolderError):
+        fo.move_folder(str(src), str(missing_dst))
+
+
+def test_move_folder_existing_nested_target_raises(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    dst_parent = tmp_path / "dst"
+    dst_parent.mkdir()
+    (dst_parent / "src").mkdir()  # ネストされた移動先が既に存在する
     with pytest.raises(fo.MoveFolderError):
-        fo.move_folder(str(src), str(dst))
+        fo.move_folder(str(src), str(dst_parent))
 
 
 def test_rename_folder(tmp_path: Path) -> None:
