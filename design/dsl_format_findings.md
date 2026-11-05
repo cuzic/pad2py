@@ -2197,3 +2197,15 @@ VM上で複数のディレクトリ状態を用意して直接呼び出した結
 IANA名への変換は不要だと判明した——Windows `TimeZoneInfo.Id`文字列は、既存の依存関係である`pywin32`の`win32timezone.TimeZoneInfo(windows_id)`にそのまま渡せば正しい`tzinfo`として機能する。VM上の実venvで`win32timezone.TimeZoneInfo('Pacific Standard Time')`/`'Tokyo Standard Time'`を実際に使い、正しいUTCオフセット付き現在時刻が返ることを確認した。`get_current_datetime()`の`Windows`分岐を実装し直し、`win32timezone`が無い環境(非Windows)では明示的な`GetCurrentDateTimeError`になるようにした。既存テスト(`NotImplementedError`を期待)を更新し、未知の`TimeZoneLocation`のエラー・既知の値での実際のタイムゾーン変換(Windows専用、skipif付き)の両方をテストした。
 
 `Current`(`Specific`の別名、`[Deprecated]`属性付き)・`CustomOffset`/`CustomTimeZone`セレクタの実機DSL直列化形式・`TimeZoneLocation`/`InputType`パラメータの実際のDSL表現はいずれも依然未確認のため、`pad_codegen`側の結線はまだ行わない(`pad_action_lib`層の実装自体が正しく動くようになったのみ)。
+
+## 117. 知見57・113が持ち越していた`UIAutomation.GetWindow`の他モードを、decompileされたソース上の`UseName()`呼び出しを直接読んで解決(VM確認付き)
+
+知見116で見つけた「decompileされたソース上の`UseName()`を直接読めばダイアログを開かずにセレクタ接尾辞が全て分かる」手法を`UIAutomation.Actions.dll`(既に取得済み)の`GetWindow`アクションに適用した。`GetWindowBase`クラスには3つの`ActionSelector`があると確認できた:
+
+- `UIAutomation.GetWindow.Get`(`GetWindowMode.SpecificWindow`・`UseTimeout: False`固定) — `.GetUseTimeout`の兄弟セレクタで、`Timeout`パラメータ自体が存在しない(UI上で隠されているのではなく、選択された時点でパラメータ自体が別物になる)以外は完全に同一の構造。
+- `UIAutomation.GetWindow.GetUseTimeout`(既知・知見57で実機確認済み)。
+- `UIAutomation.GetWindow.GetForegroundWindow`(`GetWindowMode.ForegroundWindow`) — `Control`(UI要素参照)を一切使わない、`WindowTitle`/`WindowInstance`の2出力のみを持つ全く別の構造。
+
+`.Get`は既存の`.GetUseTimeout`結線(知見57・81)をそのまま適用できる(action_idを追加するだけ)。`.GetForegroundWindow`は`win32gui.GetForegroundWindow()`(既存の依存関係pywin32)でHWNDを取得し`Desktop(backend="uia").window(handle=...)`でラップする方式を考案し、VM上の実venvで実際に実行して正しいフォアグラウンドウィンドウ(このtickでは`"Power Automate"`自身)が返ることを確認した。既存の合成テスト(`test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles`、以前はTODOフォールバックを期待)を実コード生成を確認する内容に更新し、`.Get`用の新規合成テストを追加した。
+
+副産物として、知見113の「`GetWindow`の他モードは依然RDP必要」という結論が誤りだったことも確定した——知見113は検索ボックス経由の手法固有の限界であり、decompileされたソースを直接読む(今回の手法)ならRDP不要で解決できる。`BringWindowToFront: True`時の意味論・`Timeout`の実際のポーリング挙動は、`Control`(UI要素)自体の実機動作観察が必要なため依然未確認のまま。

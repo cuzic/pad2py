@@ -1238,6 +1238,29 @@ def test_generate_python_from_real_get_window_use_timeout_capture_converts_to_wi
     assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" not in code
 
 
+def test_generate_python_from_get_window_get_selector_without_timeout_converts() -> None:
+    # design/dsl_format_findings.md 知見117(decompile確認済み): `.Get`は`.GetUseTimeout`
+    # の兄弟セレクタ(`UseTimeout: False`固定、`Timeout`パラメータ自体が存在しない)で、
+    # 実機キャプチャは無いが知見57・81で確立済みの結線がそのまま使える——`.GetUseTimeout`
+    # の実機キャプチャ(`looptest_whole_subflow_with_get_window.txt`)のDSL/リポジトリを
+    # action_idだけ差し替えた合成テキストで確認する。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.GetWindow.Get Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False WindowInstance=> AutomationWindow2",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "AutomationWindow2 = Desktop(backend=\"uia\").window(title='Untitled - Notepad')" in code
+    assert "# TODO: map PAD action: UIAutomation.GetWindow.Get" not in code
+
+
 def test_generate_python_omits_selector_hint_when_repository_not_given() -> None:
     # design/dsl_format_findings.md 知見56: `repository`省略時は完全に従来通りの挙動
     # (ヒント無し)で、後方互換性を保つ。
@@ -1407,14 +1430,18 @@ def test_generate_python_from_real_close_window_by_instance_handle_capture_conve
 
 
 def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles() -> None:
-    # design/dsl_format_findings.md 知見57の追記: 2つの`=>`出力変数束縛を持つ
-    # GetForegroundWindowも、未対応アクションとして安全なTODOフォールバックに倒れ、
-    # 架空の変数代入をでっち上げないことを確認する。
+    # design/dsl_format_findings.md 知見117(decompile+実機確認済み): `UIAutomation.
+    # Actions.dll`を逆コンパイルし`GetForegroundWindow`が`Control`を使わない第3の
+    # セレクタだと確認、`win32gui.GetForegroundWindow()`+`Desktop(backend="uia").
+    # window(handle=...)`で実機が正しいフォアグラウンドウィンドウを返すことをVM上の
+    # 実venvで確認した——以前は未対応としてTODOフォールバックのままにしていた。
     dsl = "UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "# TODO: map PAD action: UIAutomation.GetWindow.GetForegroundWindow" in code
+    assert "# TODO" not in code
+    assert "AutomationWindow2 = Desktop(backend=\"uia\").window(handle=win32gui.GetForegroundWindow())" in code
+    assert "WindowTitle2 = AutomationWindow2.window_text()" in code
 
 
 def test_generate_python_from_real_if_image_exists_on_screen_capture_raises() -> None:

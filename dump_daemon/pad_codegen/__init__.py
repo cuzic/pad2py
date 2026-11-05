@@ -86,6 +86,8 @@ def generate_python(
         imports.append("import pyautogui")
     if any("Desktop(" in line for line in body):
         imports.append("from pywinauto import Desktop")
+    if any("win32gui." in line for line in body):
+        imports.append("import win32gui")
     if any("contextlib.redirect_stdout(" in line for line in body):
         imports.append("import contextlib")
         imports.append("import io")

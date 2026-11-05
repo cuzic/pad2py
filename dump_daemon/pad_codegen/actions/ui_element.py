@@ -41,8 +41,10 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 return [f"{prefix}{selector_expr}.click_input()"]
-    if node.action_id == "UIAutomation.GetWindow.GetUseTimeout":
-        # design/dsl_format_findings.md 知見57で実機確認済み。`Control`パラメータは
+    if node.action_id in ("UIAutomation.GetWindow.Get", "UIAutomation.GetWindow.GetUseTimeout"):
+        # design/dsl_format_findings.md 知見57で実機確認済み(`.GetUseTimeout`)・
+        # 知見117でdecompileにより確認済み(`.Get`——`UseTimeout: False`固定の兄弟
+        # セレクタで、`Timeout`パラメータ自体が存在しない以外は同一)。`Control`パラメータは
         # `UIAutomation.Click.Click`と同じ`UiElementRef`で、知見56の`_build_pywinauto_
         # selector_expr()`がそのまま使える。「window instance」出力変数は、知見57で
         # 確認した通りPAD側では単なる変数名(`VarRef`)として他のアクションに渡されるだけ
@@ -51,8 +53,9 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         #
         # `BringWindowToFront: True`時の正確な意味論(`.set_focus()`相当か等)は知見57で
         # 明記した通り実機未検証のため、これが確認できた`False`(省略時含む)の場合に限る。
-        # `Timeout`パラメータの正確な意味論(待機ポーリングの有無等)も実機未検証のため、
-        # 生成コードには一切反映しない(値を無視するだけで、架空の待機処理は追加しない)。
+        # `Timeout`パラメータ(`.GetUseTimeout`のみ)の正確な意味論(待機ポーリングの有無等)
+        # も実機未検証のため、生成コードには一切反映しない(値を無視するだけで、架空の
+        # 待機処理は追加しない)。
         element = node.params.get("Control")
         bring_to_front = node.params.get("BringWindowToFront", False)
         window_var = node.output_vars.get("WindowInstance")
@@ -60,4 +63,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 return [f"{prefix}{window_var} = {selector_expr}"]
+    if node.action_id == "UIAutomation.GetWindow.GetForegroundWindow":
+        # design/dsl_format_findings.md 知見117(decompile+実機確認済み):
+        # `UIAutomation.Actions.dll`を逆コンパイルし、`GetWindow`アクションには
+        # `Control`(UI要素参照)を使わない第3のセレクタ`GetForegroundWindow`
+        # (`GetWindowMode.ForegroundWindow`)が存在すると確認した——`WindowTitle`/
+        # `WindowInstance`の2つの出力のみを持ち、入力のUI要素参照は一切無い。
+        # `win32gui.GetForegroundWindow()`(既存の依存関係pywin32)でHWNDを取得し、
+        # `Desktop(backend="uia").window(handle=...)`でラップする方式が実機で
+        # 正しく現在のフォアグラウンドウィンドウを返すことをVM上の実venvで確認した。
+        window_var = node.output_vars.get("WindowInstance")
+        title_var = node.output_vars.get("WindowTitle")
+        if window_var:
+            lines = [f'{prefix}{window_var} = Desktop(backend="uia").window(handle=win32gui.GetForegroundWindow())']
+            if title_var:
+                lines.append(f"{prefix}{title_var} = {window_var}.window_text()")
+            return lines
     return None
