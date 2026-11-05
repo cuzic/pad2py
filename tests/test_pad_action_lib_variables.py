@@ -331,6 +331,27 @@ def test_csv_read_fields_as_text_false_converts_numeric_fields() -> None:
     ]
 
 
+def test_csv_read_fields_as_text_false_handles_decimals_negatives_and_exponents() -> None:
+    # design/dsl_format_findings.md 知見100(実機確認済み): "3.14"は小数のまま、"-5"は
+    # 負の整数のまま、"1e2"(指数表記、int()では解釈できずfloat()経由になる)は実機の
+    # 表示(小数点無しの"100")と一致させるため整数`100`に変換する——`str(100.0)`が
+    # "100.0"になりPythonとして実機の表示と食い違う既知の問題を修正した。
+    text = "3.14,-5,1e2,abc\r\n"
+    table = va.datatable_from_csv_text(
+        text, first_line_contains_column_names=False, read_fields_as_text=False
+    )
+    row = table[0]
+    assert row["Column#1"] == 3.14
+    assert row["Column#2"] == -5
+    assert row["Column#3"] == 100
+    assert isinstance(row["Column#3"], int)
+    assert row["Column#4"] == "abc"
+    assert (
+        va.datatable_to_csv_text(table, include_column_names=False)
+        == "3.14,-5,100,abc\r\n"
+    )
+
+
 def test_csv_read_fields_as_text_true_keeps_strings() -> None:
     text = "007,abc\r\n"
     table = va.datatable_from_csv_text(text, first_line_contains_column_names=False)

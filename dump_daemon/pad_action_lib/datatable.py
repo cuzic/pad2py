@@ -37,10 +37,13 @@ def _csv_as_number(value: str) -> int | float | str:
     except ValueError:
         pass
     try:
-        return float(value)
+        parsed = float(value)
     except ValueError:
-        pass
-    return value
+        return value
+    # 知見100(実機確認済み): 指数表記等(`"1e2"`)は`int()`でパースできず`float()`経由に
+    # なるが、整数値になる場合は.NETの既定表示(小数点無し、`"100"`)と一致させるため
+    # Pythonの`int`に変換する(`str(100.0)`は`"100.0"`になり実機の`"100"`と食い違う)。
+    return int(parsed) if parsed.is_integer() else parsed
 
 
 def datatable_from_csv_text(
