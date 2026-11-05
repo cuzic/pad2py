@@ -1675,3 +1675,26 @@ base.Id = attribute?.Id ?? Name;  // [Action]属性のId(無ければ非推奨Na
 **まだ解決していない課題(コピーで読み出せない)**: 追加された本物のアクションを選択して`Ctrl+A`→`Ctrl+C`(キャンバスの`List`コントロール全体への送信)・`Edit`メニューの`Copy`・アクション個別の`More actions`メニューの`Copy`のいずれを試しても、クリップボードの内容が変化しない(事前にクリップボードへ既知の無関係な文字列をセットしておく「毒入れテスト」で、コピー操作が実際に空振りしていることを確認済み——古い値を誤って「コピーされた本物の値」と早合点しない安全策)。メニュー経由の操作は`COMError(-2147220992)`(UIA_E_ELEMENTNOTAVAILABLE)で失敗することが多く、**新規に開くポップアップ/コンテキストメニューの内容がRDP接続無しでは安定しない**という、知見(`pad2py_clipboard_paste_technique`memory)で既に確認していた「新規ダイアログの内容が読めない」問題と同じ根本原因と見られる。
 
 **この知見の結論・方針判断**: `Pdf.ExtractTextFromPDF`は(1)ソースコードのaction_id構築式、(2)PADデザイナー自身のUI要素のAutomationId、(3)検索+キーボード追加でPADデザイナー自身が実際に受理した、という**3つの独立した経路が一致**しており、クリップボードのコピー往復による最終確認こそ取れていないものの、このプロジェクトが求める「PAD自身の解釈結果による確証」という基準には実質的に到達したと判断する。これを根拠に`pad_action_lib.pdf_actions.extract_text_from_pdf()`への`pad_codegen`結線を進める(このコミット以降を参照)——ただし確証の経路が従来と異なる特殊ケースであることを明記し、将来RDP接続時に知見75の往復確認(コピーでの読み戻し)を取れたら本knowledgeに追記して確証を格上げする。
+
+## 79. 知見78と同じ手法でPDFモジュール残り4アクションのaction_idを確認・`pad_codegen`結線
+
+VMが空いたタイミングで、知見78のキーボード追加技法(`.set_focus()`+`{ENTER}`)を使い、PDFモジュールの残り4アクション(`docs-local/pad_pdf_findings.md`のdecompile調査で推定していたもの)を実機確認した。新規テストフロー`pdf_tier3_probe`(保存せず破棄)で以下を実行:
+
+1. アクション検索ボックスに各アクションの推定表示名を入力。
+2. 検索結果の`TreeItem`のうち、カテゴリ項目(`name='PDF'`, `automation_id='Pdf'`)を除いた実アクション項目の`element_info.automation_id`を直接読む(知見77と同じ、UI自身のAutomationIdを読む経路)。
+3. 続けて同じ`TreeItem`に`.set_focus()`+`type_keys("{ENTER}")`を送り、ステータスバーの「N Actions」カウンターが1件ずつ増え、エラー表示が一切出ないことを確認(知見78と同じキーボード追加の経路)。
+
+**実機確認結果**(いずれも`docs-local/pad_pdf_findings.md`の推定action_idと完全一致):
+
+| 検索語 | 見つかったTreeItem名 | AutomationId(=action_id) | 追加後のカウンター |
+| --- | --- | --- | --- |
+| "Extract images from PDF" | "Extract images from PDF" | `Pdf.ExtractImagesFromPDF` | 1 Action |
+| "Extract tables from PDF" | "Extract tables from PDF" | `Pdf.ExtractTablesFromPDF` | 2 Actions |
+| "Extract pages" | "Extract PDF file pages to new PDF file" | `Pdf.ExtractPages` | 3 Actions |
+| "Merge PDF files" | "Merge PDF files" | `Pdf.MergeFiles` | 4 Actions |
+
+`Pdf.ExtractPages`/`Pdf.MergeFiles`は知見76/77で触れた「`[Action(Name=...)]`のみで`Id`属性が無い」パターン(他の3件は`Id`属性を持つ)で、AutomationIdもこの推定通り`Id`部分に`Name`の値がそのまま使われている。
+
+テスト後、このフロー(`pdf_tier3_probe`)は保存せず閉じて破棄した(知見78の`ExtractTextFromPDF`の結線と同じく、実機に変更を残さない)。
+
+**この知見の結論・方針判断**: 知見78と同じ(1)decompile式、(2)UI自身のAutomationId、(3)キーボード追加での実機受理、という3経路が4件ともすべて一致したため、同じ確証水準に到達したと判断し、`pad_action_lib.pdf_actions`の`extract_images_from_pdf()`/`extract_tables_from_pdf()`/`extract_pages_to_new_pdf()`/`merge_pdf_files()`への`pad_codegen`結線を進める(このコミット以降を参照)。`Pdf.MergeFiles`の`Passwords`(`EncryptableObject`+`PasswordDelimiter`区切り)の実機シリアライズ形式は依然未確認のため、指定されている場合は結線せず安全にTODOフォールバックへ委ねた。`Pdf.ExtractImagesFromPDF`はPAD側に`OutputArgument`が無い(ファイル書き出しのみ)ため、他の4件と違い`node.output_var`を要求しない結線にした。これでPDFモジュール5アクション全件のaction_id確認・`pad_codegen`結線が完了した。

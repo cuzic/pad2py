@@ -107,6 +107,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   「Merge PDF files」(推定`Pdf.MergeFiles`、同じく`Name`属性のみ)——この表自体は
   decompileのみに基づく推定(🔍)であり、`add_action_via_search()`でエラー無く追加できるかの
   実機確認が必要。
+  ✅ **VMが空いたタイミングで残り4件を実機確認・結線完了(知見79)**: `pad2py-57`にVM使用可否を
+  確認(空いていることを確認)した上で、上記4件の推定action_idを全て実機確認(AutomationId読み取り
+  +キーボード追加でエラー無く受理、知見78と同じ3経路収束)。`pad_action_lib.pdf_actions`の
+  `extract_images_from_pdf()`/`extract_tables_from_pdf()`/`extract_pages_to_new_pdf()`/
+  `merge_pdf_files()`を`pad_codegen`に結線した(`Pdf.MergeFiles`の`Passwords`指定時は
+  未確認のためTODOフォールバックのまま)。**これでPDFモジュール5アクション全件の
+  action_id確認・codegen結線が完了**。次はExcel/Word/PowerPointのTier3アクションに
+  同じ技法(`add_action_via_search`)を適用する(🖥️)。テスト用フロー`pdf_tier3_probe`は
+  保存せず破棄、VM解放もpad2py-57へ通知済み。
 
 ## C. 構造的・運用上の課題
 

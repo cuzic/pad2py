@@ -1274,3 +1274,87 @@ def test_generate_python_from_pdf_extract_text_without_output_var_falls_back_to_
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Pdf.ExtractTextFromPDF" in code
+
+
+def test_generate_python_from_pdf_extract_images_minimal_params_uses_defaults() -> None:
+    # design/dsl_format_findings.md 知見79: 知見78と同じ3経路収束(decompile式・UI自身の
+    # AutomationId・set_focus()+{ENTER}でのPADデザイナー自身による実機受理)で
+    # `Pdf.ExtractImagesFromPDF`を確認済み。PAD側に`OutputArgument`が無い(ファイル書き出し
+    # のみ)ため、他のアクションと違い`node.output_var`を要求しない。
+    dsl = (
+        "Pdf.ExtractImagesFromPDF PDFFile: $'''C:\\test.pdf''' "
+        "ImagesFolder: $'''C:\\out''' ImagesName: $'''page'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import pdf_actions" in code
+    assert (
+        "pdf_actions.extract_images_from_pdf('C:\\\\test.pdf', 'C:\\\\out', 'page', "
+        "pages_to_extract='All', page_number=0, from_page_number=0, to_page_number=0, "
+        "password='')" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_extract_tables_all_params_given_converts() -> None:
+    # 知見79と同じ合成(synthetic)テキスト。
+    dsl = (
+        "Pdf.ExtractTablesFromPDF PDFFile: $'''C:\\test.pdf''' "
+        "PagesToExtract: Pdf.ExtractionMode.All MultiPageTables: False "
+        "SetFirstRowAsHeader: False ExtractedPDFTables=> Tables"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Tables = pdf_actions.extract_tables_from_pdf('C:\\\\test.pdf', pages_to_extract='All', "
+        "page_number=0, from_page_number=0, to_page_number=0, password='', "
+        "multi_page_tables=False, set_first_row_as_header=False)" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_extract_pages_minimal_params_uses_defaults() -> None:
+    # 知見79と同じ合成(synthetic)テキスト。`Pdf.ExtractPages`はExtractPagesToNewPDFAction
+    # (`[Action(Name=...)]`のみで`Id`属性が無い点がExtractTextFromPDF等とは異なる)。
+    dsl = (
+        "Pdf.ExtractPages PDFFile: $'''C:\\test.pdf''' ExtractedPDFPath: $'''C:\\out.pdf''' "
+        "PageSelection: $'''1,3-5''' ExtractedPDFFile=> NewPDF"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "NewPDF = pdf_actions.extract_pages_to_new_pdf('C:\\\\test.pdf', 'C:\\\\out.pdf', "
+        "'1,3-5', password='', if_file_exists='AddSequentialSuffix')" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_merge_files_minimal_params_uses_defaults() -> None:
+    # 知見79と同じ合成(synthetic)テキスト。`PDFFiles`は`Files`系と同じ単一/リスト正規化を使う。
+    dsl = (
+        "Pdf.MergeFiles PDFFiles: $'''C:\\a.pdf''' MergedPDFPath: $'''C:\\merged.pdf''' "
+        "MergedPDF=> Merged"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Merged = pdf_actions.merge_pdf_files(('C:\\\\a.pdf' if isinstance('C:\\\\a.pdf', list) "
+        "else ['C:\\\\a.pdf']), 'C:\\\\merged.pdf', if_file_exists='AddSequentialSuffix')" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_merge_files_with_passwords_falls_back_to_todo() -> None:
+    # `Passwords`(EncryptableObject+PasswordDelimiter区切り)の実機シリアライズ形式は
+    # 未確認のため、指定されている場合は安全にTODOへ倒れることを確認する。
+    dsl = (
+        "Pdf.MergeFiles PDFFiles: $'''C:\\a.pdf''' MergedPDFPath: $'''C:\\merged.pdf''' "
+        "Passwords: $'''secret''' MergedPDF=> Merged"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Pdf.MergeFiles" in code
