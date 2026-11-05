@@ -53,6 +53,7 @@ from dump_daemon.uipath_dsl import (
     SwitchNode,
     TryCatchNode,
     CatchArm,
+    UnknownActivityNode,
     VariableDecl,
     VbExpr,
     WhileNode,
@@ -667,6 +668,59 @@ def test_unresolved_activity_todo_includes_captured_fields(node, expected_detail
     _compiles(code)
 
 
+def test_http_client_todo_includes_extra_attrs():
+    """知見92: `extra_attrs`(`EndPoint`/`Method`以外の全属性、実機フィクスチャ
+    では`BodyFormat`/`AcceptFormat`/`TimeoutMS`等)は`xaml_tree._parse_http_client`
+    が既に捕捉済みだったが、`# TODO`コメントへ一度も出ていなかった——知見75と
+    同じ「捕捉済みデータの未活用」パターンの追加分。"""
+    node = HttpClientNode(
+        endpoint=VbExpr(text="url"),
+        method="POST",
+        extra_attrs={"BodyFormat": "application/xml", "TimeoutMS": "6000"},
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert (
+        "# TODO: unsupported in v1 codegen: HttpClientNode (EndPoint=[url], "
+        "Method='POST', ExtraAttrs={'BodyFormat': 'application/xml', "
+        "'TimeoutMS': '6000'})"
+    ) in code
+    _compiles(code)
+
+
+def test_unknown_activity_todo_includes_captured_attrs():
+    """知見92: `UnknownActivityNode.attrs`(`xaml_tree.parse_activity`が
+    `dict(elem.attrib)`で全属性を既に捕捉済み——Libraryアクティビティ呼び出し
+    の引数(例: `in_greeting`)はこの方法でしか見えない)も`# TODO`コメントへ
+    一度も出ていなかった。`DisplayName`は`display_name`で別途表示済みのため
+    重複を避けて除外する。"""
+    node = UnknownActivityNode(
+        tag="{http://schemas.lib}NewActivity",
+        display_name="New Activity",
+        attrs={"DisplayName": "New Activity", "in_greeting": "hellofromlib"},
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert (
+        "# TODO: unknown activity (New Activity): {http://schemas.lib}NewActivity "
+        "attrs={'in_greeting': 'hellofromlib'}"
+    ) in code
+    _compiles(code)
+
+
+def test_unknown_activity_todo_omits_attrs_detail_when_only_display_name_captured():
+    """`DisplayName`属性以外に捕捉済みデータが無い場合は、知見80以前と同じ
+    挙動(`attrs=`の追記なし)のまま退行させない回帰テスト。"""
+    node = UnknownActivityNode(
+        tag="Foo", display_name="Bar", attrs={"DisplayName": "Bar"}
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO: unknown activity (Bar): Foo" in code
+    assert "attrs=" not in code
+    _compiles(code)
+
+
 def test_invoke_code_todo_includes_arguments_when_present():
     """知見83: 知見17・23の実機確認式そのもの(`Code="content=
     content.ToUpper()"`、`Arguments`は`myArg`という別名で`content`を
@@ -803,6 +857,9 @@ def test_main_xaml_pipeline_smoke():
     assert "pyperclip.copy(_vb_cstr('cliptext'))" in code
     assert "try:" in code and "except Exception as exception:" in code
     assert "# TODO: unknown activity" in code  # Library呼び出し(p:NewActivity)
+    # 知見92: Library呼び出し(p:NewActivity)の引数(in_greeting)は`attrs`
+    # 経由でしか見えない捕捉済みデータ——TODOコメントに実際に出ることを確認。
+    assert "in_greeting" in code and "hellofromlib" in code
 
 
 def test_realistic_workflow_actually_executes_correctly():

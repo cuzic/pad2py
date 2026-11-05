@@ -7,24 +7,40 @@
 「何がどう直列化されるか」の実機検証ログであるのに対し、本ドキュメントは
 「それを踏まえてどういう順序で何を作るか」を記す。
 
-## 現状整理(2026-11-05時点)
+## 現状整理(2026-11-05時点、実装フェーズ完了後に再俯瞰)
 
-**できていること**: XAMLの構造(制御フロー一式・VB式・Variables/Arguments・
-project.json・Library・REFramework)はP0がほぼ完了。VB式変換ルール
-(P0 #2)も知見32・36で主要演算子・型変換関数・三項If・文字列補間・
-`String.IsNullOrEmpty`・クォートエスケープまで実機確認済み。
+**この節は研究フェーズ完了時点(知見1〜36)のまま更新されず古くなっていた
+——以下、Phase 2〜7の実装が実際に完了した後の実態に合わせて書き直す。**
 
-**まだゼロなもの**: UiPath側には**パーサー・コード生成・実行時ライブラリが
-1行も存在しない**。PAD側の`dump_daemon/pad_dsl`・`pad_expr`・`pad_codegen`・
-`pad_action_lib`(合計約9500行の実装+約7200行のテスト、README.md「構成」
-節参照)に相当するものが無い。知見1〜36は全て「研究フェーズ」の産物で、
-「実装フェーズ」はこれから丸ごと始まる。
+**実装は既に存在する**: `dump_daemon/uipath_dsl`(XAMLツリーウォーカー)・
+`uipath_expr`(VB.NET式パーサー)・`uipath_codegen`(Pythonコード生成)・
+`uipath_selector`(Classic Selector→pywinautoマッピング)・
+`uipath_codegen_coverage`(カバレッジ計測)の5パッケージ、実装約3,950行+
+テスト約2,880行(UiPath関連テスト271件、リポジトリ全体969件)。PAD側
+(`pad_dsl`・`pad_expr`・`pad_codegen`・`pad_action_lib`、実装約7,546行)の
+おおよそ半分の規模——v1スコープがPADより狭い(Tier1活動一式+Classic
+Selectorのみ)ことと整合する。
 
-PAD側との比較で言うと、UiPathは**IR取得の入口は易しいが、カバーすべき
-表面積ははるかに広い**(知見1で確認済みの通り、PADはクリップボードDSLの
-裏技が必須だったのに対し、UiPathの`.xaml`はただのXMLファイルなので
-そのままパースできる)。一方でアクティビティ種類・セレクタ体系・プロジェクト
-形態の複雑さはPADの比ではない。
+**できていること(厚い)**: VB.NET式の変換規則は知見42〜91の系統的な
+.NETランタイムソース照合(`Conversions.vb`/`Operators.vb`/
+`Utils.LateBinder.vb`)により、算術・比較・論理・単項演算子すべてで
+`Nothing`/文字列/Boolean混在オペランドの型強制がVBの実挙動と一致する
+ところまで固められている。制御フロー一式(Sequence/If/ForEach/TryCatch/
+Switch/While/DoWhile/Break/Parallel)・Variables/Argumentsの既定値初期化・
+複数ファイルプロジェクト組み立て(`Invoke Workflow File`解決・
+`Out`/`InOutArgument`警告)・Classic Selectorマッピングも実装済みで、
+実機確認済みフィクスチャ(`Main.xaml`/`Sub1.xaml`)に対する回帰テストで
+固定されている。
+
+**完成に向けて残っているもの**: 詳細は本ドキュメント末尾の新設節
+「[残タスク: v1完成までに必要なもの](#残タスク-v1完成までに必要なもの2026-11-05見直し)」
+参照。要点だけ言うと、(1) Phase 1で確定した「Flowchartもv1スコープ」が
+実装では未着手のまま黙って先送りされている食い違いの解消、
+(2) Tier1確定済みだが未実装の5活動(Excel×2/Outlook/InvokeCode/
+HttpClient、いずれもライブラリ選定等のユーザー判断待ち)、
+が実質的に残る2つの大きな項目——それ以外は実データでの需要が出るまで
+意図的に見送っている既知の限界(セレクタ属性・配列添字曖昧性・相対パス等)
+であり、v1「完成」の障害とはみなさない。
 
 ## Phase 0: 残る研究のクローズ
 
@@ -352,7 +368,81 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
   「現実のワークフローなら制御フローとして妥当なはず」という前提が
   この調査用フィクスチャには当てはまらないことに起因する
 
-## 次にやること
+## 残タスク: v1完成までに必要なもの(2026-11-05見直し)
+
+Phase 0〜7の実装はほぼ完了し、下の「実装ログ」にある知見65〜91が示す通り
+VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271件、リポジトリ
+全体969件)。ここでは「決まったv1スコープに対して何が実際に欠けているか」
+だけを俯瞰する。
+
+### A. スコープと実装の食い違い(要ユーザー判断)
+
+1. **Flowchartが実質スコープ外のまま放置されている**: Phase 1の決定
+   (#1、本ドキュメント上部)は「対象ワークフロー種別: Sequence/
+   Flowchartのみ」だが、実装(`dump_daemon/uipath_dsl/xaml_tree.py`の
+   `parse_workflow_file`)はFlowchartルートをState Machineと全く同じ
+   `ValueError`(「Flowchart/State Machine roots are out of v1 scope」)
+   で拒否しており、Flowchart用のIR・コード生成コードは1行も存在しない。
+   この食い違いはPhase 1・Phase 8どちらの文面にも反映されず、実装側で
+   サイレントに先送りされていた(今回の俯瞰で発見)。**ユーザー判断が
+   必要**: (a) Phase 1の決定文を「Sequenceのみ」に修正して現状を正とする
+   か、(b) `FlowStep`/`FlowDecision`/`FlowSwitch`+`x:Reference`接続という
+   全く別のIR構造・コード生成を新規に実装するか
+
+### B. Tier1確定済みだが未実装の5活動(技術的に不可能ではなく、ライブラリ選定待ち)
+
+知見70で発見されて以来、`_generate_unresolved_activity`へ常にルーティング
+されたまま。知見75・83で`# TODO`コメントに捕捉済みフィールド(元の`.xaml`の
+値)を追記済みのため、着手時はそこが起点になる。
+
+2. `ExcelApplicationScopeNode`+`ExcelWriteCellNode`: `openpyxl`
+   (ファイル直接操作、Excelプロセス不要・軽量)か`win32com`(実際のExcel
+   プロセスを操作、UiPathの実行時挙動に近い)か、どちらで実装するかの選定
+3. `SendOutlookMailNode`: `win32com`(Outlookクライアント経由、UiPathの
+   実際の挙動に近い)か`smtplib`(SMTP直送、Outlook不要だが挙動が異なる)
+   かの選定
+4. `InvokeCodeNode`: インラインVB.NETコード(文単位、`uipath_expr`が
+   対応する式単位の範囲外)をPythonへどう変換するか自体が未解決
+5. `HttpClientNode`: `requests`への変換自体は単純だが、`Headers`/`Body`
+   プロパティ要素のパース(知見75で値の捕捉のみ対応済み、構造化は未実装)
+   が残る
+
+### C. 検証基盤の薄さ(構造的制約、Phase 7で既知として記録済み)
+
+6. 実機確認済みXAMLフィクスチャが`Main.xaml`/`Sub1.xaml`の2本のみ——
+   カバレッジ72%(知見70)という数字はこの2本の範囲でしか意味を持たない。
+   実世界のワークフローを追加検証すれば、A・B以外の未知のギャップが
+   新たに出る可能性が高い。Phase 7は汎用カバレッジフレームワークの構築を
+   「実機フィクスチャ2本では時期尚早」として明示的に見送っているが、
+   フィクスチャが増えた時点で再検討すべき判断はそのまま有効
+
+### D. 意図的に残した既知の限界(現状では「完成」の障害にしない)
+
+でっち上げを避けるため安全側に`# TODO`/`# WARNING`へ倒した設計判断で、
+実データでの需要が出るまで対応を見送ってよいもの:
+- セレクタ属性は`cls`/`title`/`automationid`/`name`の4つのみ対応
+  (`role`は実機で`KeyError`を確認したため意図的に未対応、知見38)
+- 配列/コレクション/`DataTable`行アクセス`識別子(引数)`構文の言語レベルの
+  曖昧性(知見74、静的型追跡が無いと解決不可能)
+- `Append Line`/`Read Text File`の相対パス解決基準(知見82、公式情報が
+  相互に矛盾し確定できない)
+- 文字列補間の書式指定子・フィールド幅(知見65)、`&B`2進リテラル文字列
+- `ui:Click`の`AlterIfDisabled`/`CursorMotionType`/`DelayBefore`/
+  `DelayMS`/`SendWindowMessages`/`SimulateClick`(知見73)
+- ワークフロー引数`Out`/`InOutArgument`の実際の値書き戻し(`return`への
+  変換、知見78・87で警告のみ実装、変換自体は見送り)
+
+### 優先順位の提案
+
+技術調査(C・Dの深掘り)を自律ループで続けるより、**まずA(Flowchartの
+スコープ判断)とB(5活動のライブラリ選定)という2件のユーザー判断を
+確認するのが効率的**——どちらも技術的な未解決課題ではなく意思決定待ちで、
+これまでの自律ループが系統的に拾ってきた「VM不要・公式ドキュメント/
+ランタイムソースで確定できる」種類のバグとは性質が異なるため、安全に
+自律では進められない。
+
+## 実装ログ(知見65〜91、個別の修正の記録——現在は完了済み項目のみで、
+今後の作業はPhase単位の節または上記「残タスク」を参照)
 
 1. **(完了、2026-11-05)** Modern活動のFuzzy/Strict selector実XAML確認:
    旧Studio(2021.4.4)の`xaml_probe`でModern Design Experienceを有効化し、
@@ -932,3 +1022,17 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     追加、UiPath関連テスト全271件通過、リポジトリ全体で全969件通過。
     `-`/`+`/`Not`/`And`/`Or`/`Xor`という型依存の単項/二項演算子ファミリー
     はこれで一通り確認済みになった。
+52. **(完了、2026-11-05)** `UnknownActivityNode.attrs`/`HttpClientNode.
+    extra_attrs`が既に捕捉済みなのに`# TODO`コメントへ一度も出ていなかった
+    バグを解決(VM不使用、知見92——ロードマップ俯瞰レビューで洗い出した
+    「残タスク」(下記参照)がいずれも意思決定待ちだったため、自律ループを
+    安全に再開できる別の角度として、知見75/79/80/83と同じ「捕捉済み
+    データの未活用」パターンをキャッチオール経路(`UnknownActivityNode`)
+    自体にも広げて確認して発見): Library呼び出し(`<p:NewActivity
+    in_greeting="hellofromlib" .../>`)の引数のような、人間が手動移植する
+    際に最も必要な情報が`attrs`/`extra_attrs`に捕捉されているのに生成
+    コードから一切見えなかった。`_generate_unknown`/
+    `_generate_unresolved_activity`のHttpClient分岐に、捕捉済みの生データを
+    ソート済み辞書としてそのまま追記(`DisplayName`は別途表示済みのため
+    重複除外、でっち上げた解釈は追加しない)。回帰テスト3件追加、UiPath
+    関連テスト全274件通過、リポジトリ全体で全979件通過。

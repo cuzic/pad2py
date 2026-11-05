@@ -4322,6 +4322,57 @@ UiPath関連テスト全271件通過、リポジトリ全体で全969件通過(�
 手順がこのファミリーでは特に高い再現率を示した。この演算子ファミリー
 (`-`/`+`/`Not`/`And`/`Or`/`Xor`)はこれで一通り確認済みになった。
 
+## 92. `UnknownActivityNode.attrs`/`HttpClientNode.extra_attrs`が既に捕捉済みなのに`# TODO`コメントへ一度も出ていなかった——知見75/79/80/83と同じ「捕捉済みデータの未活用」パターン(VM不使用、ロードマップ俯瞰レビュー後の自律ループ再開時に発見)
+
+ユーザーからロードマップ全体の俯瞰レビューを依頼され、Flowchartスコープの
+食い違いと5活動のライブラリ選定という2件の意思決定待ち項目を整理した直後、
+自律ループを再開するにあたり「決定待ちではない、まだ拾われていない
+データ未活用の見落としが残っていないか」を`render.py`/`__init__.py`を
+読み返して確認したところ発見した。
+
+**`UnknownActivityNode.attrs`**: `xaml_tree.parse_activity`は未知の
+アクティビティ型に遭遇すると`dict(elem.attrib)`で**全属性**を無条件に
+捕捉している(知見26のLibrary呼び出し発見時から変わらず)。しかし
+`_generate_unknown`(`uipath_codegen/__init__.py`)は`display_name`しか
+使わず、`attrs`自体は一度もコメントへ出していなかった。実機フィクスチャ
+(`Main.xaml`)の`<p:NewActivity in_greeting="hellofromlib" .../>`
+(知見26のLibrary呼び出し実例)で実際に確認——`in_greeting`という
+Library呼び出しの引数情報が、生成コードからは一切見えない状態になっていた
+(人間が手動でポートする際に最も必要な情報のはずなのに、元の`.xaml`に
+戻らないと分からない)。
+
+**`HttpClientNode.extra_attrs`**: `_parse_http_client`は`EndPoint`/
+`Method`以外の全属性を`extra_attrs`に捕捉する設計(型定義のdocstring
+「取りこぼしを防ぐ」とコメントされている)だったが、`_generate_unresolved_
+activity`のHttpClient詳細(知見75で`EndPoint`/`Method`のみ追加)は
+`extra_attrs`を一度も参照していなかった。実機フィクスチャの`<ui:HttpClient
+... AcceptFormat="ANY" BodyFormat="application/xml" ... TimeoutMS="6000"
+...>`で確認——`BodyFormat`/`TimeoutMS`等、HTTPリクエストを手動で組み直す際に
+有用な情報が同様に失われていた。
+
+**修正**(`dump_daemon/uipath_codegen/__init__.py`): `_generate_unknown`は
+`node.attrs`(`DisplayName`は`display_name`で別途表示済みのため重複除外)を
+`attrs={...}`として追記。`_generate_unresolved_activity`のHttpClient分岐は
+`node.extra_attrs`(同じく`DisplayName`除外)を`ExtraAttrs={...}`として
+追記。いずれも既に捕捉済みの生データをソート済み辞書としてそのまま
+表示するだけで、でっち上げた解釈・変換ロジックは追加していない
+(知見83と同じ方針)。
+
+回帰テスト3件追加
+(`test_http_client_todo_includes_extra_attrs`・
+`test_unknown_activity_todo_includes_captured_attrs`・
+`test_unknown_activity_todo_omits_attrs_detail_when_only_display_name_captured`)、
+既存の`test_main_xaml_pipeline_smoke`も`in_greeting`/`hellofromlib`が
+実際に生成コードへ出ることを確認するよう拡張。UiPath関連テスト全274件
+通過、リポジトリ全体で全979件通過(知見70のカバレッジは72%のまま、
+分岐点の構造自体は変えていないため)。
+
+**この知見で確定したこと**: 知見75/79/80/83で見つけた「捕捉済みだが
+コメントに出ていないフィールド」のパターンは`UnknownActivityNode`
+(v1スコープ外の全アクティビティの受け皿、最も広く使われる経路)自体にも
+及んでいた——個別の5活動(知見70)だけでなく、キャッチオール経路も
+同じ観点で確認する価値があったことが分かった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

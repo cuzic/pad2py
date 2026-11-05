@@ -867,9 +867,15 @@ def _generate_unresolved_activity(
             f"Subject={_describe_expr_for_comment(node.subject)})"
         )
     elif isinstance(node, HttpClientNode):
+        # 知見92: `node.extra_attrs`(`xaml_tree._parse_http_client`が
+        # `EndPoint`/`Method`以外の全属性を既に捕捉している——実機
+        # フィクスチャでは`BodyFormat`/`AcceptFormat`/`TimeoutMS`等)も
+        # これまで一度もTODOコメントへ出ていなかった、同じ未活用パターン。
+        extra = {k: v for k, v in sorted(node.extra_attrs.items()) if k != "DisplayName"}
         detail = (
             f" (EndPoint={_describe_expr_for_comment(node.endpoint)}, "
-            f"Method={node.method!r})"
+            f"Method={node.method!r}"
+            f"{f', ExtraAttrs={extra!r}' if extra else ''})"
         )
     lines = [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
     if isinstance(node, ExcelApplicationScopeNode) and node.body:
@@ -878,9 +884,19 @@ def _generate_unresolved_activity(
 
 
 def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:
+    """知見92: `node.attrs`(`xaml_tree.parse_activity`が`dict(elem.attrib)`で
+    常に全属性を捕捉している、知見75/79/80/83と同じ「捕捉済みデータの
+    未活用」パターン)が、これまで一度もTODOコメントへ出ていなかった——
+    Libraryアクティビティ呼び出し(例: `<p:NewActivity in_greeting="hello"
+    .../>`)の引数のような、人間が手動移植する際に最も必要な情報が
+    サイレントに失われていた。`DisplayName`は`display_name`で既に別途
+    表示済みのため重複を避けて除外する(それ以外はでっち上げた取捨選択を
+    避け、捕捉済みの生データをそのまま表示する)。"""
     prefix = INDENT * indent
     display = f" ({node.display_name})" if node.display_name else ""
-    return [f"{prefix}# TODO: unknown activity{display}: {node.tag}"]
+    extra_attrs = {k: v for k, v in sorted(node.attrs.items()) if k != "DisplayName"}
+    detail = f" attrs={extra_attrs!r}" if extra_attrs else ""
+    return [f"{prefix}# TODO: unknown activity{display}: {node.tag}{detail}"]
 
 
 # --- 複数ファイル結線(generate_project_python) -----------------------------
