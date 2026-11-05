@@ -77,11 +77,20 @@ def _vb_cstr(x):
 # Pythonの`==`等は型をまたいだ暗黙の数値変換をしない(`"5" == 5`は
 # 常に`False`)ため、単純な`==`/`<`等への変換のままでは、UiPathで多用される
 # 緩い型(`GenericValue`/`Object`型変数)同士の比較が食い違いうる。
+# `Boolean`→数値の変換も真っ先に行う(Microsoft Learn「Boolean Data
+# Type」「When Visual Basic converts Boolean values to numeric types,
+# False becomes 0 and True becomes -1」と明記——VM不使用・公式ドキュメント
+# で確定、知見51参照。Pythonの`bool`は`int`のサブクラスで`True`は`1`
+# 相当のため、変換無しでは符号が逆になる)。
 VB_CMP_HELPER_NAME = "_vb_cmp"
 VB_CMP_HELPER_SOURCE = """\
 def _vb_cmp(a, b):
     def _vb_is_num(x):
         return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if isinstance(a, bool):
+        a = -1 if a else 0
+    if isinstance(b, bool):
+        b = -1 if b else 0
     if a is None and _vb_is_num(b):
         a = 0
     elif b is None and _vb_is_num(a):
@@ -111,6 +120,10 @@ VB_ADD_HELPER_SOURCE = """\
 def _vb_add(a, b):
     def _vb_is_num(x):
         return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if isinstance(a, bool):
+        a = -1 if a else 0
+    if isinstance(b, bool):
+        b = -1 if b else 0
     if a is None and b is None:
         return ""
     if a is None:
@@ -136,6 +149,8 @@ def _vb_add(a, b):
 VB_NUM_HELPER_NAME = "_vb_num"
 VB_NUM_HELPER_SOURCE = """\
 def _vb_num(x):
+    if isinstance(x, bool):
+        return -1 if x else 0
     if x is None:
         return 0
     if isinstance(x, str):
@@ -160,11 +175,15 @@ def _vb_num(x):
 VB_DIV_HELPER_NAME = "_vb_div"
 VB_DIV_HELPER_SOURCE = """\
 def _vb_div(a, b):
-    if a is None:
+    if isinstance(a, bool):
+        a = -1 if a else 0
+    elif a is None:
         a = 0
     elif isinstance(a, str):
         a = float(a)
-    if b is None:
+    if isinstance(b, bool):
+        b = -1 if b else 0
+    elif b is None:
         b = 0
     elif isinstance(b, str):
         b = float(b)

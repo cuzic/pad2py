@@ -81,6 +81,16 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
   `ZeroDivisionError`を即座に送出するため、`_vb_div()`ヘルパー(`_vb_num`
   と同じ数値強制に加えゼロ除算をDouble方式へ分岐)を使う。`Mod`/`\`の
   ゼロ除算は型依存のため未解消のまま残る(下記参照)。
+- **Booleanオペランドの算術・比較演算子への変換は`True→-1`(2026-11-05、
+  公式ドキュメントで確定、知見51)**: Microsoft Learn「Boolean Data
+  Type」が「VBがBooleanを数値型へ変換する際、`False`は`0`、`True`は
+  `-1`になる」と明記(VB6互換のための仕様、`Convert.ToInt32`等の.NET
+  標準メソッドとは異なる)。Pythonの`bool`は`int`のサブクラスで`True`は
+  `1`相当のため、素通しすると符号が逆になる(`5 + True`はVBでは`4`だが
+  無変換だと`6`になる)。`_vb_cmp`/`_vb_add`/`_vb_num`/`_vb_div`全ての
+  先頭でBooleanを`-1`/`0`へ変換してから残りのロジックに流す
+  (`_vb_cstr`のBoolean→文字列変換(`CStr(True)`→`"True"`)は別規則で
+  対象外、既に正しい)。
 - **`\`(整数除算)・`Mod`(剰余)——単純な`//`/`%`への変換は不可(2026-11-05、
   公式ドキュメントで確定)**: VBの`\`(Microsoft Learn「\ Operator」)は
   **ゼロ方向への切り捨て**(truncation)、`Mod`(同「Mod Operator」)は

@@ -2497,13 +2497,10 @@ def _vb_num(x):
 UiPath関連テスト全130件通過(`test_uipath_codegen.py`/`test_uipath_expr.py`/
 `test_uipath_dsl.py`/`test_uipath_selector.py`)。
 
-**既知の残課題(2026-11-05時点、知見50で`/`のゼロ除算は解消済み)**:
+**既知の残課題(2026-11-05時点、知見50で`/`のゼロ除算、知見51でBoolean
+オペランドの数値変換はいずれも解消済み)**:
 - `Mod`/`\`のゼロ除算は未解消のまま残る(知見50参照——`/`と違い型依存の
   ため静的型情報が無いと正しく実装できない)。
-- Boolean(`True`/`False`)を算術演算子に渡した場合の挙動(VB6/VBAでは
-  `True`が`-1`相当になる慣習があるが、VB.NETでの正確な挙動は未確認)は
-  `_vb_num`/`_vb_add`/`_vb_cmp`のいずれも素通し(Pythonの`bool`は`int`の
-  サブクラスで`True`は`1`相当)のままで、この食い違いの有無は未調査。
 
 ## 50. `/`演算子のゼロ除算がVBのDouble方式(Infinity/NaN)になると確定——Pythonは`ZeroDivisionError`で即クラッシュする(VM不使用、公式ドキュメントで確定、知見49の残課題を一部解消)
 
@@ -2555,6 +2552,46 @@ UiPath関連テスト全134件通過。
 `DivideByZeroException`」)——静的型情報を持たない現在のアーキテクチャ
 では安全に実装できないため、意図的に未対応のまま残す(でっち上げた
 型推測は入れない)。
+
+## 51. Booleanオペランドの算術・比較演算子への変換は`True→-1`・`False→0`と確定——知見49・50で残していた「未調査」の最後の1点を解消(VM不使用、公式ドキュメントで確定)
+
+知見49・50作業中に繰り返し「未調査」として残していた「Booleanを算術
+演算子に渡した場合の挙動」を、公式ドキュメントで確定した。
+
+**確定した内容**(Microsoft Learn「Boolean Data Type」「Type
+Conversions」節): 「When Visual Basic converts Boolean values to
+numeric types, False becomes 0 and True becomes -1.」——`False`は`0`、
+`True`は**`-1`**になる(VB6時代との互換性のための挙動、同ページが
+「.NET Frameworkの変換メソッド(`Convert.ToInt32`等)とは異なる結果に
+なりうる」と明記している、VB固有の仕様)。
+
+Pythonの`bool`は`int`のサブクラスで`True`は`1`相当のため、何も変換
+しなければ符号が逆になる(`5 + True`はVBでは`5 + (-1) = 4`だが、
+Pythonの`bool`をそのまま使うと`5 + True = 6`になってしまう)。これまで
+`_vb_cmp`/`_vb_add`/`_vb_num`は`_vb_is_num`で`bool`を意図的に「数値では
+ない」として除外していたため(Not/And/Or/Xor等の論理演算子との混同を
+避ける目的だった)、算術・比較の文脈でも`bool`がそのままPython側の
+`+`/`==`等に素通りし、符号が逆の誤った結果になっていた。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_cmp`/
+`_vb_add`/`_vb_num`/`_vb_div`の4つのヘルパー全ての先頭で、`bool`
+オペランドを`True→-1`・`False→0`へ変換してから残りのロジックに流す
+よう統一した(`isinstance(x, bool)`判定を他の全ての判定より先に行う)。
+`_vb_cstr`(`CStr(True)`→`"True"`)は対象外——こちらはBoolean→**文字列**
+変換で別の規則(`True`/`False`という語そのもの)であり、公式ドキュメント
+でも今回確認した数値変換規則とは別節で扱われている、既に正しい挙動。
+
+`tests/test_uipath_codegen.py`に
+`test_boolean_operand_converts_to_negative_one_not_python_one`を追加
+(`5 + True`→`"4"`、`10 / True`→`"-10"`、`-1 = True`→`"True"`等)。
+UiPath関連テスト全143件通過、回帰無し。
+
+**この知見で確定したこと**: 知見49・50で2回にわたり「未調査」として
+持ち越していたBooleanの算術演算子への変換規則を確定・修正できた
+——知見44〜51の一連の「VB.NET演算子の値の食い違い」系統点検で、現状
+公式ドキュメントだけで確定できる範囲の課題は全て解消した(残るのは
+`Mod`/`\`のゼロ除算(型依存、静的型情報が無く対応不可)と`CDbl`の
+`Nothing`/桁区切り文字列(VM実機検証が必要)のみ)。
 
 ## 今後の調査候補(未着手)
 

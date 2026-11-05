@@ -661,6 +661,41 @@ def test_division_by_zero_matches_vb_double_semantics_not_python_zerodivisionerr
 
 
 @pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # VBはBooleanを数値へ変換する際、Falseは0、Trueは-1になる
+        # (Microsoft Learn「Boolean Data Type」で確定、知見51)——Pythonの
+        # boolはintのサブクラスでTrueは1相当のため、符号が逆になる。
+        ("5 + True", "4"),
+        ("True + True", "-2"),
+        ("5 - True", "6"),
+        ("5 * True", "-5"),
+        ("10 / True", "-10"),
+        ("5 = True", "False"),
+        ("-1 = True", "True"),
+        ("True = True", "True"),
+        ("True < False", "True"),
+    ],
+)
+def test_boolean_operand_converts_to_negative_one_not_python_one(
+    vb_text: str, expected: str
+) -> None:
+    """知見51: 算術・比較演算子の`_vb_num`/`_vb_add`/`_vb_cmp`/`_vb_div`
+    全てが、Booleanオペランドを`True→-1`/`False→0`としてVBと一致する
+    よう変換することの回帰テスト。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
     ("vb_text", "expect_nan"),
     [
         # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。
