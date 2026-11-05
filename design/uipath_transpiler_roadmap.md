@@ -214,6 +214,37 @@ docstringを参照。未対応アクティビティ(Library呼び出し含む)�
 既存テストに不要な手戻りが生じる)と判断し見送った——将来、実際に
 codegenで必要になった時点で結合するか、改めて検討する。
 
+## Phase 4: コード生成【実装完了、2026-11-05】
+
+`dump_daemon/uipath_codegen/`を新設し、`uipath_dsl`のIRから`uipath_expr`
+経由でPythonソースを生成する`generate_python()`を実装した
+(`render.py`=式のPython文字列化、`__init__.py`=ノード種別ごとのディスパッチ)。
+`pad_codegen`と同じ「架空のAPIをでっち上げず`# TODO`に倒す」方針を踏襲し、
+制御フロー一式(Sequence/Assign/If/ForEach/TryCatch/Switch/While/DoWhile/
+Break/Parallel)と単純な入出力系(MessageBox→`print()`/Append Line/
+Read Text File/Set To Clipboard→`pyperclip`)は実際にコード生成し、
+セレクタ解決が未解決のClick、複数ファイル結線が未実装のInvoke Workflow
+File、インラインコードのInvoke Code、ライブCOM連携が要るExcel/Outlook、
+プロパティ要素(Headers等)を未パースのHttpClientは`# TODO`に倒す。
+`And`/`Or`/`Xor`→`&`/`|`/`^`変換(両オペランド括弧必須)も設計通り実装。
+`tests/test_uipath_codegen.py`(13件)で検証済み。
+
+**実装中に見つかった追加の既知の制約**:
+- `uipath_expr`に配列/コレクションリテラル`{a, b, c}`(知見5で確認済みだが
+  当初パーサー未実装)の対応が漏れていた——`ForEach.Values`が頻出する
+  パターンだったため発覚し追加した(`ArrayLiteral`→Python `[...]`)
+- `Switch`の`x:Key`は文字列として取得されるため(`uipath_dsl.xaml_tree`)、
+  `x:TypeArguments`が数値型(`x:Int32`等)の場合はクォート無しの数値
+  リテラルとして出力するよう`uipath_codegen`側で補正している
+- **生成コードの構文的妥当性はソースXAMLの妥当性に依存する**:
+  `design/evidence/uipath_xaml_probe/Main.xaml`は知見確認用に複数の
+  独立した機能テストを1ファイルに詰め込んだフィクスチャで、ループの外に
+  単独の`<ui:Break />`が置かれている(知見18のXAML形確認のためだけの配置)
+  箇所があり、これを忠実に変換すると`break`文がループ外に出て
+  `SyntaxError`になる——codegenの変換ロジック自体のバグではなく、
+  「現実のワークフローなら制御フローとして妥当なはず」という前提が
+  この調査用フィクスチャには当てはまらないことに起因する
+
 ## 次にやること
 
 1. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
@@ -221,7 +252,13 @@ codegenで必要になった時点で結合するか、改めて検討する。
    (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
    解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
    のため、使用タイミングの調整が必要
-2. **Phase 4着手**: `uipath_dsl`のIRと`uipath_expr`の式構文木からPython
-   コードを生成する`uipath_codegen`(仮称)の実装。`pad_codegen`の設計
-   (`generate_python()`単一エントリポイント、`actions/`でのディスパッチ分割)
-   を参考にする。`And`/`Or`→`&`/`|`変換(括弧必須)はここで実装する
+2. **セレクタ解決の実装**(Phase 4の残り最大項目): 知見37で把握した
+   Classic Selector(WND/CTRL/WEBCTRL)の属性語彙をpywinautoの検索条件へ
+   マッピングし、`ClickNode`等の`# TODO`を実コードに変える
+3. **複数ファイル結線**(Phase 6): `Invoke Workflow File`で参照される
+   サブワークフローを実際に解決し、Python関数呼び出しへ変換する
+4. **より現実的なフィクスチャでの検証**: `Main.xaml`は知見確認用の
+   寄せ集めなので、実際に動く(コンパイル可能な)サンプルワークフローを
+   別途1つ用意し、`generate_python()`の出力が本当に実行可能であることを
+   `exec()`で確認する回帰テストを追加する(`pad_codegen`の対応するテストと
+   同じ水準)

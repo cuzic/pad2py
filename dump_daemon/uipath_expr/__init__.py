@@ -92,6 +92,7 @@ comp_op: EQ | NE | LE | GE | LT | GT | IS | ISNOT
      | FALSE                 -> false_lit
      | NOTHING                -> nothing_lit
      | "(" expr ")"          -> paren
+     | "{" arglist "}"       -> array_lit
 
 arglist: [expr ("," expr)*]
 
@@ -217,6 +218,15 @@ class NothingLiteral:
     """VBの`Nothing`(知見36: Pythonの`None`に対応)。"""
 
 
+@dataclass(frozen=True)
+class ArrayLiteral:
+    """配列/コレクションリテラル`{a, b, c}`(design/uipath_xaml_findings.md
+    知見5、design/uipath_vb_expression_mapping.md「確認済み」表。Python
+    `[a, b, c]`に対応)。"""
+
+    items: tuple["ExprNode", ...]
+
+
 ExprNode = Union[
     BinOp,
     UnaryOp,
@@ -228,6 +238,7 @@ ExprNode = Union[
     NumberLiteral,
     BoolLiteral,
     NothingLiteral,
+    ArrayLiteral,
 ]
 
 
@@ -269,6 +280,10 @@ class _ExprTransformer(Transformer):
     def paren(self, children: list) -> Paren:
         (inner,) = children
         return Paren(inner=inner)
+
+    def array_lit(self, children: list) -> ArrayLiteral:
+        (items,) = children
+        return ArrayLiteral(items=tuple(items))
 
     def func_call(self, children: list) -> FuncCall:
         name_tok, args = children
@@ -375,6 +390,9 @@ def render_expr(node: ExprNode) -> str:
         return "True" if node.value else "False"
     if isinstance(node, NothingLiteral):
         return "Nothing"
+    if isinstance(node, ArrayLiteral):
+        items = ", ".join(render_expr(i) for i in node.items)
+        return "{" + items + "}"
     if isinstance(node, Paren):
         return f"({render_expr(node.inner)})"
     if isinstance(node, UnaryOp):

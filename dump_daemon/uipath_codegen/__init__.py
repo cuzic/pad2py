@@ -1,0 +1,347 @@
+"""`uipath_dsl`のIR(`Node`) → Pythonソース文字列を生成する codegen core。
+
+`generate_python()`が唯一の公開エントリポイント。`pad_codegen`と同じ設計
+方針(`generate_python()`単一公開関数、値・条件式の文字列化は`render.py`に
+分離、未対応の構文は架空のAPI呼び出しをでっち上げず`# TODO`コメントに倒す)
+を踏襲するが、v1スコープ(design/uipath_transpiler_roadmap.md Phase 1)の
+アクティビティ種類が`pad_codegen`の`action_id`空間よりずっと小さいため、
+`actions/`のようなサブパッケージへの分割はせずこのモジュール1つに収めている。
+
+**条件式は値とは異なる失敗モードを採用する**(`pad_codegen`の
+`IfActionRecord`処理と同じ判断): `If.Condition`/`While.Condition`/
+`Switch.Expression`が安全にPython式へ変換できない場合、でっち上げた真偽値で
+制御フロー全体を誤らせるよりコード生成自体を失敗させる(`NotImplementedError`
+をそのまま伝播させる)。値(`Assign`の右辺等)が変換できない場合は
+`# TODO`コメント+`None`プレースホルダへ倒す(値の誤りは局所的だが、
+条件の誤りは分岐全体を反転させうるため)。
+"""
+from __future__ import annotations
+
+from ..uipath_dsl.types import (
+    AppendLineNode,
+    AssignNode,
+    BreakNode,
+    ClickNode,
+    DoWhileNode,
+    ExcelApplicationScopeNode,
+    ExcelWriteCellNode,
+    ForEachNode,
+    HttpClientNode,
+    IfNode,
+    InvokeCodeNode,
+    InvokeWorkflowFileNode,
+    MessageBoxNode,
+    Node,
+    ParallelNode,
+    ReadTextFileNode,
+    SendOutlookMailNode,
+    SequenceNode,
+    SetToClipboardNode,
+    SwitchNode,
+    TryCatchNode,
+    UnknownActivityNode,
+    WhileNode,
+    WorkflowFile,
+)
+from .render import render_expr
+
+INDENT = "    "
+
+__all__ = ["INDENT", "generate_python"]
+
+# .NET例外型名 → Pythonの組み込み例外へのマッピング。知見確認済みの
+# `s:Exception`(`System.Exception`のCLR名前空間エイリアス表記、知見6)
+# 以外は未確認——未知の型は無条件で`Exception`にフォールバックする
+# (個別の.NET例外階層をPythonの例外階層へ精密対応させることは
+# v1スコープ外)。
+_EXCEPTION_TYPE_MAP = {
+    "s:exception": "Exception",
+    "system.exception": "Exception",
+}
+
+
+def generate_python(workflow: WorkflowFile) -> str:
+    """`WorkflowFile`(`uipath_dsl.parse_workflow_file()`の戻り値)から
+    スタンドアロンのPython関数定義ソースを生成する(末尾改行付き)。
+
+    ワークフロー引数(`workflow.arguments`)をそのまま関数の仮引数にする。
+    """
+    params = list(workflow.arguments.keys())
+    header = f"def {_safe_func_name(workflow.class_name)}({', '.join(params)}):"
+    body = _generate_body(workflow.root.body, indent=1)
+    body = _ensure_nonempty_suite(body, indent=1)
+    imports = _collect_imports(body)
+    lines = [*imports, ""] if imports else []
+    lines.extend([header, *body])
+    return "\n".join(lines) + "\n"
+
+
+def _safe_func_name(class_name: str) -> str:
+    return class_name.replace(" ", "_").replace("-", "_") or "workflow"
+
+
+def _collect_imports(body: list[str]) -> list[str]:
+    imports = []
+    if any("pyperclip." in line for line in body):
+        imports.append("import pyperclip")
+    imports.sort()
+    return imports
+
+
+def _generate_body(nodes: list[Node], indent: int) -> list[str]:
+    lines: list[str] = []
+    for node in nodes:
+        lines.extend(_generate_node(node, indent))
+    return lines
+
+
+def _ensure_nonempty_suite(lines: list[str], indent: int) -> list[str]:
+    """`pad_codegen._ensure_nonempty_suite`と同じ理由(design/dsl_format_findings.md
+    知見40): `# TODO`コメント行だけの本体はPython構文上は空のsuiteと同じで
+    `IndentationError`になるため、実質的な文が1つも無ければ`pass`を補う。
+    """
+    if any(line.strip() and not line.strip().startswith("#") for line in lines):
+        return lines
+    return [*lines, f"{INDENT * indent}pass"]
+
+
+def _todo_value(prefix: str, expr_desc: str) -> list[str]:
+    """値が安全に変換できなかった場合の`# TODO`+プレースホルダ出力
+    (`pad_codegen`の`SetVariableRecord`処理と同じ安全側フォールバック)。
+    呼び出し側が代入文等に組み込む。"""
+    return [f"{prefix}# TODO: unresolved VB expression: {expr_desc}"]
+
+
+def _render_value_or_todo(expr, prefix: str, todo_lines: list[str]) -> str:
+    try:
+        return render_expr(expr)
+    except NotImplementedError as e:
+        todo_lines.extend(_todo_value(prefix, str(e)))
+        return "None"
+
+
+def _generate_node(node: Node, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if isinstance(node, SequenceNode):
+        return _generate_body(node.body, indent)
+    if isinstance(node, AssignNode):
+        return _generate_assign(node, indent)
+    if isinstance(node, MessageBoxNode):
+        return _generate_message_box(node, indent)
+    if isinstance(node, IfNode):
+        return _generate_if(node, indent)
+    if isinstance(node, ForEachNode):
+        return _generate_for_each(node, indent)
+    if isinstance(node, TryCatchNode):
+        return _generate_try_catch(node, indent)
+    if isinstance(node, SwitchNode):
+        return _generate_switch(node, indent)
+    if isinstance(node, WhileNode):
+        return _generate_while(node, indent)
+    if isinstance(node, DoWhileNode):
+        return _generate_do_while(node, indent)
+    if isinstance(node, BreakNode):
+        return [f"{prefix}break"]
+    if isinstance(node, ParallelNode):
+        return _generate_parallel(node, indent)
+    if isinstance(node, AppendLineNode):
+        return _generate_append_line(node, indent)
+    if isinstance(node, ReadTextFileNode):
+        return _generate_read_text_file(node, indent)
+    if isinstance(node, SetToClipboardNode):
+        return _generate_set_to_clipboard(node, indent)
+    if isinstance(node, (ClickNode, InvokeWorkflowFileNode, InvokeCodeNode,
+                          ExcelApplicationScopeNode, ExcelWriteCellNode,
+                          SendOutlookMailNode, HttpClientNode)):
+        return _generate_unresolved_activity(node, indent)
+    if isinstance(node, UnknownActivityNode):
+        return _generate_unknown(node, indent)
+    raise TypeError(f"Unsupported node type for codegen: {type(node)!r}")
+
+
+def _generate_assign(node: AssignNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    todo: list[str] = []
+    target = _render_value_or_todo(node.target, prefix, todo)
+    value = _render_value_or_todo(node.value, prefix, todo)
+    return [*todo, f"{prefix}{target} = {value}"]
+
+
+def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
+    """`ui:MessageBox`はPythonのネイティブ対話ダイアログに相当するものが
+    無いため、最も単純で誤解の少ない代替としてコンソール出力`print()`に
+    変換する(確定的な仕様ではなく、v1の暫定的な既定選択——将来tkinter等の
+    実モーダルダイアログへ差し替える余地を残す)。"""
+    prefix = INDENT * indent
+    todo: list[str] = []
+    text = _render_value_or_todo(node.text, prefix, todo)
+    return [*todo, f"{prefix}print({text})"]
+
+
+def _generate_if(node: IfNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    # 条件式は値より厳格——変換できなければ例外を伝播させてコード生成自体を
+    # 失敗させる(モジュールdocstring参照)。
+    cond = render_expr(node.condition)
+    lines = [f"{prefix}if {cond}:"]
+    then_body = _ensure_nonempty_suite(_generate_body(node.then_body, indent + 1), indent + 1)
+    lines.extend(then_body)
+    if node.else_body:
+        lines.append(f"{prefix}else:")
+        else_body = _ensure_nonempty_suite(
+            _generate_body(node.else_body, indent + 1), indent + 1
+        )
+        lines.extend(else_body)
+    return lines
+
+
+def _generate_for_each(node: ForEachNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    values = render_expr(node.values)
+    lines = [f"{prefix}for {node.item_var or '_item'} in {values}:"]
+    body = _ensure_nonempty_suite(_generate_body(node.body, indent + 1), indent + 1)
+    lines.extend(body)
+    return lines
+
+
+def _generate_while(node: WhileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    cond = render_expr(node.condition)
+    lines = [f"{prefix}while {cond}:"]
+    body = _ensure_nonempty_suite(_generate_body(node.body, indent + 1), indent + 1)
+    lines.extend(body)
+    return lines
+
+
+def _generate_do_while(node: DoWhileNode, indent: int) -> list[str]:
+    """WFの`InterruptibleDoWhile`に相当するPythonネイティブ構文は無いため、
+    `while True: ... ; if not (cond): break`の定石パターンへ変換する。
+    `Condition`が未設定(本fixtureでの実例、design/uipath_xaml_findings.md
+    知見38相当)の場合は意図が不明なため変換せずTODOに倒す。"""
+    prefix = INDENT * indent
+    if node.condition is None:
+        return [f"{prefix}# TODO: Do While with no Condition set — intent unclear"]
+    cond = render_expr(node.condition)
+    lines = [f"{prefix}while True:"]
+    body = _generate_body(node.body, indent + 1)
+    body.append(f"{INDENT * (indent + 1)}if not ({cond}):")
+    body.append(f"{INDENT * (indent + 2)}break")
+    lines.extend(_ensure_nonempty_suite(body, indent + 1))
+    return lines
+
+
+def _generate_try_catch(node: TryCatchNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = [f"{prefix}try:"]
+    try_body = _ensure_nonempty_suite(_generate_body(node.try_body, indent + 1), indent + 1)
+    lines.extend(try_body)
+    for catch in node.catches:
+        exc_type = _EXCEPTION_TYPE_MAP.get(catch.exception_type.lower(), "Exception")
+        as_clause = f" as {catch.var_name}" if catch.var_name else ""
+        lines.append(f"{prefix}except {exc_type}{as_clause}:")
+        body = _ensure_nonempty_suite(_generate_body(catch.body, indent + 1), indent + 1)
+        lines.extend(body)
+    if node.finally_body:
+        lines.append(f"{prefix}finally:")
+        body = _ensure_nonempty_suite(_generate_body(node.finally_body, indent + 1), indent + 1)
+        lines.extend(body)
+    return lines
+
+
+# `Switch`の`x:TypeArguments`がこれらの数値型の場合、`x:Key`属性値
+# (常に文字列として取得される、`uipath_dsl.xaml_tree._parse_switch`参照)を
+# クォート無しの数値リテラルとして出力する——`x:Object`等そのほかの型は
+# 安全側に倒して文字列リテラル扱いのままにする(実機で非数値キーの実例が
+# まだ無いため、過剰に賢い推測はしない)。
+_SWITCH_NUMERIC_TYPES = {
+    "x:int32", "x:int16", "x:int64", "x:byte", "x:double", "x:single", "x:decimal",
+}
+
+
+def _render_switch_key(key: str, type_arguments: str) -> str:
+    if type_arguments.lower() in _SWITCH_NUMERIC_TYPES:
+        return key
+    return repr(key)
+
+
+def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    expr = render_expr(node.expression)
+    lines: list[str] = []
+    default_arm = None
+    value_arms = []
+    for arm in node.arms:
+        if arm.key is None:
+            default_arm = arm
+        else:
+            value_arms.append(arm)
+    for i, arm in enumerate(value_arms):
+        keyword = "if" if i == 0 else "elif"
+        key_literal = _render_switch_key(arm.key, node.type_arguments)
+        lines.append(f"{prefix}{keyword} {expr} == {key_literal}:")
+        body = _ensure_nonempty_suite(_generate_body(arm.body, indent + 1), indent + 1)
+        lines.extend(body)
+    if default_arm is not None:
+        header = "else" if value_arms else "if True"
+        lines.append(f"{prefix}{header}:")
+        body = _ensure_nonempty_suite(_generate_body(default_arm.body, indent + 1), indent + 1)
+        lines.extend(body)
+    if not lines:
+        return [f"{prefix}# TODO: Switch with no arms: {expr}"]
+    return lines
+
+
+def _generate_parallel(node: ParallelNode, indent: int) -> list[str]:
+    """WFの`Parallel`(複数ブランチを並行実行)に相当するPythonネイティブの
+    軽量な代替は無いため、v1では**ブランチを単純に順次実行**する
+    (でっち上げた並行実行を装わない、明示的なコメント付きの簡略化)。"""
+    prefix = INDENT * indent
+    lines = [f"{prefix}# NOTE: source used Parallel; branches run sequentially here"]
+    for branch in node.branches:
+        lines.extend(_generate_node(branch, indent))
+    return lines
+
+
+def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    text = _render_value_or_todo(node.text, prefix, todo)
+    return [
+        *todo,
+        f'{prefix}with open({file_name}, "a", encoding="utf-8") as _f:',
+        f'{INDENT * (indent + 1)}_f.write(str({text}) + "\\n")',
+    ]
+
+
+def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.content, prefix, todo)
+    return [
+        *todo,
+        f'{prefix}{target} = open({file_name}, encoding="utf-8").read()',
+    ]
+
+
+def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    todo: list[str] = []
+    text = _render_value_or_todo(node.text, prefix, todo)
+    return [*todo, f"{prefix}pyperclip.copy({text})"]
+
+
+def _generate_unresolved_activity(node, indent: int) -> list[str]:
+    """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
+    (セレクタ意味論・複数ファイル結線・インラインコード・ライブExcel/Outlook
+    連携・`HttpClient`のHeaders等プロパティ要素未パース)——架空の変換を
+    でっち上げず`# TODO`に倒す。"""
+    prefix = INDENT * indent
+    return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}"]
+
+
+def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    display = f" ({node.display_name})" if node.display_name else ""
+    return [f"{prefix}# TODO: unknown activity{display}: {node.tag}"]
