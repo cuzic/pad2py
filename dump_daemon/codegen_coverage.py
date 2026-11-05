@@ -1,15 +1,17 @@
-"""pad_codegen.py がどこまで実コードを生成できているかを実測するカバレッジ測定ツール。
+"""`pad_codegen`がどこまで実コードを生成できているかを実測するカバレッジ測定ツール。
 
-design/dsl_format_findings.md 知見50以降、パーサー(`pad_dsl_parser.py`)側は`[WaitAction]`/
-`[ConditionAction]`カテゴリ等の構文を正しく構造化できるようになったが、`pad_codegen.py`側は
-いまだ`# TODO`コメントや`NotImplementedError`に倒しているケースが多く残っている(例:
-`WaitActionRecord`は現状どのaction_idでも100%TODOのまま——`WAIT (...)`構文自体は解析できて
-いても、pywinautoの`.wait(...)`呼び出しへの変換はまだ一切実装されていない)。この差を目視の
-印象ではなく実測するために、`tests/fixtures/`の実機キャプチャ全件を実際に変換し、各「分岐点」
-(アクションID・キーワード種別・条件式の形など)ごとに「実コードを生成できたか」「`# TODO`に
-倒れたか」「`NotImplementedError`/`ValueError`で明示的に拒否されたか」を集計する。
+design/dsl_format_findings.md 知見50以降、パーサー(`pad_dsl`core)側は`[WaitAction]`/
+`[ConditionAction]`カテゴリ等の構文を正しく構造化できるようになった。`pad_codegen`側は
+知見62〜74のTier1/2実機キャプチャと知見73の`pad_action_lib`結線を経て大半の`action`分岐点が
+実コード生成に対応し(`WaitActionRecord`も`actions/wait.py`で全件対応済み)、現時点の主な
+TODO/`NotImplementedError`は「でっち上げを避けるための正直な未対応」(DPAPI暗号化・
+DataTableスキーマ未確認・外部NLPライブラリ未導入等、design/pad_todo.md A節参照)に絞られている。
+この到達度を目視の印象ではなく実測するために、`tests/fixtures/`の実機キャプチャ全件を実際に
+変換し、各「分岐点」(アクションID・キーワード種別・条件式の形など)ごとに「実コードを生成
+できたか」「`# TODO`に倒れたか」「`NotImplementedError`/`ValueError`で明示的に拒否されたか」
+を集計する。
 
-**測定方法**: `pad_codegen.py`の内部関数を直接呼ばず、公開関数`generate_python()`だけを
+**測定方法**: `pad_codegen`の内部関数を直接呼ばず、公開関数`generate_python()`だけを
 使う(内部実装のリファクタに対して測定ロジックが壊れにくいようにするため)。木構造の
 各「分岐点」(`ActionRecord`/`WaitActionRecord`/`KeywordRecord`/`SetVariableRecord`、
 `ConditionalNode`の各アーム見出し、`SwitchNode`の各アーム見出し、`BlockNode`の見出し、
@@ -56,7 +58,7 @@ from .pad_dsl import (
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
 # `_leaf_unit()`でKeywordRecordの識別名を組み立てる際、第1引数がこの集合に含まれる場合のみ
-# `"EXIT LOOP"`のように2語で束ねる(`pad_codegen.py`の`_generate_keyword()`がこの2語の
+# `"EXIT LOOP"`のように2語で束ねる(`pad_codegen`の`_generate_keyword()`がこの2語の
 # 組み合わせでしか分岐しないため)。`LABEL`/`GOTO`のように引数が可変(ラベル名そのもの)な
 # キーワードは束ねず、名前だけでグルーピングする(でなければラベル名ごとに別バケツに
 # なってしまい集計が無意味に細分化される)。
@@ -231,7 +233,7 @@ def collect_report(fixture_paths: list[Path]) -> dict[tuple[str, str], Bucket]:
 def format_report(buckets: dict[tuple[str, str], Bucket]) -> str:
     total = sum(b.total for b in buckets.values())
     total_ok = sum(b.ok for b in buckets.values())
-    lines = ["# pad_codegen.py カバレッジレポート", ""]
+    lines = ["# pad_codegen カバレッジレポート", ""]
     if total == 0:
         lines.append("対象ユニットが見つかりませんでした。")
         return "\n".join(lines)
