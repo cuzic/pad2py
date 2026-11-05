@@ -1224,3 +1224,53 @@ def test_generate_python_from_unknown_function_condition_raises() -> None:
     tree = build_block_tree(parse_dsl(dsl))
     with pytest.raises(NotImplementedError, match="Blurgle"):
         generate_python(tree)
+
+
+def test_generate_python_from_pdf_extract_text_minimal_params_uses_defaults() -> None:
+    # design/dsl_format_findings.md 知見78: `Pdf.ExtractTextFromPDF`というaction_idは
+    # 知見75の「貼り付け→コピー読み戻し」往復確認ではなく、(1)decompileしたaction_id
+    # 構築式、(2)PADデザイナー自身のUI要素AutomationId、(3)検索+`set_focus()`+`{ENTER}`で
+    # PADデザイナー自身が実際にエラー無く受理、という3経路収束による確証——よって以下のDSL
+    # 行は実機キャプチャではなく、その確証にもとづき手書きした合成(synthetic)テキスト。
+    # オプション引数(PagesToExtract/PageNumber/FromPageNumber/ToPageNumber/Password/
+    # DetectLayout)を省略した最小形――PAD UI側でデフォルトのまま変更していない場合に
+    # 一致する、他のTier1/2アクション(例: file.py/compression.pyのPassword省略)と同じ挙動。
+    dsl = "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf''' ExtractedText=> ExtractedText"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import pdf_actions" in code
+    assert (
+        "ExtractedText = pdf_actions.extract_text_from_pdf('C:\\\\test.pdf', "
+        "pages_to_extract='All', page_number=0, from_page_number=0, to_page_number=0, "
+        "password='', detect_layout=False)" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_extract_text_all_params_given_converts() -> None:
+    # 知見78と同じ合成(synthetic)テキスト――オプション引数を全て明示した場合の経路。
+    dsl = (
+        "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf''' "
+        "PagesToExtract: Pdf.ExtractionMode.SinglePage PageNumber: 2 FromPageNumber: 1 "
+        "ToPageNumber: 3 Password: $'''secret''' DetectLayout: True "
+        "ExtractedText=> ExtractedText"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "ExtractedText = pdf_actions.extract_text_from_pdf('C:\\\\test.pdf', "
+        "pages_to_extract='SinglePage', page_number=2, from_page_number=1, to_page_number=3, "
+        "password='secret', detect_layout=True)" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_pdf_extract_text_without_output_var_falls_back_to_todo() -> None:
+    # `node.output_var`無しは実機では起こらない想定外の形だが、でっち上げたコードを
+    # 出力せず安全にTODOへ倒ることを確認する(他のTier1/2アクションと同じ安全策)。
+    dsl = "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Pdf.ExtractTextFromPDF" in code

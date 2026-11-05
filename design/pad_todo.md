@@ -82,6 +82,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   テーブルを使っており、新しいアクションがそこに未収録なだけかもしれない(未検証)。
   プロジェクトの方針上、高確度だが実機DSL往復での確証が無いためまだ結線しない
   (memory `pad2py_clipboard_paste_technique`に次の一手を記録)。
+  ✅ **ユーザー提案(VK send key)で前進、`ExtractTextFromPDF`を結線(知見78)**: 検索結果の
+  `TreeItem`を`.select()`ではなく`.set_focus()`してから`type_keys("{ENTER}")`すると、
+  RDP不要でPADデザイナーに実際にアクションを追加できることを発見——`Pdf.ExtractTextFromPDF`が
+  これでエラー無く追加できたことを確認し、(ソース計算式・UI自身のAutomationId・この追加成功)の
+  3つの独立した根拠が一致したため「PAD自身の解釈結果による確証」の基準に実質到達したと判断し、
+  `extract_text_from_pdf`1件をcodegenに結線した(以降のコミット参照)。キャンバスからの
+  コピー読み戻しは依然RDP無しでは失敗する(メニュー系操作が`COMError`になる、新規ポップアップが
+  RDP無しで安定しない既知の問題と同根)ため、残りのPDFアクション・Excel/Word/PowerPointの結線は
+  この技法を使いつつ1件ずつ地道に確認する必要がある(🖥️のまま)。
 
 ## C. 構造的・運用上の課題
 

@@ -21,6 +21,7 @@ from . import (
     folder,
     mouse_keyboard,
     pad_datetime,
+    pdf,
     scripting,
     text,
     ui_element,
@@ -47,6 +48,7 @@ _FAMILIES = (
     xml,
     cmd,
     clipboard,
+    pdf,
 )
 
 
