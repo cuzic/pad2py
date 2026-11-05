@@ -3,10 +3,16 @@
 生の`HttpWebRequest`/`HttpWebResponse`ベース。この層はプロジェクトが既に依存している
 `httpx`で実装する(新規HTTPクライアント依存を増やさない)。
 
-`UserAgent`の既定値はデコンパイル調査で「ハードコードされたFirefox 3.6のUA文字列」と
-分かっているが、その**正確なバイト列**は未確認のため、ここでは実在しない文字列を
-でっち上げて埋め込むことはしない——`user_agent=None`(既定)は「PADの既定UAを再現しない」
-を意味し、呼び出し側が実機確認済みの文字列を得たら明示的に渡す。
+`UserAgent`の既定値は`tests/fixtures/tier1_web_xml_batch8.txt`の実機キャプチャで
+正確なバイト列(`"Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/
+20100312 Firefox/3.6"`)まで確認済み——`DownloadFromWeb`/`InvokeWebService`/
+`InvokeSoapService`いずれも同一の値だった。`pad_codegen`側は実機DSLに出現した
+この文字列リテラルをそのまま渡すだけで、でっち上げる必要は無い。`user_agent=None`
+(既定)は値が実機未確認の場合のための安全弁として残す。
+
+`FollowRedirection`(実機既定`True`)は`invoke_web_service()`/`invoke_soap_service()`
+では知見93以前は未対応(httpxの既定`follow_redirects=False`のまま食い違っていた)
+だったが、`follow_redirection`引数を追加し`DownloadFromWeb`と同じ扱いに統一した。
 """
 from __future__ import annotations
 
@@ -113,6 +119,8 @@ def invoke_web_service(
     request_body: str = "",
     fail_on_error_status: bool = False,
     trim_request_body: bool = True,
+    follow_redirection: bool = True,
+    user_agent: str | None = None,
     use_credentials: bool = False,
     username: str = "",
     password: str = "",
@@ -125,11 +133,16 @@ def invoke_web_service(
     headers.setdefault("Accept", accept)
     if content_type:
         headers.setdefault("Content-Type", content_type)
+    if user_agent:
+        headers.setdefault("User-Agent", user_agent)
     body = request_body.strip() if trim_request_body else request_body
     auth = (username, password) if use_credentials else None
     owns_client = client is None
     http_client = client or httpx.Client(
-        timeout=connection_timeout, auth=auth, verify=not accept_untrusted_certificates
+        timeout=connection_timeout,
+        auth=auth,
+        verify=not accept_untrusted_certificates,
+        follow_redirects=follow_redirection,
     )
     try:
         response = http_client.request(
@@ -154,6 +167,8 @@ def invoke_soap_service(
     request_body: str = "",
     custom_headers: str = "",
     connection_timeout: float = 30,
+    follow_redirection: bool = True,
+    user_agent: str | None = None,
     *,
     client: httpx.Client | None = None,
 ) -> InvokeWebServiceResult:
@@ -165,5 +180,7 @@ def invoke_soap_service(
         custom_headers=custom_headers,
         request_body=request_body,
         connection_timeout=connection_timeout,
+        follow_redirection=follow_redirection,
+        user_agent=user_agent,
         client=client,
     )

@@ -1986,3 +1986,15 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`に`trim_fields: bool = True`引数を追加し、`True`の場合はCSV各セル(ヘッダー行含む)に`.strip()`を適用してから列名割り当て/数値変換(知見92)を行うようにした。`pad_action_lib/file_actions.py`の`read_from_csv_file()`にも同じ引数を追加して委譲した。`pad_codegen/actions/variables.py`の`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`・`pad_codegen/actions/file.py`の`File.ReadFromCSVFile.ReadCSV`の両方で`TrimFields`を読み取って結線するよう更新した(従来は値を読み取らず常に無視していた——もし実機で`TrimFields: False`な非トリムCSVが来た場合に誤った結果を生成しうる、知らぬ間の挙動不一致だった)。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
 
 **留保事項**: ヘッダー行自体(`FirstLineContainsColumnNames: True`時の列名)もトリム対象になるかは直接確認しておらず(今回のテストは`FirstLineContainsColumnNames: False`で実施)、実装では一貫性のため同じ`.strip()`をヘッダー行にも適用しているが、これは推測の範囲内にとどまる。
+
+## 94. 【VM不要、既存フィクスチャの再点検で発見】`Web.*`の`UserAgent`/`FollowRedirection`が`web_actions`側で未対応のまま無視されていたバグを修正——`UserAgent`の正確な文字列は既に実機フィクスチャに含まれていた
+
+知見93の「パラメータを読み取っているように見えて実は無視している」という不整合のパターンを他のモジュールでも探すため、`pad_codegen/actions/*.py`全体を「無視」「未実装のまま」等のキーワードで再点検した。`web.py`の`Web.*`モジュールに同種の問題を発見したが、今回は**VMでの新規実機検証は一切不要**だった——既存の実機キャプチャ`tests/fixtures/tier1_web_xml_batch8.txt`を読み直すだけで解決した。
+
+**発見した事実**: `web.py`のモジュールdocstringには「`UserAgent`はPAD側のハードコードされたFirefox 3.6 UA文字列だが正確なバイト列は未確認」と書かれていたが、**実際には`tier1_web_xml_batch8.txt`に正確な文字列が既にキャプチャされていた**(`UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6'''`、`DownloadFromWeb`/`InvokeWebService`/`InvokeSoapService`の3アクション全てで同一値)——「でっち上げを避けるため未確認のまま」という判断自体は古い情報に基づく誤りだった。
+
+さらに`pad_action_lib.web_actions`の`invoke_web_service()`/`invoke_soap_service()`は`follow_redirection`/`user_agent`という引数を**そもそも受け付けていなかった**(`download_from_web()`だけが対応済み)。`httpx.Client()`はリダイレクト追従の既定値が`follow_redirects=False`であり、実機の既定値`FollowRedirection: True`と食い違う——つまり`InvokeWebService`/`InvokeSoapService`経由で生成されたPythonコードは、実機のPADフローとは異なり**リダイレクトを追従しない**という、サイレントな挙動不一致のバグになっていた。
+
+**修正内容**: `dump_daemon/pad_action_lib/web_actions.py`の`invoke_web_service()`/`invoke_soap_service()`に`follow_redirection: bool = True`・`user_agent: str | None = None`引数を追加し、`httpx.Client(follow_redirects=follow_redirection, ...)`・`headers.setdefault("User-Agent", user_agent)`を適用するようにした(`download_from_web()`と同じパターンに統一)。`pad_codegen/actions/web.py`の3アクション全ての結線で`FollowRedirection`/`UserAgent`パラメータを読み取り、実際に渡すよう修正した(`Web.DownloadFromWeb.Download`は`user_agent`を実装側は既に対応していたのに結線漏れだった)。`httpx.Client`のコンストラクタ引数を捕捉するテスト(`monkeypatch`でクラスを差し替え)で`follow_redirects`が正しく渡ることを、`httpx.MockTransport`で`User-Agent`ヘッダーが正しく送られることをそれぞれ確認した。
+
+**留保事項**: `ClearCookies`/`EncodeRequestBody`は依然未対応のまま意図的にTODOへ残す。`ClearCookies`はPAD側がフロー実行全体で永続的なCookieセッションを持つ前提の挙動と推測されるが、`pad_action_lib`側は呼び出し毎に新規`httpx.Client`を作る設計のためCookie永続化という概念自体が無く、対応には`CodegenContext`へセッション状態を持たせる等の大きな設計変更を伴う。`EncodeRequestBody`はdecompile調査が未着手のため意味論が未確認のまま。

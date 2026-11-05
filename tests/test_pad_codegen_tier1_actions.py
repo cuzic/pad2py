@@ -208,14 +208,28 @@ def test_crypto_database_batch7_converts_only_keyless_functions() -> None:
 
 
 def test_web_xml_batch8_converts_except_dpapi_password() -> None:
+    # knowledge 93以前はUserAgent/FollowRedirectionが`web_actions`側で未対応
+    # (httpxの既定follow_redirects=Falseのまま実機の既定True と食い違っていた)。
+    # 実機キャプチャ済みのUA文字列(ハードコードされたFirefox 3.6)も結線する。
+    _UA = "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6"
     code = _generate("tier1_web_xml_batch8.txt")
     assert "database_actions.close_connection(SQLConnection)" in code
-    assert "WebPageText = web_actions.download_from_web('sample', connection_timeout=30, " in code
-    assert "_web_service_result = web_actions.invoke_web_service('sample', method='Get', " in code
+    assert (
+        "WebPageText = web_actions.download_from_web('sample', connection_timeout=30, "
+        f"follow_redirection=True, user_agent={_UA!r}, accept_untrusted_certificates=False)" in code
+    )
+    assert (
+        "_web_service_result = web_actions.invoke_web_service('sample', method='Get', " in code
+    )
+    assert f"follow_redirection=True, user_agent={_UA!r}, accept_untrusted_certificates=False)" in code
     assert "WebServiceResponse = _web_service_result.response" in code
     assert "WebServiceResponseHeaders = _web_service_result.response_headers" in code
     assert "StatusCode = _web_service_result.status_code" in code
-    assert "_soap_service_result = web_actions.invoke_soap_service('sample', " in code
+    assert (
+        "_soap_service_result = web_actions.invoke_soap_service('sample', "
+        "request_body='sample', custom_headers='sample', connection_timeout=30, "
+        f"follow_redirection=True, user_agent={_UA!r})" in code
+    )
     assert "SoapServiceResponse = _soap_service_result.response" in code
     assert "StatusCode2 = _soap_service_result.status_code" in code
     assert "XmlDocument = xml_actions.read_xml_from_file('sample')" in code

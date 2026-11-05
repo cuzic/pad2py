@@ -124,6 +124,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `CloseWindow`という一連の流れを結線完了させた(commit予定)。
 - [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
   「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
+- [x] 💻 `Web.*`の`UserAgent`/`FollowRedirection`が値を読み取らず無視されていたバグの修正。
+  ✅ **VM不要・既存フィクスチャの再点検で修正完了(知見94)**: 知見93のパターン
+  (値を読み取るように見えて実は無視)を他モジュールでも探索した結果発見。
+  `UserAgent`の正確なUA文字列は実は`tests/fixtures/tier1_web_xml_batch8.txt`に
+  既に実機キャプチャ済み(「正確なバイト列は未確認」というdocstringの記述が古かった)
+  だったため、でっち上げではなく実機値そのまま結線できた。`invoke_web_service()`/
+  `invoke_soap_service()`は`follow_redirection`/`user_agent`を受け付けておらず、
+  httpxの既定`follow_redirects=False`が実機既定`True`と食い違うサイレントなバグ
+  だったため修正・結線した。`ClearCookies`/`EncodeRequestBody`は設計変更を伴う/
+  decompile未着手のため依然未対応。
 
 ## B. 一度も実機検証していない領域(TODOより深い穴)
 

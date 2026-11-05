@@ -145,3 +145,54 @@ def test_invoke_soap_service_posts_with_text_xml_content_type() -> None:
     assert captured["headers"]["content-type"] == "text/xml"
     assert captured["body"] == b"<Envelope/>"
     assert result.response == "<soap/>"
+
+
+def test_download_from_web_sends_user_agent_header() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = request.headers
+        return httpx.Response(200, text="ok")
+
+    web.download_from_web("http://example.test/", user_agent="MyAgent/1.0", client=_client(handler))
+    assert captured["headers"]["user-agent"] == "MyAgent/1.0"
+
+
+def test_invoke_web_service_sends_user_agent_header() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = request.headers
+        return httpx.Response(200, text="ok")
+
+    web.invoke_web_service("http://example.test/", user_agent="MyAgent/1.0", client=_client(handler))
+    assert captured["headers"]["user-agent"] == "MyAgent/1.0"
+
+
+def test_invoke_soap_service_sends_user_agent_header() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = request.headers
+        return httpx.Response(200, text="ok")
+
+    web.invoke_soap_service("http://example.test/", user_agent="MyAgent/1.0", client=_client(handler))
+    assert captured["headers"]["user-agent"] == "MyAgent/1.0"
+
+
+def test_invoke_web_service_passes_follow_redirection_to_new_client(monkeypatch) -> None:
+    # design/dsl_format_findings.md 知見93関連: knowledge 93以前はhttpxの既定
+    # follow_redirects=Falseのまま、実機の既定True と食い違っていた。clientを
+    # 自前で構築する経路(client未指定時)にfollow_redirection引数が実際に渡る
+    # ことを、httpx.Clientのコンストラクタ引数を捕捉して確認する。
+    captured = {}
+    real_client = httpx.Client
+
+    class _SpyClient(real_client):
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+            super().__init__(*args, **kwargs, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    monkeypatch.setattr(web.httpx, "Client", _SpyClient)
+    web.invoke_web_service("http://example.test/", follow_redirection=False)
+    assert captured["follow_redirects"] is False
