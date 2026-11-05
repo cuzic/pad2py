@@ -91,6 +91,8 @@ def generate_python(
         imports.append("import io")
     if any("os.path.split(" in line for line in body):
         imports.append("import os")
+    if any("math.fmod(" in line for line in body):
+        imports.append("import math")
     for module_name in (
         "text_actions",
         "datetime_actions",

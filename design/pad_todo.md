@@ -45,6 +45,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `SetVariableRecord`の複合式を実際のPython式へ変換するようにした(commit 512cf11)。
   🖥️ 残課題: `mod`の負数での符号規則・`/`が常に浮動小数点除算になるかという値の意味論は
   今回発見した「Run実行+ファイル書き出し」の手法で追って確認できる見込み(知見81に記録)。
+  ✅ **`/`・`mod`の値の意味論も実機確認・結線完了(知見83)**: `/`は常に浮動小数点除算で
+  Pythonの`/`と完全に一致(`-7 / 2 = -3.5`)。`mod`は符号が被除数と一致する
+  (VB.NET/C言語のfmod方式、`-7 mod 3 = -1`・`7 mod -3 = 1`)——Pythonの`%`(符号は除数と
+  一致)とは異なるため、`math.fmod(a, b)`として変換するよう`render.py`を更新した
+  (commit予定)。これで`pad_expr`の演算子優先順位・値の意味論は全て解決し(関数呼び出しが
+  `SET`式内に現れるケースのみ実機未確認のまま)、`SET`複合式のTODOフォールバックは
+  構文解析失敗時のみに縮小した。
   💻 **ついでに`UIAutomation.GetWindow.GetUseTimeout`も実コード化(VM不要)**: 知見79/80の
   「不透明な参照(Instance系)はPAD側では単なる変数名、Python側も通常の変数参照で良い」
   という洞察が知見57の「window instance」問題にも当てはまると気づいた。`Control`が

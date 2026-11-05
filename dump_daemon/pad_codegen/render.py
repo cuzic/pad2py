@@ -93,39 +93,36 @@ def render_condition(operand1: object, operator: str, operand2: object) -> str:
     return f"{render_value(operand1)} {py_operator} {render_value(operand2)}"
 
 
-_UNCONFIRMED_VALUE_SEMANTICS_OPS = frozenset({"mod", "/"})
-
-
 def render_expr_as_python(node: ExprNode) -> str | None:
     """design/dsl_format_findings.md 知見81で優先順位が実機確認された構文木から、
     実際のPython式を生成する。
 
-    算術演算子`mod`・`/`は値の意味論(`mod`が負数でPythonの`%`と同じ符号規則になるか・`/`が
-    常に浮動小数点除算になるか)が実機未検証のため(知見53・81で別の未解決課題として
-    明記済み)、木の中にこれらが1つでも含まれる場合は安全に`None`を返す——呼び出し元は
-    `RawExpr.text`のTODOフォールバックに委ねる。`SET`式の中に関数呼び出し(`FuncCall`)が
-    現れるケースも実機未確認の拡張(`pad_expr`モジュールのdocstring参照)のため同様に扱う。
+    算術演算子`/`・`mod`の値の意味論は知見82で実機確認済み: `/`は常に浮動小数点除算
+    (`7 / 2 = 3.5`・`-7 / 2 = -3.5`、Pythonの`/`と一致)で直接対応できるが、`mod`は
+    PythonやVB.NETの`a - b * Int(a / b)`方式(商を0方向へ切り捨てる、結果の符号は
+    **被除数**と一致)であり、Pythonの`%`演算子(結果の符号は除数と一致)とは異なる
+    (`-7 mod 3 = -1`(Pythonの`%`なら`2`)・`7 mod -3 = 1`(Pythonの`%`なら`-2`))——
+    これは`math.fmod()`の定義(C言語の`fmod`と同じ、符号は被除数と一致)と完全に一致する
+    ため、`mod`は`math.fmod(a, b)`として変換する。`SET`式の中に関数呼び出し(`FuncCall`)が
+    現れるケースは実機未検証の拡張(`pad_expr`モジュールのdocstring参照)のため、その場合は
+    安全に`None`を返す——呼び出し元は`RawExpr.text`のTODOフォールバックに委ねる。
     """
-    if _contains_unconfirmed_value_semantics(node):
+    if _contains_func_call(node):
         return None
     return _render_expr_as_python(node)
 
 
-def _contains_unconfirmed_value_semantics(node: ExprNode) -> bool:
+def _contains_func_call(node: ExprNode) -> bool:
     if isinstance(node, Atom):
         return False
     if isinstance(node, Paren):
-        return _contains_unconfirmed_value_semantics(node.inner)
+        return _contains_func_call(node.inner)
     if isinstance(node, UnaryOp):
-        return _contains_unconfirmed_value_semantics(node.operand)
+        return _contains_func_call(node.operand)
     if isinstance(node, FuncCall):
         return True
     if isinstance(node, BinOp):
-        if node.op in _UNCONFIRMED_VALUE_SEMANTICS_OPS:
-            return True
-        return _contains_unconfirmed_value_semantics(
-            node.left
-        ) or _contains_unconfirmed_value_semantics(node.right)
+        return _contains_func_call(node.left) or _contains_func_call(node.right)
     raise TypeError(f"Unsupported expr node: {node!r}")
 
 
@@ -150,8 +147,12 @@ def _render_expr_as_python(node: ExprNode) -> str:
             # 常に比較式/真偽値リテラルだったため、論理XORとして解釈する——数値への
             # ビット単位XORの可能性は未検証のまま残る。
             return f"bool({left}) != bool({right})"
-        if node.op in ("+", "-", "*"):
+        if node.op in ("+", "-", "*", "/"):
             return f"{left} {node.op} {right}"
+        if node.op == "mod":
+            # design/dsl_format_findings.md 知見82: 符号は被除数と一致する
+            # (C言語のfmod方式)——Pythonの`%`(符号は除数と一致)とは異なる。
+            return f"math.fmod({left}, {right})"
         if node.op in _OPERATOR_MAP:
             return f"{left} {_OPERATOR_MAP[node.op]} {right}"
         raise ValueError(f"Unsupported binary operator: {node.op!r}")

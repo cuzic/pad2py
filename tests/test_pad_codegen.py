@@ -1051,19 +1051,63 @@ def test_generate_python_converts_arithmetic_precedence_in_set_variable_expressi
     assert namespace["Result"] == 7
 
 
-def test_generate_python_falls_back_to_todo_for_mod_and_division_value_semantics() -> None:
-    # design/dsl_format_findings.md 知見53・81: `mod`の負数での符号規則・`/`が常に浮動小数点
-    # 除算になるかは値の意味論として実機未検証のため、優先順位が確認済みでも安全にTODOへ倒す。
-    mod_dsl = "SET Result TO 1 + 2 * 3 mod 4"
-    tree = build_block_tree(parse_dsl(mod_dsl))
+def test_generate_python_converts_division_to_python_division() -> None:
+    # design/dsl_format_findings.md 知見82(実機確認済み): `/`は常に浮動小数点除算で
+    # Pythonの`/`と一致する(`7 / 2 = 3.5`・`-7 / 2 = -3.5`)。
+    dsl = "SET Result TO -7 / 2"
+    tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD compound expression for variable 'Result': 1 + 2 * 3 mod 4" in code
-    assert "Result = None" in code
+    compile(code, "<generated>", "exec")
+    assert "Result = -7 / 2" in code
+    assert "# TODO" not in code
 
-    div_dsl = "SET Result TO 4 / 2"
-    tree = build_block_tree(parse_dsl(div_dsl))
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result"] == -3.5
+
+
+def test_generate_python_converts_mod_to_math_fmod() -> None:
+    # design/dsl_format_findings.md 知見82(実機確認済み): `mod`の符号は被除数と一致し
+    # (C言語のfmodと同じ)、Pythonの`%`(符号は除数と一致)とは異なる
+    # (`-7 mod 3 = -1`・`7 mod -3 = 1`、Pythonの`%`ならそれぞれ`2`・`-2`になり食い違う)。
+    dsl = "SET Result1 TO -7 mod 3\nSET Result2 TO 7 mod -3"
+    tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD compound expression for variable 'Result': 4 / 2" in code
+    compile(code, "<generated>", "exec")
+    assert "import math" in code
+    assert "Result1 = math.fmod(-7, 3)" in code
+    assert "Result2 = math.fmod(7, -3)" in code
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result1"] == -1
+    assert namespace["Result2"] == 1
+
+
+def test_generate_python_from_real_knowledge53_compound_arithmetic_expression_converts() -> None:
+    # design/dsl_format_findings.md 知見53の実機キャプチャそのもの(`SET NewVar3 TO
+    # 1 + 2 * 3 - 4 / 2 mod 3`)。知見82でmod/除算の値の意味論も確認済みのため、
+    # 実際に計算できるPython式へ変換されることを確認する:
+    # (1 + 2*3) - ((4/2) mod 3) = 7 - fmod(2.0, 3) = 7 - 2.0 = 5.0
+    dsl = "SET NewVar3 TO 1 + 2 * 3 - 4 / 2 mod 3"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["NewVar3"] == 5.0
+
+
+def test_generate_python_falls_back_to_todo_for_func_call_in_compound_expression() -> None:
+    # `pad_expr`モジュールのdocstring: SET式の中の関数呼び出しは文法上受理されるが実機未確認の
+    # 拡張のため、でっち上げたコードを出力せず安全にTODOへ倒れることを確認する。
+    dsl = "SET Result TO Contains(Var1, Var2)"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD compound expression for variable 'Result': Contains(Var1, Var2)" in code
 
 
 def test_generate_python_from_real_wait_for_window_whole_subflow_capture_compiles() -> None:
