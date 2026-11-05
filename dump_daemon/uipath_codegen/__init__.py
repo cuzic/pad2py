@@ -375,7 +375,30 @@ def _generate_do_while(
 def _generate_try_catch(
     node: TryCatchNode, indent: int, invoke_resolver: dict[str, str] | None = None
 ) -> list[str]:
+    """知見76: `catches`が2件以上の場合、それぞれの.NET例外型が
+    `_EXCEPTION_TYPE_MAP`で同じPython例外型(未知の型は無条件で
+    `Exception`にフォールバックするため衝突しうる)へ解決されると、
+    生成される`except`節は先に書いた方が常に先勝ちする(Pythonの仕様)
+    ——後続の`except`節が到達不能な死んだコードになり、意図した
+    「特定の例外だけ別処理、それ以外は汎用処理」という制御フローが
+    サイレントに崩れる(実際に`exec()`して、後続のハンドラが一度も
+    実行されないことを確認済み)。でっち上げた.NET例外階層の精密対応
+    (v1スコープ外)をする代わりに、この衝突を検出した場合はでっち上げず
+    `# TODO`へ全体を倒す——`try_body`だけ正しく生成して`except`を
+    壊すより、安全側に倒す。"""
     prefix = INDENT * indent
+    if len(node.catches) > 1:
+        resolved_types = [
+            _EXCEPTION_TYPE_MAP.get(c.exception_type.lower(), "Exception") for c in node.catches
+        ]
+        if len(set(resolved_types)) < len(resolved_types):
+            exc_types = ", ".join(c.exception_type for c in node.catches)
+            return [
+                f"{prefix}# TODO: TryCatch with ambiguous/colliding exception type "
+                f"mapping among multiple catches ({exc_types}) — generating except "
+                "clauses would silently shadow one handler with another, refusing "
+                "to guess"
+            ]
     lines = _generate_variable_inits(node.variables, indent)
     lines.append(f"{prefix}try:")
     try_body = _ensure_nonempty_suite(

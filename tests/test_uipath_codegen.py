@@ -301,6 +301,58 @@ def test_try_catch():
     _compiles(code)
 
 
+def test_try_catch_with_multiple_catches_resolving_to_distinct_types_still_generates():
+    """知見76: 2件以上の`catches`でも、`_EXCEPTION_TYPE_MAP`で解決される
+    Python例外型が互いに異なる限り(衝突が無い限り)従来通り生成される
+    ことの回帰テスト(知見76の安全策が過剰に広く効かないことを確認)。"""
+    wf = _wrap(
+        [
+            TryCatchNode(
+                try_body=[],
+                catches=[
+                    CatchArm(exception_type="s:Exception", var_name="e1", body=[]),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "except Exception as e1:" in code
+    _compiles(code)
+
+
+def test_try_catch_with_colliding_exception_types_is_todo_not_silently_shadowed():
+    """知見76: 複数の`catches`が`_EXCEPTION_TYPE_MAP`の未知型フォールバック
+    経由で同じPython例外型(`Exception`)へ解決される場合、Pythonの
+    `except`は先勝ちするため後続のハンドラが到達不能な死んだコードになる
+    ——意図した「特定の例外だけ別処理」という制御フローがサイレントに
+    崩れることを防ぐため、でっち上げた例外階層対応をする代わりに
+    `# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            TryCatchNode(
+                try_body=[AssignNode(target=VbExpr(text="x"), value=Literal(value="a"))],
+                catches=[
+                    CatchArm(
+                        exception_type="System.IO.FileNotFoundException",
+                        var_name="ex1",
+                        body=[AssignNode(target=VbExpr(text="y"), value=Literal(value="specific"))],
+                    ),
+                    CatchArm(
+                        exception_type="System.Exception",
+                        var_name="ex2",
+                        body=[AssignNode(target=VbExpr(text="y"), value=Literal(value="general"))],
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: TryCatch with ambiguous/colliding exception type mapping" in code
+    assert "try:" not in code
+    _compiles(code)
+
+
 def test_switch_with_int_typed_keys():
     assign = AssignNode(target=VbExpr(text="y"), value=Literal(value="z"))
     wf = _wrap(

@@ -3691,6 +3691,56 @@ Pythonコードへの変換を試み、失敗時に`NotImplementedError`を送�
 リポジトリ全体で全870件通過。知見70のカバレッジツール自体の出力も
 より具体的になった(副次的な改善)。
 
+## 76. `TryCatch`に複数の`catches`があり、未知の.NET例外型が同じPython例外型(`Exception`)へ解決される場合、後続のハンドラが到達不能な死んだコードになる実在するバグを発見・安全側に倒して解決(VM不使用、新規発見)
+
+知見75でTODOコメントの情報量を増やす作業を終えた後、`_generate_try_catch`
+の実装をあらためて読み返していたところ、`_EXCEPTION_TYPE_MAP`の
+「未知の.NET例外型は無条件で`Exception`にフォールバックする」という
+既存の(意図的な)簡略化が、**`catches`が2件以上あるTryCatch**では
+単なる精度の劣化では済まない、より深刻な問題を引き起こすと判明した。
+
+Pythonの`try`/`except`は`except`節を**上から順に試し、最初にマッチした
+節だけが実行される**言語仕様を持つ。VB.NETの`TryCatch.Catches`も概念上は
+同様に優先順位があるが、実際の`.NET`型階層(例:
+`System.IO.FileNotFoundException`は`System.Exception`のサブタイプ)に
+基づいて正しくマッチする。知見確認済みの型(`s:Exception`)以外を全て
+無条件で`Exception`にフォールバックする現在の実装では、「特定の例外だけ
+別処理、それ以外は汎用`Exception`で処理」という極めて一般的なRPAパターン
+(例: `FileNotFoundException`を個別に処理し、それ以外は汎用ログだけ出す)
+が、両方とも`except Exception:`に解決されてしまい、**2番目以降の
+`except`節が実行時に一度も到達しない死んだコード**になる。
+
+**実際に`exec()`して確認**: `FileNotFoundException`用のハンドラを先に、
+`System.Exception`用の汎用ハンドラを後に置いたコードを生成し実行した
+ところ、常に最初の(本来は特定の例外専用だったはずの)ハンドラだけが
+実行され、2番目のハンドラの出力は一度も現れなかった——サイレントに
+制御フローが崩れることを実証した。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`_generate_try_catch`): `catches`が2件以上の場合、各`catch`が
+`_EXCEPTION_TYPE_MAP`経由で解決するPython例外型の集合に重複が無いかを
+事前に確認する。重複がある場合(今回のような未知型同士のフォールバック
+衝突を含む)、でっち上げた.NET例外階層への精密対応(v1スコープ外)をする
+代わりに、`try_body`も含めてTryCatch全体を`# TODO`へ倒す——`try_body`
+だけ正しく動くが`except`の意味が壊れた中途半端なコードを生成するより、
+全体を安全側に倒す判断。1件のみの`catches`(実機確認済みの`Main.xaml`の
+実例)は影響を受けない。
+
+`tests/test_uipath_codegen.py`に
+`test_try_catch_with_multiple_catches_resolving_to_distinct_types_still_generates`
+(安全策が過剰に広く効かないことの確認)、
+`test_try_catch_with_colliding_exception_types_is_todo_not_silently_shadowed`
+(実際にバグを再現した上で`# TODO`へ倒れることの確認)を追加。UiPath
+関連テスト全247件通過、リポジトリ全体で全872件通過(知見70のカバレッジは
+72%のまま、実機フィクスチャが単一`catch`のみだったため変化無し)。
+
+**この知見で確定したこと**: 知見74の「言語レベルの曖昧性」と似て、今回も
+実機属性の再読み込みではなく既存コードの実装そのものを読み返す
+(「この簡略化が複数件の文脈でどう振る舞うか」を具体的に`exec()`で
+確認する)ことで見つかった——知見70〜75の「実機属性を調べる」とは別の、
+「既存のでっち上げ防止ロジックが単体では正しくても、複数件が組み合わさる
+と壊れないか」という第3の発見経路が有効だと確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
