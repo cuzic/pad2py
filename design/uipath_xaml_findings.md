@@ -1539,6 +1539,83 @@ Object Repositoryの実機確認はこの再起動後に持ち越し)。
   資格情報を事前登録しておくと、後続の`mstsc /v:<host>`がプロンプト無しで
   繋がる。
 
+## 34. VM再起動で新Studioインストールが消失——Connected Platformの「ダウンロード完了」は実インストールと別物、かつRobotサービスは登録パス更新後も「再起動するまで旧プロセスのまま」
+
+知見33の末尾で保留にした「Studio/Robotバージョン不一致→マシン再起動」を
+実際に試した結果、Connected Platformインストーラの挙動についてさらに
+いくつかの重要な事実が判明した。
+
+**`gcloud compute instances reset`(ハード再起動)後、新Studioのインストールが
+丸ごと消えていた**: 再起動前に`C:\Program Files\UiPathPlatform\Studio\
+26.0.204-cloud.25540\UiPath.Studio.exe`として存在していたはずのファイルが、
+再起動後には`Studio`サブディレクトリ自体が存在しない状態になっていた
+(`Installer`・`Updater`サブディレクトリのみ残存)。原因は、
+`UiPath.Connected.Updater.Service`がOS起動時に自動的に未完了インストールの
+再処理を始め、`C:\ProgramData\UiPathConnected\Installer\Temp\Installer-<hash>\`
+配下に製品ファイルを再ダウンロード・再展開していたが、このときのログ
+(`UiPath.Connected.Installer.Ui.<date>.log`の`SendProductsInfoReady`イベント)
+を見ると、全製品が`"IsInstalled":true`かつ`"InstallRequested":false`,
+`"CanLaunch":false`という状態だった——つまり**「ダウンロード+展開が完了した
+ことを示す進捗バーの`Install complete`表示」は、実際の配置(Program Filesへの
+コピー・サービス登録等)が完了したことを意味しない**。明示的に「Install」
+ボタンを押して`InstallRequested`をtrueにする操作をもう一度行わない限り、
+最終的な配置は実行されず、しかもこの「ステージングだけ済んだ」状態は
+再起動を跨いで保持されない(次回起動時にまた最初からステージングし直す)。
+
+**インストーラGUIの直接起動は`CommandLine.NoVerbSelectedError`になる**:
+`UiPath.Connected.Installer.Ui.exe`を引数無しで直接`Start-Process`すると、
+サービス経由で呼ばれる際に渡されるはずの起動verb/コンテキストが欠けており
+即座にエラーダイアログになる。正しい起動経路は、ブートストラップMSI
+(`UiPathPlatform.msi`)を改めて実行すること——MSIがサービスに正しい
+コンテキストで起動を指示し、そこから本来のGUIが開く。
+
+**MSIを2回実行すると`Error 1500`で衝突する——しかもユーザー視点では
+「Installing applicationが終わらない」ように見える**: 1回目のMSI実行で
+実際には裏で`UiPath.Connected.Installer.Ui.exe`(製品選択画面)が起動して
+ユーザー入力待ちの状態で生き続けていたが、**この画面はユーザーのRDP画面には
+描画されていなかった**(知見33で触れたBitBlt/アクティブデスクトップ問題と
+同系統の現象と思われる)。ユーザーはMSIブートストラップ自身の小さな
+「Installing application...」ダイアログだけを見ており、それが進まないので
+もう一度MSIを実行した結果、1回目のプロセスがまだ生きていることによる
+`Error 1500`(「別のインストールが進行中」)に当たった。**対処は2回目を
+キャンセルし、`pywinauto.Desktop(backend="uia").windows()`で既に存在する
+1回目の`UiPath.Connected.Installer.Ui.exe`ウィンドウを探して直接UIA操作する
+こと**(再実行ではなく、既存プロセスへの接続)。
+
+**製品選択画面で`InstallStudio`をチェックすると`InstallRobot`チェックボックスが
+自動的に`enabled=False`になる**: RobotはStudioの`HardDependencies`に
+含まれているため、Studioを選ぶと自動的に同時インストール対象になり、
+個別にトグルする必要も権限も無い(チェック状態は変更不可)。
+
+**それでも「versions do not match」エラーは再発した——原因はサービスの
+登録パスとメモリ上プロセスのギャップ**: 2回目は実際に最後まで
+「Install」ボタンを押して完了させ、`C:\Program Files\UiPathPlatform\Studio\
+26.0.204-cloud.25540\`と`...\Robot\26.0.204-cloud.25540\`の両方が実在する
+ことを確認した。Windowsサービス`UiPath RobotJS Service`の登録情報
+(`Get-CimInstance Win32_Service`の`PathName`)も新バイナリを指すよう
+更新されていた。**しかし新Studioを起動すると依然として同一のモーダル
+エラー(`Incompatible version found Robot: 21.4.4.0, Studio 26.0.204.0`)が
+出た**。実行中プロセス`UiPath.RobotJS.ServiceHost`(PID確認済み)は旧
+バイナリのままメモリに残っており、サービスレコードのパス更新だけでは
+実行中プロセスは入れ替わらない。`Restart-Service`も非管理者トークンでは
+`Cannot open ... service`で失敗するため、**エラーメッセージが要求する
+「マシンの再起動」は文字通り必須で、サービス単体の再起動で代替することは
+(このセッションの権限では)できない**。→ 2回目の`gcloud compute instances
+reset`を実施し、再起動後の状態確認は次の知見に持ち越し。
+
+**教訓のまとめ(再利用可能)**:
+- Connected Platformの「ダウンロード/展開」完了と「実インストール
+  (配置・サービス登録)」完了は別イベントであり、UIの進捗表示だけでは
+  区別できない。`SendProductsInfoReady`イベントの`InstallRequested`/
+  `CanLaunch`フィールドで確認するのが確実。
+- ステージング済みだが未確定の状態は再起動で消える(再ステージングからやり直しになる)。
+- 既に起動中の非表示ウィンドウに気づかずMSIを再実行すると`Error 1500`を
+  誤って「初回の不具合」と誤認しやすい——**まずプロセス一覧で
+  `UiPath.Connected.Installer.Ui`等が既に存在していないか確認するのが先**。
+- Windowsサービスの「登録パス更新」と「実行中プロセスの入れ替え」は別物——
+  サービスバイナリを差し替えても、OS再起動かサービス自体の再起動
+  (admin権限が必要)のどちらかが無い限り、旧プロセスが動き続ける。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
