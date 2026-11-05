@@ -467,8 +467,20 @@ _SWITCH_NUMERIC_TYPES = {
 
 
 def _render_switch_key(key: str, type_arguments: str) -> str:
-    if type_arguments.lower() in _SWITCH_NUMERIC_TYPES:
+    """知見81: `_vb_cmp()`(知見77)は`bool`オペランドを比較の**前**に
+    `True→-1`/`False→0`へ変換する(知見51と同じ規則)——`type_arguments`が
+    `x:Boolean`の場合に`key`を素の文字列リテラル(`'True'`)のまま渡すと、
+    `_vb_cmp("flag" is bool True, "True" is str)`の文字列側が
+    `_s2f("True")`で`float()`に失敗し`ValueError`で**クラッシュする**
+    (知見77導入前は素の`==`で単に`False`になるだけで済んでいた、知見77が
+    生んだ新規の退行)。数値型と同じく、Boolean型のキーも裸のPython
+    真偽値リテラル(`True`/`False`)として出力し、`_vb_cmp`の`bool`→`int`
+    変換を両オペランドに一貫して適用させることで解消する。"""
+    type_tag = type_arguments.lower()
+    if type_tag in _SWITCH_NUMERIC_TYPES:
         return key
+    if type_tag in _BOOLEAN_TYPES:
+        return "True" if key.strip().lower() == "true" else "False"
     return repr(key)
 
 

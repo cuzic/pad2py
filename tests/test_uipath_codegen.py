@@ -474,6 +474,42 @@ def test_switch_comparison_matches_vb_select_case_semantics_not_python_bare_equa
     assert stdout.getvalue().strip() == "matched"
 
 
+@pytest.mark.parametrize(
+    ("flag_literal", "key", "expected"),
+    [
+        # 知見81: 知見77で`_vb_cmp()`経由の比較に統一した際、`x:Boolean`型の
+        # `Switch`キーは素の文字列リテラル(`'True'`)のままだったため、
+        # `_vb_cmp(True, 'True')`が`bool`→`int`変換後に文字列側を`float()`
+        # しようとして`ValueError`でクラッシュするという新規の退行を生んで
+        # いた(知見77導入前は素の`==`で単に不一致になるだけで済んでいた)。
+        ("True", "True", "matched"),
+        ("False", "False", "matched"),
+        ("True", "False", ""),
+    ],
+)
+def test_switch_with_boolean_typed_keys_does_not_crash_after_vb_cmp_fix(
+    flag_literal: str, key: str, expected: str
+) -> None:
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="flag"), value=VbExpr(text=flag_literal)),
+            SwitchNode(
+                expression=VbExpr(text="flag"),
+                type_arguments="x:Boolean",
+                arms=[SwitchArm(key=key, body=[MessageBoxNode(text=Literal(value="matched"))])],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
 def test_click_with_known_selector_generates_pywinauto_chain():
     """知見9の実例セレクタ。マッピング可能な属性があれば実コードを生成し、
     未マッピング属性(app/aaname)・role値の未検証をコメントで警告する。"""
