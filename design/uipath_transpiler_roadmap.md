@@ -637,3 +637,16 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     回帰テスト追加(複数`{expr}`・閉じ忘れの安全フォールバックも含む)、
     UiPath関連テスト全207件通過、リポジトリ全体で全825件通過。文字列
     補間の残課題は書式指定子・フィールド幅(知見65参照)のみとなった。
+28. **(完了、2026-11-05)** `CDbl`/`CInt`/`CBool`の`&H`/`&O`16進・8進
+    リテラル文字列非対応を解決(VM不使用、知見67——知見46・53で2回
+    「軽微な既知の限界」として先送りしていた残課題): .NETランタイム
+    本体のソース(`Microsoft.VisualBasic.CompilerServices.Utils.
+    IsHexOrOctValue`、定義は`Conversions.vb`ではなく別ファイル
+    `Utils.LateBinder.vb`——`gh api search/code`でリポジトリ全体検索し
+    発見)で、`&H1A`/`&O17`のような文字列が`ParseDouble`を経由せず
+    直接16進/8進の整数として変換されると確定。`_vb_cdbl`(`CDbl`/`CInt`
+    共用)・`_vb_bool`(`CBool`)・`_vb_cbool_of_string_literal`(`CBool`
+    リテラル専用判定、新規共有関数`_parse_vb_hex_or_oct_str`経由)の
+    3箇所に同じ`&H`/`&O`判定を追加。`&B`2進リテラル文字列は実例が無い
+    ため今回も対象外のまま。回帰テスト追加(リテラル・変数経由の両方)、
+    UiPath関連テスト全215件通過、リポジトリ全体で全835件通過。

@@ -3312,6 +3312,62 @@ Lark呼び出し前の専用プリスキャンを追加して解消した。知�
 (`{expr:format}`/`{expr,width}`、知見65参照、VBの書式指定子の対応表が
 確証不足のため意図的に未対応のまま)のみ。
 
+## 67. `CDbl`/`CInt`/`CBool`の`&H`/`&O`16進・8進リテラル文字列非対応を解決——知見46・53で「軽微な既知の限界」として記録していた残課題を.NETランタイム本体の別ファイルで確定(VM不使用)
+
+知見46(`CStr`修正時)・知見53(`CInt`のクロスチェック時)で繰り返し
+「`&H`/`&O`16進・8進リテラル文字列の非対応のみ軽微な既知の限界として
+残る」と記録していた項目(`CDbl("&H1A")`/`CInt("&H1A")`/`CBool("&H1A")`
+が通常の数値文字列としてパースされ`ValueError`になってしまう問題)を、
+.NETランタイム本体のソースで確定・解決した。
+
+**確認したソースファイル**: `Microsoft.VisualBasic.CompilerServices.
+Conversions`(`DoubleType.FromString`/`IntegerType.FromString`/
+`BooleanType.FromString`、知見52・53で確認した`Conversions.vb`/
+`DoubleType.vb`/`IntegerType.vb`/`BooleanType.vb`)がいずれも文字列引数を
+`ParseDouble`(知見52の`NumberStyles.AllowThousands`経由)に渡す**前**に
+`Microsoft.VisualBasic.CompilerServices.Utils.IsHexOrOctValue`
+(`dotnet/runtime`リポジトリの`Utils.LateBinder.vb`——`IsHexOrOctValue`
+自体の定義は`Conversions.vb`や`Utils.vb`ではなく`Partial Class Utils`の
+別ファイル`Utils.LateBinder.vb`にあった、GitHub code search(`gh api
+search/code`)で発見)を呼んでいることを確認した。
+
+**確定した規則**(`IsHexOrOctValue`): 先頭の半角空白(`chSpace`=`ChrW(32)`)
+・全角空白(`chIntlSpace`=`ChrW(&H3000)`、Pythonの`str.strip()`は既定で
+どちらも空白として扱うため追加対応不要)をスキップした後、`&`に続けて
+`H`/`O`(大文字小文字区別無し)+1文字以上の数字が続く場合のみ該当し、
+`ParseDouble`を経由せず`Convert.ToInt64(残りの文字列, 16 または 8)`で
+直接整数へ変換する——それ以外の文字(`&B`の2進リテラル等)が続く場合は
+`FormatException`になる(2進リテラル文字列はUiPathの実データで使われる
+実例が無いため今回も対象外のまま、同じ判断基準は知見50・52の
+「実例が無い書式は優先度低」と同じ)。`CBool`/`CInt`はこの関数が返した
+Int64値をそれぞれ`CBool(Int64)`/`CInt(Int64)`相当(`!= 0`/切り捨て)で
+後処理するのみ。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `VB_CDBL_HELPER_
+SOURCE`(`_vb_cdbl`、`CInt`も`round(_vb_cdbl(x))`経由で再利用するため
+自動的に修正される)と`VB_BOOL_HELPER_SOURCE`(`_vb_bool`)の文字列分岐
+それぞれに、`ParseDouble`相当の通常パースより先に`&H`/`&O`判定を追加
+(自己完結ヘルパーの既存方針上、ロジックを2箇所に複製)。コード生成時の
+リテラル専用判定`_vb_cbool_of_string_literal`(知見63)にも同じ判定を
+共有関数`_parse_vb_hex_or_oct_str`(render.py内のみで使う、生成コードへは
+注入されない通常のPython関数)経由で追加し、ランタイム版と規則を揃えた
+(知見63で「揃えないと不整合になる」と学んだ教訓をそのまま適用)。
+
+`tests/test_uipath_codegen.py`の既存パラメトライズ(`test_cint_matches_
+dotnet_runtime_source_for_nothing_and_thousands`・
+`test_cbool_string_literal_matches_vb_semantics_not_python_truthiness`)に
+`&H1A`/`&O17`系のケースを追加、新規`test_hex_or_oct_literal_string_via_
+variable_matches_runtime_helpers`で変数経由(コード生成時に文字列と確定
+しない場合)のランタイム版ヘルパーも同じ規則に従うことを確認。UiPath
+関連テスト全215件通過、リポジトリ全体で全835件通過。
+
+**この知見で確定したこと**: 知見46・53で2回にわたって「軽微な既知の
+限界」として先送りしていた項目でも、`gh api search/code`でリポジトリ
+全体を検索すれば定義元ファイルが`Conversions.vb`とは別の場所
+(`Utils.LateBinder.vb`)にあることまで含めて確定でき、VM無しで解決
+できた——「確度の高いソース」技法(知見52以来)はファイル境界を越えた
+検索にも有効だと実証された。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

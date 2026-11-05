@@ -475,6 +475,11 @@ def test_cint_matches_vb_banker_rounding_not_python_truncation(
         # (ToInteger(Object)のCase TypeCode.Boolean相当)。
         ("CInt(True)", -1),
         ("CInt(False)", 0),
+        # 知見67: `&H`/`&O`16進・8進リテラル文字列は`ParseDouble`を経由
+        # せず直接整数として判定される(`IsHexOrOctValue`、知見46・53で
+        # 「軽微な既知の限界」として残していたもの)。
+        ('CInt("&H1A")', 26),
+        ('CInt("&O17")', 15),
     ],
 )
 def test_cint_matches_dotnet_runtime_source_for_nothing_and_thousands(
@@ -511,6 +516,11 @@ def test_cint_matches_dotnet_runtime_source_for_nothing_and_thousands(
         # `float()`がコンマで`ValueError`になり`NotImplementedError`に
         # なっていた。
         ('CBool("1,234")', True),
+        # 知見67: `&H`/`&O`16進・8進リテラル文字列も`IsHexOrOctValue`経由
+        # で直接整数判定され、非ゼロかどうかでBooleanになる。
+        ('CBool("&H1A")', True),
+        ('CBool("&H0")', False),
+        ('CBool("&O17")', True),
     ],
 )
 def test_cbool_string_literal_matches_vb_semantics_not_python_truthiness(
@@ -555,6 +565,41 @@ def test_cbool_non_literal_string_value_matches_vb_not_python_truthiness(
     wf = _wrap(
         [
             AssignNode(target=VbExpr(text="someVar"), value=Literal(value="False")),
+            MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})")),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 知見67: 変数経由(コード生成時に文字列と確定しない)の`&H`/`&O`
+        # 文字列も、ランタイム版の`_vb_cdbl()`/`_vb_bool()`が同じ
+        # `IsHexOrOctValue`規則で処理することの回帰テスト。
+        ("CDbl(someVar)", "26"),
+        ("CInt(someVar)", "26"),
+        ("CBool(someVar)", "True"),
+    ],
+)
+def test_hex_or_oct_literal_string_via_variable_matches_runtime_helpers(
+    vb_text: str, expected: str
+) -> None:
+    """知見67: `&H1A`のような16進リテラル文字列を保持する変数を
+    `CDbl`/`CInt`/`CBool`に渡した場合も、コード生成時のリテラル専用判定
+    (`_vb_cbool_of_string_literal`)と同じ`IsHexOrOctValue`規則に従う
+    ランタイム版ヘルパー(`_vb_cdbl`/`_vb_bool`)経由で正しく処理される
+    ことを確認する。"""
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="someVar"), value=Literal(value="&H1A")),
             MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})")),
         ]
     )

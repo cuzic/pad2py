@@ -53,6 +53,18 @@ from ..uipath_dsl.types import Expr, Literal, VbExpr
 # 食い違う。桁区切りの妥当性(3桁ごとの正しいグループ化か)までは検証
 # せず単純に除去する軽微な簡略化を許容する(でっち上げた検証ロジックより
 # 単純な方を選んだ、既知の限界として下記に記録)。
+# `CDbl("&H1A")`/`CInt("&H1A")`のような`&H`/`&O`16進・8進リテラル文字列
+# (知見46・53で「軽微な既知の限界」として未対応のまま残していたもの)は、
+# .NETランタイム本体のソース(`Microsoft.VisualBasic.CompilerServices.
+# Utils.IsHexOrOctValue`、`dotnet/runtime`リポジトリの
+# `Utils.LateBinder.vb`、`DoubleType.FromString`/`IntegerType.FromString`
+# 両方がこの判定を`ParseDouble`より先に試す——VM不使用、知見67で解消)で
+# 以下を確定した: 先頭の半角/全角空白(`chSpace`/`chIntlSpace`、Pythonの
+# `str.strip()`は既定でどちらも空白として扱う)をスキップした後、`&`に
+# 続けて`H`/`O`(大文字小文字区別無し)+1文字以上の数字が続く場合のみ、
+# 通常の`ParseDouble`経由ではなく16進/8進として直接整数へ変換する——
+# それ以外の文字(`&B`の2進等)が続く場合は`FormatException`になる(2進
+# リテラル文字列は今回も対象外のまま、実例が無いため)。
 VB_CDBL_HELPER_NAME = "_vb_cdbl"
 VB_CDBL_HELPER_SOURCE = """\
 def _vb_cdbl(x):
@@ -61,6 +73,9 @@ def _vb_cdbl(x):
     if isinstance(x, bool):
         return -1.0 if x else 0.0
     if isinstance(x, str):
+        s = x.strip()
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return float(int(s[2:], 16 if s[1].lower() == "h" else 8))
         return float(x.strip().replace(",", ""))
     return float(x)
 """
@@ -353,6 +368,9 @@ def _vb_bool(x):
             return True
         if normalized == "false":
             return False
+        s = x.strip()
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return int(s[2:], 16 if s[1].lower() == "h" else 8) != 0
         return float(normalized.replace(",", "")) != 0
     return x != 0
 """
@@ -553,6 +571,21 @@ def _render_interpolated_string(raw: str) -> str:
     return " + ".join(parts)
 
 
+def _parse_vb_hex_or_oct_str(text: str) -> int | None:
+    """文字列が`&H`/`&O`16進・8進リテラル形式(`Microsoft.VisualBasic.
+    CompilerServices.Utils.IsHexOrOctValue`、知見67)に該当するかを判定し、
+    該当する場合はその整数値を返す(該当しなければ`None`)。先頭の半角/
+    全角空白をスキップした後、`&`+`H`/`O`(大文字小文字区別無し)+1文字
+    以上の数字が続く場合のみ該当する——`VB_CDBL_HELPER_SOURCE`/
+    `VB_BOOL_HELPER_SOURCE`(ランタイム生成コード側、自己完結の都合で
+    同じロジックを埋め込んでいる)と同じ規則。"""
+    stripped = text.strip()
+    if len(stripped) < 3 or stripped[0] != "&" or stripped[1].lower() not in "ho":
+        return None
+    base = 16 if stripped[1].lower() == "h" else 8
+    return int(stripped[2:], base)
+
+
 def _vb_cbool_of_string_literal(text: str) -> bool:
     """VBの`CBool`は文字列引数を`"True"`/`"False"`(大文字小文字区別無し)と
     認識するか、さもなくば数値として評価して非ゼロかどうかで判定する——
@@ -567,6 +600,12 @@ def _vb_cbool_of_string_literal(text: str) -> bool:
         return True
     if normalized == "false":
         return False
+    hex_or_oct = _parse_vb_hex_or_oct_str(text)
+    if hex_or_oct is not None:
+        # `&H`/`&O`リテラル文字列(知見67)は`ParseDouble`を経由せず直接
+        # 整数として判定される——`_vb_bool`(知見60)のランタイム版と
+        # 同じ規則にコード生成時のこちらも揃える。
+        return hex_or_oct != 0
     try:
         # 桁区切りのコンマは実際に受理される(`ParseDouble`の
         # `NumberStyles.AllowThousands`、知見52で確定)——`_vb_bool`
