@@ -370,14 +370,17 @@ def _parse_page_selection(page_selection: str) -> list[int]:
 
 
 def _add_sequential_suffix(path: Path) -> Path:
-    # PADの`Utilities.GenerateLocalFileName`の正確な命名規則は未確認。このパッケージの
-    # 他モジュール(`cryptography_actions._next_sequential_path`)と同じ"(1)"方式で近似する。
+    # design/dsl_format_findings.md 知見115(decompile+実機確認済み): PADの
+    # `Utilities.GenerateLocalFileName()`をリフレクションで直接呼び出して確認した
+    # 実際の挙動——最初の候補は常に`"(2)"`(`"(1)"`は一切試さない、Windows Explorer
+    # 自身のコピー命名規則とは異なる)。`cryptography_actions._next_sequential_path()`
+    # と同じ規則(以前は未確認のため"(1)"方式で近似していたが、確定したので統一した)。
     stem, suffix = path.stem, path.suffix
-    n = 1
-    candidate = path
+    n = 2
+    candidate = path.with_name(f"{stem} ({n}){suffix}")
     while candidate.exists():
-        candidate = path.with_name(f"{stem} ({n}){suffix}")
         n += 1
+        candidate = path.with_name(f"{stem} ({n}){suffix}")
     return candidate
 
 

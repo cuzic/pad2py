@@ -2172,3 +2172,16 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 `codegen_coverage.py`で`Folder.GetSpecialFolder`は唯一の実機キャプチャ値`DesktopDirectory`(→内部キー`"Desktop"`)に対して`[OK]`表示だったが、実装自体(`get_special_folder()`)を読み直したところ、`"Desktop"`キーの解決ロジックが**Linux専用のXDG環境変数**(`XDG_DESKTOP_DIR`)しか見ていないことに気づいた——生成スクリプトは常にWindows上で実行される前提(PAD自体がWindows専用)なので、`XDG_DESKTOP_DIR`はまず設定されておらず、実機のWindows上で実際にこのコードを実行すると常に`NotImplementedError`になる潜在バグだった(`codegen_coverage.py`の「実コードが生成できたか」という指標は、生成されたコードが実際のターゲット環境で動くかどうかまでは検証しないため、見逃されていた)。テストも一切無かった。
 
 `win32com.shell.shell.SHGetFolderPath`(公開されたWindows APIのpywin32バインディング、PAD固有の推測ではない)+`win32com.shell.shellcon`のCSIDL定数を使い、`"Desktop"`/`"Documents"`/`"AppData"`キーを実際に解決できるようにした。VM上の実venvで直接確認したところ、**`CSIDL_MYDOCUMENTS`という属性は存在するが`SHGetFolderPath`に渡すと`com_error: The parameter is incorrect.`になる**(値が12で、本来の`CSIDL_CONNECTIONS`と食い違っている、pywin32側の既知の命名ゆれらしい)ことが判明し、正しく動く`CSIDL_PERSONAL`に修正した——実際にVMで検証しなければ気づかずバグを埋め込んでいたところだった(知見112のDPAPI実装の引数順序ミスと同種の教訓)。確認済み: `Desktop`→`C:\Users\<user>\Desktop`、`Documents`(`CSIDL_PERSONAL`)→`C:\Users\<user>\Documents`、`AppData`(`CSIDL_APPDATA`)→`C:\Users\<user>\AppData\Roaming`。`"Temp"`は`tempfile.gettempdir()`(クロスプラットフォーム標準)に統一した。
+
+## 115. 【実機確認で既存バグを発見】`AddSequentialSuffix`の命名規則は`"(1)"`ではなく`"(2)"`から始まる——`Cryptography.DecryptToFile`/PDF抽出・結合アクションの既存実装を修正
+
+`pdf_actions._add_sequential_suffix()`は「PADの`Utilities.GenerateLocalFileName`の正確な命名規則は未確認」として、`cryptography_actions._next_sequential_path()`と同じ"(1)"方式(Windows Explorerのコピー命名規則と同じ、素朴に推測していた規則)で近似していた。知見112で確立した「DLL総当たりリフレクションでクラス/メソッドを直接発見する」手法を応用し、`Microsoft.Flow.RPA.Desktop.Robin.Shared.Runtime.dll`の`Utilities.GenerateLocalFileName(directory, name)`を実際に特定、さらに**メソッド自体を直接リフレクションで呼び出す**(decompileして推測するのではなく、PADの実際のコンパイル済みロジックをそのまま実行して観測する、知見112のさらに一歩進んだ手法)ことで、推測ではなく確定的に正しい挙動を得た。
+
+VM上で複数のディレクトリ状態を用意して直接呼び出した結果:
+- 対象ファイルが存在しない → 変更無しでそのまま返す。
+- 対象ファイルのみ存在(`"(1)"`等の数字付きファイルは無い) → **`"(2)"`を返す**(`"(1)"`は一切試さない)。
+- 対象ファイル+`"(1)"`が存在 → やはり`"(2)"`を返す(`"(1)"`の有無は結果に影響しない)。
+- 対象ファイル+`"(2)"`が存在 → `"(3)"`を返す。
+- 対象ファイル+`"(1)"`+`"(2)"`+`"(3)"`が存在 → `"(4)"`を返す。
+
+つまり実際の規則は「元ファイルを暗黙の`"(1)"`相当として数え、最初の候補は常に`"(2)"`から始め、以降は既存の数字付きファイルと衝突する限り1ずつ増やす」であり、Windows Explorer自身のコピー命名規則(`"(1)"`から始まる)とは異なる。`cryptography_actions._next_sequential_path()`・`pdf_actions._add_sequential_suffix()`の両方を修正し(`n=1`→`n=2`開始)、既存テスト(`"(1)"`を期待していた)を更新、新たに複数の数字付きファイルが既に存在するケースの回帰テストを追加した。

@@ -102,11 +102,29 @@ def test_decrypt_to_file_do_not_modify_existing(tmp_path: Path) -> None:
 
 
 def test_decrypt_to_file_add_sequential_suffix(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見115(decompile+実機確認済み): PADの
+    # Utilities.GenerateLocalFileName()は最初の候補を常に"(2)"にする
+    # ("(1)"は一切試さない、Windows Explorer自身のコピー命名規則とは異なる)。
     dest = tmp_path / "out.txt"
     dest.write_text("original")
     result = ca.encrypt_text("payload", "key", encoding="UTF8")
     written = ca.decrypt_to_file(result.encrypted_text, str(dest), "key", encoding="UTF8")
-    assert written == str(tmp_path / "out (1).txt")
+    assert written == str(tmp_path / "out (2).txt")
+
+
+def test_decrypt_to_file_add_sequential_suffix_skips_past_existing_numbered_copies(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見115(decompile+実機確認済み): PADの実際の
+    # Utilities.GenerateLocalFileName()をリフレクションで直接呼び出して確認した
+    # 完全な規則——元ファイル+"(1)"+"(2)"+"(3)"が全て存在する場合、次の候補は
+    # "(4)"になる(既存の数字付きファイルと衝突する限り1ずつ増やす)。
+    dest = tmp_path / "out.txt"
+    dest.write_text("original")
+    (tmp_path / "out (1).txt").write_text("x")
+    (tmp_path / "out (2).txt").write_text("x")
+    (tmp_path / "out (3).txt").write_text("x")
+    result = ca.encrypt_text("payload", "key", encoding="UTF8")
+    written = ca.decrypt_to_file(result.encrypted_text, str(dest), "key", encoding="UTF8")
+    assert written == str(tmp_path / "out (4).txt")
 
 
 def test_hash_text_sha256() -> None:

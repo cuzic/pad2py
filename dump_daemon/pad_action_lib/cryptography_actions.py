@@ -319,12 +319,17 @@ def decrypt_text(
 
 
 def _next_sequential_path(path: Path) -> Path:
+    # design/dsl_format_findings.md 知見115(decompile+実機確認済み): PADの
+    # `Utilities.GenerateLocalFileName()`をリフレクションで直接呼び出して確認した
+    # 実際の挙動——最初の候補は常に`"(2)"`(`"(1)"`は一切試さない、Windows Explorer
+    # 自身のコピー命名規則とは異なる、元のファイル自身を暗黙の"(1)"相当として数える
+    # 命名規則)。それ以降は既存のファイルと衝突する限り1ずつ増やす。
     stem, suffix = path.stem, path.suffix
-    n = 1
-    candidate = path
+    n = 2
+    candidate = path.with_name(f"{stem} ({n}){suffix}")
     while candidate.exists():
-        candidate = path.with_name(f"{stem} ({n}){suffix}")
         n += 1
+        candidate = path.with_name(f"{stem} ({n}){suffix}")
     return candidate
 
 

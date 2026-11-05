@@ -247,12 +247,15 @@ def test_extract_pages_to_new_pdf_missing_source_checked_before_skip(tmp_path: P
 
 
 def test_extract_pages_to_new_pdf_add_sequential_suffix(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見115(decompile+実機確認済み): PADの
+    # Utilities.GenerateLocalFileName()は最初の候補を常に"(2)"にする
+    # ("(1)"は一切試さない、Windows Explorer自身のコピー命名規則とは異なる)。
     f = tmp_path / "a.pdf"
     _make_pdf(f, ["P1"])
     out = tmp_path / "out.pdf"
     out.write_text("existing")
     result = pdf.extract_pages_to_new_pdf(str(f), str(out), "1")
-    assert result == str(tmp_path / "out (1).pdf")
+    assert result == str(tmp_path / "out (2).pdf")
 
 
 # --- merge_pdf_files -----------------------------------------------------------
