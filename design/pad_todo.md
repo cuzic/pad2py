@@ -361,11 +361,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   恒等写像——つまり列インデックスは常に0始まりと確定した(1始まりになるのは対象外の
   `ScriptType.PowerFx`のみ)。共有ヘルパー`_resolve_column_name()`を新設し、3関数の数値
   インデックス対応を解消、`SortWithColumnIndex`も新規結線した。
-  - [ ] 💻🖥️ **副産物の残課題(次の調査対象)**: `Variables.SortList`にも未結線セレクタ
-    `SortListByProperty`があり、`SortListBase`の実プロパティ(`Property1/2/3`+
-    `SortDirection1/2/3`、最大3キーで各キーが独立したAscending/Descending方向)が判明した。
-    既存の`sort_list(items, descending: bool, keys: list[str] | None)`(単一`descending`が
-    全キー共通)では表現できないため、シグネチャ変更を伴うより大きな変更として見送った。
+  - [x] 💻🖥️ `Variables.SortList`の未結線セレクタ`SortListByProperty`(最大3キー・各キー
+    独立したAscending/Descending方向の多キーソート)。
+    ✅ **決着(知見134)**: 実機の「CustomObject」が`Actions.SDK.Types.CustomObject`
+    クラス(`AddOrUpdateProperty()`/`GetProperty()`)だと判明し、VM上で正しく構築して
+    `SortListByProperty`の多キーソート挙動を確認した。Pythonの安定ソートを最下位キーから
+    順に適用する「安定ソートの繰り込み」で再現できることも確認し、`sort_list()`に
+    `key_descending`引数を追加して結線した。
 
 ## C. 構造的・運用上の課題
 

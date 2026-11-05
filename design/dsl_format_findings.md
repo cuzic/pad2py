@@ -2382,3 +2382,15 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **副産物の発見**: `Variables.SortList`にも`SortListByProperty`という未結線セレクタがあり、`SortListBase`の実プロパティ(`Property1/2/3`+`SortDirection1/2/3`、最大3キーで各キーが独立したAscending/Descending方向を持てる)が判明した。これは既存の`sort_list(items, descending: bool, keys: list[str] | None)`(単一の`descending`が全キー共通)の設計では表現できない——各キーごとに独立した方向を持つ多キーソートへの対応は、`sort_list()`自体のシグネチャ変更が必要なより大きな変更になるため、今回は見送り、`pad_todo.md`に次の調査対象として記録する。
 
 テストは`tests/test_pad_action_lib_variables.py`に6件(数値インデックス対応3関数×各1〜2件)、`tests/test_pad_codegen.py`に2件(数値インデックスでの`FindItemInDataTableByColumnIndex`・`SortWithColumnIndex`、両方実際に`exec()`して結果を検証)を追加した。知見126で追加した「数値インデックス拒否」テストは不要になったため「数値インデックス受理」テストに置き換えた。
+
+## 134. 知見133で見送った`Variables.SortList.SortListByProperty`(最大3キー・各キー独立方向の多キーソート)を、実機の`CustomObject`型をVM上で直接構築して仕様を確認し新規結線
+
+知見133で発見した`SortListByProperty`セレクタ(`SortListBase`の`Property1/2/3`+`SortDirection1/2/3`)を、VM上の直接呼び出しで仕様を確認して結線した。
+
+**実機の「オブジェクトのリスト」の正体を特定**: `SortListByProperty.Execute()`にPowerShellの`Hashtable`を渡すと`"'Age' isn't a valid field"`で失敗した——PADの実行時の「CustomObject」はプレーンな辞書ではなく、`Microsoft.PowerPlatform.PowerAutomate.Desktop.Actions.SDK.Types.CustomObject`という専用クラス(`AddOrUpdateProperty(string, object)`/`GetProperty(string)`というメソッド経由でプロパティにアクセスする)だと判明した。このクラスをVM上で正しく構築(`[Activator]::CreateInstance`+`AddOrUpdateProperty`の繰り返し呼び出し)してから渡すと成功した。
+
+**多キーソートの実機挙動を確認**: `{Name: "Bob", Age: 30}`/`{Name: "Alice", Age: 25}`/`{Name: "Carol", Age: 25}`の3件のリストに対し、`Property1: "Age" (Ascending)`・`Property2: "Name" (Descending)`で実行すると結果は`Carol, Alice, Bob`になった——Age昇順が優先され、Age同値(25)のCarol/Aliceの間はName降順(C>A)でCarolが先になる、標準的なSQLの`ORDER BY Age ASC, Name DESC`と同じ多キーソート。Property3を空文字列にしても無視され、エラーにはならなかった。
+
+**Python実装**: Pythonの`list.sort()`が安定ソートであることを利用し、**最下位キーから順に個別の`sort()`を適用し、最後に最上位キーをソートする**という標準的な「安定ソートの繰り込み」で多キー・独立方向のソートを実現できることを確認した(実際に上記の実機確認済み入出力と一致することを単体テストで検証)。既存の`sort_list(items, descending, keys)`(単一`descending`が全キー共通)に`key_descending: list[bool] | None`引数を追加し、各キー独立の方向に対応した。`pad_codegen/actions/variables.py`に`Variables.SortList.SortListByProperty`を新規結線した——`Property1/2/3`がリテラル文字列であることを要求し(空文字列なら未使用として除外)、VarRefの場合は使用するキー数を静的に決定できないため安全にTODOへ委ねる。
+
+`tests/test_pad_action_lib_variables.py`に独立方向の多キーソート単体テスト1件、`tests/test_pad_codegen.py`に`Variables.ConvertJsonToCustomObject`で辞書を構築し`CreateNewList`+`AddItemToList`でリスト化、実際に`exec()`してソート結果を検証するend-to-endテスト1件を追加した。

@@ -143,6 +143,37 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}variables_actions.sort_list({items})"]
 
+    if action_id == "Variables.SortList.SortListByProperty":
+        # design/dsl_format_findings.md 知見133で発見・知見134で結線: `SortList`の兄弟セレクタ
+        # (最大3プロパティ、各プロパティが独立した昇順/降順を持てる)。`Property1/2/3`が
+        # リテラル文字列であることを要求する(VarRefの場合、空かどうか静的に判定できず
+        # 使用するキー数が決められないため安全にTODOへ委ねる)。
+        items = safe_render(p.get("List"))
+        prop1 = p.get("Property1")
+        prop2 = p.get("Property2")
+        prop3 = p.get("Property3")
+        dir1 = enum_last(p.get("SortDirection1"))
+        dir2 = enum_last(p.get("SortDirection2"))
+        dir3 = enum_last(p.get("SortDirection3"))
+        if (
+            items is None
+            or not isinstance(prop1, str)
+            or not isinstance(prop2, str)
+            or not isinstance(prop3, str)
+            or dir1 is None
+            or dir2 is None
+            or dir3 is None
+        ):
+            return None
+        used = [(name, direction) for name, direction in ((prop1, dir1), (prop2, dir2), (prop3, dir3)) if name]
+        if not used:
+            return None
+        keys = [name for name, _ in used]
+        key_descending = [direction == "Descending" for _, direction in used]
+        return [
+            f"{prefix}variables_actions.sort_list({items}, keys={keys!r}, key_descending={key_descending!r})"
+        ]
+
     if action_id == "Variables.ReverseList":
         items = safe_render(p.get("List"))
         if items is None:

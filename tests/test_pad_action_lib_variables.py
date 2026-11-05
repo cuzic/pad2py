@@ -106,6 +106,19 @@ def test_sort_list_by_properties() -> None:
     assert [i["name"] for i in items] == ["a", "b"]
 
 
+def test_sort_list_by_properties_with_independent_directions() -> None:
+    # design/dsl_format_findings.md 知見133・134(VM上で実機の`SortListBase.Execute()`を
+    # `CustomObject`で直接呼び出して確認済み): age昇順・name降順の2キーソート。
+    # age=25が2件(Carol/Alice)あり、name降順で同順位内はCarolがAliceより先に来る。
+    items = [
+        {"name": "Bob", "age": 30},
+        {"name": "Alice", "age": 25},
+        {"name": "Carol", "age": 25},
+    ]
+    va.sort_list(items, keys=["age", "name"], key_descending=[False, True])
+    assert [i["name"] for i in items] == ["Carol", "Alice", "Bob"]
+
+
 def test_create_new_datatable_is_a_copy() -> None:
     source = [{"a": 1}]
     copy = va.create_new_datatable(source)

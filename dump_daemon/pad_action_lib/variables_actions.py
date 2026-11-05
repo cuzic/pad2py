@@ -125,11 +125,29 @@ def remove_duplicate_items_from_list(items: list, ignore_case: bool = False) -> 
     items[:] = deduped
 
 
-def sort_list(items: list, descending: bool = False, keys: list[str] | None = None) -> None:
-    if keys:
-        items.sort(key=lambda item: tuple(item[k] for k in keys), reverse=descending)
-    else:
+def sort_list(
+    items: list,
+    descending: bool = False,
+    keys: list[str] | None = None,
+    key_descending: list[bool] | None = None,
+) -> None:
+    """`Variables.SortList`の兄弟セレクタ`SortListByProperty`(最大3キー、各キーが独立した
+    昇順/降順を持てる)に対応する。`keys`省略時は単純な値ソート(`Variables.SortList.SortList`、
+    実機確認ではこちらに方向指定自体が存在しない)。`keys`指定時、`key_descending`で各キーの
+    方向を個別に指定できる(省略時は全キーとも`descending`に従う)。
+
+    design/dsl_format_findings.md 知見134(VM上で`SortListBase.Execute()`を実機の
+    `CustomObject`で直接呼び出して確認済み): 実機の多キーソート結果は、Pythonの安定ソートを
+    **最下位キーから順に**適用した結果と完全に一致した(各キーを個別の`list.sort()`呼び出しで
+    適用し、最後に最上位キーをソートする——標準的な「安定ソートの繰り込み」によるSQLの
+    `ORDER BY`相当の多キーソート実装)。
+    """
+    if not keys:
         items.sort(reverse=descending)
+        return
+    directions = key_descending if key_descending is not None else [descending] * len(keys)
+    for key, desc in reversed(list(zip(keys, directions))):
+        items.sort(key=lambda item, k=key: item[k], reverse=desc)
 
 
 # --- DataTable系 -------------------------------------------------------------

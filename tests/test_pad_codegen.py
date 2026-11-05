@@ -2619,3 +2619,33 @@ def test_generate_python_from_file_read_csv_fixed_column_widths() -> None:
             {"Column#1": "AAA", "Column#2": "BBBBB", "Column#3": "CC"},
             {"Column#1": "DDD", "Column#2": "EEEEE", "Column#3": "FF"},
         ]
+
+
+def test_generate_python_from_sort_list_by_property_with_independent_directions() -> None:
+    # design/dsl_format_findings.md 知見133・134(VM上で実機の`SortListBase.Execute()`を
+    # 直接呼び出して確認済み): `SortList`の兄弟セレクタ`SortListByProperty`、age昇順・
+    # name降順の2キーソート(Property3は空文字列で未使用)。
+    dsl = (
+        "Variables.CreateNewList List=> L\n"
+        "Variables.ConvertJsonToCustomObject Json: $'''{\"name\": \"Bob\", \"age\": 30}''' "
+        "CustomObject=> O1\n"
+        "Variables.AddItemToList List: L Item: O1\n"
+        "Variables.ConvertJsonToCustomObject Json: $'''{\"name\": \"Alice\", \"age\": 25}''' "
+        "CustomObject=> O2\n"
+        "Variables.AddItemToList List: L Item: O2\n"
+        "Variables.ConvertJsonToCustomObject Json: $'''{\"name\": \"Carol\", \"age\": 25}''' "
+        "CustomObject=> O3\n"
+        "Variables.AddItemToList List: L Item: O3\n"
+        "Variables.SortList.SortListByProperty List: L Property1: $'''age''' "
+        "Property2: $'''name''' Property3: $'''''' "
+        "SortDirection1: Variables.SortDirection.Ascending "
+        "SortDirection2: Variables.SortDirection.Descending "
+        "SortDirection3: Variables.SortDirection.Ascending"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert [item["name"] for item in namespace["L"]] == ["Carol", "Alice", "Bob"]
