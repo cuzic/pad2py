@@ -1,13 +1,14 @@
 """`Text.Actions`(文字列操作)のロジック層。
 
-`pad_codegen`のaction_idディスパッチとは独立——action_id文字列・パラメータの
-直列化形式は実機未確認のため、ここでは各アクションの入出力をPythonの値として
-直接受け取る純粋関数のみを提供する。
+`pad_codegen`のaction_idディスパッチとは独立——各アクションの入出力をPythonの値として
+直接受け取る純粋関数として実装し、action_id/パラメータの直列化形式(知見66・67で
+実機キャプチャした`tests/fixtures/tier1_text_variables_batch1.txt`・`batch4.txt`から
+確認済み)に基づいて`pad_codegen/actions/text.py`が個別に結線する。
 
-PADの`CaseOption`/`CropTextMode`/`DelimiterType`等のenumはDSL上の文字列表現が
-未確認なため、enumの"値"側に相当する文字列(`"UpperCase"`等)をそのまま
-Python側の引数値として使う——実機確認後、DSLの実際の文字列と一致するかの
-検証が別途必要。
+PADの`CaseOption`/`CropTextMode`/`DelimiterType`等のenumは、DSL上`Text.CaseOption.
+UpperCase`のような完全修飾名で直列化され(知見66で実機確認済み)、`enum_last()`で
+取り出した最後のセグメント(`"UpperCase"`等)をそのままこの層の引数値として使う
+——実機確認済みの値のみ。
 """
 from __future__ import annotations
 

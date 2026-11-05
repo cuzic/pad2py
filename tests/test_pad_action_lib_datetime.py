@@ -1,6 +1,7 @@
 """`pad_action_lib.datetime_actions`の単体テスト。"""
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from decimal import Decimal
 
@@ -44,9 +45,26 @@ def test_get_current_datetime_unknown_zone_raises() -> None:
         da.get_current_datetime(time_zone_mode="Specific", offset="Not/AZone")
 
 
-def test_get_current_datetime_windows_mode_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        da.get_current_datetime(time_zone_mode="Windows", time_zone_location="Tokyo Standard Time")
+def test_get_current_datetime_windows_mode_unknown_location_raises() -> None:
+    # design/dsl_format_findings.md 知見116: `time_zone_location`はPAD自身の
+    # `TimeZoneLocation`列挙名(例: "TokyoStandardTime"、スペース無し)で渡す
+    # ——実機DSLでの直列化形式自体は未確認のため、`pad_codegen`側はまだ結線していない。
+    with pytest.raises(da.CountryOrRegionNotFoundError):
+        da.get_current_datetime(time_zone_mode="Windows", time_zone_location="NotARealTimeZone")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows専用(win32timezone)")
+def test_get_current_datetime_windows_mode_resolves_known_location() -> None:
+    # design/dsl_format_findings.md 知見116(decompile+実機確認済み): PAD自身の
+    # Microsoft.Flow.RPA.Desktop.Modules.DateTime.Actions.dllから逆コンパイルで
+    # 確認したTimeZoneLocation→Windows TimeZoneInfo.Id対応表+win32timezone経由で
+    # 実際にタイムゾーン変換ができることを確認する。
+    from datetime import timezone
+
+    result = da.get_current_datetime(time_zone_mode="Windows", time_zone_location="TokyoStandardTime")
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    delta = (result - now_utc).total_seconds() - 9 * 3600
+    assert abs(delta) < 5
 
 
 def test_add_to_datetime_simple_units() -> None:

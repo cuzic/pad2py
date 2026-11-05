@@ -2185,3 +2185,15 @@ VM上で複数のディレクトリ状態を用意して直接呼び出した結
 - 対象ファイル+`"(1)"`+`"(2)"`+`"(3)"`が存在 → `"(4)"`を返す。
 
 つまり実際の規則は「元ファイルを暗黙の`"(1)"`相当として数え、最初の候補は常に`"(2)"`から始め、以降は既存の数字付きファイルと衝突する限り1ずつ増やす」であり、Windows Explorer自身のコピー命名規則(`"(1)"`から始まる)とは異なる。`cryptography_actions._next_sequential_path()`・`pdf_actions._add_sequential_suffix()`の両方を修正し(`n=1`→`n=2`開始)、既存テスト(`"(1)"`を期待していた)を更新、新たに複数の数字付きファイルが既に存在するケースの回帰テストを追加した。
+
+## 116. `DateTime.GetCurrentDateTime`の`Windows`タイムゾーンモード(知見65以来「対応表が無いため実装不可」としていた)を、PAD自身の埋め込み対応表をdecompileで発見して解決
+
+知見65以来「Windowsタイムゾーン名→IANA名の対応表が無いと実装できないため、でっち上げた対応表は作らない」として`NotImplementedError`のままにしていた`get_current_datetime()`の`Windows`モードを、知見112・115で確立した「DLL総当たりリフレクション/decompileで実際のクラス・データを直接取得する」手法で解決した。
+
+`Microsoft.Flow.RPA.Desktop.Modules.DateTime.Actions.dll`を逆コンパイルしたところ、`GetCurrentDateTime`アクションには`UseName()`で確認できる5つのセレクタ(`Local`=`TimeZoneMode.System`、`Current`=`Specific`、`Windows`=`Windows`、`CustomOffset`/`CustomTimeZone`=`Custom`の2バリアント)が存在すると判明した——**知見113で「action検索結果はダイアログ内で選ぶモードのセレクタ接尾辞までは見せない」と結論づけていたが、decompileされたソース上の`UseName()`呼び出しを直接読めば、ダイアログを一切開かずにこれら全セレクタ名が分かる**(知見113の限界は検索ボックス経由の手法固有のものであり、decompile自体の限界ではなかった)。
+
+さらに`Windows`モードの実行ロジック(`DateTimeActions.GetCurrentDateTime()`)を読んだところ、`TimeZoneDictionary.GetMappedTimeZone(TimeZoneLocation.ToString())`で`TimeZoneLocation`列挙(141値、`PacificStandardTime`等スペース無しの名前)から実際のWindows `TimeZoneInfo.Id`文字列(`"Pacific Standard Time"`等)への対応表を経由し、`TimeZoneInfo.GetSystemTimeZones()`から一致するものを探していることが分かった。この`TimeZoneDictionary._timeZoneDictionary`は(DPAPIのentropy定数のようにコンパイル時埋め込みバイト配列ではなく)**ソース上にプレーンな`Dictionary<string,string>`リテラルとしてそのまま読める**141件の実データで、これをそのまま転記して`_TIME_ZONE_LOCATION_TO_WINDOWS_ID`とした(でっち上げではない、PAD自身の対応表)。
+
+IANA名への変換は不要だと判明した——Windows `TimeZoneInfo.Id`文字列は、既存の依存関係である`pywin32`の`win32timezone.TimeZoneInfo(windows_id)`にそのまま渡せば正しい`tzinfo`として機能する。VM上の実venvで`win32timezone.TimeZoneInfo('Pacific Standard Time')`/`'Tokyo Standard Time'`を実際に使い、正しいUTCオフセット付き現在時刻が返ることを確認した。`get_current_datetime()`の`Windows`分岐を実装し直し、`win32timezone`が無い環境(非Windows)では明示的な`GetCurrentDateTimeError`になるようにした。既存テスト(`NotImplementedError`を期待)を更新し、未知の`TimeZoneLocation`のエラー・既知の値での実際のタイムゾーン変換(Windows専用、skipif付き)の両方をテストした。
+
+`Current`(`Specific`の別名、`[Deprecated]`属性付き)・`CustomOffset`/`CustomTimeZone`セレクタの実機DSL直列化形式・`TimeZoneLocation`/`InputType`パラメータの実際のDSL表現はいずれも依然未確認のため、`pad_codegen`側の結線はまだ行わない(`pad_action_lib`層の実装自体が正しく動くようになったのみ)。
