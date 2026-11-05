@@ -593,7 +593,14 @@ def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
     を使う(知見46の修正と一貫性を取るための内部的な安全策——`node.text`が
     既に`CStr(...)`を含む場合は`_vb_cstr(_vb_cstr(x))`の二重適用になるが、
     `_vb_cstr`は冪等(文字列への再適用は`str`分岐を素通りするだけ)なので
-    実害は無い)。"""
+    実害は無い)。
+
+    知見82: `FileName`が相対パスの場合、UiPath自体が何を基準に解決するか
+    (プロジェクトフォルダ基準か、プロセスのカレントディレクトリ基準か)は
+    公式ドキュメント・実データのいずれでも確定できず、実世界の報告も
+    矛盾している(design/uipath_xaml_findings.md参照)——`open()`は
+    Pythonプロセスの実行時カレントディレクトリ基準で解決する、既知の
+    残課題として明示的に未解決のまま残す。"""
     prefix = INDENT * indent
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
@@ -606,6 +613,8 @@ def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
 
 
 def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
+    """`FileName`の相対パス解決基準の既知の残課題は`_generate_append_line`
+    (知見82)と同じ。"""
     prefix = INDENT * indent
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
