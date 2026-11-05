@@ -4084,6 +4084,35 @@ indent, invoke_resolver)`で子アクティビティを通常通り再帰生成�
 未知の型の子要素を無条件に再帰生成するような「修正」を加えてしまう
 ことを防ぐための、予防的なドキュメント整備。
 
+## 86. 知見78の`# TODO`は呼び出し先(`Sub1`)の関数本体にのみ出現し、呼び出し元(`Main`)側は無警告——呼び出し元にも警告を出す拡張を検討したが、アーキテクチャ上のコスト対効果で今回は見送り(VM不使用、知見78の延長)
+
+知見78で`Out`/`InOutArgument`方向のワークフロー引数を検出し、関数本体の
+先頭に`# TODO`を追記する修正を行った。これが`generate_project_python()`
+経由の複数ファイル構成でどう見えるか確認したところ、`# TODO`は
+**呼び出し先(`Sub1`)の関数定義側にのみ**出現し、**呼び出し元
+(`Main`)側の呼び出し文(`Sub1(out_result=myVar)`)には何の警告も
+出ない**と確認した——`Main()`のコードだけを読む人間には、`myVar`が
+本来`Sub1`の結果を受け取るはずだったのに実際には受け取れないことを
+示す手がかりが一切無い。
+
+**実装を検討した設計**: `_build_invoke_resolver`(`generate_project_
+python`内)が各呼び出し先の`WorkflowFile.arguments`からOut/InOutArgument
+方向の引数名集合も合わせて収集し、`_generate_invoke_workflow_file`が
+呼び出し時の`x:Key`がその集合に含まれる場合に`# WARNING:`コメントを
+追記する、という方向性は technically 可能。
+
+**今回は実装を見送った理由**: 現在の`invoke_resolver`パラメータは
+`dict[str, str]`(workflow_file文字列→関数名)という型で、
+`generate_python()`の公開APIの一部として既存テスト複数件がこの型を
+直接構築している。この型を拡張する(例:
+`dict[str, tuple[str, frozenset[str]]]`)と後方互換性が崩れ、
+`_generate_node`/`_generate_body`の呼び出し経路全体に新しいパラメータを
+通す変更が必要になる——1 tickで安全に実装し切るには見積もりより
+侵襲的だと判断し、「半端な実装はしない」方針に従って今回は見送った。
+将来、呼び出し元側への警告拡張に着手する場合は、`invoke_resolver`の型を
+拡張するか、別の専用パラメータ(`out_arg_resolver`等)を`generate_python`
+以下の呼び出し経路全体に追加で通す設計が必要になる。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
