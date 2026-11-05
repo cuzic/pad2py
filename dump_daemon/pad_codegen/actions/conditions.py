@@ -5,8 +5,9 @@
 """
 from __future__ import annotations
 
-from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef
+from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef, VarRef
 from ..context import CodegenContext
+from ..render import render_value
 from ..selectors import _build_pywinauto_selector_expr
 from ._support import safe_render
 
@@ -42,19 +43,42 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
 
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None
-    window = header.params.get("Window")
-    if not isinstance(window, UiElementRef):
+    mode_suffix = header.action_id.rsplit(".", 1)[-1]
+
+    # design/dsl_format_findings.md 知見121(decompile確認済み): `IfWindow`も
+    # `GetWindow`等(知見117〜120)と同じ3セレクタ構造(`Control`/`WindowInstance`/
+    # `Title`+`Class`ベース)を、`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`の
+    # 4モードそれぞれに持つ(計12セレクタ)。`Control`ベースの4つのみ結線済みだった
+    # ため、`ByInstanceOrHandle`/`ByTitleClass`の兄弟セレクタ(計8つ)も同じ
+    # `exists()`/`is_active()`ロジックへ結線する——ウィンドウ参照の取得元が
+    # 違うだけで、以降の真偽値ロジックは完全に同一。
+    if mode_suffix.endswith("ByInstanceOrHandle"):
+        mode = mode_suffix[: -len("ByInstanceOrHandle")]
+        window_instance = header.params.get("WindowInstance")
+        window_expr = render_value(window_instance) if isinstance(window_instance, VarRef) else None
+    elif mode_suffix.endswith("ByTitleClass"):
+        mode = mode_suffix[: -len("ByTitleClass")]
+        title = header.params.get("Title")
+        window_class = header.params.get("Class")
+        window_expr = (
+            f"Desktop(backend='uia').window(title={render_value(title)})"
+            if isinstance(title, str) and window_class == ""
+            else None
+        )
+    else:
+        mode = mode_suffix
+        window = header.params.get("Window")
+        window_expr = (
+            _build_pywinauto_selector_expr(window.path, ctx) if isinstance(window, UiElementRef) else None
+        )
+    if window_expr is None:
         return None
-    selector_expr = _build_pywinauto_selector_expr(window.path, ctx)
-    if selector_expr is None:
-        return None
-    mode = header.action_id.rsplit(".", 1)[-1]
-    exists_expr = f"{selector_expr}.exists()"
+    exists_expr = f"{window_expr}.exists()"
     if mode == "IsOpen":
         return exists_expr
     if mode == "IsNotOpen":
         return f"not {exists_expr}"
     if mode in ("IsFocused", "IsNotFocused"):
-        active_expr = f"({exists_expr} and {selector_expr}.wrapper_object().is_active())"
+        active_expr = f"({exists_expr} and {window_expr}.wrapper_object().is_active())"
         return active_expr if mode == "IsFocused" else f"not {active_expr}"
     return None

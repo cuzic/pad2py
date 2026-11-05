@@ -414,6 +414,62 @@ def test_generate_python_converts_all_four_if_window_modes(mode: str, expected_c
     assert f"if {expected_condition}:" in code
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected_condition"),
+    [
+        ("IsOpenByInstanceOrHandle", "AutomationWindow2.exists()"),
+        ("IsNotOpenByInstanceOrHandle", "not AutomationWindow2.exists()"),
+        (
+            "IsFocusedByInstanceOrHandle",
+            "(AutomationWindow2.exists() and AutomationWindow2.wrapper_object().is_active())",
+        ),
+        (
+            "IsNotFocusedByInstanceOrHandle",
+            "not (AutomationWindow2.exists() and AutomationWindow2.wrapper_object().is_active())",
+        ),
+    ],
+)
+def test_generate_python_converts_if_window_by_instance_or_handle_modes(
+    mode: str, expected_condition: str
+) -> None:
+    # design/dsl_format_findings.md 知見121(decompile確認済み): `IfWindow`も知見117〜120と
+    # 同じ3セレクタ構造を4モードそれぞれに持つ(計12セレクタ)——`WindowInstance`ベースの
+    # 兄弟セレクタ4つ。
+    dsl = f"IF (UIAutomation.IfWindow.{mode} WindowInstance: AutomationWindow2) THEN\nSET X TO 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert f"if {expected_condition}:" in code
+    assert "NotImplementedError" not in code
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_condition"),
+    [
+        ("IsOpenByTitleClass", "Desktop(backend='uia').window(title='Notepad').exists()"),
+        ("IsNotOpenByTitleClass", "not Desktop(backend='uia').window(title='Notepad').exists()"),
+        (
+            "IsFocusedByTitleClass",
+            "(Desktop(backend='uia').window(title='Notepad').exists() and "
+            "Desktop(backend='uia').window(title='Notepad').wrapper_object().is_active())",
+        ),
+        (
+            "IsNotFocusedByTitleClass",
+            "not (Desktop(backend='uia').window(title='Notepad').exists() and "
+            "Desktop(backend='uia').window(title='Notepad').wrapper_object().is_active())",
+        ),
+    ],
+)
+def test_generate_python_converts_if_window_by_title_class_modes(mode: str, expected_condition: str) -> None:
+    # design/dsl_format_findings.md 知見121の追記: `Title`+`Class`ベースの兄弟セレクタ4つ。
+    dsl = f"IF (UIAutomation.IfWindow.{mode} Title: $'''Notepad''' Class: $'''''') THEN\nSET X TO 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert f"if {expected_condition}:" in code
+    assert "NotImplementedError" not in code
+
+
 def test_generate_python_from_real_if_window_contains_element_whole_subflow_capture_raises() -> None:
     # design/dsl_format_findings.md 知見54の追記: 「If window contains element」も知見54の
     # IfActionRecord/_generate_conditional()のNotImplementedErrorフォールバックをそのまま
