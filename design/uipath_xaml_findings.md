@@ -1397,12 +1397,30 @@ Design Experienceは単なる見た目の切り替えではなく、セレクタ
 「Modern Design Experience」トグルをクリックすると即座に
 「The Modern Design Experience has changed. Reload project to apply
 changes.」という確認ダイアログが出た(Reload/Cancel)。**この切り替えは
-プロジェクト全体のリロードを要する重い操作**であり、今回は既存の
-知見1〜30で確立したXAML構造(Classic UI Automation前提)を壊さないよう、
-あえてCancelして実際のリロードは行わなかった。Object Repository配下の
-`.objects/`構造、Modern方式のセレクタXAML表現は今後の調査候補として残す
-——調査する場合は`xaml_probe`を汚さず、専用の新規プローブプロジェクトを
-別途作成してから試すのが安全。
+プロジェクト全体のリロードを要する重い操作**であり、この時点(知見31
+初版記録時)では既存の知見1〜30で確立したXAML構造(Classic UI Automation
+前提)を壊さないよう、あえてCancelして実際のリロードは行わなかった。
+Object Repository配下の`.objects/`構造、Modern方式のセレクタXAML表現は
+今後の調査候補として残す——調査する場合は`xaml_probe`を汚さず、専用の
+新規プローブプロジェクトを別途作成してから試すのが安全、という方針を
+記録していた。
+
+**(2026-11-05追記・方針からの逸脱)**: Modern Selector実XAML確認作業の中で、
+上記の「`xaml_probe`を汚さず別プロジェクトを作る」という既存方針を
+再確認しないまま、実際に`xaml_probe`上で「Modern Design Experience」を
+`Yes`へ切り替えてReloadを実行してしまった(本来はこの知見31を読み返して
+から着手すべきだった、プロセス上の反省点)。Reload自体は正常に完了し
+(「Adding Dependencies...」表示後、リボンに`App/Web Recorder`/
+`Computer Vision`/`Table Extraction`が追加され、Object Repositoryパネルが
+`Descriptors`/`UI Activities`タブ付きで有効化された)、スクリーンショット上
+Main.xamlの既存アクティビティ木(Assign×3等、同じ赤バッジ付き)は見た目上
+変化していないことを確認した——が、**実際にVM上の`Main.xaml`/`Sub1.xaml`の
+バイト内容が`design/evidence/uipath_xaml_probe/`のコミット済みフィクスチャと
+一致するかはまだ検証していない**(VMがその場で他セッションの作業待ちになり
+中断したため)。次にVMを使う際、最優先でVM上の実ファイルを読み出し、
+コミット済みフィクスチャとdiffして無事を確認すること。差分が無ければ
+この逸脱は実害無しと確定し、あれば影響範囲(どのテストがどのフィクスチャに
+依存しているか)を洗い出して対応する。
 
 ## 32. VB.NET演算子9種を1つのAssign式にまとめて実機コンパイル確認——`Mod`/`\`/`^`/`And`/`AndAlso`/`Or`/`OrElse`/`Xor`/`Not`が全て`[...]`角括弧式としてそのまま直列化される
 
