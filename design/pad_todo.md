@@ -336,6 +336,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     (固定長カラム読み込み、`csv.reader`とは別の文字位置分割アルゴリズムが必要・
     `FixedColumnWidths`文字列のフォーマット——`CSVUtilities.TryParseColumnWidths`の
     正確な解析規則——も未検証)は両モジュールとも見送ったまま。
+- [x] 💻 `Compression.ZipFiles`の`ZipFile`出力が`zip_files()`の`None`固定戻り値のため
+  常に`None`になる潜在バグ(実際に`exec()`する既存テストも代入先の値を見ていなかった死角)。
+  ✅ **決着(知見129)**: VM上で`ZipFiles`クラスを直接インスタンス化・`Execute()`呼び出しし、
+  `ZipFile`出力が`ArchivePath`と同じパスのechoだと確認、`zip_files()`に`return archive_path`
+  を追加した。
 
 ## C. 構造的・運用上の課題
 
@@ -373,6 +378,12 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   動かすと、別セッションの`git add`/`git commit`が意図せずその中間状態を取り込む実害がある。
   **推奨**: 整理するなら、他セッションの同時コミットを一時的に止めた上で(ユーザーの調整が
   必要)、ユーザー自身が`git merge`/`git rebase`/`push --force`のいずれで整理するかを判断する。
+- [ ] 💻 **テスト手法の死角(次の調査対象)**: 知見129で「実際に`exec()`するテストでも、
+  出力変数への代入先の値自体をアサートしていなければ戻り値の型不一致(`None`化)のような
+  バグを素通りさせる」という死角を確定させた。既存の`tests/test_pad_codegen.py`の
+  end-to-endテスト群(知見125・127・128含む)を総点検し、副作用だけを検証して代入先の
+  値を見ていないものが他にも無いか横断チェックする価値がある——同種のバグ(戻り値`None`固定、
+  または呼び出し元が期待する型と異なる戻り値)が他のアクションにも潜んでいる可能性がある。
 
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 

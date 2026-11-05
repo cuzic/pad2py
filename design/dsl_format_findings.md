@@ -2313,3 +2313,15 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **修正**: `pad_codegen/actions/file.py`の`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`から`separator != "SystemDefault"`ゲートを撤廃し`CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`でマッピング、新規に`File.ReadFromCSVFile.ReadCSVWithCustomSeparator`/`File.WriteToCSVFile.WriteCSVWithCustomSeparator`の2ブランチを追加した。`pad_action_lib.file_actions.read_from_csv_file()`/`write_to_csv_file()`も知見127の`datatable.py`と同じく元から`delimiter`引数を持っていたため、`pad_action_lib`側の変更は不要だった。`ReadCSVWithFixedColumnWidths`は知見127と同じ理由(固定長パース未実装)で見送った。
 
 `tests/test_pad_codegen.py`に2件(`tempfile.TemporaryDirectory()`で実ファイルへの書き込み→読み込みの往復を検証、Semicolon/CustomSeparator各1件)、`tests/test_pad_codegen_tier1_actions.py`の既存アサーション1件を更新した。
+
+## 129. `Compression.ZipFiles`の`ZipFile`出力が常に`None`になる潜在バグを発見・修正——「実際に`exec()`する」テストでも代入先の値を一度も検証していなかった死角
+
+知見127・128の作業中、`codegen_coverage.py`で`Compression.UnzipFiles (0/1)`がTODOのままだった理由を再確認していたところ(実機キャプチャに`=>`出力束縛自体が無いという既に知見112で判明・了承済みの理由だった、知見124参照)、隣接する`Compression.ZipFiles`の既存コードを読み直して**別の、これまで誰も気づいていなかった実バグ**を発見した。
+
+`pad_action_lib.compression_actions.zip_files()`は型ヒント`-> None`で、実際に`return`文を一つも持たず常に`None`を返す。一方`pad_codegen/actions/compression.py`は`{node.output_var} = compression_actions.zip_files(...)`という**代入文**を生成する——つまり実機で`ZipFile=> 変数名`を束縛したフローをpad2pyで変換すると、生成されたPythonを実行した時点でその変数は常に`None`になる。既存の合成テスト(`test_generate_python_from_compression_zip_unzip_without_password_converts`)は`ZipFile=> ZipFile`を実際に束縛して`exec()`までしていたが、アサーションは`archive_path.is_file()`(zipファイルが実際に作られたかという副作用)だけで、**`namespace["ZipFile"]`の値そのものは一度も検証していなかった**——知見124・128と同じ「実際に実行するテストを書いても、代入先の値を見ていなければ`None`化のような静かなバグは素通りする」という死角のもう一つの実例。
+
+**実機確認(VM上の直接呼び出し、decompile不要)**: `Microsoft.Flow.RPA.Desktop.Modules.Compression.Actions.dll`の`ZipFiles`クラス(action名とは違い実クラス名に`Action`接尾辞は無い)を`[Activator]::CreateInstance()`でインスタンス化し、`ArchivePath`/`FilesOrFoldersToZip`/`CompressionLevel`/`ArchiveComment`プロパティを`FileObject(string)`コンストラクタ経由でリフレクションから直接設定、`Execute(null)`を直接呼び出して(`ActionContext`は未使用で済んだ)実際にzipファイルを作成させた。実行後の`ZipFile`プロパティ(`FileObject`型)の`.FullName`を読み取ると、渡した`ArchivePath`と**全く同じパス文字列**だった——つまり`ZipFile`出力は単なる`ArchivePath`のecho。
+
+**修正**: `zip_files()`の戻り値型を`str`に変更し、末尾に`return archive_path`(入力をそのまま返す、でっち上げた正規化処理は追加しない)を追加した。`pad_codegen`側の既存の代入文生成はそのまま正しく機能するようになる(コード変更不要)。既存の合成テストに`assert namespace["ZipFile"] == str(archive_path)`を追加し、`tests/test_pad_action_lib_compression.py`の基本往復テストにも同様のアサーションを追加した。
+
+**教訓(知見124・128と合わせて確定)**: 「生成コードを実際に`exec()`するテスト」であっても、副作用だけを検証して代入先の変数の値を見ていなければ、戻り値の型不一致(`None`化)のようなバグは検出できない——今後の同種レビューでは、出力変数を束縛するテストでは必ずその変数の値も具体的にアサートする。

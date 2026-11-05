@@ -15,8 +15,11 @@ def test_zip_and_unzip_round_trip(tmp_path: Path) -> None:
     (src_dir / "a.txt").write_text("hello")
     archive = tmp_path / "out.zip"
 
-    co.zip_files(str(archive), [str(src_dir / "a.txt")])
+    result = co.zip_files(str(archive), [str(src_dir / "a.txt")])
     assert zipfile.is_zipfile(archive)
+    # design/dsl_format_findings.md 知見129: 実機の`ZipFile`出力は`ArchivePath`と同じパスを
+    # 指すFileObjectだったため(VM上のリフレクション直接呼び出しで確認済み)、同じ文字列を返す。
+    assert result == str(archive)
 
     dest = tmp_path / "extracted"
     extracted = co.unzip_files(str(archive), str(dest))

@@ -2302,6 +2302,9 @@ def test_generate_python_from_compression_zip_unzip_without_password_converts() 
         namespace: dict[str, object] = {}
         exec(code, namespace)
         assert archive_path.is_file()
+        # knowledge 129: ZipFile出力は実機確認済みでArchivePathと同一のパスを指す
+        # (以前はzip_files()がNoneを返していたため、ここは常にNoneになる潜在バグだった)。
+        assert namespace["ZipFile"] == str(archive_path)
 
         unzip_dsl = (
             f"Compression.UnzipFiles ArchivePath: $'''{archive_path}''' "

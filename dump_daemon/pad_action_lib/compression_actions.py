@@ -94,7 +94,18 @@ def zip_files(
     compression_level: int = 6,
     password: str | None = None,
     archive_comment: str = "",
-) -> None:
+) -> str:
+    """戻り値は実機の`ZipFile`出力(`ArchivePath`と同じパスを指す`FileObject`)に対応する。
+
+    design/dsl_format_findings.md 知見129(VM上でのリフレクション直接呼び出しで実機確認済み):
+    `ZipFilesAction`(実際のクラス名`ZipFiles`)をインスタンス化・`Execute()`を直接呼び出し、
+    実行後の`ZipFile`プロパティの値(`FileObject.FullName`)が渡した`ArchivePath`と同一の
+    パス文字列だったことを確認した——つまり単なるecho。それまでこの関数は`None`を返し、
+    `pad_codegen`側は`{output_var} = zip_files(...)`という代入文を生成していたため、
+    `ZipFile=>`を実際に束縛したフローでは出力変数が常に`None`になる潜在バグがあった
+    (既存の合成テストは`archive_path.is_file()`という副作用だけを検証しており、
+    代入先の値自体は一度も検証していなかった)。
+    """
     archive = Path(archive_path)
     entries: dict[str, bytes] = {}
     if archive.is_file():
@@ -137,6 +148,7 @@ def zip_files(
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
         raise ZipError(str(exc)) from exc
+    return archive_path
 
 
 def unzip_files(
