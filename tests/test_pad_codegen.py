@@ -1766,3 +1766,22 @@ def test_generate_python_from_real_pad_expr_precedence_run_compiles() -> None:
     assert "Result3 = bool(True) != bool(True and False)" in code
     assert "Result4 = True or bool(False) != bool(True)" in code
     assert "Result5 = not True and False" in code
+
+
+def test_generate_python_converts_increase_decrease_variable_with_real_variable_ref() -> None:
+    # 実機キャプチャ(tier1_text_variables_batch4.txt)はバッチ自動化の汎用プレースホルダー
+    # "sample"がValueに入っており(VarRefでないため安全にTODOへ倒れる、knowledge 66)、
+    # IncreaseVariable/DecreaseVariableは[InputArgument(Mutable=true)](その場で変数を
+    # 変更する)ため実際の利用では常にValueが変数参照になる——この既に結線済みのコード
+    # パスを、現実的なVarRef入力で合成DSLとして検証する。
+    dsl = "SET Counter TO 10\nVariables.IncreaseVariable Value: Counter IncrementValue: 5\nVariables.DecreaseVariable Value: Counter DecrementValue: 3"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "Counter = variables_actions.increase_variable(Counter, 5)" in code
+    assert "Counter = variables_actions.decrease_variable(Counter, 3)" in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Counter"] == 12
