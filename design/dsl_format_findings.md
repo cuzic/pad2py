@@ -2036,3 +2036,11 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`の`_join_condition_matches()`から`_join_as_number()`による数値変換ロジックを削除し、`GreaterThan`等を`a > b`(Pythonの素直な比較、文字列なら辞書順)のまま使うようにした(`_join_as_number()`自体も未使用になったため削除)。`filter_datatable()`側は元々数値変換ロジックを持っていなかったため変更不要だった。回帰テスト(`test_join_datatable_greater_than_compares_as_strings_not_numbers`)を追加した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
 
 **教訓**: 「decompileしたソースコードを忠実に実装する」だけでは不十分で、decompileされた呼び出しチェーンの先(この場合`ComparisonCalculator.Compare`自体の内部実装)まで読み切らないと、呼び出し元の型変換前処理を誤って真の比較ロジックだと錯覚しうる——実機のRun実行による裏取りが無ければ見逃していたバグだった。
+
+## 98. 知見90で留保していた`FilterDataTable`の`Equal`型不一致挙動を実機確認——decompileの推測通り「型が食い違えば常に不一致」と確定
+
+知見97に続けて、知見90・91で「decompileのソースに忠実な実装だが実機未検証」として残していたもう1つの留保事項(`Equal`/`NotEqual`の型不一致挙動)を実機確認した。`SET CSV TO $'''30'''`→`Variables.GenerateDataTableFromCSV`(`ReadFieldsAsText: False`)で列`Column#1`を**実際の数値型**(知見92)に変換したテーブルに対し、`FilterParameters`(`COLUMN: Column#1`・`OPERATOR: Equal`・`VALUE: $'''30'''`——これは文字列)でフィルタしたところ、結果は**0件**(ヘッダー行のみ)だった。
+
+**確認できた事実**: 列の実際の値の型(数値)とフィルタ値`VALUE`の型(文字列)が食い違う場合、見た目の値が一致していても(`30`と`"30"`)`Equal`は常に不一致と判定される——decompileした`FilterDataTableAction`の`flag`判定(`columnType != rawValue.GetType()`)がそのまま実機でも成立することが確定した。知見85/88の`ComparisonCalculator.Compare`(`=`/`<>`演算子、`SubtractLists`等)が行う「数値文字列と数値は型をまたいで等価」という**緩い**変換とは対照的に、`FilterDataTable`の`Equal`(`DataView.RowFilter`という別の比較エンジン)は型不一致を**常に不一致**として扱う、より厳格な挙動だと確認できた——両エンジンの挙動は似ているようで異なる。
+
+**修正内容**: 実装(`filter_datatable()`の型不一致判定)はdecompileに基づく記述のまま変更不要だった(元から正しかった)。コメント・テストのdocstringを「decompile済みソースの推測」から「知見98で実機確認済み」に更新するのみ。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。これで知見90・91の留保事項のうち、`Equal`の型不一致判定と順序比較演算子(知見97)の両方が実機確認済みになった。

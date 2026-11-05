@@ -258,8 +258,9 @@ def test_filter_datatable_equal_matches_same_type_values() -> None:
 
 
 def test_filter_datatable_equal_type_mismatch_never_matches() -> None:
-    # decompile済みソースの`flag`判定: 列の実際の型とVALUEの型が食い違う場合、
-    # Equalは常に偽(NotEqualは常に真)になる。
+    # decompile済みソースの`flag`判定(列の実際の型とVALUEの型が食い違う場合、Equalは
+    # 常に偽・NotEqualは常に真になる)を知見98で実機確認済み: ReadFieldsAsText: Falseで
+    # 数値型(int)に変換した列を`Equal "30"`(文字列)でフィルタすると0件になった。
     table = [{"Age": 30}]
     conditions = [{"COLUMN": "Age", "OPERATOR": "Equal", "VALUE": "30", "RULE": "And"}]
     assert va.filter_datatable(table, conditions) == []

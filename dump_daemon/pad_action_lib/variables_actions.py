@@ -294,6 +294,8 @@ def _filter_condition_matches(row: Row, condition: Row, column_types: dict, matc
     if operator == "IsNotEmpty":
         return not (cell is None or str(cell) == "")
     if operator in ("Equal", "NotEqual"):
+        # 知見98で実機確認済み: ReadFieldsAsText: Falseで数値型に変換した列を文字列の
+        # VALUEでEqualフィルタすると0件になる(型不一致は常に不一致)。
         type_mismatch = cell is not None and value is not None and type(cell) is not type(value)
         if operator == "Equal":
             return False if type_mismatch else _filter_text_equal(cell, value, match_case)
