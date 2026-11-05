@@ -114,6 +114,15 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
   ```
   `And`/`Or`と同じく両オペランドを括弧で囲む必要がある(Pythonの`^`も
   比較演算子より結合が強いため)。
+- **`And`/`Or`/`Xor`自体の相対優先順位(2026-11-05、`dump_daemon/uipath_expr/`
+  のバグとして発見・修正)**: VB.NET公式仕様(Microsoft Learn「Operator
+  Precedence - Visual Basic」)では論理/ビット演算子群の優先順位は高い順に
+  `Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`(`Xor`が最も緩い)だが、
+  `uipath_expr`の文法実装は`Or`と`Xor`の相対順が逆になっていた(`And`/`Or`/
+  `Xor`を括弧無しで混在させる実機データが無かったため長らく未検出)。
+  修正済み、詳細は`dump_daemon/uipath_expr/__init__.py`のモジュール
+  docstringと`tests/test_uipath_expr.py`の
+  `test_and_or_xor_relative_precedence_matches_official_vb_spec`参照。
 
 ## 現状のまとめ(2026-11-05)
 
