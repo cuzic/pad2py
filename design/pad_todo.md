@@ -44,8 +44,10 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (単体コピー時の案内メッセージ強化など、VM不要でできる範囲) — commit 92ac6a4で対応。
   ControlRepositoryデータが一切無い場合、TODOコメントに「広い範囲をコピーし直す」案内を
   直接追加した。
-- [ ] 💻 ランタイム設計(generator関数+リプレイジャーナル方式、memory: `pad2py_runtime_direction`)への
-  移行可否の判断・設計ドキュメント化。Tier1/2結線をやり直さずに済むタイミングを見極める。
+- [x] 💻 ランタイム設計(generator関数+リプレイジャーナル方式、memory: `pad2py_runtime_direction`)への
+  移行可否の判断・設計ドキュメント化。Tier1/2結線をやり直さずに済むタイミングを見極める —
+  `design/runtime_architecture_decision.md`に記録。判断: 今は着手せず、A/B節の実機キャプチャ・
+  結線が一巡してから再検討する(出力形状の変更は116アクション分の結線のやり直しを招くため)。
 - [ ] 💻 ローカル`main`とGitHub `origin/main`のコミット分岐(履歴相違)の整理 — 複数セッションが
   同じローカル作業ディレクトリに直接コミットし続けている状態の整理(force-push等の破壊的操作は
   ユーザー確認必須)。
