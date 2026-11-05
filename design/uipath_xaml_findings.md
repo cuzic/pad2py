@@ -2385,7 +2385,83 @@ def _vb_cmp(a, b):
 (`test_if_then_else`・`test_while_loop`)も新しい出力形式に追従させた。
 全698件通過、回帰無し。
 
+## 48. `+`演算子が型混在(数値+文字列)で算術加算になるとVBは規定している——単純な`+`変換のままだとPythonは`TypeError`で即クラッシュする(VM不使用、公式ドキュメントで確定、PAD側の並行知見86に着想を得て調査)
+
+知見47(比較演算子)のコミット直後、他セッションが並行して進めている
+PAD側の知見86「型混在の`+`のディスパッチルールを実機確認し実装・結線」
+(`git log`で確認)を見て、UiPath側の`+`演算子についても同じ観点
+(Object型オペランドの型混在ディスパッチ)を確認していなかったことに
+気づき、公式ドキュメントで調査した。
+
+**確定した内容**(Microsoft Learn「+ Operator (Visual Basic)」Remarks節):
+VBの`+`は「可能な限り算術加算を行い、両方が文字列の場合のみ連結する」
+(ページ冒頭の要約そのもの)。具体的なディスパッチ表(Object型・非Object型
+どちらの変種も同じ実行時結果になるため統合して引用):
+
+| オペランドの型 | 結果 |
+|---|---|
+| 両方数値 | 算術加算 |
+| 両方`String` | 連結 |
+| 片方数値・片方`String` | `String`を`Double`へ変換してから算術加算(変換不可なら`InvalidCastException`) |
+| 片方数値・片方`Nothing` | `Nothing`を`0`として算術加算 |
+| 片方`String`・片方`Nothing` | `Nothing`を`""`として連結 |
+
+公式ドキュメントが挙げている例そのもの: `Dim var1 As String = "34"`・
+`Dim var2 As Integer = 6`に対し`var1 + var2`は`Option Strict Off`下で
+`40`になる(`"346"`という連結結果にはならない)——ページ自身が
+「予期しない結果になりうるため`&`を使うことを推奨する」と明記するほど
+よく知られた罠。
+
+UiPathのワークフロー変数は知見47と同じ理由(`GenericValue`/`Object`型が
+多用される)でこの型混在が現実に発生しうる。単純な`+`→`+`変換のままだと
+**Pythonは`str + int`を`TypeError`で即座にクラッシュさせる**——知見47の
+比較演算子(値は間違うが動く)より一段重大な問題だった(生成スクリプトが
+実行時エラーで止まる)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): 知見45・47と同じ
+設計(静的型情報が無いため実行時isinstanceで分岐)で`_vb_add(a, b)`
+ヘルパーを追加:
+```python
+def _vb_add(a, b):
+    def _vb_is_num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if a is None and b is None:
+        return ""
+    if a is None:
+        a = 0 if _vb_is_num(b) else ""
+    elif b is None:
+        b = 0 if _vb_is_num(a) else ""
+    if _vb_is_num(a) and isinstance(b, str):
+        b = float(b)
+    elif isinstance(a, str) and _vb_is_num(b):
+        a = float(a)
+    return a + b
+```
+変換不能な文字列は`float()`の`ValueError`をそのまま伝播させる(知見47と
+同じ「静かに間違った結果を返さず失敗を伝播させる」方針)。ヘルパー関数の
+生成コードへの注入は既存の`_collect_imports`の仕組みを拡張して対応。
+
+`tests/test_uipath_codegen.py`に
+`test_plus_operator_dispatches_add_vs_concat_like_vb_not_python_typeerror`
+を追加(`"34" + 6`→`"40"`という公式ドキュメントの例そのものを含む)。
+全711件通過、回帰無し。
+
+**この知見で確定したこと**: 知見47の比較演算子に続き、`+`演算子の型混在
+ディスパッチも公式ドキュメントで確定・実装できた——PAD側の並行知見と
+UiPath側で同種の問題が独立に見つかったことは、この系統の「Option Strict
+Off/緩い型システム下の暗黙変換」バグが両トランスパイラ共通の盲点
+だったことを示唆する。他の演算子(`-`/`*`/`/`)についても同様の型混在
+ディスパッチが定義されているか、今後の調査候補として記録する価値がある
+(下記参照)。
+
 ## 今後の調査候補(未着手)
+
+- **`-`/`*`/`/`演算子の型混在ディスパッチ(未着手)**: `+`(知見48)・
+  `=`等(知見47)で確認したObject型オペランドの型混在ディスパッチが、
+  他の算術演算子(`-`/`*`/`/`)にも同様に定義されているか未調査。
+  Microsoft Learnの演算子リファレンスは通常演算子ごとに個別ページを持つ
+  ため、`-`/`*`/`/`それぞれの公式ページのRemarks節を確認すれば同じ
+  手法で確定できる可能性が高い——次の自律タスクの候補として記録。
 
 - **`CDbl(x)`の2点が公式ドキュメントだけでは確定できず未解決(2026-11-05、
   知見46作業中に派生して調査)**: 知見42〜46の系統点検の延長で`CDbl`も

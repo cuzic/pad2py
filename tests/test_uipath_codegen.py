@@ -559,6 +559,40 @@ def test_comparison_of_unconvertible_string_against_number_raises_not_silently_f
 
 
 @pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 公式ドキュメントそのものの例:"34" + 6 は連結"346"ではなく
+        # 算術加算40になる(Microsoft Learn「+ Operator」Remarks節、知見48)。
+        ('"34" + 6', "40"),
+        ('6 + "34"', "40"),
+        # 両方数値・両方文字列なら従来通り。
+        ("2 + 2", "4"),
+        ('"a" + "b"', "ab"),
+        # Nothingは数値側となら0、文字列側となら""として扱われる。
+        ("5 + Nothing", "5"),
+        ('"a" + Nothing', "a"),
+    ],
+)
+def test_plus_operator_dispatches_add_vs_concat_like_vb_not_python_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見48: `+`の型混在ディスパッチ規則(片方が数値・片方が文字列なら
+    連結ではなく算術加算)を実装したことの回帰テスト。単純な`+`変換の
+    ままだとPythonは`str + int`で`TypeError`を即座に送出しクラッシュする
+    (値が間違うだけの`_vb_cmp`/`_vb_cstr`のケースより重大な問題だった)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
     ("vb_text", "expect_nan"),
     [
         # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。

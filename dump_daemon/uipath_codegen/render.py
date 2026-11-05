@@ -97,6 +97,33 @@ def _vb_cmp(a, b):
     return (a, b)
 """
 
+# `+`演算子の型混在ディスパッチ規則(Microsoft Learn「+ Operator」の
+# Remarks節、VM不使用・公式ドキュメントで確定、知見48参照)。VBの`+`は
+# 両方数値なら算術加算、両方文字列なら連結、**片方が数値・片方が文字列
+# なら文字列をDoubleへ変換してから算術加算する**(`"34" + 6`は`40`——
+# 連結ではなく加算になる、Microsoft公式の例そのもの)。`Nothing`は数値側
+# との組では`0`、文字列側との組では`""`として扱われる。Pythonの`+`は
+# str+intを`TypeError`で即座にクラッシュさせる(`_vb_cmp`/`_vb_cstr`の
+# ケースのような「値は間違っているが動く」ではなく、単純な`+`変換の
+# ままでは動かすら出来ない、より重大な問題)。
+VB_ADD_HELPER_NAME = "_vb_add"
+VB_ADD_HELPER_SOURCE = """\
+def _vb_add(a, b):
+    def _vb_is_num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if a is None and b is None:
+        return ""
+    if a is None:
+        a = 0 if _vb_is_num(b) else ""
+    elif b is None:
+        b = 0 if _vb_is_num(a) else ""
+    if _vb_is_num(a) and isinstance(b, str):
+        b = float(b)
+    elif isinstance(a, str) and _vb_is_num(b):
+        a = float(a)
+    return a + b
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
 # Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
@@ -258,7 +285,9 @@ def _render_bin_op(node: BinOp) -> str:
         # Double値の見た目が食い違う(`str(4.0)`は`"4.0"`、VBは`"4"`)。
         return f"{VB_CSTR_HELPER_NAME}({left}) + {VB_CSTR_HELPER_NAME}({right})"
     if op == "+":
-        return f"({left}) + ({right})"
+        # 知見48参照: 単純な`+`では型混在(数値+文字列、Nothing絡み)で
+        # `TypeError`になるか、VBの実際の算術加算結果と食い違う。
+        return f"{VB_ADD_HELPER_NAME}({left}, {right})"
     if op == "-":
         return f"({left}) - ({right})"
     if op == "mod":
