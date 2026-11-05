@@ -387,9 +387,22 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     codegenに結線されていなかったため出荷前に発見できた)。
     - [ ] 💻🖥️ **残課題(次の調査対象)**: `RenameAddDateOrTime`/`RenameAddCustomDateTime`/
       `RenameAddSequentialSuffix`(日時書式・連番のパラメータが多く個々の仕様が未検証)、
-      `OverwriteWithSequentialSuffix`(未調査)は見送ったまま。また今回確立した監査手法は
-      `Variables.Actions.dll`/`File.Actions.dll`以外の他のモジュール(`Folder.Actions.dll`/
-      `Compression.Actions.dll`等)にも適用する価値がある。
+      `OverwriteWithSequentialSuffix`(未調査)は見送ったまま。
+  - [x] 💻🖥️ `Folder.Actions.dll`/`Compression.Actions.dll`にも同じ監査手法を適用。
+    ✅ **決着(知見137)**: `Folder.IfFolderExists.DoesNotExist`を発見・結線した
+    (`FolderExistsSelector`という名前自体に`"IfFolder"`を含まないため、型名部分一致の
+    簡易チェックでは見逃していたと判明——`ActionSelectorBase`を基底型として正しく
+    辿る方式に監査手法を統一した)。`Compression.Actions.dll`には`ActionSelector`
+    サブクラスが1つも無いことも確認(ZipFiles/UnzipFilesは単一モード)。
+  - [ ] 💻🖥️ **残課題(次の調査対象)**: `DateTime.GetCurrentDateTime`にも同じ監査で
+    `Current`/`Windows`/`CustomOffset`/`CustomTimeZone`(`Local`以外の4モード)が
+    未結線と判明——`get_current_datetime()`自体は`Windows`/`Custom`/`Specific`モードを
+    既に実装済みで、codegen側の分岐が`Local`の1つしか無かった(知見122/127/128/132と
+    同種のパターン)。さらに`Database.Actions.dll`(`ConnectAndExecute`/
+    `ConnectAndExecuteOracle`/`ConnectOracle`)・`Web.Actions.dll`(Download/
+    InvokeWebService系が非常に多数)・`XML.Actions.dll`・`Cmd.Actions.dll`・
+    `Text.Actions.dll`・`Cryptography.Actions.dll`(AES鍵のSalt/IV組み合わせ系)にも
+    同じ監査で多数の未結線セレクタ候補が見つかっており、次の調査対象として記録する。
 
 ## C. 構造的・運用上の課題
 

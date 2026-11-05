@@ -2798,6 +2798,23 @@ def test_generate_python_from_if_file_does_not_exist_converts() -> None:
         assert namespace["X"] == 1
 
 
+def test_generate_python_from_if_folder_does_not_exist_converts() -> None:
+    # design/dsl_format_findings.md 知見137: `Folder.IfFolderExists.Exists`の兄弟セレクタ
+    # `DoesNotExist`(`FolderExistsSelector`という名前自体に"IfFolder"という部分文字列を
+    # 含まないため、型名の部分一致で探す監査では見逃していた——`ActionSelectorBase`を
+    # 基底型として正しく辿る方法で発見)。
+    with tempfile.TemporaryDirectory() as tmp:
+        missing_path = Path(tmp) / "missing_dir"
+        dsl = f"IF (Folder.IfFolderExists.DoesNotExist Path: $'''{missing_path}''') THEN\nSET X TO 1\nEND"
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["X"] == 1
+
+
 def test_generate_python_from_wait_for_file_deleted_converts() -> None:
     # design/dsl_format_findings.md 知見136: `File.WaitForFile.Created`の兄弟セレクタ
     # `File.WaitForFile.Deleted`(存在チェックを無期限ポーリングするだけの単純な否定)。

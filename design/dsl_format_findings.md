@@ -2423,3 +2423,9 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **今回も見送った項目**: `RenameAddDateOrTime`/`RenameAddCustomDateTime`/`RenameAddSequentialSuffix`(日時書式・連番の開始値/増分/パディング等、パラメータが多く個々の書式仕様が未検証)、`OverwriteWithSequentialSuffix`(別アクションのIfFileExists系の3つ目の選択肢と見られるが未調査)は、今回のtickでは時間の都合により見送り、`pad_todo.md`に次の調査対象として記録する。
 
 テストは`tests/test_pad_action_lib_file.py`の`test_rename_schemes`を正しい列挙値名に修正、`tests/test_pad_codegen.py`に6件(`ReadTextAsList`・`IfFile.DoesNotExist`・`WaitForFile.Deleted`・`RenameAddText`/`RenameRemoveText`/`RenameReplaceText`/`RenameChangeExtension`)のend-to-endテスト(実ファイルを作成し、実際に`exec()`してリネーム結果のファイルが存在することまで検証)を追加した。
+
+## 137. `Folder.Actions.dll`にも同じ監査を適用し`Folder.IfFolderExists.DoesNotExist`を発見・結線——型名の部分一致で探す以前の簡易チェックでは見逃していたことが判明し、監査手法自体を「`ActionSelectorBase`を基底型として正しく辿る」方式に統一
+
+知見136の次の調査対象として`Folder.Actions.dll`に同じ監査を適用した。ここで、過去の簡易チェック(型名が`"IfFolder"`という部分文字列を含むかで検索)では、実際のセレクタクラス名`FolderExistsSelector`/`FolderDoesNotExistSelector`(`IfFolder`という文字列を含まない)を取り逃していたと判明した——`BaseType`を`ActionSelectorBase`まで正しく遡る列挙方法(知見135・136で確立した本来の手法)で再確認し、`Folder.IfFolderExists.DoesNotExist`(`File.IfFile.DoesNotExist`と全く同じ、`IfFolderExistsAction`の`CheckMode`を切り替えるだけの構造)を発見した。既存の`_EXISTENCE_CHECKS`マップの`negate`フラグをそのまま再利用して結線した。`Compression.Actions.dll`には`ActionSelector`サブクラスが1つも無い(ZipFiles/UnzipFilesは単一モード)ことも確認した。
+
+**教訓**: 型名の部分文字列一致は便利だが、PAD側のクラス命名規則(`FolderExistsSelector`等、ホストアクション名を省略する命名)に依存すると取り逃しが起こる——必ず`BaseType`を`ActionSelectorBase`まで辿る正式な方法を使うべきと確定した。

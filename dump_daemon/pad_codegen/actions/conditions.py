@@ -15,14 +15,18 @@ from ._support import safe_render
 # `Folder.IfFolderExists.Exists`はUI要素セレクタを一切使わない単純な存在チェックで、
 # `pad_action_lib`の対応する関数呼び出し1つに素直に変換できる(`IfImage`/
 # `IfWindowContains`のような複数の設定可能なサブモードが無い)。
-# `File.IfFile.DoesNotExist`は知見136(`ActionSelectorBase`一括列挙の監査で発見)で
-# 追加した兄弟セレクタ——`Exists`の単純な否定(`FileExistsSelector`/
-# `FileDoesNotExistSelector`はいずれも`IfFileAction`の`CheckMode`を切り替えるだけの
-# 同一構造とVM上で確認済み)。
+# `File.IfFile.DoesNotExist`/`Folder.IfFolderExists.DoesNotExist`は知見136・137
+# (`ActionSelectorBase`一括列挙の監査で発見)で追加した兄弟セレクタ——`Exists`の単純な
+# 否定(`FileExistsSelector`/`FileDoesNotExistSelector`、`FolderExistsSelector`/
+# `FolderDoesNotExistSelector`はいずれも`IfFileAction`/`IfFolderExistsAction`の
+# `CheckMode`を切り替えるだけの同一構造とVM上で確認済み)。`Folder`側は`FolderExistsSelector`
+# という名前に`IfFolder`という部分文字列を含まないため、以前の型名部分一致での監査では
+# 見逃していた(`ActionSelectorBase`を基底型として辿る正しい列挙方法で知見137で発見)。
 _EXISTENCE_CHECKS: dict[str, tuple[str, str, bool]] = {
     "File.IfFile.Exists": ("File", "file_actions.if_file_exists", False),
     "File.IfFile.DoesNotExist": ("File", "file_actions.if_file_exists", True),
     "Folder.IfFolderExists.Exists": ("Path", "folder_actions.if_folder_exists", False),
+    "Folder.IfFolderExists.DoesNotExist": ("Path", "folder_actions.if_folder_exists", True),
 }
 
 
