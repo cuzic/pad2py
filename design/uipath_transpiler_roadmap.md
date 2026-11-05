@@ -189,6 +189,31 @@ docstringを参照。未対応アクティビティ(Library呼び出し含む)�
 - Modern活動のFuzzy/Strict selector(知見37)は未対応(そもそもXAML形が
   未確認)
 
+## Phase 3: VB.NET式パーサー【完了、2026-11-05】
+
+`dump_daemon/uipath_expr/`を新設し、`pad_expr`と同じ設計方針(Lark文法、
+演算子の優先順位は公開VB.NET仕様に基づく未検証の仮定、構文解析失敗時は
+テキストを失わずフォールバック)でVB.NET式パーサーを実装した。知見32・36で
+実機確認済みの構文(リテラル・変数参照・ドット区切り静的メソッド呼び出し・
+9演算子`Mod`/`\`/`^`/`And`/`AndAlso`/`Or`/`OrElse`/`Xor`/`Not`・比較演算子
+`=`/`<>`/`<`/`>`/`<=`/`>=`/`Is`/`IsNot`・型変換関数`CStr`/`CInt`/`CDbl`/
+`CBool`/`IsNothing`・三項`If(cond,t,f)`・文字列補間`$"..."`(中身は解析せず
+不透明なアトムとして保持)・`String.IsNullOrEmpty`等の静的メソッド呼び出し)
+を全てカバーし、`tests/test_uipath_expr.py`(14件)で知見ドキュメントに
+記録された実機確認済み式を1件も失敗させずパースできることを確認した。
+`And`/`Or`は構文解析の対象のみ(`BinOp(op="And"/"Or", ...)`として木に残す)
+——これを実際に安全な`&`/`|`へ変換するのはPhase 4(codegen)の責務で、
+変換ルール自体は既にdesign/uipath_vb_expression_mapping.mdで確定済み。
+
+**`uipath_dsl`とは意図的に疎結合のまま**: `VbExpr`(`uipath_dsl.types`)は
+引き続き生テキストのみを保持し、`uipath_expr.parse_vb_expr(vb_expr.text)`を
+呼ぶのは利用側(将来のcodegen)の責務とした。`pad_dsl.RawExpr.tree`のように
+パース結果をIRノードへ事前に埋め込む設計も検討したが、2つのモジュールが
+扱う関心事(XML構造 vs. VB式構文)は直交しており、今の時点で結合する
+積極的な理由が無い(かつ`VbExpr`の等価比較が`tree`の有無で変わってしまい
+既存テストに不要な手戻りが生じる)と判断し見送った——将来、実際に
+codegenで必要になった時点で結合するか、改めて検討する。
+
 ## 次にやること
 
 1. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
@@ -196,13 +221,7 @@ docstringを参照。未対応アクティビティ(Library呼び出し含む)�
    (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
    解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
    のため、使用タイミングの調整が必要
-2. **VB.NET式パーサーの実装**(Phase 3の残り): `uipath_dsl`は現状
-   `VbExpr`に生テキストを保持するだけで構文解析していない。知見32・36で
-   構文が出尽くした範囲(リテラル・変数参照・9演算子・型変換関数・
-   `IsNot`/`Nothing`/`IsNothing`・三項`If`・文字列補間・`And`/`Or`の
-   `&`/`|`変換)をカバーするLark文法を新規に書く(`pad_expr`と同じ位置
-   づけの新規モジュール、`uipath_expr`等)
-3. **Phase 4着手**: `uipath_dsl`のIRからPythonコードを生成する
-   `uipath_codegen`(仮称)の実装。`pad_codegen`の設計
+2. **Phase 4着手**: `uipath_dsl`のIRと`uipath_expr`の式構文木からPython
+   コードを生成する`uipath_codegen`(仮称)の実装。`pad_codegen`の設計
    (`generate_python()`単一エントリポイント、`actions/`でのディスパッチ分割)
-   を参考にする
+   を参考にする。`And`/`Or`→`&`/`|`変換(括弧必須)はここで実装する

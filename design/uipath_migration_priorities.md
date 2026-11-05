@@ -66,12 +66,14 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 1. **(完了)** `And`/`Or`変換アルゴリズム設計。`&`/`|`ビット演算子への
    変換、両オペランド括弧必須、をPython実挙動で検証し確定
    (design/uipath_vb_expression_mapping.md参照)
-2. **(着手完了)** Phase 2〜3: `dump_daemon/uipath_dsl/`パッケージを新設し、
+2. **(完了)** Phase 2〜3: `dump_daemon/uipath_dsl/`パッケージを新設し、
    Tier1アクティビティ一式に対応するXAMLツリーウォーカーを実装
-   (`tests/test_uipath_dsl.py`、19件全通過)。詳細は
-   design/uipath_transpiler_roadmap.mdの「Phase 2〜3」節参照
-3. **次点**: VB.NET式パーサー(`VbExpr`は現状生テキスト保持のみ)、
-   Phase 4のcodegen(`uipath_codegen`仮称)着手
+   (`tests/test_uipath_dsl.py`、19件全通過)
+3. **(完了)** Phase 3: `dump_daemon/uipath_expr/`でVB.NET式パーサーを実装
+   (`tests/test_uipath_expr.py`、14件全通過、知見32・36の実機確認済み式を
+   全網羅)。`uipath_dsl`とは意図的に疎結合のまま(IR事前埋め込みはせず)
+4. **次点**: Phase 4のcodegen(`uipath_codegen`仮称)着手。詳細は
+   design/uipath_transpiler_roadmap.mdの「次にやること」参照
 
 以下は(長期ブロック・保留中の)新Studio側の調査で、再開には別途対応が必要:
 
