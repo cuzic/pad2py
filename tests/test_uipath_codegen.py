@@ -616,6 +616,63 @@ def test_hex_or_oct_literal_string_via_variable_matches_runtime_helpers(
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # 知見68: 演算子ディスパッチャ(Operators.vbのAddObject等)の文字列
+        # オペランド変換も`CDbl(Convert.ToString(x))`——知見67と同じ
+        # `IsHexOrOctValue`経路を通るため、`&H`/`&O`リテラル文字列は
+        # 算術演算子・比較演算子でも直接整数として解釈される。
+        ('"&H1A" + 1', "27"),
+        ('"&H1A" - 1', "25"),
+        ('"&H1A" * 2', "52"),
+        ('"&H1A" / 2', "13"),
+        ('"&H1A" Mod 5', "1"),
+        ('"&O17" + 1', "16"),
+    ],
+)
+def test_hex_or_oct_literal_string_in_arithmetic_operators(
+    vb_text: str, expected: str
+) -> None:
+    """知見68: `_vb_add`/`_vb_num`/`_vb_div`/`_vb_mod`が文字列オペランドを
+    `&H`/`&O`リテラルとして解釈できることの回帰テスト(知見67の`_vb_cdbl`
+    と同じロジックを各ヘルパーに複製)。"""
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 知見68: 比較演算子(`_vb_cmp`)の文字列オペランド変換も同じ経路。
+        ('"&H1A" = 26', "True"),
+        ('"&H1A" < 27', "True"),
+        ('"&H1A" <> 26', "False"),
+    ],
+)
+def test_hex_or_oct_literal_string_in_comparison_operators(
+    vb_text: str, expected: str
+) -> None:
+    """知見68: `_vb_cmp`が文字列オペランドを`&H`/`&O`リテラルとして解釈
+    できることの回帰テスト。"""
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # .NETランタイム本体のソース(Conversions.vb、dotnet/runtime)で
         # 確定(知見52): ToDouble(Object)/ToDouble(String)はNothingに対し
         # 例外を出さず0を返す。Pythonのfloat(None)はTypeErrorになり食い違う。

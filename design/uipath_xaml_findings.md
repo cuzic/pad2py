@@ -3368,6 +3368,45 @@ variable_matches_runtime_helpers`で変数経由(コード生成時に文字列�
 できた——「確度の高いソース」技法(知見52以来)はファイル境界を越えた
 検索にも有効だと実証された。
 
+## 68. 演算子ディスパッチャ(`+`/`-`/`*`/`/`/`Mod`/比較)の文字列オペランドも`&H`/`&O`16進・8進リテラルとして解釈されると確定——知見67のCDbl/CInt/CBool限定の修正を演算子側にも波及(VM不使用)
+
+知見67で`CDbl`/`CInt`/`CBool`の`&H`/`&O`16進・8進リテラル文字列対応を
+解決した直後、同じ日に既に取得済みだった`Operators.vb`(知見54・59で
+`AndObject`/`XorObject`等を確認した同じファイル)を今回の観点
+(「文字列オペランドをどう数値へ変換しているか」)で再確認したところ、
+`AddObject`/`SubtractObject`/`MultiplyObject`/`DivideObject`/
+`ModObject`/`CompareObjectEqual`のいずれも、文字列オペランドの変換に
+`CDbl(Convert.ToString(x))`——知見67で対応した、まさに同じ
+`Conversions.ToDouble`経路を使っていると判明した。つまり`"&H1A" + 1`や
+`"&H1A" = 26`のような式も、実機では`&H1A`を16進リテラルとして解釈した
+上で演算される——知見67は型変換関数(`CDbl`/`CInt`/`CBool`)のみを対象に
+していたため、この演算子側の同じ食い違いは見過ごされたまま残っていた。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_cmp`
+(比較)・`_vb_add`(`+`)・`_vb_num`(`-`/`*`/`\`/`^`の単項正規化)・
+`_vb_div`(`/`)・`_vb_mod`(`Mod`)の5ヘルパーすべてに、知見67の`_vb_cdbl`
+と同じ`&H`/`&O`判定ロジックを追加した。`_collect_imports`(`uipath_
+codegen/__init__.py`)が生成コードに文字通り現れるヘルパー名だけを検知
+する仕組み上、各ヘルパーが`_vb_cdbl`を直接呼ぶ構造にはできない(知見50で
+`_vb_div`を`_vb_num`に依存させない自己完結設計にした理由と同じ制約)ため、
+`_vb_cmp`/`_vb_add`/`_vb_div`/`_vb_mod`には局所関数`_s2f`(string-to-float)
+を定義して複製し、単一オペランドの`_vb_num`には直接インライン化した。
+
+`tests/test_uipath_codegen.py`に
+`test_hex_or_oct_literal_string_in_arithmetic_operators`
+(`"&H1A" + 1`→`27`等)・
+`test_hex_or_oct_literal_string_in_comparison_operators`
+(`"&H1A" = 26`→`True`等)を追加。UiPath関連テスト全224件通過、
+リポジトリ全体で全844件通過。
+
+**この知見で確定したこと**: 知見52以来のパターン(1つの変換関数で見つけた
+食い違いを、同じファイル内の類似関数へ追い打ちで確認する、知見53・67)を
+さらに一段広げ、「型変換関数(`Conversions.vb`)で見つけた食い違いが、
+別ファイル(`Operators.vb`)の演算子ディスパッチャにも波及しているか」を
+確認する視点が有効だと実証した——型変換関数と演算子ディスパッチャが
+内部で同じ変換経路(`CDbl`)を共有している以上、片方だけ直して満足せず
+もう片方も確認する価値がある。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

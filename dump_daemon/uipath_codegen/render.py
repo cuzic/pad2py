@@ -137,11 +137,32 @@ def _vb_cstr(x):
 # False becomes 0 and True becomes -1」と明記——VM不使用・公式ドキュメント
 # で確定、知見51参照。Pythonの`bool`は`int`のサブクラスで`True`は`1`
 # 相当のため、変換無しでは符号が逆になる)。
+# 知見68: `_vb_cmp`/`_vb_add`/`_vb_num`/`_vb_div`/`_vb_mod`はいずれも
+# 文字列オペランドを`float(x)`で素朴にDoubleへ変換していたが、.NET
+# ランタイム本体のソース(`Operators.vb`の`AddObject`/`SubtractObject`/
+# `MultiplyObject`/`DivideObject`/`ModObject`/`CompareObjectEqual`等、
+# 知見54・59と同じファイル)を確認したところ、文字列オペランドの変換は
+# いずれも`CDbl(Convert.ToString(x))`——知見67で`&H`/`&O`16進・8進
+# リテラル文字列対応を追加した、まさに同じ`Conversions.ToDouble`経路
+# だった。つまり`"&H1A" + 1`/`"&H1A" = 26`のような式も実機では16進
+# リテラルとして解釈される——知見67はCDbl/CInt/CBool(型変換関数)のみを
+# 対象にしていたが、演算子ディスパッチャ側にも同じ変換経路が使われている
+# ため同じ修正が必要だった(VM不使用、`gh api`で取得済みの`Operators.vb`
+# を再確認して発見)。各ヘルパーに局所関数`_s2f`(string-to-float、
+# `_vb_cdbl`/知見67と同じ判定ロジック)を追加——`_collect_imports`が
+# 生成コードに文字通り現れるヘルパー名だけを検知する仕組み上、
+# `_vb_cdbl`を直接呼ぶ構造には出来ない(知見50の`_vb_div`が`_vb_num`に
+# 依存しない自己完結設計を選んだ理由と同じ)ため、各ヘルパー内に同じ
+# ロジックを複製する。
 VB_CMP_HELPER_NAME = "_vb_cmp"
 VB_CMP_HELPER_SOURCE = """\
 def _vb_cmp(a, b):
     def _vb_is_num(x):
         return isinstance(x, (int, float)) and not isinstance(x, bool)
+    def _s2f(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return float(int(s[2:], 16 if s[1].lower() == "h" else 8))
+        return float(s)
     if isinstance(a, bool):
         a = -1 if a else 0
     if isinstance(b, bool):
@@ -155,9 +176,9 @@ def _vb_cmp(a, b):
     elif b is None and isinstance(a, str):
         b = ""
     if _vb_is_num(a) and isinstance(b, str):
-        b = float(b)
+        b = _s2f(b)
     elif isinstance(a, str) and _vb_is_num(b):
-        a = float(a)
+        a = _s2f(a)
     return (a, b)
 """
 
@@ -183,6 +204,10 @@ VB_ADD_HELPER_SOURCE = """\
 def _vb_add(a, b):
     def _vb_is_num(x):
         return isinstance(x, (int, float)) and not isinstance(x, bool)
+    def _s2f(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return float(int(s[2:], 16 if s[1].lower() == "h" else 8))
+        return float(s)
     if isinstance(a, bool):
         a = -1 if a else 0
     if isinstance(b, bool):
@@ -194,9 +219,9 @@ def _vb_add(a, b):
     elif b is None:
         b = 0 if _vb_is_num(a) else ""
     if _vb_is_num(a) and isinstance(b, str):
-        b = float(b)
+        b = _s2f(b)
     elif isinstance(a, str) and _vb_is_num(b):
-        a = float(a)
+        a = _s2f(a)
     return a + b
 """
 
@@ -217,6 +242,8 @@ def _vb_num(x):
     if x is None:
         return 0
     if isinstance(x, str):
+        if len(x) >= 3 and x[0] == "&" and x[1].lower() in "ho":
+            return float(int(x[2:], 16 if x[1].lower() == "h" else 8))
         return float(x)
     return x
 """
@@ -238,18 +265,22 @@ def _vb_num(x):
 VB_DIV_HELPER_NAME = "_vb_div"
 VB_DIV_HELPER_SOURCE = """\
 def _vb_div(a, b):
+    def _s2f(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return float(int(s[2:], 16 if s[1].lower() == "h" else 8))
+        return float(s)
     if isinstance(a, bool):
         a = -1 if a else 0
     elif a is None:
         a = 0
     elif isinstance(a, str):
-        a = float(a)
+        a = _s2f(a)
     if isinstance(b, bool):
         b = -1 if b else 0
     elif b is None:
         b = 0
     elif isinstance(b, str):
-        b = float(b)
+        b = _s2f(b)
     if b == 0:
         if a == 0:
             return float("nan")
@@ -272,18 +303,22 @@ def _vb_div(a, b):
 VB_MOD_HELPER_NAME = "_vb_mod"
 VB_MOD_HELPER_SOURCE = """\
 def _vb_mod(a, b):
+    def _s2f(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return float(int(s[2:], 16 if s[1].lower() == "h" else 8))
+        return float(s)
     if isinstance(a, bool):
         a = -1 if a else 0
     elif a is None:
         a = 0
     elif isinstance(a, str):
-        a = float(a)
+        a = _s2f(a)
     if isinstance(b, bool):
         b = -1 if b else 0
     elif b is None:
         b = 0
     elif isinstance(b, str):
-        b = float(b)
+        b = _s2f(b)
     if b == 0:
         if isinstance(a, float) or isinstance(b, float):
             return float("nan")
