@@ -282,6 +282,8 @@ def test_filter_datatable_and_combines_consecutive_conditions() -> None:
 
 
 def test_filter_datatable_or_starts_a_new_and_group() -> None:
+    # design/dsl_format_findings.md 知見99で実機確認済み: Age=30 OR Age=40の2条件
+    # (単純なOR、グループ化無し)がAlice/Carolにマッチし、Bobが除外されることを確認。
     table = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}, {"Name": "Carol", "Age": "30"}]
     conditions = [
         {"COLUMN": "Name", "OPERATOR": "Equal", "VALUE": "Bob", "RULE": "And"},

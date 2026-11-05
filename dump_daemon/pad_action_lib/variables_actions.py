@@ -334,11 +334,13 @@ def filter_datatable(table: DataTable, conditions: DataTable, match_case: bool =
 
     `conditions`(`FilterParameters`)は`COLUMN`/`OPERATOR`/`VALUE`/`RULE`列を持つDataTable
     (decompileした`FilterDataTableUtilities`/`FilterDataTableExtensions`から判明、`Equal`で
-    3行(`Age Equal 30 AND Name Equal Carol`)・`Contains`を実機のRun実行+ファイル書き出しで
-    検証済み)。`RULE`は2行目以降で前の行との結合方法(`"Or"`/`"And"`、既定は`"And"`)を表す。
-    標準的な論理演算子の優先順位(ANDがORより強く結合)に従い、OR区切りのAND-group群として
-    評価する。`Equal`/`NotEqual`は両辺のPython型が一致しない場合、常に不一致(`Equal`→常に偽、
-    `NotEqual`→常に真)という実機特有の挙動(decompile済みソースの`flag`判定)を再現する。
+    3行(`Age Equal 30 AND Name Equal Carol`)・`Contains`・`RULE: Or`(知見99)を実機のRun
+    実行+ファイル書き出しで検証済み)。`RULE`は2行目以降で前の行との結合方法(`"Or"`/
+    `"And"`、既定は`"And"`)を表す。標準的な論理演算子の優先順位(ANDがORより強く結合)に
+    従い、OR区切りのAND-group群として評価する。`Equal`/`NotEqual`は両辺のPython型が
+    一致しない場合、常に不一致(`Equal`→常に偽、`NotEqual`→常に真)という実機特有の挙動
+    (decompile済みソースの`flag`判定、知見98で実機確認済み)を再現する。順序比較演算子
+    (`GreaterThan`等)は数値変換せず文字列のまま比較する(知見97で実機確認済み)。
     """
     if not conditions:
         return [dict(row) for row in table]
