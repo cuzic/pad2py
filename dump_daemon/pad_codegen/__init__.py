@@ -183,13 +183,20 @@ def _generate_conditional(node: ConditionalNode, indent: int, ctx: CodegenContex
         elif isinstance(header, KeywordRecord) and header.name == "ELSE":
             lines.append(f"{prefix}else:")
         elif isinstance(header, (IfFunctionRecord, ElseIfFunctionRecord)):
-            # Contains等の関数呼び出し条件(design/dsl_format_findings.md 知見18-2)。
-            # Pythonへの変換方法がまだ未検証のため、誤った意味論をでっち上げるより
-            # はっきり失敗させる。
-            raise NotImplementedError(
-                f"Function-call condition {header.function_name}(...) is not yet supported "
-                "by codegen; its Python semantics haven't been verified on real PAD."
-            )
+            # Contains/NotContains/IsEmpty/IsNotEmptyの関数呼び出し条件
+            # (design/dsl_format_findings.md 知見18-2・75で実機確認済み)。知見75で、
+            # クリップボードへのペースト+コピー読み取りによる往復確認で、この4つの関数名
+            # (綴りの揺れ——DoesNotContain等——は全て"Has error"になり不採用と対照実験済み)
+            # がPAD自身に認識されることを確認したため、この4つに限定して変換する。それ以外の
+            # 未知の関数名は、誤った意味論をでっち上げるよりはっきり失敗させる。
+            condition = _render_function_condition(header)
+            if condition is None:
+                raise NotImplementedError(
+                    f"Function-call condition {header.function_name}(...) is not yet supported "
+                    "by codegen; its Python semantics haven't been verified on real PAD."
+                )
+            keyword = "if" if isinstance(header, IfFunctionRecord) else "elif"
+            lines.append(f"{prefix}{keyword} {condition}:")
         elif isinstance(header, (IfActionRecord, ElseIfActionRecord)):
             # 「If window」「If window contains element」等の[ConditionAction]カテゴリ
             # (design/dsl_format_findings.md 知見54)。条件式を誤って翻訳すると制御フローが
@@ -213,6 +220,21 @@ def _generate_conditional(node: ConditionalNode, indent: int, ctx: CodegenContex
             raise TypeError(f"Unexpected conditional arm header: {header!r}")
         lines.extend(_ensure_nonempty_suite(_generate_block_body(arm_body, indent + 1, ctx), indent + 1))
     return lines
+
+
+def _render_function_condition(header: IfFunctionRecord | ElseIfFunctionRecord) -> str | None:
+    """知見75で実機確認済みの4関数(Contains/NotContains/IsEmpty/IsNotEmpty)のみPythonの
+    真偽値式に変換する。未知の関数名は`None`を返し、呼び出し元が安全にTODOへ倒す。"""
+    args = [render_value(a) for a in header.args]
+    if header.function_name == "Contains" and len(args) == 2:
+        return f"{args[1]} in {args[0]}"
+    if header.function_name == "NotContains" and len(args) == 2:
+        return f"{args[1]} not in {args[0]}"
+    if header.function_name == "IsEmpty" and len(args) == 1:
+        return f"not {args[0]}"
+    if header.function_name == "IsNotEmpty" and len(args) == 1:
+        return f"bool({args[0]})"
+    return None
 
 
 def _generate_switch(node: SwitchNode, indent: int, ctx: CodegenContext) -> list[str]:

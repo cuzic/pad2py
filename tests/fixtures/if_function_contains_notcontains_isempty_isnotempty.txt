@@ -1,0 +1,10 @@
+SET Var1 TO $'''hello'''
+SET Var2 TO $'''ell'''
+IF Contains(Var1, Var2) THEN
+END
+IF NotContains(Var1, Var2) THEN
+END
+IF IsEmpty(Var1) THEN
+END
+IF IsNotEmpty(Var1) THEN
+END

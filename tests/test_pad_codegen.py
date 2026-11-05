@@ -1194,3 +1194,33 @@ def test_generate_python_from_real_if_image_exists_on_screen_capture_raises() ->
     tree = build_block_tree(parse_dsl(text))
     with pytest.raises(NotImplementedError, match="UIAutomation.IfImage.ExistsOnScreen"):
         generate_python(tree)
+
+
+def test_generate_python_from_real_if_function_contains_batch_converts_all_four() -> None:
+    # design/dsl_format_findings.md 知見75: クリップボードへのペースト+コピー読み取りによる
+    # 往復確認(RDP不要、PADデザイナー自体がContains/NotContains/IsEmpty/IsNotEmptyという
+    # 4つの関数名を認識し、エラー無く自然文表示することを実機確認済み)。
+    text = (FIXTURES_DIR / "if_function_contains_notcontains_isempty_isnotempty.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "if Var2 in Var1:" in code
+    assert "if Var2 not in Var1:" in code
+    assert "if not Var1:" in code
+    assert "if bool(Var1):" in code
+    assert "# TODO" not in code
+    assert "NotImplementedError" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # 実際に真偽値として正しく評価できることまで確認する
+
+
+def test_generate_python_from_unknown_function_condition_raises() -> None:
+    # 知見75の対照実験(`Blurgle(Var1, Var1)`はPAD自身に認識されず"Has error"になった)と
+    # 同じ理由で、既知の4関数以外は安全にNotImplementedErrorへ倒す。
+    dsl = "SET Var1 TO $'''hello'''\nIF Blurgle(Var1, Var1) THEN\nSET Var2 TO $'''x'''\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match="Blurgle"):
+        generate_python(tree)

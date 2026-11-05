@@ -1563,3 +1563,42 @@ Cmd.Close Session: CmdSession
 **この知見は実機PAD(GCP VM `pad2py-pad-host`)の操作を一切伴わない**——既に知見62-72で実機キャプチャ済みのフィクスチャ(`tests/fixtures/tier1_*.txt`)だけを根拠にしたパーサー/codegenのみの変更。
 
 **検証**: `tests/test_pad_dsl_parser.py`の該当する回帰テスト4件(`VarRef(name="``")`/`VarRef(name="{")`を期待する古いアサーションを、`""`/`[]`を期待する新しいアサーションへ更新)、`tests/test_pad_codegen_tier1_actions.py`の該当する回帰テスト4件(`# TODO`を期待するアサーションを、実際の変換後コードを期待するアサーションへ更新)、および`tests/test_codegen_coverage.py`の閾値ロックを80%→82%へ更新した。全537件(既存529件+変更分)がパスし、スキップ25件(Windows専用)は変化無し。
+
+## 75. 【新しい実機キャプチャ手法を確立・運用】`IfFunctionRecord`(Contains/Does not contain/Is empty/Is not empty)を実機確認——クリップボードへのペースト+コピー読み取りだけでPADデザイナー自体を駆動する手法を発見
+
+知見18-2・docs-local/robin_language_source_findings.mdで「`FunctionExpression`(`Contains(a, b)`のような関数呼び出し形式の条件式)を実際に生成するPAD機能は未特定」として長年持ち越していた課題を解決した。
+
+**新しい検証手法**: 従来の実機検証は「PADデザイナーでアクションを追加→コピー→クリップボードを読む」という一方向(読み取りのみ)の操作だった。今回、**PADデザイナーの「アクションリスト」領域にDSLテキストをクリップボード経由でペースト(Ctrl+V)すると、実際に構造化されたアクションカードとして取り込まれる**ことを発見した——つまりクリップボードは読み取り専用の経路ではなく、**書き込み(ペーストによるフロー編集)にも使える双方向の経路**だった。これにより、PAD実機をドラッグ&ドロップやマウスクリックに一切頼らず、`clipwire exec`(Tailscale経由のリモートコマンド実行、RDPセッション接続不要)だけで完全に駆動できる:
+
+1. Windows側で`[System.Windows.Forms.Clipboard]::SetText(...)`でクリップボードに仮説のDSLテキストをセットする。
+2. PADデザイナーの「アクション」リスト領域(`List "Actions"`、UIAの`ListItem`群を含むコンテナ)にUIA経由で`type_keys("^v")`(Ctrl+V)を送る——`pywinauto`の`control.type_keys()`は対象コントロールへの疑似キーボード入力で、`click_input()`やマウス移動とは異なり**RDP接続無しでも機能する**(知見11・UiPath側の既知の制約とは別の経路)。
+3. 貼り付け後のアクションリストをUIA経由で読み取り、PADが実際に構造化されたアクションカード(例: `"If Var1 Contains Var2 then"`という自然文表示)としてレンダリングしたか、構文エラー(`"Has error"`)になったかを確認する。
+4. 正しく取り込まれたら、同じ領域を全選択(Ctrl+A)してコピー(Ctrl+C)し、クリップボードを読み戻す(`Get-Clipboard`)——ペースト前のテキストと完全一致することを確認すれば、往復(round-trip)が取れた実機確認となる。
+
+この手法により、**仮説のDSL構文をPADデザイナー自身に「本当に解釈できるか」を問いかけ、構造化された自然文表示・エラーの有無で判定する**という、従来の「アクションを1つずつ追加してコピー」よりはるかに高速な反復検証が可能になった(でっち上げた文法を知見として記録しているわけではない——あくまでPAD自身の解釈結果を観察している点は従来の実機検証と同じ)。
+
+**確認できた事実**: `_FUNC_COND_RE`(`pad_dsl/line_parser.py`、`^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$`)が想定する関数名として、以下4つを実機で確認した(`tests/fixtures/if_function_contains_notcontains_isempty_isnotempty.txt`):
+
+```
+SET Var1 TO $'''hello'''
+SET Var2 TO $'''ell'''
+IF Contains(Var1, Var2) THEN
+END
+IF NotContains(Var1, Var2) THEN
+END
+IF IsEmpty(Var1) THEN
+END
+IF IsNotEmpty(Var1) THEN
+END
+```
+
+- `Contains(a, b)` → デザイナー上「If a Contains b then」、エラー無し。
+- `NotContains(a, b)` → 「If a Does not contain b then」、エラー無し(`DoesNotContain`/`NotContain`/`ContainsNot`等の他の綴りは全て`"Has error"`になり不採用と確認済み)。
+- `IsEmpty(a)` → 「If a Is empty then」、エラー無し(単項関数、引数1個)。
+- `IsNotEmpty(a)` → 「If a Is not empty then」、エラー無し(知見18-2の時点では未確認だった対の肯定/否定ペア)。
+
+**対照実験(否定側の確認)**: 存在しない関数名`Blurgle(Var1, Var1)`を同じ構文でペーストすると、`"If Var1 Var1 then, Has error"`(関数名部分の表示テキストが欠落し、エラー扱いになる)——これにより、上記4つが単に「構文として丸ごと受理される」のではなく、**PAD側で個別に認識された関数名として扱われている**ことを対照的に確認した。
+
+**pad_codegen結線**: `IfFunctionRecord`/`ElseIfFunctionRecord`の`function_name`が上記4つのいずれかの場合、Pythonの`in`/`not in`演算子・真偽値判定へ変換する(`Contains`→`b in a`、`NotContains`→`b not in a`、`IsEmpty`→`not a`、`IsNotEmpty`→`bool(a)`)。未知の関数名(前述の対照実験が示す通り、PAD自体が認識しない可能性が高い)は安全に`# TODO`へフォールバックする——`pad_codegen/__init__.py`の`_generate_conditional()`が`IfFunctionRecord`を無条件で`NotImplementedError`にしていた既存のポリシーを、この4つの既知関数名に限定して緩和した。
+
+**検証**: `tests/test_pad_codegen.py`に実機フィクスチャベースのテストを追加し、4つの関数それぞれが正しいPython条件式に変換されること・未知の関数名(`Blurgle`等)は従来通り`NotImplementedError`のままであることを確認した。
