@@ -2315,3 +2315,101 @@ def test_generate_python_from_compression_zip_unzip_without_password_converts() 
         namespace2: dict[str, object] = {}
         exec(code2, namespace2)
         assert (dest_dir / "hello.txt").read_text(encoding="utf-8") == "hello world"
+
+
+def test_generate_python_from_generate_datatable_from_csv_semicolon_separator() -> None:
+    # design/dsl_format_findings.md 知見127(decompile+リフレクション実機確認済み):
+    # `ColumnsSeparator`はSystemDefault以外にComma/Semicolon/Tabも選択可能で、
+    # 実際の区切り文字はVM上で`CSVSeparator(CSVColumnsSeparator)`を直接呼び出して
+    # 確認した(SystemDefault/Comma→","、Semicolon→";"、Tab→"\t")。
+    dsl = (
+        "SET CSV TO $'''Name;Age\nAlice;30\nBob;25'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.Semicolon CSVTable=> T"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "delimiter=';'" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}]
+
+
+def test_generate_python_from_generate_datatable_from_csv_tab_separator() -> None:
+    dsl = (
+        "SET CSV TO $'''Name\tAge\nAlice\t30'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.Tab CSVTable=> T"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"Name": "Alice", "Age": "30"}]
+
+
+def test_generate_python_from_generate_datatable_from_csv_custom_separator() -> None:
+    # design/dsl_format_findings.md 知見127: `GenerateDataTableFromCSV`の兄弟セレクタ
+    # `ReadCustomSeparator`(decompileされた`ReadFromCSVCustomSeparatorSelector`の
+    # `UseName("ReadCustomSeparator")`で確認済み)。
+    dsl = (
+        "SET CSV TO $'''Name|Age\nAlice|30'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadCustomSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "CustomColumnsSeparator: $'''|''' CSVTable=> T"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "delimiter='|'" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"Name": "Alice", "Age": "30"}]
+
+
+def test_generate_python_from_convert_datatable_to_csv_semicolon_separator() -> None:
+    dsl = (
+        "SET CSV TO $'''Name,Age\nAlice,30'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator DataTable: T "
+        "IncludeColumnNames: True ColumnsSeparator: Variables.CSVColumnsSeparator.Semicolon CSVText=> Out"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "delimiter=';'" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Out"] == "Name;Age\r\nAlice;30\r\n"
+
+
+def test_generate_python_from_convert_datatable_to_csv_custom_separator() -> None:
+    # design/dsl_format_findings.md 知見127: `ConvertDataTableToCSV`の兄弟セレクタ
+    # `DataTableToCSVCustomSeparator`(decompileされた
+    # `DataTableToCSVCustomSeparatorSelector`の`UseName(...)`で確認済み)。
+    dsl = (
+        "SET CSV TO $'''Name,Age\nAlice,30'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.ConvertDataTableToCSV.DataTableToCSVCustomSeparator DataTable: T "
+        "IncludeColumnNames: True CustomColumnsSeparator: $'''|''' CSVText=> Out"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "delimiter='|'" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Out"] == "Name|Age\r\nAlice|30\r\n"

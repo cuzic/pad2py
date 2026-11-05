@@ -43,7 +43,7 @@ from __future__ import annotations
 from ...pad_dsl import ActionRecord, VarRef
 from ..context import CodegenContext
 from ..render import INDENT
-from ._support import enum_last, safe_render
+from ._support import CSV_PREDEFINED_SEPARATOR_TO_DELIMITER, enum_last, safe_render
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -366,11 +366,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         table = safe_render(p.get("DataTable"))
         separator = enum_last(p.get("ColumnsSeparator"))
         include_names = safe_render(p.get("IncludeColumnNames"))
-        if table is None or include_names is None or separator != "SystemDefault" or not node.output_var:
+        delimiter = CSV_PREDEFINED_SEPARATOR_TO_DELIMITER.get(separator) if separator else None
+        if table is None or include_names is None or delimiter is None or not node.output_var:
             return None
         return [
             f"{prefix}{node.output_var} = variables_actions.datatable_to_csv_text("
-            f"{table}, include_column_names={include_names})"
+            f"{table}, delimiter={delimiter!r}, include_column_names={include_names})"
+        ]
+
+    if action_id == "Variables.ConvertDataTableToCSV.DataTableToCSVCustomSeparator":
+        table = safe_render(p.get("DataTable"))
+        include_names = safe_render(p.get("IncludeColumnNames"))
+        custom_separator = safe_render(p.get("CustomColumnsSeparator"))
+        if table is None or include_names is None or custom_separator is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.datatable_to_csv_text("
+            f"{table}, delimiter={custom_separator}, include_column_names={include_names})"
         ]
 
     if action_id == "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator":
@@ -379,10 +391,11 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         first_line = safe_render(p.get("FirstLineContainsColumnNames"))
         read_as_text = p.get("ReadFieldsAsText")
         trim_fields = p.get("TrimFields")
+        delimiter = CSV_PREDEFINED_SEPARATOR_TO_DELIMITER.get(separator) if separator else None
         if (
             text is None
             or first_line is None
-            or separator != "SystemDefault"
+            or delimiter is None
             or not isinstance(read_as_text, bool)
             or not isinstance(trim_fields, bool)
             or not node.output_var
@@ -390,7 +403,28 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [
             f"{prefix}{node.output_var} = variables_actions.datatable_from_csv_text("
-            f"{text}, first_line_contains_column_names={first_line}, "
+            f"{text}, delimiter={delimiter!r}, first_line_contains_column_names={first_line}, "
+            f"read_fields_as_text={read_as_text!r}, trim_fields={trim_fields!r})"
+        ]
+
+    if action_id == "Variables.GenerateDataTableFromCSV.ReadCustomSeparator":
+        text = safe_render(p.get("CSVText"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        read_as_text = p.get("ReadFieldsAsText")
+        trim_fields = p.get("TrimFields")
+        custom_separator = safe_render(p.get("CustomColumnsSeparator"))
+        if (
+            text is None
+            or first_line is None
+            or custom_separator is None
+            or not isinstance(read_as_text, bool)
+            or not isinstance(trim_fields, bool)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.datatable_from_csv_text("
+            f"{text}, delimiter={custom_separator}, first_line_contains_column_names={first_line}, "
             f"read_fields_as_text={read_as_text!r}, trim_fields={trim_fields!r})"
         ]
 

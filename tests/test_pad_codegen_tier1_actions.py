@@ -95,7 +95,11 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     # `InputTable: { }` now parses as an empty list, so this is wired (knowledge 74).
     assert "DataTable = variables_actions.create_new_datatable([])" in code
     # ヘッダー無しCSV変換(knowledge 84): IncludeColumnNames: Falseでも結線される。
-    assert "CSVText = variables_actions.datatable_to_csv_text('sample', include_column_names=False)" in code
+    # knowledge 127: ColumnsSeparatorの実区切り文字(SystemDefault=",")も渡すようになった。
+    assert (
+        "CSVText = variables_actions.datatable_to_csv_text('sample', delimiter=',', "
+        "include_column_names=False)" in code
+    )
     # 比較エンジンの意味論を実機確認(knowledge 85)したため結線される。
     assert "ListDifference = variables_actions.subtract_lists('sample', 'sample')" in code
     assert "IntersectionList = variables_actions.find_common_list_items('sample', 'sample')" in code
@@ -114,8 +118,9 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
         "join_operation='Inner')" in code
     )
     # ReadFieldsAsText: False(knowledge 92)・TrimFields(knowledge 93)の挙動を実機確認したため結線される。
+    # knowledge 127: ColumnsSeparatorの実区切り文字(SystemDefault=",")も渡すようになった。
     assert (
-        "CSVTable = variables_actions.datatable_from_csv_text('sample', "
+        "CSVTable = variables_actions.datatable_from_csv_text('sample', delimiter=',', "
         "first_line_contains_column_names=False, read_fields_as_text=False, "
         "trim_fields=True)" in code
     )

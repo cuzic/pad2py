@@ -319,6 +319,18 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   ハング無しに閉じる新手法(`WindowPattern.Close()`の直接COM呼び出し)を発見し、
   `memory: pad2py_run_without_rdp`に記録した。Tier3アクションの往復確認・挙動確認は
   引き続きRDP接続が前提(🖥️のまま、優先度は低)。
+- [x] 💻 `GenerateDataTableFromCSVAction`/`ConvertDataTableToCSVAction`の`ColumnsSeparator`が
+  `SystemDefault`以外(Comma/Semicolon/Tab)で常にTODOへ倒れていたゲート漏れ、および
+  両方の`CustomColumnsSeparator`兄弟セレクタ(`ReadCustomSeparator`/`DataTableToCSVCustomSeparator`)。
+  ✅ **決着(知見127)**: VM上でのリフレクション直接呼び出しで`CSVColumnsSeparator`列挙値の
+  実区切り文字(`SystemDefault`/`Comma`→`","`・`Semicolon`→`";"`・`Tab`→`"\t"`)を確認し、
+  `pad_codegen/actions/_support.py`にマッピング辞書を追加して全4値を結線、新規2セレクタも結線した。
+  `pad_action_lib.datatable`は元から`delimiter`引数を持っていたため変更不要だった。
+  - [ ] 💻🖥️ **残課題(次の調査対象)**: `ReadFixedColumnWidths`(固定長カラム読み込み、
+    `csv.reader`とは別の文字位置分割アルゴリズムが必要・`FixedColumnWidths`文字列の
+    フォーマットも未検証)は見送った。`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`
+    も同じ`ColumnsSeparator`列挙型を使っており同種のゲート漏れが残っている可能性が高いが、
+    `File.Actions.dll`を未デコンパイルのため未確認(VM不要、decompileのみで次に進められる)。
 
 ## C. 構造的・運用上の課題
 

@@ -39,3 +39,15 @@ def enum_last(value: object) -> str | None:
     if isinstance(value, EnumRef):
         return value.value.rsplit(".", 1)[-1]
     return None
+
+
+#: `CSVColumnsSeparator`列挙型(`Microsoft.Flow.RPA.Desktop.Modules.Text.Utilities.dll`)の
+#: 各選択肢が実際にどの区切り文字になるかを、VM上で`CSVSeparator(CSVColumnsSeparator)`の
+#: コンストラクタを直接呼び出して実機確認した結果(知見127)。`SystemDefault`はOSの
+#: カルチャ依存の「リスト区切り文字」だが、確認したVMの環境では`Comma`と同じ`","`。
+CSV_PREDEFINED_SEPARATOR_TO_DELIMITER = {
+    "SystemDefault": ",",
+    "Comma": ",",
+    "Semicolon": ";",
+    "Tab": "\t",
+}
