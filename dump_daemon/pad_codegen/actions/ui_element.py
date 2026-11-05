@@ -63,6 +63,18 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 return [f"{prefix}{window_var} = {selector_expr}"]
+    if node.action_id in ("UIAutomation.CloseWindow.Close", "UIAutomation.FocusWindow.Focus"):
+        # design/dsl_format_findings.md 知見117の追記(decompile確認済み): `UIAutomation.
+        # Actions.dll`の`CloseWindow`/`FocusWindow`も`GetWindow`と全く同じ3セレクタ構造
+        # (`Control`ベース/`WindowInstance`ベース/`Title`+`Class`ベース)を持つ——`.Close`/
+        # `.Focus`は`Control`(`UiElementRef`)ベースの兄弟セレクタで、知見56の
+        # `_build_pywinauto_selector_expr()`がそのまま使える。
+        element = node.params.get("Control")
+        if isinstance(element, UiElementRef):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                method = "close" if node.action_id == "UIAutomation.CloseWindow.Close" else "set_focus"
+                return [f"{prefix}{selector_expr}.{method}()"]
     if node.action_id == "UIAutomation.GetWindow.GetForegroundWindow":
         # design/dsl_format_findings.md 知見117(decompile+実機確認済み):
         # `UIAutomation.Actions.dll`を逆コンパイルし、`GetWindow`アクションには

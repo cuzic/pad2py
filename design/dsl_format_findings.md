@@ -2209,3 +2209,14 @@ IANA名への変換は不要だと判明した——Windows `TimeZoneInfo.Id`文
 `.Get`は既存の`.GetUseTimeout`結線(知見57・81)をそのまま適用できる(action_idを追加するだけ)。`.GetForegroundWindow`は`win32gui.GetForegroundWindow()`(既存の依存関係pywin32)でHWNDを取得し`Desktop(backend="uia").window(handle=...)`でラップする方式を考案し、VM上の実venvで実際に実行して正しいフォアグラウンドウィンドウ(このtickでは`"Power Automate"`自身)が返ることを確認した。既存の合成テスト(`test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles`、以前はTODOフォールバックを期待)を実コード生成を確認する内容に更新し、`.Get`用の新規合成テストを追加した。
 
 副産物として、知見113の「`GetWindow`の他モードは依然RDP必要」という結論が誤りだったことも確定した——知見113は検索ボックス経由の手法固有の限界であり、decompileされたソースを直接読む(今回の手法)ならRDP不要で解決できる。`BringWindowToFront: True`時の意味論・`Timeout`の実際のポーリング挙動は、`Control`(UI要素)自体の実機動作観察が必要なため依然未確認のまま。
+
+## 118. 知見117の手法を`CloseWindow`/`FocusWindow`にも適用——`GetWindow`と全く同じ3セレクタ構造だと判明、`.Close`/`.Focus`/`.FocusByInstanceOrHandle`を解決
+
+`UIAutomation.Actions.dll`の同じ逆コンパイル結果の中で、`CloseWindow`/`FocusWindow`も`GetWindow`と**全く同じ3セレクタ構造**(`Control`ベース/`WindowInstance`ベース/`Title`+`Class`ベース)を持つと確認した:
+
+- `CloseWindow`: `.Close`(`Control`)・`.CloseByInstanceOrHandle`(`WindowInstance`、知見57で既に実機確認・結線済み)・`.CloseByTitleClass`(`Title`/`Class`、結線済み)。
+- `FocusWindow`: `.Focus`(`Control`)・`.FocusByInstanceOrHandle`(`WindowInstance`)・`.FocusByTitleClass`(`Title`/`Class`、結線済み)。
+
+未結線だった3つ(`.Close`/`.Focus`/`.FocusByInstanceOrHandle`)のうち、`Control`ベースの2つ(`.Close`/`.Focus`)は知見56の`_build_pywinauto_selector_expr()`に`.close()`/`.set_focus()`を呼ぶだけで結線でき、`.FocusByInstanceOrHandle`は既存の`.CloseByInstanceOrHandle`と全く同じ`WindowInstance`(`VarRef`)パターンで`.set_focus()`を呼ぶだけで結線できた。
+
+`.close()`/`.set_focus()`自体がpywinautoの標準APIとして実際に動くことを、Notepadを使ってVM上の実venvで確認した(`Desktop(...).window(title='Untitled - Notepad')`を`.set_focus()`後`.close()`し、`exists()`が`True`→`False`になることを確認)。実機キャプチャは無いため、`looptest_whole_subflow_with_get_window.txt`のDSL/リポジトリをaction_idだけ差し替えた合成テキストで3件のテストを追加した。

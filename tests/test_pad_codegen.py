@@ -1261,6 +1261,56 @@ def test_generate_python_from_get_window_get_selector_without_timeout_converts()
     assert "# TODO: map PAD action: UIAutomation.GetWindow.Get" not in code
 
 
+def test_generate_python_from_close_window_close_selector_converts() -> None:
+    # design/dsl_format_findings.md 知見117の追記(decompile確認済み): `CloseWindow`の
+    # `.Close`は`GetWindow.Get`と全く同じ構造(`Control`ベース)の兄弟セレクタ。
+    # VM上の実venvで`Desktop(...).window(...).close()`が実際にウィンドウを閉じる
+    # ことを確認した(Notepadで実機確認)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.CloseWindow.Close Control: appmask['Window \\'Untitled - Notepad\\'']",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').close()" in code
+    assert "# TODO: map PAD action: UIAutomation.CloseWindow.Close" not in code
+
+
+def test_generate_python_from_focus_window_focus_selector_converts() -> None:
+    # design/dsl_format_findings.md 知見117の追記: `FocusWindow.Focus`も同じ構造。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.FocusWindow.Focus Control: appmask['Window \\'Untitled - Notepad\\'']",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').set_focus()" in code
+    assert "# TODO: map PAD action: UIAutomation.FocusWindow.Focus" not in code
+
+
+def test_generate_python_from_focus_window_by_instance_or_handle_converts() -> None:
+    # design/dsl_format_findings.md 知見117の追記: `FocusWindow.FocusByInstanceOrHandle`は
+    # `CloseWindow.CloseByInstanceOrHandle`(知見57実機確認済み)と全く同じ構造の兄弟セレクタ。
+    dsl = "UIAutomation.FocusWindow.FocusByInstanceOrHandle WindowInstance: AutomationWindow2"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "AutomationWindow2.set_focus()" in code
+    assert "# TODO" not in code
+
+
 def test_generate_python_omits_selector_hint_when_repository_not_given() -> None:
     # design/dsl_format_findings.md 知見56: `repository`省略時は完全に従来通りの挙動
     # (ヒント無し)で、後方互換性を保つ。

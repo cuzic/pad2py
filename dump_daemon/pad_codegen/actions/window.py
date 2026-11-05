@@ -63,6 +63,12 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         window_instance = node.params.get("WindowInstance")
         if isinstance(window_instance, VarRef):
             return [f"{prefix}{render_value(window_instance)}.close()"]
+    if node.action_id == "UIAutomation.FocusWindow.FocusByInstanceOrHandle":
+        # design/dsl_format_findings.md 知見117の追記(decompile確認済み): `CloseWindow.
+        # CloseByInstanceOrHandle`と全く同じ構造の兄弟セレクタ(`FocusWindow`側)。
+        window_instance = node.params.get("WindowInstance")
+        if isinstance(window_instance, VarRef):
+            return [f"{prefix}{render_value(window_instance)}.set_focus()"]
     return None
 
 
