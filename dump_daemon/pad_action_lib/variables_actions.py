@@ -34,6 +34,20 @@ from .datatable import datatable_to_csv_text as datatable_to_csv_text
 
 
 def truncate_number(number: float, mode: str = "GetIntegerPart", decimal_digits: int = 0) -> float:
+    """`Variables.TruncateNumber`の3兄弟セレクタ(表示名`GetIntegerPart`/`GetDecimalPart`/
+    `RoundNumber`、実機の`Operation`列挙値は最後だけ`RoundAtNthDecimalDigits`——知見135で
+    VM上のリフレクションで確認済み)。
+
+    design/dsl_format_findings.md 知見135(VM上で`TruncateNumber.Execute()`を直接呼び出して
+    確認済み): `RoundAtNthDecimalDigits`は0.5を偶数側へ丸める「偶数への丸め」(banker's
+    rounding、`2.5`→`2`・`3.5`→`4`)——これはPythonの`round()`の既定動作と一致する。
+    **既知の限界**: 実機は.NETの`decimal`型(10進数の正確な演算)で計算するが、この層は
+    `float`(2進浮動小数点)を受け取るため、10進数では正確に表現できる値(`2.675`等)が
+    2進数では近似値になり、`round()`の結果が実機の`decimal`演算と食い違う可能性がある
+    (例: 実機の`2.675`→`2.68`に対し、Pythonの`round(2.675, 2)`は2進近似の影響で`2.67`に
+    なる)——元のDSLリテラルの文字列表現を保持して`decimal.Decimal`で計算するよう
+    上流から作り直せば解決できるが、今回はこの既知の限界を明記するに留めた。
+    """
     if mode == "GetIntegerPart":
         return math.trunc(number)
     if mode == "GetDecimalPart":
@@ -84,8 +98,15 @@ def remove_item_from_list_by_index(items: list, index: int) -> None:
     del items[index]
 
 
-def remove_item_from_list_by_value(items: list, value: object) -> None:
-    items.remove(value)
+def remove_item_from_list_by_value(items: list, value: object, all_occurrences: bool = False) -> None:
+    """`ItemMatchAllOccurrences`(知見135でVM上の`RemoveItemFromList.Execute()`直接呼び出しで
+    確認済み): `False`(既定)は最初の1件だけ削除(`list.remove()`と同じ)、`True`は
+    一致する全ての要素を削除する。
+    """
+    if all_occurrences:
+        items[:] = [item for item in items if item != value]
+    else:
+        items.remove(value)
 
 
 def clear_list(items: list) -> None:
@@ -181,19 +202,34 @@ def add_row_to_datatable(table: DataTable, row: Row | list[object]) -> None:
     `DataTable`型への変更)が必要な、より大きな構造的課題として残っている
     (design/pad_todo.md参照)。
     """
+    table.append(_coerce_row(table, row))
+
+
+def _coerce_row(table: DataTable, row: Row | list[object]) -> Row:
     if isinstance(row, list):
         columns = columns_of(table)
         if not columns:
             raise ValueError(
-                "add_row_to_datatable() cannot add a list-shaped row to a table with no "
-                "rows yet (columns added via add_column_to_datatable() to an empty table "
-                "are not tracked independently of rows in this DataTable representation)"
+                "cannot add a list-shaped row to a table with no rows yet (columns added via "
+                "add_column_to_datatable() to an empty table are not tracked independently of "
+                "rows in this DataTable representation)"
             )
         if len(row) != len(columns):
             raise ValueError(f"row has {len(row)} values but table has {len(columns)} columns")
-        table.append(dict(zip(columns, row)))
-    else:
-        table.append(dict(row))
+        return dict(zip(columns, row))
+    return dict(row)
+
+
+def insert_row_to_datatable(table: DataTable, row: Row | list[object], index: int) -> None:
+    """`Variables.AddRowToDataTable`の兄弟セレクタ`InsertItemToDataTable`に対応する。
+
+    design/dsl_format_findings.md 知見135(VM上で`AddRowToDataTable.Execute()`を
+    `PositionToAddRow: BeforeRowIndex`で直接呼び出して確認済み): `RowIndex`は0始まり
+    (知見133参照)で、Pythonの`list.insert(index, item)`と全く同じ「指定位置の**前**に
+    挿入する」セマンティクスだった。`RowToAdd`の型(`List`/辞書どちらも受け付ける)は
+    知見124の`AddRowToDataTable`と同じ。
+    """
+    table.insert(index, _coerce_row(table, row))
 
 
 def delete_row_from_datatable(table: DataTable, index: int) -> None:
@@ -337,9 +373,28 @@ def add_column_to_datatable(table: DataTable, column: str, default_value: object
         row[column] = default_value
 
 
-def delete_column_from_datatable(table: DataTable, column: str) -> None:
+def insert_column_to_datatable(table: DataTable, column: str, index: int, default_value: object = "") -> None:
+    """`Variables.AddColumnToDataTable`の兄弟セレクタ`InsertColumnToDataTable`に対応する。
+
+    design/dsl_format_findings.md 知見135(VM上で`AddColumnToDataTableAction.Execute()`を
+    `PositionToAddColumn: BeforeColumnIndex`で直接呼び出して確認済み): `ColumnIndex`は
+    0始まり(知見133参照)で、指定位置の**前**に新しい列が挿入される(既存列の値は
+    空文字列`""`で埋まる、`add_column_to_datatable()`と同じ既定値)。
+    """
     for row in table:
-        row.pop(column, None)
+        items = list(row.items())
+        items.insert(index, (column, default_value))
+        row.clear()
+        row.update(items)
+
+
+def delete_column_from_datatable(table: DataTable, column: str | int) -> None:
+    """`Variables.DeleteColumnFromDataTable`の兄弟セレクタ`DeleteColumnWithIndex`に対応する
+    (`column`が`int`の場合は列インデックス、0始まり、知見133参照)。
+    """
+    resolved = _resolve_column_name(table, str(column)) if isinstance(column, int) else column
+    for row in table:
+        row.pop(resolved, None)
 
 
 def sort_datatable(table: DataTable, column: str | int, descending: bool = False) -> None:

@@ -44,6 +44,18 @@ def test_remove_item_from_list_by_index_and_value() -> None:
     assert items == ["c"]
 
 
+def test_remove_item_from_list_by_value_all_occurrences() -> None:
+    # design/dsl_format_findings.md 知見135(実機確認済み): `all_occurrences=False`(既定)は
+    # 最初の1件だけ削除、`True`は一致する全要素を削除する。
+    items = ["a", "b", "a", "c"]
+    va.remove_item_from_list_by_value(items, "a")
+    assert items == ["b", "a", "c"]
+
+    items2 = ["a", "b", "a", "c"]
+    va.remove_item_from_list_by_value(items2, "a", all_occurrences=True)
+    assert items2 == ["b", "c"]
+
+
 def test_clear_reverse_shuffle_list() -> None:
     items = [1, 2, 3]
     va.reverse_list(items)
@@ -141,6 +153,32 @@ def test_modify_datatable_item_accepts_numeric_column_index() -> None:
     table: va.DataTable = [{"a": 1, "b": 2}]
     va.modify_datatable_item(table, 0, "1", 99)
     assert table == [{"a": 1, "b": 99}]
+
+
+def test_insert_row_to_datatable() -> None:
+    # design/dsl_format_findings.md 知見135(実機確認済み): `list.insert()`と同じ
+    # 「指定位置の前に挿入」セマンティクス。
+    table: va.DataTable = [{"a": 1}, {"a": 3}]
+    va.insert_row_to_datatable(table, {"a": 2}, 1)
+    assert table == [{"a": 1}, {"a": 2}, {"a": 3}]
+
+    table2: va.DataTable = [{"a": 1, "b": 2}]
+    va.insert_row_to_datatable(table2, [3, 4], 0)
+    assert table2 == [{"a": 3, "b": 4}, {"a": 1, "b": 2}]
+
+
+def test_insert_column_to_datatable() -> None:
+    # design/dsl_format_findings.md 知見135(実機確認済み): 指定位置の前に列を挿入、
+    # 既存行は既定値""で埋まる。
+    table: va.DataTable = [{"a": 1, "b": 2}]
+    va.insert_column_to_datatable(table, "new", 1)
+    assert table == [{"a": 1, "new": "", "b": 2}]
+
+
+def test_delete_column_from_datatable_by_numeric_index() -> None:
+    table: va.DataTable = [{"a": 1, "b": 2, "c": 3}]
+    va.delete_column_from_datatable(table, 1)
+    assert table == [{"a": 1, "c": 3}]
 
 
 def test_modify_datatable_item_numeric_column_index_out_of_range_raises() -> None:

@@ -59,6 +59,27 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}{node.output_var} = variables_actions.truncate_number({number}, mode='GetIntegerPart')"]
 
+    if action_id == "Variables.TruncateNumber.GetDecimalPart":
+        # design/dsl_format_findings.md 知見135: `TruncateNumber`の兄弟セレクタ
+        # (`ActionSelectorBase.ActionName`の直接読み取りで接尾辞を確認済み、`truncate_number()`
+        # 自体は既に`GetDecimalPart`モードを実装済みだったがcodegen側が未結線だった)。
+        number = safe_render(p.get("Number"))
+        if number is None or not node.output_var:
+            return None
+        return [f"{prefix}{node.output_var} = variables_actions.truncate_number({number}, mode='GetDecimalPart')"]
+
+    if action_id == "Variables.TruncateNumber.RoundNumber":
+        # design/dsl_format_findings.md 知見135: セレクタの表示名は`RoundNumber`だが、実機の
+        # `Operation`列挙値は`RoundAtNthDecimalDigits`(VM上でリフレクションして確認済み)。
+        number = safe_render(p.get("Number"))
+        decimal_places = safe_render(p.get("DecimalPlaces"))
+        if number is None or decimal_places is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.truncate_number("
+            f"{number}, mode='RoundAtNthDecimalDigits', decimal_digits={decimal_places})"
+        ]
+
     if action_id in ("Variables.IncreaseVariable", "Variables.DecreaseVariable"):
         value = p.get("Value")
         if not isinstance(value, VarRef):
@@ -94,6 +115,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if items is None or index is None:
             return None
         return [f"{prefix}variables_actions.remove_item_from_list_by_index({items}, {index})"]
+
+    if action_id == "Variables.RemoveItemFromList.RemoveItemFromListByValue":
+        # design/dsl_format_findings.md 知見135: `RemoveItemFromList`の兄弟セレクタ
+        # (`remove_item_from_list_by_value()`自体は既にあったがcodegen側だけ未結線だった)。
+        items = safe_render(p.get("List"))
+        value = safe_render(p.get("Item"))
+        all_occurrences = safe_render(p.get("ItemMatchAllOccurrences"))
+        if items is None or value is None or all_occurrences is None:
+            return None
+        return [
+            f"{prefix}variables_actions.remove_item_from_list_by_value("
+            f"{items}, {value}, all_occurrences={all_occurrences})"
+        ]
 
     if action_id == "Variables.ClearList":
         items = safe_render(p.get("List"))
@@ -230,6 +264,17 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}variables_actions.add_row_to_datatable({table}, {row})"]
 
+    if action_id == "Variables.AddRowToDataTable.InsertItemToDataTable":
+        # design/dsl_format_findings.md 知見135: `AddRowToDataTable`の兄弟セレクタ
+        # (`RowIndex`は0始まり、`list.insert()`と同じ「指定位置の前に挿入」セマンティクス
+        # とVM上で確認済み)。
+        table = safe_render(p.get("DataTable"))
+        row = safe_render(p.get("RowToAdd"))
+        row_index = safe_render(p.get("RowIndex"))
+        if table is None or row is None or row_index is None:
+            return None
+        return [f"{prefix}variables_actions.insert_row_to_datatable({table}, {row}, {row_index})"]
+
     if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere":
         table = safe_render(p.get("DataTable"))
         value = safe_render(p.get("ValueToFind"))
@@ -278,6 +323,25 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
             f"{table}, {value}, all_matches={all_matches}, match_case={match_case}, "
             f"match_entire_cell_contents={entire_cell}, column={column!r})"
+        ]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableWithRegexByColumnIndex":
+        # design/dsl_format_findings.md 知見135: 上記2つの組み合わせ(`UseRegex: True`固定+
+        # 列名/列インデックス両対応、VM上で`VisibleArguments`を確認——`MatchCase`/
+        # `MatchEntireCellContents`は選択できない=常に既定値Falseの他のRegex系と同じ構造)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        all_matches = safe_render(p.get("AllMatches"))
+        column = p.get("ColumnNameOrIndex")
+        if (
+            None in (table, value, all_matches)
+            or not isinstance(column, str)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
+            f"{table}, {value}, all_matches={all_matches}, use_regex=True, column={column!r})"
         ]
 
     if action_id == "Variables.FilterDataTable":
@@ -339,12 +403,33 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}variables_actions.add_column_to_datatable({table}, {column})"]
 
+    if action_id == "Variables.AddColumnToDataTable.InsertColumnToDataTable":
+        # design/dsl_format_findings.md 知見135: 兄弟セレクタ(`ColumnIndex`は0始まり、
+        # 指定位置の前に新しい列を挿入するとVM上で確認済み)。
+        table = safe_render(p.get("DataTable"))
+        column = safe_render(p.get("ColumnName"))
+        column_index = safe_render(p.get("ColumnIndex"))
+        if table is None or column is None or column_index is None:
+            return None
+        return [
+            f"{prefix}variables_actions.insert_column_to_datatable({table}, {column}, {column_index})"
+        ]
+
     if action_id == "Variables.DeleteColumnFromDataTable.DeleteColumnWithName":
         table = safe_render(p.get("DataTable"))
         column = safe_render(p.get("ColumnName"))
         if table is None or column is None:
             return None
         return [f"{prefix}variables_actions.delete_column_from_datatable({table}, {column})"]
+
+    if action_id == "Variables.DeleteColumnFromDataTable.DeleteColumnWithIndex":
+        # design/dsl_format_findings.md 知見135: 兄弟セレクタ(`ColumnIndex`は0始まり、
+        # 知見133でIsZeroBased=Trueと確認済み)。
+        table = safe_render(p.get("DataTable"))
+        column_index = safe_render(p.get("ColumnIndex"))
+        if table is None or column_index is None:
+            return None
+        return [f"{prefix}variables_actions.delete_column_from_datatable({table}, {column_index})"]
 
     if action_id == "Variables.DeleteDuplicateRowsFromDataTable":
         table = safe_render(p.get("DataTable"))

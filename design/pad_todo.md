@@ -368,6 +368,20 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     `SortListByProperty`の多キーソート挙動を確認した。Pythonの安定ソートを最下位キーから
     順に適用する「安定ソートの繰り込み」で再現できることも確認し、`sort_list()`に
     `key_descending`引数を追加して結線した。
+- [x] 💻🖥️ `Variables.Actions.dll`の全`ActionSelector`サブクラスを一括列挙する監査で
+  発見した未結線セレクタ7件(`TruncateNumber.GetDecimalPart`/`RoundNumber`、
+  `RemoveItemFromList.RemoveItemFromListByValue`、`FindOrReplaceInDataTable.
+  FindItemInDataTableWithRegexByColumnIndex`、`DeleteColumnFromDataTable.
+  DeleteColumnWithIndex`、`AddRowToDataTable.InsertItemToDataTable`、
+  `AddColumnToDataTable.InsertColumnToDataTable`)。
+  ✅ **決着(知見135)**: 全てVM上の直接呼び出しで仕様確認して新規結線した。副産物として
+  既存の`AppendRowToDataTable`/`AppendColumnToDataTable`が常に末尾固定(`PositionToAddRow:
+  EndOfDataTable`/`PositionToAddColumn: LastColumn`)で正しく、潜在バグではなかったことも
+  確認した。`Replace*`系4セレクタは知見123の既知のギャップ(早期停止無し等)のため今回も
+  意図的に見送った。
+  - [ ] 💻🖥️ **残課題(次の調査対象)**: 今回確立した「`ActionSelectorBase`を継承する
+    全ての型を一括列挙し`ActionName`で既存コードと機械的に突き合わせる」監査手法を、
+    他のモジュール(`File.Actions.dll`等)にも適用する価値がある。
 
 ## C. 構造的・運用上の課題
 

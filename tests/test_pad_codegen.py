@@ -2649,3 +2649,135 @@ def test_generate_python_from_sort_list_by_property_with_independent_directions(
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert [item["name"] for item in namespace["L"]] == ["Carol", "Alice", "Bob"]
+
+
+def test_generate_python_from_truncate_number_get_decimal_part_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `TruncateNumber`の兄弟セレクタ`GetDecimalPart`
+    # (`truncate_number()`自体は既に対応済みでcodegen側だけ未結線だった)。
+    dsl = "Variables.TruncateNumber.GetDecimalPart Number: 3.7 Result=> R"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == pytest.approx(0.7)
+
+
+def test_generate_python_from_truncate_number_round_number_converts() -> None:
+    # design/dsl_format_findings.md 知見135: 兄弟セレクタ`RoundNumber`(実機の`Operation`
+    # 列挙値は`RoundAtNthDecimalDigits`、VM上のリフレクションで確認済み)。
+    dsl = "Variables.TruncateNumber.RoundNumber Number: 3.14159 DecimalPlaces: 2 Result=> R"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == 3.14
+
+
+def test_generate_python_from_remove_item_from_list_by_value_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `RemoveItemFromList`の兄弟セレクタ
+    # `RemoveItemFromListByValue`(`ItemMatchAllOccurrences`で全件削除か最初の1件かを切り替える、
+    # VM上で`RemoveItemFromList.Execute()`を直接呼び出して確認済み)。
+    dsl = (
+        "Variables.CreateNewList List=> L\n"
+        "Variables.AddItemToList List: L Item: $'''a'''\n"
+        "Variables.AddItemToList List: L Item: $'''b'''\n"
+        "Variables.AddItemToList List: L Item: $'''a'''\n"
+        "Variables.RemoveItemFromList.RemoveItemFromListByValue List: L Item: $'''a''' "
+        "ItemMatchAllOccurrences: True"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["L"] == ["b"]
+
+
+def test_generate_python_from_insert_item_to_datatable_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `AddRowToDataTable`の兄弟セレクタ
+    # `InsertItemToDataTable`(`RowIndex`は0始まり、`list.insert()`と同じ挿入位置)。
+    # 2列のテーブルを使い、知見124の単一要素リストのあいまいさ(1列テーブルで`RowToAdd`が
+    # 裸のスカラーになるか未確認)を回避する。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,x\nz,z'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.CreateNewList List=> Row\n"
+        "Variables.AddItemToList List: Row Item: $'''y'''\n"
+        "Variables.AddItemToList List: Row Item: $'''y'''\n"
+        "Variables.AddRowToDataTable.InsertItemToDataTable DataTable: T RowIndex: 1 RowToAdd: Row"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"A": "x", "B": "x"}, {"A": "y", "B": "y"}, {"A": "z", "B": "z"}]
+
+
+def test_generate_python_from_insert_column_to_datatable_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `AddColumnToDataTable`の兄弟セレクタ
+    # `InsertColumnToDataTable`(`ColumnIndex`は0始まり)。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,y'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.AddColumnToDataTable.InsertColumnToDataTable DataTable: T "
+        "ColumnName: $'''NEW''' ColumnIndex: 1"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"A": "x", "NEW": "", "B": "y"}]
+
+
+def test_generate_python_from_delete_column_with_index_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `DeleteColumnFromDataTable`の兄弟セレクタ
+    # `DeleteColumnWithIndex`(`ColumnIndex`は0始まり、知見133で確定済み)。
+    dsl = (
+        "SET CSV TO $'''A,B,C\nx,y,z'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.DeleteColumnFromDataTable.DeleteColumnWithIndex DataTable: T ColumnIndex: 1"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"A": "x", "C": "z"}]
+
+
+def test_generate_python_from_find_item_in_datatable_with_regex_by_column_index_converts() -> None:
+    # design/dsl_format_findings.md 知見135: `FindOrReplaceInDataTable`の兄弟セレクタ
+    # `FindItemInDataTableWithRegexByColumnIndex`(`UseRegex: True`固定+列名/列インデックス
+    # 両対応の組み合わせ)。
+    dsl = (
+        "SET CSV TO $'''A,B\norder-123,x\nno-digits,x'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableWithRegexByColumnIndex "
+        "DataTable: T ValueToFind: $'''[0-9]+''' AllMatches: True "
+        "ColumnNameOrIndex: $'''0''' DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 0)]
