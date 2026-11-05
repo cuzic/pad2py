@@ -4,12 +4,15 @@
 `tests/fixtures/tier1_crypto_database_batch7.txt`から確認済み。
 
 `EncryptText`/`EncryptFromFile`/`DecryptText`/`DecryptToFile`/`HashTextWithKey`/
-`HashFromFileWithKey`は、鍵パラメータ(`EncryptionKey`/`DecryptionKey`/`HashKey`)が
-実機で常にWindows DPAPI保護値(`P'<base64>'`、知見72)としてキャプチャされ、現状の
-パーサーでは正当なPython識別子にならない`VarRef`にフォールバックする——
-`_support.safe_render()`がこれを検出して`None`を返すため、これらのアクションは
-自動的に汎用`# TODO`フォールバックに委ねられる(鍵が無い`HashText`/`HashFromFile`
-だけがこのモジュールで変換される)。
+`HashFromFileWithKey`は、実機キャプチャでは鍵パラメータ(`EncryptionKey`/
+`DecryptionKey`/`HashKey`)が常にWindows DPAPI保護値(`P'<base64>'`、知見72)として
+現れ、現状のパーサーでは正当なPython識別子にならない`VarRef`にフォールバックする
+ため`safe_render()`が`None`を返し、実機キャプチャ済みフィクスチャに対しては
+自動的に汎用`# TODO`フォールバックに委ねられる——しかし知見109の`Compression.*`と
+同じパターンで、鍵パラメータが(DPAPI保護ではなく)ふつうの変数参照や文字列リテラル
+である場合の結線自体は用意しておく(知見111)。`pad_action_lib.cryptography_actions`
+(AES-CBC・HMAC実装、decompile調査で確認済みの弱い既定動作も忠実に再現)へそのまま
+委譲するだけで、でっち上げは発生しない。
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ from ...pad_dsl import ActionRecord
 from ..context import CodegenContext
 from ..render import INDENT
 from ._support import enum_last, safe_render
+
+_AES_KEY_SIZE_MAP = {"Bits128": 128, "Bits192": 192, "Bits256": 256}
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -46,6 +51,115 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}{node.output_var} = cryptography_actions.hash_from_file({path}, "
             f"encoding={encoding!r}, hash_algorithm={algorithm!r})"
+        ]
+
+    if action_id == "Cryptography.HashTextWithKey":
+        text = safe_render(p.get("TextToHash"))
+        key = safe_render(p.get("HashKey"))
+        encoding = enum_last(p.get("Encoding"))
+        algorithm = enum_last(p.get("HashAlgorithm"))
+        if text is None or key is None or encoding is None or algorithm is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.hash_text_with_key({text}, {key}, "
+            f"encoding={encoding!r}, hash_algorithm={algorithm!r})"
+        ]
+
+    if action_id == "Cryptography.HashFromFileWithKey":
+        path = safe_render(p.get("FileToHash"))
+        key = safe_render(p.get("HashKey"))
+        encoding = enum_last(p.get("Encoding"))
+        algorithm = enum_last(p.get("KeyedHashAlgorithm"))
+        if path is None or key is None or encoding is None or algorithm is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.hash_from_file_with_key({path}, {key}, "
+            f"encoding={encoding!r}, hash_algorithm={algorithm!r})"
+        ]
+
+    if action_id == "Cryptography.EncryptText.EncryptTextWithAES":
+        text = safe_render(p.get("TextToEncrypt"))
+        key = safe_render(p.get("EncryptionKey"))
+        encoding = enum_last(p.get("Encoding"))
+        padding_mode = enum_last(p.get("PaddingMode"))
+        key_size = _AES_KEY_SIZE_MAP.get(enum_last(p.get("KeySize")))
+        if (
+            text is None
+            or key is None
+            or encoding is None
+            or padding_mode is None
+            or key_size is None
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.encrypt_text({text}, {key}, "
+            f"encoding={encoding!r}, key_size={key_size}, padding_mode={padding_mode!r}).encrypted_text"
+        ]
+
+    if action_id == "Cryptography.EncryptFromFile.EncryptFromFileWithAES":
+        path = safe_render(p.get("FileToEncrypt"))
+        key = safe_render(p.get("EncryptionKey"))
+        encoding = enum_last(p.get("Encoding"))
+        padding_mode = enum_last(p.get("PaddingMode"))
+        key_size = _AES_KEY_SIZE_MAP.get(enum_last(p.get("KeySize")))
+        if (
+            path is None
+            or key is None
+            or encoding is None
+            or padding_mode is None
+            or key_size is None
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.encrypt_from_file({path}, {key}, "
+            f"encoding={encoding!r}, key_size={key_size}, padding_mode={padding_mode!r}).encrypted_text"
+        ]
+
+    if action_id == "Cryptography.DecryptText.DecryptTextWithAES":
+        text = safe_render(p.get("TextToDecrypt"))
+        key = safe_render(p.get("DecryptionKey"))
+        encoding = enum_last(p.get("Encoding"))
+        padding_mode = enum_last(p.get("Padding"))
+        key_size = _AES_KEY_SIZE_MAP.get(enum_last(p.get("KeySize")))
+        if (
+            text is None
+            or key is None
+            or encoding is None
+            or padding_mode is None
+            or key_size is None
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.decrypt_text({text}, {key}, "
+            f"encoding={encoding!r}, key_size={key_size}, padding_mode={padding_mode!r})"
+        ]
+
+    if action_id == "Cryptography.DecryptToFile.DecryptToFileWithAES":
+        text = safe_render(p.get("TextToDecrypt"))
+        dest = safe_render(p.get("DecryptToFile"))
+        key = safe_render(p.get("DecryptionKey"))
+        encoding = enum_last(p.get("Encoding"))
+        padding_mode = enum_last(p.get("Padding"))
+        key_size = _AES_KEY_SIZE_MAP.get(enum_last(p.get("KeySize")))
+        if_file_exists = enum_last(p.get("IfFileExists"))
+        if (
+            text is None
+            or dest is None
+            or key is None
+            or encoding is None
+            or padding_mode is None
+            or key_size is None
+            or if_file_exists is None
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = cryptography_actions.decrypt_to_file({text}, {dest}, {key}, "
+            f"encoding={encoding!r}, key_size={key_size}, padding_mode={padding_mode!r}, "
+            f"if_file_exists={if_file_exists!r})"
         ]
 
     return None

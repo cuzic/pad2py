@@ -6,6 +6,9 @@
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import tempfile
 from pathlib import Path
 
@@ -1244,6 +1247,88 @@ def test_generate_python_omits_selector_hint_when_repository_not_given() -> None
     tree = build_block_tree(parse_dsl(text))
     code = generate_python(tree)
     assert "verified pywinauto selector" not in code
+
+
+def test_generate_python_from_cryptography_encrypt_decrypt_text_without_dpapi_key_round_trips() -> None:
+    # 実機キャプチャ(tier1_crypto_database_batch7.txt)はEncryptionKey/DecryptionKeyが
+    # 常にWindows DPAPI保護値(P'<base64>'、知見72)で現れVarRefへフォールバックするため
+    # TODOのまま残る(知見109のCompression.Passwordと同じパターン)——鍵がふつうの変数
+    # 参照の場合の結線自体を、実際にEncryptText→DecryptTextの往復を実行して確認する
+    # (知見111)。パラメータ名はPaddingMode(Encrypt側)/Padding(Decrypt側)という実機の
+    # 非対称な命名をそのまま使う。
+    dsl = (
+        "SET Key TO $'''mysecret'''\n"
+        "Cryptography.EncryptText.EncryptTextWithAES Encoding: Cryptography.EncryptionEncoding.Unicode "
+        "TextToEncrypt: $'''hello world''' EncryptionKey: Key "
+        "PaddingMode: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+        "EncryptedText=> Enc\n"
+        "Cryptography.DecryptText.DecryptTextWithAES Encoding: Cryptography.EncryptionEncoding.Unicode "
+        "TextToDecrypt: Enc DecryptionKey: Key "
+        "Padding: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+        "DecryptedText=> Dec"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Dec"] == "hello world"
+    assert namespace["Enc"] != "hello world"
+
+
+def test_generate_python_from_cryptography_hash_with_key_without_dpapi_key_converts() -> None:
+    # HashTextWithKey/HashFromFileWithKeyも同じDPAPI鍵パターン(知見111)。
+    dsl = (
+        "SET Key TO $'''mysecret'''\n"
+        "Cryptography.HashTextWithKey HashAlgorithm: Cryptography.KeyedHashAlgorithm.HMACSHA256 "
+        "Encoding: Cryptography.EncryptionEncoding.Unicode TextToHash: $'''hello''' HashKey: Key "
+        "HashedText=> Hashed"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Hashed = cryptography_actions.hash_text_with_key('hello', Key, "
+        "encoding='Unicode', hash_algorithm='HMACSHA256')" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    expected = hmac.new(
+        "mysecret".encode("utf-16-le"), "hello".encode("utf-16-le"), hashlib.sha256
+    ).digest()
+    assert namespace["Hashed"] == base64.b64encode(expected).decode("ascii")
+
+
+def test_generate_python_from_cryptography_encrypt_decrypt_file_without_dpapi_key_round_trips() -> None:
+    # EncryptFromFile/DecryptToFileも同じDPAPI鍵パターン(知見111)——実ファイルで
+    # 暗号化→復号の往復を実行して確認する。
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        src_file = tmp_path / "plain.txt"
+        src_file.write_bytes(b"secret bytes")
+        dest_dir = tmp_path / "decrypted.bin"
+
+        dsl = (
+            "SET Key TO $'''mysecret'''\n"
+            f"Cryptography.EncryptFromFile.EncryptFromFileWithAES Encoding: Cryptography.EncryptionEncoding.Unicode "
+            f"FileToEncrypt: $'''{src_file}''' EncryptionKey: Key "
+            "PaddingMode: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+            "EncryptedText=> Enc\n"
+            "Cryptography.DecryptToFile.DecryptToFileWithAES Encoding: Cryptography.EncryptionEncoding.Unicode "
+            f"TextToDecrypt: Enc DecryptToFile: $'''{dest_dir}''' DecryptionKey: Key "
+            "IfFileExists: Cryptography.IfFileExists.Overwrite "
+            "Padding: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+            "DecryptedFile=> DecFile"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert dest_dir.read_bytes() == b"secret bytes"
 
 
 def test_generate_python_converts_start_button_pseudo_selector_to_win_key_press() -> None:

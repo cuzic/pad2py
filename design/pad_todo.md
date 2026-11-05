@@ -135,6 +135,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   無かった。実際にzip作成→解凍の往復まで実行するテストを追加し、既存実装が正しい
   ことを確認した。DPAPI保護値(`P'<base64>'`)自体の復号は本項目の通り依然未対応
   (VM/暗号化環境模倣が必要、低優先度のまま)。
+  ✅ **`Cryptography.*`側も同じパターンで6件を新規結線(知見111)**: `EncryptText`/
+  `EncryptFromFile`/`DecryptText`/`DecryptToFile`/`HashTextWithKey`/
+  `HashFromFileWithKey`は`pad_action_lib.cryptography_actions`自体は実装済みだが
+  `pad_codegen/actions/cryptography.py`に鍵無し2件(`HashText`/`HashFromFile`)分の
+  分岐しか無かった(Compressionとは違い結線すら未着手だった)。鍵が(DPAPI保護
+  ではなく)ふつうの変数参照の場合の結線を新規実装し、Encrypt→Decrypt往復・
+  HashTextWithKeyの値一致を合成DSLで実行確認した。DPAPI保護値自体の復号は
+  依然未対応のまま。
 - [x] 💻 `Web.*`の`UserAgent`/`FollowRedirection`が値を読み取らず無視されていたバグの修正。
   ✅ **VM不要・既存フィクスチャの再点検で修正完了(知見94)**: 知見93のパターン
   (値を読み取るように見えて実は無視)を他モジュールでも探索した結果発見。
