@@ -413,6 +413,59 @@ def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
 
 
 @pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # VBのCStr(Double)は既定でG書式(mscorlib/Legacyターゲット、G15)
+        # に従い、整数値になる場合は小数点を省略する——Pythonのstr(float)
+        # は常に`.0`を残すため食い違う(知見46、公式ドキュメントで確定)。
+        ("CStr(4.0)", "4"),
+        ("CStr(-8.0)", "-8"),
+        ("CStr(3.14)", "3.14"),
+        ("CStr(0.0)", "0"),
+        # NaN/Infinityは`Double.ToString()`がG書式と独立に特別扱いする
+        # 文字列を返す(知見46)——`^`の修正(知見45)で生成されうる値との
+        # 整合性も兼ねて確認。
+        ("CStr((-8.0) ^ 0.5)", "NaN"),
+        # 文字列・整数・真偽値はそのまま(既存の`CStr`挙動に変更無し)。
+        ('CStr("abc")', "abc"),
+        ("CStr(5)", "5"),
+        ("CStr(True)", "True"),
+    ],
+)
+def test_cstr_matches_vb_g_format_not_python_str_float(vb_text: str, expected: str) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=vb_text))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `&`による文字列結合も`CStr`と同じ変換規則を使う(知見46)——
+        # 単純な`str()`ではDouble値の見た目が食い違う。
+        ('"x=" & 4.0', "x=4"),
+        ('"n=" & 5 & "/" & True', "n=5/True"),
+    ],
+)
+def test_concat_uses_same_vb_cstr_conversion_as_cstr(vb_text: str, expected: str) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=vb_text))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
     ("vb_text", "expect_nan"),
     [
         # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。

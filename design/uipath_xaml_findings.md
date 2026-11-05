@@ -2222,6 +2222,64 @@ casing差異を誤って拾わないため)。
 テスト済み。これで知見42〜45の一連の「VB.NET演算子の値の食い違い」
 系統点検は完全に完了した。
 
+## 46. `CStr(Double)`の書式がVBとPythonで食い違うと確定——知見45の`^`修正で残した軽微な既知課題を解消(VM不使用、公式ドキュメントで確定)
+
+知見45で`^`修正時に「VBの`^`は常にDouble型で計算されるため、`CStr()`等での
+文字列化の見た目が変わりうる(軽微、未対応)」と残していた課題を、公式
+ドキュメントに基づき調査・修正した。
+
+**調査結果**: `CStr`はDouble値に対し`ToString()`の既定書式("G"、
+mscorlib/Legacyターゲットでは丸め桁数15、知見30-6参照)に従う
+(Microsoft Learn「Return Values for the CStr Function」「標準の数値
+書式指定文字列」)。G書式は**小数点以下の末尾ゼロを省略し、不要なら
+小数点自体も付けない**と明記されている——このため`CStr(4.0)`は
+`"4"`になり、`"4.0"`にはならない。Pythonの`str(float)`は整数値でも
+常に`.0`を残すため、確実に食い違う(例外や稀なケースではなく、整数値の
+Doubleを文字列化するたび毎回発生する)。`NaN`/`Infinity`/`-Infinity`は
+G書式とは独立に`Double.ToString()`が特別扱いする固定文字列を返す
+(知見45の`^`修正で生成されうる`NaN`も対象)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`):
+
+- `_CAST_FUNCS`から`"cstr": "str"`を削除し、`CStr`を`_render_func_call`
+  内で個別処理(`CInt`/`CBool`と同じ扱い)。生成コード側に挿入する
+  ヘルパー関数`_vb_cstr(x)`を呼ぶ形に変更:
+  ```python
+  def _vb_cstr(x):
+      if isinstance(x, float):
+          if x != x:
+              return "NaN"
+          if x == float("inf"):
+              return "Infinity"
+          if x == float("-inf"):
+              return "-Infinity"
+          return "%.15g" % x
+      return str(x)
+  ```
+- `&`(文字列結合)も同じ変換規則を使うべきと判断し(VBの`&`は`CStr`と
+  同じ文字列化規則で非文字列オペランドを変換するため)、単純な`str()`
+  から同じ`_vb_cstr()`呼び出しへ変更。
+- ヘルパー関数の生成コードへの実際の挿入は、既存の`_collect_imports`
+  の仕組み(`pyperclip`/`pywinauto.Desktop`のimportと同じパターン、
+  使用時のみ注入)を拡張して対応——未使用時に余計なコードを増やさない
+  既存方針を維持した。
+
+`tests/test_uipath_codegen.py`に
+`test_cstr_matches_vb_g_format_not_python_str_float`
+(`CStr(4.0)`→`"4"`、`CStr((-8.0) ^ 0.5)`→`"NaN"`等)と
+`test_concat_uses_same_vb_cstr_conversion_as_cstr`
+(`"x=" & 4.0`→`"x=4"`)を追加、`exec()`して実際の出力文字列まで確認。
+
+**この知見で確定したこと**: 知見45で「軽微、未対応」として残した
+`CStr(Double)`の書式差異は、公式ドキュメントの明記により確定・修正
+できた(VM検証不要だった——`Mod`/`\`/`CInt`/`CBool`と同じ「ドキュメント
+で確定できる」カテゴリ)。なお、G書式の指数表記の閾値・書式
+(`E`大文字、2桁指数)とPythonの`e`表記の閾値・書式の違い、および
+`ToString()`がカレントカルチャの小数点記号(例: `de-DE`ではカンマ)に
+従う可能性は、依然軽微な既知の限界として未対応のまま残す
+(UiPath Robot/StudioはこのユーザーのVM環境では常にen-USロケールと
+考えられ、実害が出る具体例が見つかるまでは優先度低と判断)。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

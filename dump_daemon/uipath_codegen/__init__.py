@@ -69,7 +69,7 @@ from ..uipath_dsl.types import (
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
 from ..uipath_selector import selector_text_to_pywinauto
-from .render import render_expr
+from .render import VB_CSTR_HELPER_NAME, VB_CSTR_HELPER_SOURCE, render_expr
 
 INDENT = "    "
 
@@ -132,6 +132,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     if any("Desktop(" in line for line in body):
         imports.append("from pywinauto import Desktop")
     imports.sort()
+    # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
+    # 未使用時に増やさないよう、使われている場合のみ注入する——
+    # import文とは違い複数行の定義なので、importのソート対象外で末尾に
+    # 追加する。
+    if any(f"{VB_CSTR_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_CSTR_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

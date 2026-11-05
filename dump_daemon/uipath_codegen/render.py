@@ -30,16 +30,41 @@ from dump_daemon.uipath_expr import (
 from ..uipath_dsl.types import Expr, Literal, VbExpr
 
 # design/uipath_vb_expression_mapping.md で実機確認済み(知見32・36)の
-# 型変換関数のうち、単純な名前変換で安全に対応できるもの。`CStr`は`str()`で
-# 十分(VBの`&`に対する`str()`明示挿入と同じ理由で、Pythonの`str()`は`CStr`の
-# 「何でも文字列化する」挙動と一致する)。`CDbl`も`float()`で十分(浮動小数点
-# への変換は丸めの余地が無く情報を失わない)。`CInt`/`CBool`は値そのものが
-# VBとPythonで食い違いうる(知見42と同じ種類の問題)ため、個別に
-# `_render_func_call`内で処理する(下記参照)。
+# 型変換関数のうち、単純な名前変換で安全に対応できるもの。`CDbl`は`float()`
+# で十分(浮動小数点への変換は丸めの余地が無く情報を失わない)。`CStr`/
+# `CInt`/`CBool`は値そのものがVBとPythonで食い違いうる(知見42・45と同じ
+# 種類の問題)ため、個別に`_render_func_call`内で処理する(下記参照)。
 _CAST_FUNCS = {
-    "cstr": "str",
     "cdbl": "float",
 }
+
+# `CStr(Double)`はVBの既定フォーマット("G"、丸め桁数15——mscorlib/Legacy
+# ターゲット、知見30-6参照)に従い、整数値になる場合は小数点を省略する
+# (`CStr(4.0)`は`"4.0"`ではなく`"4"`)。Microsoft Learn「CStr関数の戻り値」
+# および「標準の数値書式指定文字列」(G書式)で確定済み(2026-11-05、
+# VM不使用、公式ドキュメントで確定——知見46参照)。Pythonの`str(float)`は
+# 整数値でも常に`.0`を残すため食い違う。`NaN`/`Infinity`/`-Infinity`は
+# G書式とは独立に`Double.ToString()`が特別扱いする文字列
+# ("NaN"/"Infinity"/"-Infinity")を返すため、`%g`書式より先に判定する。
+# 生成コードはこのヘルパー関数を直接呼び出す形にする(`_render_func_call`の
+# `cstr`、`_render_bin_op`の`&`の両方で使う——`&`もVBの文字列結合時に同じ
+# 変換規則を使うため)。生成スクリプトへの実際の挿入は
+# `uipath_codegen/__init__.py`の`_collect_imports`が使用時のみ行う
+# (未使用時に余計なコードを増やさない既存方針、`pyperclip`/`Desktop`の
+# import挿入と同じ仕組み)。
+VB_CSTR_HELPER_NAME = "_vb_cstr"
+VB_CSTR_HELPER_SOURCE = """\
+def _vb_cstr(x):
+    if isinstance(x, float):
+        if x != x:
+            return "NaN"
+        if x == float("inf"):
+            return "Infinity"
+        if x == float("-inf"):
+            return "-Infinity"
+        return "%.15g" % x
+    return str(x)
+"""
 
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
@@ -132,6 +157,10 @@ def _vb_cbool_of_string_literal(text: str) -> bool:
 def _render_func_call(node: FuncCall) -> str:
     key = node.name.lower()
     args = [_render_node(a) for a in node.args]
+    if key == "cstr":
+        if len(args) != 1:
+            raise NotImplementedError("CStr expects exactly 1 argument")
+        return f"{VB_CSTR_HELPER_NAME}({args[0]})"
     if key == "cint":
         # VBの`CInt`は切り捨てではなく四捨五入(銀行丸め/round-half-to-even、
         # 知見42の`Mod`/`\`と同じ系統の「公式ドキュメントで確定した値の
@@ -188,9 +217,11 @@ def _render_bin_op(node: BinOp) -> str:
         return f"({left}) is not ({right})"
     if op == "&":
         # VBの`&`は非文字列オペランドを自動的に文字列化するが、Pythonの`+`は
-        # しない——str()を明示的に挟む(design/uipath_vb_expression_mapping.md
-        # 「確認済み演算子の変換上の注意点」)。
-        return f"str({left}) + str({right})"
+        # しない——明示的に文字列化を挟む(design/uipath_vb_expression_mapping.md
+        # 「確認済み演算子の変換上の注意点」)。`CStr`と同じ変換規則
+        # (`VB_CSTR_HELPER_SOURCE`参照、知見46)——単純な`str()`では
+        # Double値の見た目が食い違う(`str(4.0)`は`"4.0"`、VBは`"4"`)。
+        return f"{VB_CSTR_HELPER_NAME}({left}) + {VB_CSTR_HELPER_NAME}({right})"
     if op == "+":
         return f"({left}) + ({right})"
     if op == "-":
