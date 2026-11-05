@@ -176,6 +176,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
   ブランチ0/4→4/4、全体カバレッジ82%→83%)。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
+  🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
+  `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、
+  `.Parameters`(引数)を実際に読み取っている唯一の評価経路が`RepositoryTrailerHandler.EvaluateControl()`
+  (`appmask[...]`UI要素リポジトリ参照専用)だと判明した——DataTable/CustomObject等の汎用メソッド
+  呼び出しではなく、**UI要素セレクタに実行時の値を埋め込む「動的セレクタ」専用の機構**
+  (UiPathの`Dynamic Selector`相当のPAD版)だった。評価されたパラメータの辞書がセレクタ文字列の
+  組み立てに渡される実装を確認済み(詳細はdocs-local、逆コンパイル結果由来のため非追跡)。
+  ただしこの動的セレクタ自体を作るには知見38以来の「Inspect UI elements」ピッカー(RDP必須)が
+  必要なため、`appmask[...]`参照の構築全般と同じRDP必須カテゴリに留まる——「何が生成するか不明」
+  という問い自体は決着したが、実機確認・結線はRDP待ちのまま(🖥️のまま、優先度は低)。
 - [x] 💻🖥️ `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`の出力契約
   (`DataTableMatches`の形)を実機確認。
   ✅ **実機確認・結線完了(知見89)**: RDP不要——`AddRowToDataTable`/`AddColumnToDataTable`等
