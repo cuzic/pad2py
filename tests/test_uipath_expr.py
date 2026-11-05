@@ -147,3 +147,32 @@ def test_render_expr_round_trip_matches_for_simple_cases():
         node, rendered = parse_vb_expr(text)
         assert node is not None
         assert rendered == text
+
+
+def test_and_or_xor_relative_precedence_matches_official_vb_spec():
+    """公式ドキュメント(Microsoft Learn「Operator Precedence - Visual
+    Basic」、Logical and Bitwise Operatorsの節)が明記する優先順位——
+    `Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`(`Xor`が最も緩い)——を
+    直接検証する回帰テスト。
+
+    修正前は`or_expr`が最も外側(緩い)、`xor_expr`がその内側というグラマー
+    構造になっており、`Or`と`Xor`の相対優先順位が公式仕様と逆だった
+    (モジュールdocstringが記す意図した優先順位とも矛盾していた、
+    単純な実装漏れ)——括弧無しで`And`/`Or`/`Xor`を混在させる実機データが
+    知見32・36のいずれにも無かったため、この文法バグはテストで検出されずに
+    残っていた。
+
+    `a And b Or c Xor d`は公式仕様通りなら`((a And b) Or c) Xor d`
+    (`Xor`が最も緩いため最後に分割される)になるはずで、修正前の文法では
+    誤って`(a And b) Or (c Xor d)`になっていた。
+    """
+    node, _ = parse_vb_expr("a And b Or c Xor d")
+    assert node == BinOp(
+        op="Xor",
+        left=BinOp(
+            op="Or",
+            left=BinOp(op="And", left=Ident(name="a"), right=Ident(name="b")),
+            right=Ident(name="c"),
+        ),
+        right=Ident(name="d"),
+    )

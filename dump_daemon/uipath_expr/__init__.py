@@ -5,14 +5,22 @@
 
 `dump_daemon.pad_expr`(PAD用)と同じ設計方針を踏襲する:
 
-1. **演算子の優先順位は未検証の仮定**。design/uipath_vb_expression_mapping.md
-   知見32・36で確認したのは「各演算子が単独で`[...]`式として受理され、
-   変換無しで直列化される」ことだけで、異なる優先順位の演算子を括弧無しで
-   混在させた式が実機でどう評価されるかは検証していない。以下の優先順位は
-   公開のVB.NET言語仕様(高い順: `^` > 単項`+`/`-` > `*`/`/` > `\\`(整数除算) > `Mod` >
+1. **演算子の優先順位は公開仕様に基づく(実機の混在式での評価順は未検証)**。
+   design/uipath_vb_expression_mapping.md知見32・36で確認したのは「各演算子が
+   単独で`[...]`式として受理され、変換無しで直列化される」ことだけで、
+   異なる優先順位の演算子を括弧無しで混在させた式が実機でどう評価されるかは
+   実機確認していない。以下の優先順位はMicrosoft Learn「Operator
+   Precedence - Visual Basic」(`learn.microsoft.com/en-us/dotnet/visual-basic/
+   language-reference/operators/operator-precedence`)の現行版に基づく
+   (高い順: `^` > 単項`+`/`-` > `*`/`/` > `\\`(整数除算) > `Mod` >
    二項`+`/`-` > `&` > 比較(`=`/`<>`/`<`/`>`/`<=`/`>=`/`Is`/`IsNot`) >
-   `Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`)をそのまま仮採用した
-   ものに過ぎない。
+   `Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`、`Xor`が論理/ビット演算子
+   群の中で最も緩い)。2026-11-05: 文法の実装がこの並び(`And`>`Or`>`Xor`)と
+   逆(`Or`>`Xor`>`And`の順に外側から内側へネストしていた)になっていた
+   実装バグを発見・修正した——`And`/`Or`/`Xor`を括弧無しで混在させる実機
+   データが知見32・36のいずれにも無かったため、長らく未検出だった
+   (`tests/test_uipath_expr.py`の`test_and_or_xor_relative_precedence_matches_official_vb_spec`
+   参照)。
 2. **フォールバック方針**: この文法が対応していない入力(文字列補間
    `$"..."`の中身・未対応の関数・構文エラー)に遭遇した場合、構造化を
    諦めて`tree=None`とし元のテキストをそのまま保持する——構文解析の失敗で
@@ -38,14 +46,14 @@ from lark import Lark, Transformer
 from lark.exceptions import LarkError
 
 _GRAMMAR = r"""
-?expr: or_expr
+?expr: xor_expr
 
-?or_expr: xor_expr
-        | or_expr _OR xor_expr     -> or_
-        | or_expr _ORELSE xor_expr -> orelse_
+?xor_expr: or_expr
+         | xor_expr _XOR or_expr -> xor_
 
-?xor_expr: and_expr
-         | xor_expr _XOR and_expr -> xor_
+?or_expr: and_expr
+        | or_expr _OR and_expr     -> or_
+        | or_expr _ORELSE and_expr -> orelse_
 
 ?and_expr: not_expr
          | and_expr _AND not_expr     -> and_
