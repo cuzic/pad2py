@@ -630,6 +630,37 @@ def test_numeric_operators_coerce_string_and_nothing_like_vb_not_python_typeerro
 
 
 @pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `/`は常にDouble扱いのためゼロ除算もDouble方式(Microsoft Learn
+        # 「/ Operator」Attempted Division by Zero節、知見50)——被除数の
+        # 符号でInfinity/-Infinity、両方0ならNaN。
+        ("5 / 0", "Infinity"),
+        ("-5 / 0", "-Infinity"),
+        ("0 / 0", "NaN"),
+        # 通常の除算は従来通り。
+        ("10 / 4", "2.5"),
+    ],
+)
+def test_division_by_zero_matches_vb_double_semantics_not_python_zerodivisionerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見50: `/`のゼロ除算がVBのDouble方式(Infinity/-Infinity/NaN)に
+    なることの回帰テスト。単純な`a / b`のままだとPythonは
+    `ZeroDivisionError`で即座にクラッシュする。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
     ("vb_text", "expect_nan"),
     [
         # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。

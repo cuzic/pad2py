@@ -2497,18 +2497,64 @@ def _vb_num(x):
 UiPath関連テスト全130件通過(`test_uipath_codegen.py`/`test_uipath_expr.py`/
 `test_uipath_dsl.py`/`test_uipath_selector.py`)。
 
-**既知の残課題(未調査のまま記録)**:
-- `/`演算子のページ取得に失敗したため、`Nothing`→`0`の扱いは`-`/`*`/`Mod`
-  からの類推で実装した(直接確認はできていない)。
-- `Mod`公式ページで「`number2`がゼロの場合、浮動小数点除算は
-  `Double.NaN`を返す、整数除算は`DivideByZeroException`を送出する」と
-  判明した——Pythonの`%`/`int(a/b)`はゼロ除算で`ZeroDivisionError`に
-  なり、VBの`NaN`返却とは異なる挙動。この系統の「ゼロ除算時の挙動差」は
-  未調査のまま今後の調査候補として記録する。
+**既知の残課題(2026-11-05時点、知見50で`/`のゼロ除算は解消済み)**:
+- `Mod`/`\`のゼロ除算は未解消のまま残る(知見50参照——`/`と違い型依存の
+  ため静的型情報が無いと正しく実装できない)。
 - Boolean(`True`/`False`)を算術演算子に渡した場合の挙動(VB6/VBAでは
   `True`が`-1`相当になる慣習があるが、VB.NETでの正確な挙動は未確認)は
   `_vb_num`/`_vb_add`/`_vb_cmp`のいずれも素通し(Pythonの`bool`は`int`の
   サブクラスで`True`は`1`相当)のままで、この食い違いの有無は未調査。
+
+## 50. `/`演算子のゼロ除算がVBのDouble方式(Infinity/NaN)になると確定——Pythonは`ZeroDivisionError`で即クラッシュする(VM不使用、公式ドキュメントで確定、知見49の残課題を一部解消)
+
+知見49で「`/`のページ取得に失敗したため`Nothing`の扱いは類推で実装した」
+「ゼロ除算時の挙動差は未調査」と残していた課題を、正しいURL
+(`floating-point-division-operator`)で再取得し確認した。
+
+**確定した内容**(Microsoft Learn「/ Operator」): `/`は「除算の前に整数
+オペランドは全てDoubleへ拡張される」と明記——つまり**`/`の結果はオペランド
+の型によらず常にDouble相当になる**唯一の算術演算子(`-`/`*`/`Mod`/`\`は
+型によって結果型が変わる)。これにより`/`のゼロ除算は型分岐せず常に
+Double方式になる(「Attempted Division by Zero」節で確定): `expression2`
+が0の場合、`expression1`が0なら`NaN`、それ以外は符号に応じて
+`PositiveInfinity`/`NegativeInfinity`。Pythonの`/`はゼロ除算で
+`ZeroDivisionError`を即座に送出するため、単純な変換のままでは動かない
+(知見48・49の`TypeError`と同系統、より重大な問題)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_div(a, b)`
+ヘルパーを追加し`/`演算子を専用に結線(`Nothing`→`0`・文字列→`float()`の
+強制も内包、`_vb_num`とは独立した自己完結実装——`_collect_imports`は
+生成コードに文字通り現れるヘルパー名だけを検知する単純な仕組みのため、
+`_vb_div`が内部で`_vb_num`を呼ぶ構造だと注入漏れが起きるのを避けた):
+```python
+def _vb_div(a, b):
+    if a is None:
+        a = 0
+    elif isinstance(a, str):
+        a = float(a)
+    if b is None:
+        b = 0
+    elif isinstance(b, str):
+        b = float(b)
+    if b == 0:
+        if a == 0:
+            return float("nan")
+        return float("inf") if a > 0 else float("-inf")
+    return a / b
+```
+`NaN`/`Infinity`/`-Infinity`の文字列化は既存の`_vb_cstr()`(知見46)が
+既に特別扱いしているため、`CStr(5 / 0)`は正しく`"Infinity"`になる。
+
+`tests/test_uipath_codegen.py`に
+`test_division_by_zero_matches_vb_double_semantics_not_python_zerodivisionerror`
+を追加(`5 / 0`→`"Infinity"`、`-5 / 0`→`"-Infinity"`、`0 / 0`→`"NaN"`)。
+UiPath関連テスト全134件通過。
+
+**既知の残課題(未解消のまま記録)**: `Mod`/`\`のゼロ除算は`/`と違い
+型依存(`Mod`の公式ページ「浮動小数点除算は`NaN`、整数除算は
+`DivideByZeroException`」)——静的型情報を持たない現在のアーキテクチャ
+では安全に実装できないため、意図的に未対応のまま残す(でっち上げた
+型推測は入れない)。
 
 ## 今後の調査候補(未着手)
 

@@ -143,6 +143,38 @@ def _vb_num(x):
     return x
 """
 
+# `/`(浮動小数点除算)はMicrosoft Learn「/ Operator」自身が「除算の前に
+# 整数オペランドは全てDoubleへ拡張される」と明記しており、`/`の結果は
+# オペランドの型によらず常にDouble相当になる(VM不使用、公式ドキュメントで
+# 確定、知見50参照)。そのため`/`のゼロ除算は常にDouble方式(`expression2`
+# が0なら`expression1`の符号に応じて`PositiveInfinity`/
+# `NegativeInfinity`、両方0なら`NaN`——同ページ「Attempted Division by
+# Zero」節で確定)になる、型に依存しない唯一の算術演算子。Pythonの`/`は
+# ゼロ除算で`ZeroDivisionError`を送出して即座にクラッシュするため、単純な
+# `/`変換のままでは動かない(`_vb_num`を経由しても解決しない、`/`固有の
+# 問題)。`Mod`/`\`(`\`は整数除算、ゼロ除算は型依存で`DivideByZeroException`
+# になりうる、知見49の残課題)は対象外——`_vb_num`に依存せず自己完結させる
+# (`_collect_imports`は生成コードに文字通り現れるヘルパー名だけを検知する
+# 単純な仕組みのため、`_vb_div`が内部で`_vb_num`を呼ぶ構造だと`_vb_num`の
+# 注入漏れが起きる)。
+VB_DIV_HELPER_NAME = "_vb_div"
+VB_DIV_HELPER_SOURCE = """\
+def _vb_div(a, b):
+    if a is None:
+        a = 0
+    elif isinstance(a, str):
+        a = float(a)
+    if b is None:
+        b = 0
+    elif isinstance(b, str):
+        b = float(b)
+    if b == 0:
+        if a == 0:
+            return float("nan")
+        return float("inf") if a > 0 else float("-inf")
+    return a / b
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
 # Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
@@ -334,7 +366,10 @@ def _render_bin_op(node: BinOp) -> str:
     if op == "*":
         return f"{VB_NUM_HELPER_NAME}({left}) * {VB_NUM_HELPER_NAME}({right})"
     if op == "/":
-        return f"{VB_NUM_HELPER_NAME}({left}) / {VB_NUM_HELPER_NAME}({right})"
+        # 知見50参照: `/`は常にDouble扱いになるためゼロ除算もDouble方式
+        # (`Infinity`/`NaN`)——単純な`_vb_num(a)/_vb_num(b)`のままだと
+        # Pythonの`ZeroDivisionError`で即座にクラッシュする。
+        return f"{VB_DIV_HELPER_NAME}({left}, {right})"
     if op == "^":
         # VBの`^`は常にDouble型で計算される(Microsoft Learn「^ Operator」)
         # ため`2^2`はVBでは`4.0`相当になるが、Pythonの`2 ** 2`は整数`4`の
