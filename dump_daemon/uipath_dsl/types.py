@@ -205,10 +205,24 @@ class ParallelNode:
 class ClickNode:
     """`<ui:Click>`(知見9)。`selector`は`ui:Click.Target`配下の`ui:Target`
     要素の`Selector`属性(素のXML文字列、意味論は知見37参照——本パーサーでは
-    まだ解析しない)。"""
+    まだ解析しない)。
+
+    `click_type`/`mouse_button`/`key_modifiers`は実機XAML
+    (design/evidence/uipath_xaml_probe/Main.xaml、知見71)で確認した
+    `ClickType`/`MouseButton`/`KeyModifiers`属性の生テキストをそのまま
+    保持する(例: `"CLICK_SINGLE"`/`"BTN_LEFT"`/`"None"`)。これらの
+    非nullable列挙型プロパティはStudioが常に具体的な値を直列化するため
+    (`{x:Null}`にはならない)、コード生成側(`_generate_click`)が
+    「実機確認済みの既定値そのまま」かどうかを判定できるようにするために
+    保持する——未確認の値(ダブルクリック・右クリック・修飾キー併用等)は
+    `# TODO`へ倒す(`uipath_codegen/__init__.py`参照、でっち上げたマッピングで
+    クリック種別を誤らせるより安全側に倒す)。"""
 
     selector: str | None = None
     display_name: str | None = None
+    click_type: str | None = None
+    mouse_button: str | None = None
+    key_modifiers: str | None = None
 
 
 @dataclass

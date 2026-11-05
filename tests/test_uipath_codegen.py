@@ -348,6 +348,67 @@ def test_click_with_unmappable_selector_is_todo():
     _compiles(code)
 
 
+_CLICK_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+@pytest.mark.parametrize(
+    ("click_type", "mouse_button", "key_modifiers"),
+    [
+        # 知見71: design/evidence/uipath_xaml_probe/Main.xamlで実機確認
+        # 済みの唯一の具体例(単純な左シングルクリック・修飾キー無し)。
+        ("CLICK_SINGLE", "BTN_LEFT", "None"),
+        # 属性が丸ごと省略された場合(`None`)も同じ確認済み既定値扱い。
+        (None, None, None),
+    ],
+)
+def test_click_with_confirmed_default_type_generates_click_input(
+    click_type: str | None, mouse_button: str | None, key_modifiers: str | None
+) -> None:
+    wf = _wrap(
+        [
+            ClickNode(
+                selector=_CLICK_SELECTOR,
+                click_type=click_type,
+                mouse_button=mouse_button,
+                key_modifiers=key_modifiers,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert ".click_input()" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("click_type", "mouse_button", "key_modifiers"),
+    [
+        # 知見71: 実機でのシリアライズ文字列を確認していないため、でっち
+        # 上げたマッピングでクリック種別を誤らせるより`# TODO`に倒す。
+        ("CLICK_DOUBLE", "BTN_LEFT", "None"),
+        ("CLICK_SINGLE", "BTN_RIGHT", "None"),
+        ("CLICK_SINGLE", "BTN_LEFT", "Ctrl"),
+    ],
+)
+def test_click_with_non_default_type_is_todo_not_guessed(
+    click_type: str, mouse_button: str, key_modifiers: str
+) -> None:
+    wf = _wrap(
+        [
+            ClickNode(
+                selector=_CLICK_SELECTOR,
+                click_type=click_type,
+                mouse_button=mouse_button,
+                key_modifiers=key_modifiers,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Click with non-default ClickType/MouseButton/KeyModifiers" in code
+    assert ".click_input()" not in code
+    _compiles(code)
+
+
 def test_parallel_runs_sequentially_with_note():
     wf = _wrap(
         [

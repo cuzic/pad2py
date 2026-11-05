@@ -200,6 +200,11 @@ def test_click_selector(main_wf):
     assert click.selector is not None
     assert "notepad.exe" in click.selector
     assert "<ctrl name='Text Editor' role='editable text' />" in click.selector
+    # 知見71: ClickType/MouseButton/KeyModifiersも実機XAMLの生テキストの
+    # まま捕捉される(単純な左シングルクリック・修飾キー無しの実例)。
+    assert click.click_type == "CLICK_SINGLE"
+    assert click.mouse_button == "BTN_LEFT"
+    assert click.key_modifiers == "None"
 
 
 def test_invoke_workflow_file(main_wf):

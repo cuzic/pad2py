@@ -541,6 +541,20 @@ def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[st
     return [*todo, f"{prefix}pyperclip.copy({VB_CSTR_HELPER_NAME}({text}))"]
 
 
+# `ui:Click`の`ClickType`/`MouseButton`/`KeyModifiers`属性のうち、実機XAML
+# (design/evidence/uipath_xaml_probe/Main.xaml)で確認できた唯一の具体例
+# (単純な左シングルクリック・修飾キー無し)のみを「確認済みの既定値」として
+# 安全に`.click_input()`(pywinautoの既定引数、同じ左シングルクリック)へ
+# 変換する(知見71)。ダブルクリック・右クリック・修飾キー併用等は実機の
+# 具体的なシリアライズ文字列(`CLICK_DOUBLE`等)を確認していないため、
+# でっち上げたマッピングで実際のクリック種別を誤らせるより`# TODO`に倒す
+# 方が安全(`uipath_selector`の`role`属性と同じ「無言でなく安全側に倒す」
+# 方針)。
+_CLICK_TYPE_CONFIRMED_DEFAULTS = (None, "CLICK_SINGLE")
+_MOUSE_BUTTON_CONFIRMED_DEFAULTS = (None, "BTN_LEFT")
+_KEY_MODIFIERS_CONFIRMED_DEFAULTS = (None, "None")
+
+
 def _generate_click(node: ClickNode, indent: int) -> list[str]:
     """`ui:Click`のセレクタ(design/uipath_xaml_findings.md 知見37参照)を
     `uipath_selector`でpywinautoの検索条件連鎖へマッピングする。属性の
@@ -548,10 +562,23 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
     一致を未検証のまま渡している——両方とも警告コメントとして生成コードに
     残し、実機で要素を一意特定できることまでは主張しない。マッピング可能な
     属性が1つも無かった場合(セレクタ自体が無い場合含む)は、でっち上げる
-    くらいなら`# TODO`に倒す。"""
+    くらいなら`# TODO`に倒す。`ClickType`/`MouseButton`/`KeyModifiers`
+    (知見71)が実機確認済みの既定値から外れている場合も同様に`# TODO`へ
+    倒す(下記`_CLICK_TYPE_CONFIRMED_DEFAULTS`等参照)。"""
     prefix = INDENT * indent
     if not node.selector:
         return [f"{prefix}# TODO: Click with no selector captured"]
+    if (
+        node.click_type not in _CLICK_TYPE_CONFIRMED_DEFAULTS
+        or node.mouse_button not in _MOUSE_BUTTON_CONFIRMED_DEFAULTS
+        or node.key_modifiers not in _KEY_MODIFIERS_CONFIRMED_DEFAULTS
+    ):
+        return [
+            f"{prefix}# TODO: Click with non-default ClickType/MouseButton/KeyModifiers "
+            f"(ClickType={node.click_type!r}, MouseButton={node.mouse_button!r}, "
+            f"KeyModifiers={node.key_modifiers!r}) — mapping not confirmed via real "
+            "capture, refusing to guess"
+        ]
     rendered = selector_text_to_pywinauto(node.selector)
     if rendered.expr == 'Desktop(backend="uia")':
         return [

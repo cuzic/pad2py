@@ -364,7 +364,13 @@ def _parse_click(elem: etree._Element) -> ClickNode:
             _, local = _split_tag(child.tag)
             if local == "Target":
                 selector = _attr(child, "Selector")
-    return ClickNode(selector=selector, display_name=_attr(elem, "DisplayName"))
+    return ClickNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        click_type=_attr(elem, "ClickType"),
+        mouse_button=_attr(elem, "MouseButton"),
+        key_modifiers=_attr(elem, "KeyModifiers"),
+    )
 
 
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:

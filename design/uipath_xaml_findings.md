@@ -3486,6 +3486,57 @@ PAD版`codegen_coverage.py`と同じ設計方針——`uipath_codegen`の内部�
 実装を進める際(Excel/Outlook連携・HttpClientのHeaders/Body対応等)は、
 このツールで進捗を定量的に追跡できる。
 
+## 71. `ui:Click`の`ClickType`/`MouseButton`/`KeyModifiers`属性が一切キャプチャされず常に単純な左シングルクリックとして生成される未検出のギャップを発見・部分的に解決(VM不使用、知見70のカバレッジツール実装の副産物)
+
+知見70のカバレッジ測定ツールを実装する過程で`Main.xaml`の実際のXML属性を
+再確認していたところ、`ClickNode`(`dump_daemon/uipath_dsl/types.py`)が
+`selector`/`display_name`の2つしかフィールドを持たず、実機XAMLに存在する
+`ClickType`/`MouseButton`/`KeyModifiers`属性(`<ui:Click ... ClickType=
+"CLICK_SINGLE" ... KeyModifiers="None" MouseButton="BTN_LEFT">`、
+`design/evidence/uipath_xaml_probe/Main.xaml`181行目)が完全に無視され、
+`_generate_click`が常に無条件で`.click_input()`(pywinauto既定=左シングル
+クリック)を生成すると判明した——`HttpClientNode`の`extra_attrs`のような
+素通し機構も無く、ダブルクリック・右クリック・修飾キー併用のフローが
+実在すれば、生成コードが**サイレントに間違った種類のクリックを実行する**
+(クラッシュも警告も無い、既存の`# TODO`方針より発見しにくい種類のバグ)
+というリスクがあった。
+
+**確認できたこと**(実機XAML、知見のみ——ドキュメント不使用): 上記1件の
+具体例(`ClickType="CLICK_SINGLE"`/`MouseButton="BTN_LEFT"`/
+`KeyModifiers="None"`)のみ。ダブルクリック・右クリック・修飾キー併用時の
+実際のシリアライズ文字列(`CLICK_DOUBLE`/`BTN_RIGHT`等、おそらくこの命名
+規則通りだが未確認)は実機でも公式ドキュメントでも確認できていない。
+pywinautoの`click_input(button='left'|'right'|'middle'|'x', double=bool,
+pressed="control shift alt"の空白区切り部分文字列)`(`pywinauto/windows/
+mouse.py`、GitHub実ソースで確認)は確認済みだが、UiPath側の文字列との
+正確な対応表が無い状態でマッピングをでっち上げるのは危険と判断した。
+
+**修正内容**: `ClickNode`に`click_type`/`mouse_button`/`key_modifiers`
+(いずれも生テキストのまま)を追加し、`xaml_tree.py`の`_parse_click`で
+素通しキャプチャする(データを失わない、`pad_codegen`と同じ方針)。
+`_generate_click`は、これら3属性が実機確認済みの唯一の値(または属性
+省略=`None`)と完全一致する場合のみ従来通り`.click_input()`を生成し、
+それ以外の値を検出した場合は`# TODO: Click with non-default ClickType/
+MouseButton/KeyModifiers (...) — mapping not confirmed via real capture,
+refusing to guess`へ倒す——`uipath_selector`の`role`属性と同じ「無言で
+でっち上げるより安全側に倒す」方針を踏襲し、確認済みの既定値のケースは
+挙動を一切変えない(既存の回帰テスト全件が無修正で通過することで確認済み)。
+
+`tests/test_uipath_dsl.py`の`test_click_selector`に3属性の捕捉確認を追加、
+`tests/test_uipath_codegen.py`に確認済み既定値(属性明示/省略の両方)で
+`.click_input()`が生成されるテストと、非既定値3パターンで`# TODO`へ倒れる
+テストを追加。UiPath関連テスト全233件通過、リポジトリ全体で全854件通過
+(知見70のカバレッジは72%のまま——実機フィクスチャの実例が確認済みの
+既定値そのものだったため、数値上の変化は無い)。
+
+**この知見で確定したこと**: 知見70のカバレッジツール自体は「TODO/エラーに
+倒れる分岐点」しか可視化しないため、「サイレントに間違った値を生成する」
+種類のギャップ(今回のClick属性のように、これまで一度も`#TODO`にならず
+誰にも気づかれなかった)はカバレッジ測定だけでは見つからない——ツールを
+作る作業中に実際のXML属性を手で読み返す過程で偶然見つかった。今後も
+「カバレッジ100%」を最終目標にせず、実機属性の再読み込みによる
+サイレントギャップの発見を継続する価値があると確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
