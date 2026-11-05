@@ -161,6 +161,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   既知の`MatchWildCards=True`リテラル)は安全にTODOフォールバックへ委ねた。
   **これでPDF/Excel/Word/PowerPointの全Tier3スコープ内アクションのaction_id確認・
   codegen結線が完了**(残るTier3領域は無し)。
+  🖥️ **追記: 挙動確認(実行結果の値比較)を試みたが依然RDPが必要と再確認(知見82)**:
+  知見81の「Run実行+ファイル書き出し」手法をTier3にも拡張しようとしたが、キーボード追加した
+  アクション(`Pdf.ExtractTextFromPDF`)の設定ダイアログへ`PDFFile`パス等を書き込む段階で
+  `child_window()`検索・ブラインドTabナビゲーションの両方がタイムアウトし、依然不可能と
+  判明した(3つの独立した経路で再確認、詳細は知見82)。副産物として、固まったダイアログを
+  ハング無しに閉じる新手法(`WindowPattern.Close()`の直接COM呼び出し)を発見し、
+  `memory: pad2py_run_without_rdp`に記録した。Tier3アクションの往復確認・挙動確認は
+  引き続きRDP接続が前提(🖥️のまま、優先度は低)。
 
 ## C. 構造的・運用上の課題
 

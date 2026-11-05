@@ -1756,3 +1756,22 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 **追記(同日、後続コミット)**: 本件の作業中に、知見57で「windows instanceの表現方法が未解決」として据え置かれていた`UIAutomation.GetWindow.GetUseTimeout`も、知見79/80で`Excel`/`Word`/`PowerPoint`の`Instance`参照について得た洞察(「不透明な参照はPAD側では単なる変数名で、Python側でも通常の変数参照として扱えば特別な結線は不要」)がそのまま当てはまると気づいた。`Control`パラメータは`UIAutomation.Click.Click`と同じ`UiElementRef`なので、知見56の`_build_pywinauto_selector_expr()`がそのまま使える——セレクタが解決でき、かつ意味論未検証の`BringWindowToFront: True`ではない場合に限り、`{WindowInstance変数} = Desktop(backend="uia").window(...)`という実行コードを生成するよう`dump_daemon/pad_codegen/actions/ui_element.py`を更新した(`Timeout`パラメータの意味論は未検証のまま無視、`BringWindowToFront: True`時は従来通り安全にTODOへ倒す)。これは`pad2py-pad-host`のVM操作無しに(既存の実機キャプチャ済みフィクスチャの再解釈だけで)完結した。
 
 **さらに追記(同日、後続コミット)**: `GetWindow`の出力を消費する側の`UIAutomation.CloseWindow.CloseByInstanceOrHandle`(知見57追記で実機確認済み、`WindowInstance`パラメータは裸の`VarRef`)も、`GetUseTimeout`の出力変数にpywinautoの`WindowSpecification`を代入する設計に合わせて`{変数}.close()`という実行コードへ結線した(`dump_daemon/pad_codegen/actions/window.py`)。これで知見57が記録した「`GetWindow`(生成)→変数→`CloseWindow`(消費)」という一連の流れが、Pythonコード生成の観点でも一通り結線された。
+
+## 82. Tier3アクション(`Pdf.ExtractTextFromPDF`)の挙動確認を試み、キーボード追加したアクションの設定ダイアログはRDP無しでは依然操作不能と再確認——副産物として、固まったダイアログをハングせずに閉じる新手法を発見
+
+知見81の「Run実行+ファイル書き出しで実機の計算結果を読む」手法をTier3アクションにも拡張できないか試みた。`reportlab`で既知のテキストを持つ小さなテストPDF(`"Hello pad2py PDF verification\nLine two of test content\n"`相当)を作成し、ローカルで`pad_action_lib.pdf_actions.extract_text_from_pdf()`を実行した結果(基準値)を確認した上で、同じPDFファイルを`clipwire exec`経由でVM(`C:\Users\tomoya_kaw\pad2py\pad_pdf_verify.pdf`)へ直接アップロードした(PAD自体を経由しないファイル転送)。
+
+新規テストフロー(`pdf_behavior_check`)で知見78のキーボード追加技法で`Pdf.ExtractTextFromPDF`をキャンバスに追加した後、このアクションの`PDFFile`パラメータに実際のパスを設定しようとした。しかし:
+
+- **知見75のクリップボードペースト技法は使えない**(知見79で確立済みの制約——`ActionRecord`行は閉じた内部カタログへの厳密一致が必要で、`Pdf.*`は常に拒否される)。
+- アクションの設定ダイアログを開く(`ListItem.invoke()`)と、ダイアログ自体は実際に開く(`uia.GetFocusedElement()`で`CurrentName='Extract text from PDF'`・`CurrentControlType=50032`(Window)を確認)が、**その内容(フィールド)は依然読み取れない**——3つの独立した経路で再確認した:
+  1. `pywinauto`の`designer.children()`/`descendants()`での再帰探索(既知の制約)。
+  2. `WindowSpecification.child_window(title=..., control_type="Window")`での名前一致検索——**これはタイムアウトする**(サーバー側ジョブが`Timeout`ステータスになることまで確認、ローカルクライアントの早期切断ではない)。
+  3. 生UIAの`RawViewWalker.GetFirstChildElement()`を直接呼ぶ経路(`pywinauto`を介さない、最も低レベルな手段)——`NULL COM pointer access`で失敗。
+  
+  3つとも結果は同じ(子要素への到達不能)で、これは`pywinauto`固有の制約ではなく、WPFが新規に開いたコンテンツの自動化ピアツリーを(アクティブにレンダリングされたデスクトップが無い状態では)構築し切れていないという、OSレベルのUIAプロバイダの挙動だと改めて確証が強まった。
+- ダイアログへの`{TAB}`キー送信(フィールド間移動を試みる、ブラインドナビゲーション)も**タイムアウトする**(`dlg.type_keys("{TAB}")`、`dlg`はraw UIAの`CurrentNativeWindowHandle`から直接`Desktop(backend="uia").window(handle=hwnd)`で取得——後述の通りこの経路自体は有効だが、`{TAB}`送信はpywinauto内部でフォーカス追跡のための要素アクセスが発生し、そこでハングする模様)。
+
+**副産物の新発見(固まったダイアログの安全な閉じ方)**: `designer.type_keys("{ESC}")`(メイン画面経由)は`ElementNotEnabled`で失敗する(ダイアログが開いている間メイン画面が無効化されるため、当然)一方、**`uia.GetFocusedElement()`で得た要素に対して直接`GetCurrentPattern(UIA_WindowPatternId)` → `IUIAutomationWindowPattern.Close()`を呼ぶと、ハングせずに確実にダイアログを閉じられる**ことを発見した(呼び出し後、フォーカスがダイアログ(`ctype=50032`)からキャンバスの該当`ListItem`(`ctype=50007`)に戻ったことで閉じたことを確認)。これは純粋なCOMメソッド呼び出しで、UIAツリーのトラバーサルを一切必要としないため、知見78で発見した「壊れたダイアログを閉じられずに固まる」リスクを回避する、より安全な後始末手段になる。
+
+**結論**: `.invoke()`で実際にフローを**実行**できる(知見81)ことと、**新規に設定が必要なTier3アクションの設定ダイアログへ値を書き込める**ことは別の話で、後者は依然RDP接続が無いと不可能だと再確認された——知見78の「将来RDP接続時に知見75の往復確認を取れたら確証を格上げする」という結論は変わらない。今回の実験はテストフロー・アップロードしたテストPDF共に保存せず破棄し、実機状態をクリーンに戻した。`WindowPattern.Close()`による安全な後始末手段は`memory: pad2py_run_without_rdp`に追記した。
