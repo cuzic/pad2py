@@ -77,6 +77,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
 - [ ] 💻 ローカル`main`とGitHub `origin/main`のコミット分岐(履歴相違)の整理 — 複数セッションが
   同じローカル作業ディレクトリに直接コミットし続けている状態の整理(force-push等の破壊的操作は
   ユーザー確認必須)。
+  🔍 診断(読み取りのみ、このtick): `git merge-base --is-ancestor origin/main main`が偽——
+  単なる「ローカルが進んでいる」ではなく**本当に分岐**している(`git rev-list --left-right
+  --count origin/main...main`で92:175、両方とも増え続けている)。origin/mainの先頭は
+  `48652dd`(知見54追記、このセッションの前身が以前pushした時点)で止まっている。実際に
+  mergeを試す(`--no-commit`含め)診断は**行わなかった**——このリポジトリは複数セッションが
+  同時に同じ作業ディレクトリへコミットし続けているため、dry-runでもインデックス/作業ツリーを
+  動かすと、別セッションの`git add`/`git commit`が意図せずその中間状態を取り込む実害がある。
+  **推奨**: 整理するなら、他セッションの同時コミットを一時的に止めた上で(ユーザーの調整が
+  必要)、ユーザー自身が`git merge`/`git rebase`/`push --force`のいずれで整理するかを判断する。
 
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 
