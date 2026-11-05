@@ -444,6 +444,54 @@ def test_csv_trim_fields_true_also_trims_header_row() -> None:
     assert table == [{"Name": "Alice", "Age": "30"}]
 
 
+def test_datatable_from_fixed_width_csv_splits_by_character_position() -> None:
+    # design/dsl_format_findings.md 知見132(VM上で`GenerateDataTableFromCSVAction`を
+    # 直接インスタンス化・実行して確認済み): 区切り文字ではなく文字位置のみで列を切り出す。
+    text = "AAABBBBBCC\nDDDEEEEEFF"
+    table = va.datatable_from_fixed_width_csv(text, "3,5,2")
+    assert table == [
+        {"Column#1": "AAA", "Column#2": "BBBBB", "Column#3": "CC"},
+        {"Column#1": "DDD", "Column#2": "EEEEE", "Column#3": "FF"},
+    ]
+
+
+def test_datatable_from_fixed_width_csv_trims_and_converts_like_delimited_csv() -> None:
+    text = "G  H    II"
+    table = va.datatable_from_fixed_width_csv(text, "3,5,2")
+    assert table == [{"Column#1": "G", "Column#2": "H", "Column#3": "II"}]
+
+    table2 = va.datatable_from_fixed_width_csv("007BBBBB42", "3,5,2", read_fields_as_text=False)
+    assert table2 == [{"Column#1": 7, "Column#2": "BBBBB", "Column#3": 42}]
+
+
+def test_datatable_from_fixed_width_csv_header_row_uses_same_widths() -> None:
+    text = "COLABCDEHE\nAAABBBBBCC"
+    table = va.datatable_from_fixed_width_csv(text, "3,5,2", first_line_contains_column_names=True)
+    assert table == [{"COL": "AAA", "ABCDE": "BBBBB", "HE": "CC"}]
+
+
+def test_datatable_from_fixed_width_csv_long_line_ignores_extra_chars() -> None:
+    # design/dsl_format_findings.md 知見132: 行が長い場合は余りの文字を単に無視する
+    # (実機ではエラーにならない)。
+    table = va.datatable_from_fixed_width_csv("AAABBBBBCCXXXXX", "3,5,2")
+    assert table == [{"Column#1": "AAA", "Column#2": "BBBBB", "Column#3": "CC"}]
+
+
+def test_datatable_from_fixed_width_csv_short_line_raises() -> None:
+    # design/dsl_format_findings.md 知見132: 行が`sum(widths)`より短いと実機では
+    # ActionExceptionになる——でっち上げた空文字列で埋めずValueErrorにする。
+    with pytest.raises(ValueError, match="too short"):
+        va.datatable_from_fixed_width_csv("AAABB", "3,5,2")
+
+
+def test_parse_fixed_column_widths_accepts_comma_or_whitespace_separated() -> None:
+    # design/dsl_format_findings.md 知見132(実機の`CSVUtilities.TryParseColumnWidths`を
+    # VM上で直接呼び出して確認済み): カンマ・空白どちらでも区切れ、空トークンは無視される。
+    assert va.datatable_from_fixed_width_csv("ABCDE", "2,3") == [{"Column#1": "AB", "Column#2": "CDE"}]
+    assert va.datatable_from_fixed_width_csv("ABCDE", "2 3") == [{"Column#1": "AB", "Column#2": "CDE"}]
+    assert va.datatable_from_fixed_width_csv("ABCDE", "2,,3") == [{"Column#1": "AB", "Column#2": "CDE"}]
+
+
 def test_json_custom_object_round_trip() -> None:
     obj = {"a": 1, "b": [1, 2, 3]}
     text = va.custom_object_to_json(obj)

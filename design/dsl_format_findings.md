@@ -2349,3 +2349,17 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **修正**: `move_folder()`を`copy_folder()`と同じ構造に合わせて書き直した——`destination`自体の存在を検証(存在しなければ`InvalidDestinationFolderError`)、実際の移動先を`Path(destination) / Path(source).name`に変更、ネストされた移動先が既に存在する場合のみ`MoveFolderError`(従来の「上書きオプションが無い」チェックをネスト先に適用し直した)。既存テストを新しい意味論に書き直し、`destination`自体が存在しない場合の新規テストも追加した。`tests/test_pad_codegen.py`に実際に`exec()`してネストされたパス・移動元の消滅・ファイル内容を検証するend-to-endテストを追加した。
 
 この2件(知見130・131)で`Folder.*`モジュール内の「既存の親フォルダに同名でネストする」という`Destination`系パラメータの意味論パターンは出尽くした——`Folder.Rename`は`new_name`(同じ親フォルダ内での改名)で同種のパラメータを持たないため対象外、`Folder.Create`/`Folder.Delete`/`Folder.Empty`も`Destination`的なパラメータを持たない。
+
+(知見130・131の調査中、`File.Copy`/`File.Move`の`copy_files()`/`move_files()`も同じ`Destination`系パラメータを持つため横展開で確認したが、こちらは元から正しく「既存の親フォルダへファイル名でネスト」する実装・既に戻り値も実際にアサートするテスト済みだったため、修正不要と確定した。)
+
+## 132. 知見122・127・128で繰り返し見送っていた`ReadFixedColumnWidths`/`ReadCSVWithFixedColumnWidths`(固定長カラムCSV)を、`CSVUtilities`のVM上直接呼び出しで仕様を完全に解明して新規結線
+
+`Variables.GenerateDataTableFromCSV.ReadFixedColumnWidths`/`File.ReadFromCSVFile.ReadCSVWithFixedColumnWidths`は、知見122で最初に発見されて以降、知見127・128で「`FixedColumnWidths`文字列のフォーマット(`CSVUtilities.TryParseColumnWidths`の正確な解析規則)が未検証」という理由で繰り返し見送られていた唯一の残課題だった。知見112・115と同じ「decompileだけでは読めない実行時のロジックを、VM上でメソッドを直接呼び出して確認する」手法で、この最後の穴を塞いだ。
+
+**`FixedColumnWidths`文字列の構文(`Microsoft.Flow.RPA.Desktop.Modules.Text.Utilities.dll`の`CSVUtilities.TryParseColumnWidths(string, out int[])`をVM上で直接呼び出して確認)**: カンマ・空白のいずれか(連続も可)で区切る——`"10,20,15"`/`"10, 20, 15"`/`"10 20 15"`は全て`[10, 20, 15]`になり、`"10,,20"`(空トークン)も無視されて`[10, 20]`になる。整数に変換できないトークン(`"10.5"`等)が1つでもあれば不正(`ok=False`)。
+
+**固定長パース自体のアルゴリズム(`GenerateDataTableFromCSVAction`を直接インスタンス化・`Execute(null)`を呼び出して確認)**: 区切り文字を使わず、各行を先頭から`widths`で指定した文字数ずつ切り出す(文字位置のみで列が決まる)。`TrimFields`/`ReadFieldsAsText`/`FirstLineContainsColumnNames`の意味論は`datatable_from_csv_text()`(区切り文字版)と完全に同一——ヘッダー行も同じ幅で切り出された上でトリム対象になり(`"COLABCDEHE"`→列名`"COL"`/`"ABCDE"`/`"HE"`)、`ReadFieldsAsText: False`で数値変換も同じ`_csv_as_number()`相当の挙動になる。エッジケース2点を実機確認: (1)行が`sum(widths)`より短いと`ActionException`(「Data table generation failed. Error while parsing text」)になる、(2)行が長い場合は余りの文字を単に無視する(エラーにならない)。末尾の改行は空の追加行を生まない(Pythonの`str.splitlines()`と同じ挙動)。
+
+**実装**: `pad_action_lib/datatable.py`に`_parse_fixed_column_widths()`(上記構文の実装)・`_split_fixed_width_line()`(短い行は`ValueError`、長い行は無視)・`datatable_from_fixed_width_csv()`を新設し、`variables_actions`経由で公開。`file_actions.py`にも同じロジックを使う`read_from_csv_file_fixed_width()`を追加(`File.ReadFromCSVFile`には`ReadFieldsAsText`パラメータ自体が無いため、その引数は持たない——知見127・128確認時に判明済みの構造と整合)。`pad_codegen/actions/variables.py`/`file.py`に両方のaction_idブランチを新規追加し、`tests/test_pad_action_lib_variables.py`に単体テスト5件、`tests/test_pad_codegen.py`に実際に`exec()`する end-to-endテスト2件(Variables側はDSL文字列内に埋め込んだ実改行文字で複数行CSVTextを構成、知見125の教訓通り`\n`エスケープ文字列ではなく実改行を使う、File側は実ファイルへの書き込み→読み込み)を追加した。
+
+これで知見122で発見した`GenerateDataTableFromCSVAction`の3セレクタ・`File.ReadFromCSVFile`/`WriteToCSVFile`の全セレクタ(Write側にはFixedColumnWidths相当の選択肢が無いことは知見128で確認済み)が完全に結線され、CSV読み込み系の未結線セレクタは無くなった。

@@ -27,6 +27,7 @@ import random as _random
 
 from .datatable import DataTable, Row, columns_of
 from .datatable import datatable_from_csv_text as datatable_from_csv_text
+from .datatable import datatable_from_fixed_width_csv as datatable_from_fixed_width_csv
 from .datatable import datatable_to_csv_text as datatable_to_csv_text
 
 # --- 数値系 ---------------------------------------------------------------

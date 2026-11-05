@@ -428,4 +428,25 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"read_fields_as_text={read_as_text!r}, trim_fields={trim_fields!r})"
         ]
 
+    if action_id == "Variables.GenerateDataTableFromCSV.ReadFixedColumnWidths":
+        text = safe_render(p.get("CSVText"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        read_as_text = p.get("ReadFieldsAsText")
+        trim_fields = p.get("TrimFields")
+        widths = safe_render(p.get("FixedColumnWidths"))
+        if (
+            text is None
+            or first_line is None
+            or widths is None
+            or not isinstance(read_as_text, bool)
+            or not isinstance(trim_fields, bool)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.datatable_from_fixed_width_csv("
+            f"{text}, {widths}, first_line_contains_column_names={first_line}, "
+            f"read_fields_as_text={read_as_text!r}, trim_fields={trim_fields!r})"
+        ]
+
     return None

@@ -2531,3 +2531,49 @@ def test_generate_python_from_folder_move_nests_under_destination_and_returns_pa
         assert namespace["MovedFolder"] == str(expected)
         assert not src_dir.exists()
         assert (expected / "a.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_generate_python_from_generate_datatable_from_csv_fixed_column_widths() -> None:
+    # design/dsl_format_findings.md 知見132(VM上の直接呼び出しで実機確認済み):
+    # `GenerateDataTableFromCSV`の兄弟セレクタ`ReadFixedColumnWidths`(知見122で次の
+    # 調査対象として記録、知見127・128で一旦見送っていたもの)。
+    dsl = (
+        "SET CSV TO $'''AAABBBBBCC\nDDDEEEEEFF'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadFixedColumnWidths CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: False ReadFieldsAsText: True "
+        "FixedColumnWidths: $'''3,5,2''' CSVTable=> T"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "datatable_from_fixed_width_csv" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [
+        {"Column#1": "AAA", "Column#2": "BBBBB", "Column#3": "CC"},
+        {"Column#1": "DDD", "Column#2": "EEEEE", "Column#3": "FF"},
+    ]
+
+
+def test_generate_python_from_file_read_csv_fixed_column_widths() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "fixed.txt"
+        csv_path.write_text("AAABBBBBCC\r\nDDDEEEEEFF", encoding="utf-8")
+
+        dsl = (
+            f"File.ReadFromCSVFile.ReadCSVWithFixedColumnWidths CSVFile: $'''{csv_path}''' "
+            "Encoding: File.CSVEncoding.UTF8 TrimFields: True FirstLineContainsColumnNames: False "
+            "FixedColumnWidths: $'''3,5,2''' CSVTable=> T"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert "read_from_csv_file_fixed_width" in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["T"] == [
+            {"Column#1": "AAA", "Column#2": "BBBBB", "Column#3": "CC"},
+            {"Column#1": "DDD", "Column#2": "EEEEE", "Column#3": "FF"},
+        ]

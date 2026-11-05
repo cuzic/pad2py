@@ -332,10 +332,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     (`PropertyType.Assembly.FullName`で同一アセンブリと確定)、同じマッピング辞書を再利用して
     解消。新規セレクタ`ReadCSVWithCustomSeparator`/`WriteCSVWithCustomSeparator`も結線した
     (`ActionSelectorBase.ActionName`プロパティの直接読み取りでdecompile無しに接尾辞を特定)。
-  - [ ] 💻🖥️ **残課題(次の調査対象)**: `ReadFixedColumnWidths`/`ReadCSVWithFixedColumnWidths`
-    (固定長カラム読み込み、`csv.reader`とは別の文字位置分割アルゴリズムが必要・
-    `FixedColumnWidths`文字列のフォーマット——`CSVUtilities.TryParseColumnWidths`の
-    正確な解析規則——も未検証)は両モジュールとも見送ったまま。
+  - [x] 💻🖥️ `ReadFixedColumnWidths`/`ReadCSVWithFixedColumnWidths`(固定長カラム読み込み)。
+    ✅ **決着(知見132)**: VM上で`CSVUtilities.TryParseColumnWidths()`と
+    `GenerateDataTableFromCSVAction.Execute()`を直接呼び出し、`FixedColumnWidths`文字列の
+    構文(カンマ/空白区切り)・固定長パースのアルゴリズム・エッジケース(短い行はエラー、
+    長い行は無視)を全て解明し、`datatable_from_fixed_width_csv()`/
+    `read_from_csv_file_fixed_width()`を新設して両モジュールに結線した。これでCSV読み込み系
+    の未結線セレクタは無くなった。
 - [x] 💻 `Compression.ZipFiles`の`ZipFile`出力が`zip_files()`の`None`固定戻り値のため
   常に`None`になる潜在バグ(実際に`exec()`する既存テストも代入先の値を見ていなかった死角)。
   ✅ **決着(知見129)**: VM上で`ZipFiles`クラスを直接インスタンス化・`Execute()`呼び出しし、

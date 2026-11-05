@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 Row = dict[str, object]
 DataTable = list[Row]
@@ -86,6 +87,72 @@ def datatable_from_csv_text(
         header, *data = rows
     else:
         header = [f"Column#{i + 1}" for i in range(len(rows[0]))]
+        data = rows
+    if not read_fields_as_text:
+        data = [[_csv_as_number(cell) for cell in row] for row in data]
+    return [dict(zip(header, row)) for row in data]
+
+
+_FIXED_COLUMN_WIDTHS_SEP_RE = re.compile(r"[,\s]+")
+
+
+def _parse_fixed_column_widths(spec: str) -> list[int]:
+    """`FixedColumnWidths`文字列(例: `"10,20,15"`)を幅のリストに変換する。
+
+    design/dsl_format_findings.md 知見132(VM上で実機の`CSVUtilities.TryParseColumnWidths`を
+    直接呼び出して確認済み): カンマ・空白のいずれか(連続も可)で区切り、空トークンは
+    無視する(`"10,,20"`/`"10,  ,20"`もどちらも`[10, 20]`になる)。整数に変換できない
+    トークンが1つでもあれば不正(実機では`int.TryParse`相当の判定、`"10.5"`は不正)。
+    """
+    tokens = [t for t in _FIXED_COLUMN_WIDTHS_SEP_RE.split(spec.strip()) if t]
+    try:
+        return [int(t) for t in tokens]
+    except ValueError as exc:
+        raise ValueError(f"invalid FixedColumnWidths: {spec!r}") from exc
+
+
+def _split_fixed_width_line(line: str, widths: list[int]) -> list[str]:
+    fields = []
+    pos = 0
+    for width in widths:
+        end = pos + width
+        if end > len(line):
+            raise ValueError(f"line too short for fixed column widths {widths}: {line!r}")
+        fields.append(line[pos:end])
+        pos = end
+    return fields
+
+
+def datatable_from_fixed_width_csv(
+    text: str,
+    widths: str,
+    first_line_contains_column_names: bool = False,
+    read_fields_as_text: bool = True,
+    trim_fields: bool = True,
+) -> DataTable:
+    """固定長カラムのテキストを`DataTable`に変換する(`Variables.GenerateDataTableFromCSV.
+    ReadFixedColumnWidths`/`File.ReadFromCSVFile.ReadCSVWithFixedColumnWidths`用)。
+
+    design/dsl_format_findings.md 知見132(VM上で`GenerateDataTableFromCSVAction`を直接
+    インスタンス化・`Execute()`を呼び出して確認済み): 各行を`widths`で指定した文字数ずつ
+    先頭から切り出す(区切り文字は使わない、列の境界は文字位置のみで決まる)。行が
+    `sum(widths)`より短いと実機では`ActionException`になるため、ここでも`ValueError`を
+    投げる(でっち上げた空文字列で埋めない)。行が長い場合は余りの文字を単に無視する
+    (実機と同じ、エラーにはならない)。`FirstLineContainsColumnNames`/`ReadFieldsAsText`/
+    `TrimFields`は`datatable_from_csv_text()`と全く同じ意味論(ヘッダー行も同じ幅で
+    切り出された上でトリム対象になる、数値変換も同じ`_csv_as_number()`を使う)。
+    """
+    parsed_widths = _parse_fixed_column_widths(widths)
+    lines = text.splitlines()
+    if not lines:
+        return []
+    rows = [_split_fixed_width_line(line, parsed_widths) for line in lines]
+    if trim_fields:
+        rows = [[cell.strip() for cell in row] for row in rows]
+    if first_line_contains_column_names:
+        header, *data = rows
+    else:
+        header = [f"Column#{i + 1}" for i in range(len(parsed_widths))]
         data = rows
     if not read_fields_as_text:
         data = [[_csv_as_number(cell) for cell in row] for row in data]

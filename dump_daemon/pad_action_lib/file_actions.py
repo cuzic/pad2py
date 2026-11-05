@@ -322,6 +322,27 @@ def read_from_csv_file(
     )
 
 
+def read_from_csv_file_fixed_width(
+    path: str,
+    widths: str,
+    encoding: str = "UTF8",
+    first_line_contains_column_names: bool = True,
+    trim_fields: bool = True,
+) -> DataTable:
+    from .datatable import datatable_from_fixed_width_csv
+
+    try:
+        text = Path(path).read_text(encoding=_TEXT_FILE_ENCODINGS.get(encoding, encoding))
+    except _OS_FILE_NOT_FOUND_ERROR as exc:
+        raise FileNotFoundError(str(exc)) from exc
+    return datatable_from_fixed_width_csv(
+        text,
+        widths,
+        first_line_contains_column_names=first_line_contains_column_names,
+        trim_fields=trim_fields,
+    )
+
+
 def write_to_csv_file(
     path: str,
     table: DataTable,

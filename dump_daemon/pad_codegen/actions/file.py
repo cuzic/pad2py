@@ -21,7 +21,10 @@ tier1_file_batch6.txt`・知見70の`tier1_crypto_database_batch7.txt`から確�
 `Variables.GenerateDataTableFromCSV`/`ConvertDataTableToCSV`と全く同じ
 `CSVColumnsSeparator`列挙型(`Text.Utilities.dll`)を使っていると知見127・128で
 確認したため`_support.CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`を再利用して結線した。
-`ReadCSVWithFixedColumnWidths`は知見127と同じ理由(固定長パース未実装)で見送った。
+`ReadCSVWithFixedColumnWidths`は知見132で`CSVUtilities.TryParseColumnWidths()`の
+VM上の直接呼び出しにより`FixedColumnWidths`文字列の正確な構文・固定長パースの
+全エッジケース(行が短いとエラー・長いと余りを無視・ヘッダー行も同じ幅で切り出し)を
+確認し、`pad_action_lib.datatable.datatable_from_fixed_width_csv()`へ結線した。
 """
 from __future__ import annotations
 
@@ -203,6 +206,27 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, "
             f"delimiter={custom_separator}, encoding={encoding!r}, "
+            f"first_line_contains_column_names={first_line}, trim_fields={trim_fields!r})"
+        ]
+
+    if action_id == "File.ReadFromCSVFile.ReadCSVWithFixedColumnWidths":
+        path = safe_render(p.get("CSVFile"))
+        encoding = enum_last(p.get("Encoding"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        trim_fields = p.get("TrimFields")
+        widths = safe_render(p.get("FixedColumnWidths"))
+        if (
+            path is None
+            or encoding is None
+            or first_line is None
+            or widths is None
+            or not isinstance(trim_fields, bool)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = file_actions.read_from_csv_file_fixed_width({path}, "
+            f"{widths}, encoding={encoding!r}, "
             f"first_line_contains_column_names={first_line}, trim_fields={trim_fields!r})"
         ]
 
