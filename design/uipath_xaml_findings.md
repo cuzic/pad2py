@@ -2783,6 +2783,40 @@ UiPath関連テスト全160件通過、回帰無し。
 情報源(ランタイム本体のソース)に当たることで覆せる場合があるという
 教訓として記録する価値がある。
 
+## 55. `Nothing + Nothing`は`+`演算子の一般則の例外で整数`0`になると確定——知見48の`_vb_add()`自体のバグを.NETランタイム本体のソースで発見・修正(VM不使用)
+
+知見54で`Operators.vb`(`Conversions.vb`と同じ`dotnet/runtime`
+ディレクトリ内の、Object型オペランドへの演算子ディスパッチャ)の存在を
+知った流れで、`+`演算子のディスパッチャ本体`AddObject`も確認したところ、
+知見48で実装した`_vb_add()`ヘルパー自体に未発見のバグが見つかった。
+
+**確定した内容**: `AddObject`のソースを直接読むと、`Empty + Empty`
+(`Nothing + Nothing`)は`Return Boxed_ZeroInteger`——**整数`0`**を返す
+と明記されている。これは知見48で参照した公式ドキュメント(Microsoft
+Learn「+ Operator」の「If either Object expression evaluates to
+Nothing or DBNull, the + operator treats it as a String with a value
+of ''」)の一般則とは異なる——この一般則は「片方がNothingでもう片方が
+実際の値を持つ」場合の規則であり、「両方がNothing」という組み合わせは
+`AddObject`内で別枠の特別ケースとして扱われ、一般則を上書きしている
+ことが実際のソースコードで初めて判明した。知見48実装時はこの一般則を
+機械的に両方Nothingのケースにも適用して`""`と推測していたが、これは
+誤りだった。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_add(a, b)`の
+`if a is None and b is None: return ""`を`return 0`に変更。
+`tests/test_uipath_codegen.py`の
+`test_plus_operator_dispatches_add_vs_concat_like_vb_not_python_typeerror`
+に`("Nothing + Nothing", "0")`を追加。UiPath関連テスト全161件通過。
+
+**この知見で確定したこと**: 知見44〜54の系統点検完了を宣言した直後に、
+その点検の過程で実装したヘルパー自身のバグ(`Nothing + Nothing`の
+エッジケース、どのテストもこれまでカバーしていなかった)が、同じ
+「実際のランタイムソースを直接読む」手法で見つかった——「ドキュメントの
+一般則をそのまま機械的に適用する」のではなく「実際のソースコードが
+その一般則の例外を設けていないか」まで確認する必要があるという、
+より踏み込んだ教訓。知見44〜55でこれまでに見つかった全ての問題は
+現時点で解消済み。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

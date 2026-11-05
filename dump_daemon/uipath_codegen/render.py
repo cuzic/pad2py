@@ -142,6 +142,14 @@ def _vb_cmp(a, b):
 # str+intを`TypeError`で即座にクラッシュさせる(`_vb_cmp`/`_vb_cstr`の
 # ケースのような「値は間違っているが動く」ではなく、単純な`+`変換の
 # ままでは動かすら出来ない、より重大な問題)。
+# `Nothing + Nothing`のみ特別——.NETランタイム本体のソース
+# (`Operators.vb`の`AddObject`、知見54で発見した知見52と同じファイル群、
+# 知見55参照)で`Empty + Empty`は`Boxed_ZeroInteger`(整数`0`)を返すと
+# 確定した。知見48作成時は公式ドキュメントの「どちらかがNothingなら
+# 空文字列として扱う」という一般則だけを根拠に`Nothing + Nothing`も`""`
+# と推測していたが、実際には「両方Nothing」というこの1組だけ特別に
+# 整数`0`になる例外ケースだった(でっち上げではなく実機のランタイム
+# ソースで確定済み)。
 VB_ADD_HELPER_NAME = "_vb_add"
 VB_ADD_HELPER_SOURCE = """\
 def _vb_add(a, b):
@@ -152,7 +160,7 @@ def _vb_add(a, b):
     if isinstance(b, bool):
         b = -1 if b else 0
     if a is None and b is None:
-        return ""
+        return 0
     if a is None:
         a = 0 if _vb_is_num(b) else ""
     elif b is None:

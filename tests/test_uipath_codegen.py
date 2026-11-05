@@ -644,6 +644,10 @@ def test_comparison_of_unconvertible_string_against_number_raises_not_silently_f
         # Nothingは数値側となら0、文字列側となら""として扱われる。
         ("5 + Nothing", "5"),
         ('"a" + Nothing', "a"),
+        # 唯一の例外: Nothing + Nothingは.NETランタイム本体のソース
+        # (Operators.vbのAddObject、知見55)で整数0になると確定——数値側/
+        # 文字列側どちらの一般則とも異なる特別なケース。
+        ("Nothing + Nothing", "0"),
     ],
 )
 def test_plus_operator_dispatches_add_vs_concat_like_vb_not_python_typeerror(
