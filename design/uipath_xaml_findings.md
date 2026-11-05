@@ -3189,6 +3189,71 @@ default. When it's off, UTF-8 encoding is used.」——`UseDefaultEncoding`
 まま記録するに留める——実際の自動化データで非既定エンコーディングの
 実例が見つかった時点で改めて着手する。
 
+## 65. 文字列補間`$"...{expr}..."`のプレーンな補間をサポート——知見36以来ずっと`# TODO`に倒れていた機能を実装(VM不使用、公式ドキュメントで構文を確定)
+
+知見36以来、文字列補間`$"..."`は`uipath_expr`のdocstringが「`{expr}`内部に
+さらに式がネストしうる構造はレクサで正しく扱えない」と明記して完全に
+未対応のまま(常に`# TODO`へ倒れる)残していた。今回、公式ドキュメント
+(Microsoft Learn「Interpolated Strings」)で正確な構文規則を確認した上で、
+`uipath_codegen/render.py`側(構文解析の後段、コード生成の直前)に手書きの
+状態機械を実装し、プレーンな`{expr}`補間(書式指定子・フィールド幅を
+伴わない形)をサポートした。
+
+**確定した構文規則**(Microsoft Learn「Interpolated Strings」): 構造は
+`$"<text> {<expr> [,<field-width>] [:<format-string>] } <text> ..."`。
+リテラルの`{`/`}`は`{{`/`}}`とダブらせてエスケープする。`{expr}`の中には
+VB文字列リテラルが(エスケープ無しで)ネストしうる——公式ドキュメント
+自身の例`$"{name} is {age:D3} year{If(age = 1, "", "s")} old."`が
+`If(age = 1, "", "s")`という、`""`/`"s"`という通常のVB文字列リテラルを
+含む式をそのまま`{...}`内に書けることを示している。
+
+**実装の層構造(2段階)**:
+1. `uipath_expr`のLarkレクサ(`INTERP_STRING`トークンの正規表現)は、
+   `$"..."`全体を1個の不透明なトークンとしてそのまま捕捉するのみ——
+   `{expr}`内部にネストした文字列リテラルがあると(`""`/`"s"`のような
+   クォートの出現パターンを、補間文字列自身のエスケープ`""`と区別できない
+   ため)このレクサ自体が崩れ、式全体が構文解析失敗になる(**この限界は
+   未解消のまま残る**、下記参照)。
+2. レクサが成功した場合(=`{expr}`内にネストした文字列リテラルが無い
+   場合)に限り、`InterpolatedString.raw`に残る生テキストを
+   `uipath_codegen/render.py`の`_split_interpolated_string()`
+   (`{`/`}`の深さとネストしたクォート状態を追跡する手書きの状態機械)が
+   リテラルテキスト区間と`{expr}`区間へ正しく分解し、各`{expr}`を
+   `parse_vb_expr()`で再帰的に構文解析してからコードを生成する。
+
+**生成コードの設計**: Pythonのf-string(`f"..."`)ではなく、明示的な`+`
+連結(`"text1" + _vb_cstr(expr1) + "text2" + ...`)を選んだ——理由は2つ:
+(1) `{expr}`内のVB式を`repr()`した結果がダブルクォート文字列になりうる
+(例: アポストロフィを含む文字列)ため、f-stringのクォート文字と衝突し
+Python 3.11以前では構文エラーになるリスクがある。(2) f-stringの`{expr}`は
+Pythonの素の`str()`で書式化するが、VBの文字列補間は実際には`CStr`/`&`と
+同じ書式規則(知見46)に従うため、`_vb_cstr()`を明示的に挟む方がより
+正確(実際に`$"n={y}"`(`y=4.0`)で`"n=4"`になることを確認——f-stringの
+素の`str()`なら`"n=4.0"`になってしまうところ)。
+
+書式指定子・フィールド幅(`{expr:format}`/`{expr,width}`)が実際に検出
+された場合は、VBの書式指定子をPython側へ正確に対応させる確証が無い
+ため(でっち上げを避け)`NotImplementedError`を送出し、既存の`# TODO`
+フォールバック機構に委ねる——プレーンな補間のみサポート対象。
+
+`tests/test_uipath_codegen.py`に
+`test_assign_interpolated_string_renders_to_vb_cstr_concatenation`
+(知見36の実例そのものを含む複数ケース)、
+`test_interpolation_with_format_string_falls_back_to_todo`、
+`test_interpolation_with_nested_quoted_expression_still_falls_back_to_todo`
+(レクサの既知の限界が安全にTODOへ倒れることの確認、クラッシュしない
+ことの回帰テスト)、
+`test_interpolated_string_renders_plain_interpolations_correctly`を追加。
+UiPath関連テスト全204件通過、リポジトリ全体で全818件通過。
+
+**既知の残課題(未解消のまま記録)**: `{expr}`内部にネストした文字列
+リテラルを含む式(公式ドキュメント自身の例を含む)は、Larkのレクサが
+まだ崩れたまま——これを解消するには`INTERP_STRING`トークンの正規表現
+自体を書き換えるか、Lark呼び出し前に独自のプリスキャンで`$"..."`の
+範囲を正しく特定する、より大きな変更が必要。今回は「プレーンな補間」
+という、知見15・16・32・36の実機確認例が全てカバーされる範囲に絞って
+実装し、でっち上げた拡張は避けた。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

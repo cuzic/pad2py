@@ -73,14 +73,85 @@ def test_assign_object_typed_expr():
     _compiles(code)
 
 
-def test_assign_unparseable_falls_back_to_todo():
-    """文字列補間の中身は未対応——TODOコメント+`None`プレースホルダに倒れ、
-    架空のf-string変換はでっち上げない。"""
+def test_assign_interpolated_string_renders_to_vb_cstr_concatenation():
+    """知見65: 文字列補間`$"..."`のプレーンな`{expr}`補間はサポート対象
+    ——`_vb_cstr()`(知見46、VBのCStr/&と同じ書式規則)で変換してから
+    `+`で連結する(架空のf-string変換はしない、下記docstring参照)。"""
     wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='$"v={x}"'))])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "x = 'v=' + _vb_cstr(x)" in code
+    _compiles(code)
+
+
+def test_interpolation_with_format_string_falls_back_to_todo():
+    """知見65: `{expr:format}`/`{expr,width}`(書式指定子・フィールド幅)は
+    VBの書式指定子をPython側へ正確に対応させる確証が無いため意図的に
+    サポート対象外のまま——でっち上げた変換をせず`# TODO`に倒れる。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='$"v={x:D3}"'))])
     code = generate_python(wf)
     assert "# TODO" in code
     assert "x = None" in code
     _compiles(code)
+
+
+def test_interpolation_with_nested_quoted_expression_still_falls_back_to_todo():
+    """知見65: `{expr}`内部にネストしたVB文字列リテラル(例:
+    `If(age = 1, "", "s")`の`""`/`"s"`)を含む式は、この文法のレクサ
+    自体がまだ区別できない既知の限界として残る——`uipath_expr`の
+    モジュールdocstring参照。でっち上げた変換はせず安全に`# TODO`へ
+    倒れることを確認する(クラッシュしないことの回帰テスト)。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"),
+                value=VbExpr(text='$"{name} is old{If(age = 1, "", "s")}."'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "x = None" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 知見36の実機確認例そのもの。
+        ('$"value={result}-end"', "value=42-end"),
+        # 波括弧のエスケープ(`{{`/`}}`)。
+        ('$"{{literal}} and {x}"', "{literal} and 5"),
+        # 補間されたDouble値もVBのG書式(知見46の`_vb_cstr`)に従う——
+        # Pythonのf-stringの素の`str()`書式化(`"4.0"`)にはならない。
+        ('$"n={y}"', "n=4"),
+        # 補間区間が複数・リテラルテキストが前後にある一般形。
+        ('$"a={a}b={b}c"', "a=1b=2c"),
+    ],
+)
+def test_interpolated_string_renders_plain_interpolations_correctly(
+    vb_text: str, expected: str
+) -> None:
+    """知見65: プレーンな`{expr}`補間(書式指定子・フィールド幅を伴わない)
+    が`_vb_cstr()`経由の`+`連結へ正しく変換されることの回帰テスト。"""
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="result"), value=Literal(value="42")),
+            AssignNode(target=VbExpr(text="x"), value=VbExpr(text="5")),
+            AssignNode(target=VbExpr(text="y"), value=VbExpr(text="4.0")),
+            AssignNode(target=VbExpr(text="a"), value=VbExpr(text="1")),
+            AssignNode(target=VbExpr(text="b"), value=VbExpr(text="2")),
+            MessageBoxNode(text=VbExpr(text=vb_text)),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
 
 
 def test_message_box_maps_to_print():

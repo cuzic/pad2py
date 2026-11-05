@@ -389,12 +389,7 @@ def _render_node(node: ExprNode) -> str:
         items = ", ".join(_render_node(i) for i in node.items)
         return f"[{items}]"
     if isinstance(node, InterpolatedString):
-        # design/uipath_transpiler_roadmap.md 知見36/uipath_exprのdocstring
-        # 参照: 文字列補間`$"..."`の中身(`{expr}`)はuipath_exprがまだ
-        # 構文解析していないため、安全にPython f-stringへ変換できない。
-        raise NotImplementedError(
-            f"string interpolation is not yet supported by codegen: {node.raw}"
-        )
+        return _render_interpolated_string(node.raw)
     if isinstance(node, Paren):
         return f"({_render_node(node.inner)})"
     if isinstance(node, UnaryOp):
@@ -433,6 +428,129 @@ def _render_node(node: ExprNode) -> str:
     if isinstance(node, BinOp):
         return _render_bin_op(node)
     raise NotImplementedError(f"unsupported expression node: {node!r}")
+
+
+def _split_interpolated_string(raw: str) -> list[tuple[str, str]]:
+    """文字列補間`$"...{expr}..."`(`raw`は`$"`〜閉じ`"`まで全体)を、
+    リテラルテキスト区間と`{expr}`区間の列へ分解する(知見65、公式
+    ドキュメント「Interpolated Strings」で確定)。
+
+    VBの文字列補間の構文は`{{`/`}}`がリテラルの`{`/`}`(ダブらせて
+    エスケープ)、`{expr[,field-width][:format-string]}`が補間式——公式の
+    例`$"{name} is {age:D3} year{If(age = 1, "", "s")} old."`が示す通り、
+    `{expr}`の中には**エスケープ無しの通常のVB文字列リテラル**(`""`/
+    `"s"`)がネストしうる。`{`の後、ネストした文字列リテラルの外側
+    (トップレベル)で最初に現れる`,`/`:`/`}`を区切りとして扱うことで、
+    単純な正規表現やLarkのレクサでは崩れるこのネスト構造を手書きの
+    状態機械で正しく分解する。`,field-width`/`:format-string`が実際に
+    見つかった場合は、VBの書式指定子をPython側へ正確に対応させる
+    確証が無いため(でっち上げを避け)サポート対象外として
+    `NotImplementedError`を送出する——プレーンな`{expr}`補間のみ対応する。
+    """
+    assert raw.startswith('$"') and raw.endswith('"')
+    body = raw[2:-1]
+    segments: list[tuple[str, str]] = []
+    buf: list[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        c = body[i]
+        if c == "{" and i + 1 < n and body[i + 1] == "{":
+            buf.append("{")
+            i += 2
+            continue
+        if c == "}" and i + 1 < n and body[i + 1] == "}":
+            buf.append("}")
+            i += 2
+            continue
+        if c == "{":
+            if buf:
+                segments.append(("text", "".join(buf)))
+                buf = []
+            depth_paren = 0
+            in_quote = False
+            j = i + 1
+            start = j
+            format_colon_idx: int | None = None
+            comma_idx: int | None = None
+            while j < n:
+                cj = body[j]
+                if in_quote:
+                    if cj == '"':
+                        if j + 1 < n and body[j + 1] == '"':
+                            j += 2
+                            continue
+                        in_quote = False
+                    j += 1
+                    continue
+                if cj == '"':
+                    in_quote = True
+                elif cj == "(":
+                    depth_paren += 1
+                elif cj == ")":
+                    depth_paren -= 1
+                elif cj == "}" and depth_paren == 0:
+                    break
+                elif cj == ":" and depth_paren == 0 and format_colon_idx is None:
+                    format_colon_idx = j
+                elif (
+                    cj == ","
+                    and depth_paren == 0
+                    and comma_idx is None
+                    and format_colon_idx is None
+                ):
+                    comma_idx = j
+                j += 1
+            if j >= n:
+                raise NotImplementedError(
+                    f"unterminated interpolated expression in: {raw!r}"
+                )
+            if format_colon_idx is not None or comma_idx is not None:
+                raise NotImplementedError(
+                    "interpolated string field-width/format-string "
+                    f"(e.g. {{expr:format}}) is not yet supported: {raw!r}"
+                )
+            expr_text = body[start:j]
+            segments.append(("expr", expr_text))
+            i = j + 1
+            continue
+        buf.append(c)
+        i += 1
+    if buf:
+        segments.append(("text", "".join(buf)))
+    return segments
+
+
+def _render_interpolated_string(raw: str) -> str:
+    """`_split_interpolated_string()`で分解した各区間を、Pythonの`+`
+    連結式へレンダリングする(知見65)。f-string(`f"..."`)ではなく明示的な
+    `+`連結を選んだ理由は2つ: (1) `{expr}`内のVB式を`repr()`した結果が
+    ダブルクォート文字列になりうる(例: アポストロフィを含む文字列)ため、
+    f-stringのクォート文字と衝突しPython 3.11以前では構文エラーになる
+    リスクがある。(2) f-stringの`{expr}`はPythonの素の`str()`で書式化する
+    が、VBの文字列補間は実際には`CStr`/`&`と同じ書式規則(知見46)に
+    従うため、`_vb_cstr()`を明示的に挟む方がより正確。各`{expr}`は
+    `parse_vb_expr()`で構文木へ変換してから`_render_node()`で再帰的に
+    レンダリングする(ネストした補間式自体は想定していない——VBの公式
+    構文上も`{expr}`の中にさらに`$"..."`を書く例は見当たらない)。
+    """
+    segments = _split_interpolated_string(raw)
+    parts: list[str] = []
+    for kind, value in segments:
+        if kind == "text":
+            if value:
+                parts.append(repr(value))
+            continue
+        inner_node, _consumed = parse_vb_expr(value)
+        if inner_node is None:
+            raise NotImplementedError(
+                f"could not parse interpolated expression {value!r} in: {raw!r}"
+            )
+        rendered = _render_node(inner_node)
+        parts.append(f"{VB_CSTR_HELPER_NAME}({rendered})")
+    if not parts:
+        return repr("")
+    return " + ".join(parts)
 
 
 def _vb_cbool_of_string_literal(text: str) -> bool:
