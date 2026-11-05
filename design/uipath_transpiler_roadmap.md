@@ -182,8 +182,13 @@ Main.xaml+サブワークフローファイル+project.jsonから1つのPython�
   **既知の制約**: ワークフロー引数の方向(In/Out)は区別せず全て関数の
   仮引数として扱うのみで、`OutArgument`をPythonの`return`へ対応させる
   変換は実装していない(呼び出し元が戻り値を使う実例が出た時点で再検討)。
-  関数名の衝突(同じ`class_name`を持つ複数ファイル)は`_2`サフィックスで
-  機械的に回避するだけで、意味のある別名付けはしていない。
+  **(部分的に対応、2026-11-05、知見78)** `return`変換そのものは依然
+  未実装だが、`Out`/`InOutArgument`方向の引数を検出して関数本体先頭に
+  `# TODO`を追記するようになった——架空の書き戻しをでっち上げる代わりに、
+  Pythonの値渡しでは呼び出し元への反映が失われるという限界を明示する
+  (下記「次にやること」項目39参照)。関数名の衝突(同じ`class_name`を
+  持つ複数ファイル)は`_2`サフィックスで機械的に回避するだけで、意味の
+  ある別名付けはしていない。
 - **(完了、2026-11-05)** `project.json`からのエントリポイント自動発見:
   `generate_project_from_json(project_dir)`を追加した。`project.json`の
   `"main"`フィールド(知見27で実機確認済みの実例`"main": "Main.xaml"`)を
@@ -324,7 +329,12 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
   パターンだったため発覚し追加した(`ArrayLiteral`→Python `[...]`)
 - `Switch`の`x:Key`は文字列として取得されるため(`uipath_dsl.xaml_tree`)、
   `x:TypeArguments`が数値型(`x:Int32`等)の場合はクォート無しの数値
-  リテラルとして出力するよう`uipath_codegen`側で補正している
+  リテラルとして出力するよう`uipath_codegen`側で補正している。
+  **(2026-11-05、知見77で補強)** この補正は`key_literal`自体の見た目
+  (裸の数値/クォート付き文字列)のみの話で、比較自体はさらに`_vb_cmp()`
+  (`=`演算子と同じ型変換規則)を経由するため、`Expression`の実行時の型が
+  `x:TypeArguments`の宣言と食い違っていても正しく一致する(詳細は
+  `design/uipath_xaml_findings.md`知見77参照)
 - **生成コードの構文的妥当性はソースXAMLの妥当性に依存する**:
   `design/evidence/uipath_xaml_probe/Main.xaml`は知見確認用に複数の
   独立した機能テストを1ファイルに詰め込んだフィクスチャで、ループの外に
