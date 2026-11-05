@@ -266,6 +266,13 @@ def test_filter_datatable_equal_type_mismatch_never_matches() -> None:
     assert va.filter_datatable(table, conditions) == []
 
 
+def test_filter_datatable_not_equal_type_mismatch_always_matches() -> None:
+    # 知見107(実機確認済み): 上記の鏡像——型不一致時のNotEqualは常に真(行が残る)。
+    table = [{"Age": 30}]
+    conditions = [{"COLUMN": "Age", "OPERATOR": "NotEqual", "VALUE": "30", "RULE": "And"}]
+    assert va.filter_datatable(table, conditions) == table
+
+
 def test_filter_datatable_contains_matches_substring() -> None:
     table = [{"Name": "Alice"}, {"Name": "Bob"}, {"Name": "Carol"}]
     conditions = [{"COLUMN": "Name", "OPERATOR": "Contains", "VALUE": "ob", "RULE": "And"}]

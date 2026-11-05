@@ -2114,3 +2114,9 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 知見93で「ヘッダー行自体(`FirstLineContainsColumnNames: True`時の列名)もトリム対象になるかは直接確認しておらず、実装では一貫性のため同じ`.strip()`をヘッダー行にも適用しているが、これは推測の範囲内にとどまる」として持ち越していた項目を実機確認した。`SET CSV TO $''' Name , Age \n Alice , 30 '''`(ヘッダー行・データ行とも前後に空白)を`FirstLineContainsColumnNames: True`・`TrimFields: True`で読み込み、`ConvertDataTableToCSV`で書き戻したところ、結果は`"Name,Age\nAlice,30"`——**ヘッダー行もデータ行と同じくトリムされる**ことが確認できた。
 
 既存の実装(`datatable_from_csv_text()`がヘッダー/データ行を区別せず、CSV全体に`.strip()`を一括適用してから先頭行をヘッダーとして切り出す処理)は、推測通りで既に正しかったため修正不要。コメント・テストのdocstringを「推測」から「知見106で実機確認済み」に更新するのみ。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 107. 知見98の鏡像——`FilterDataTable`の`NotEqual`型不一致挙動も実機確認、既に正しく実装済みと確定
+
+知見98で確認した「`Equal`は型不一致の場合常に偽」の鏡像(`NotEqual`は型不一致の場合常に真)を実機確認した。知見98と同じ手法(`ReadFieldsAsText: False`で列を数値型(int)に変換したテーブル)に対し、`NotEqual "30"`(文字列)でフィルタしたところ、結果は**元のテーブルがそのまま残る**(行が除外されない)——つまり型不一致時は`NotEqual`が常に真と判定されることが確認できた。
+
+既存の実装(`_filter_condition_matches()`の`"NotEqual"`分岐、`return True if type_mismatch else ...`)は decompile済みソースの`flag`判定通りで既に正しかったため修正不要。回帰テストを追加した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
