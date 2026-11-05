@@ -729,6 +729,28 @@ def test_generate_python_names_ui_element_in_todo_without_fabricating_selector()
     assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
     assert "UI element: 'Start Button'" in code
     assert "appmask" not in code
+    # design/pad_todo.md C節: 単体コピー(ControlRepositoryデータが一切無い)の場合は、
+    # セレクタ不明の理由と対処法(広い範囲をコピーし直す)を直接案内する。
+    assert "no ControlRepository data in input" in code
+
+
+def test_generate_python_omits_no_repository_hint_when_repository_present_but_element_missing() -> None:
+    # 上のテストとの対比: ControlRepositoryデータ自体は渡されているが、対象要素がその中に
+    # 見つからない場合は「単体コピーだからデータが無い」という案内は的外れなので出さない
+    # (従来通りの、セレクタ提案無しのTODOコメントのまま)。
+    dsl = (
+        "UIAutomation.Click.Click Element: appmask['Start Button'] "
+        "ClickType: UIAutomation.ClickType.LeftClick "
+        "MousePositionRelativeToElement: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "OffsetX: 0 OffsetY: 0"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree, repository={"appmask": {}})
+    compile(code, "<generated>", "exec")
+    assert "# TODO: map PAD action: UIAutomation.Click.Click" in code
+    assert "UI element: 'Start Button'" in code
+    assert "no ControlRepository data in input" not in code
+    assert "verified pywinauto selector" not in code
 
 
 def test_generate_python_converts_click_click_to_click_input_when_selector_resolves() -> None:

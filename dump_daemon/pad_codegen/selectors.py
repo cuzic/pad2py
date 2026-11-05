@@ -89,7 +89,18 @@ def _ui_element_hint(node: ActionRecord | WaitActionRecord, ctx: CodegenContext)
         return ""
     joined = ", ".join(" > ".join(repr(name) for name in path) for path in paths)
     hints = [h for p in paths if (h := _build_pywinauto_selector_expr(p, ctx)) is not None]
-    suggestion = f"; verified pywinauto selector: {' / '.join(hints)}" if hints else ""
+    if hints:
+        suggestion = f"; verified pywinauto selector: {' / '.join(hints)}"
+    elif not ctx.repository:
+        # design/pad_todo.md C節: 単体コピー(ControlRepositoryデータが一切無い)の場合、
+        # セレクタ提案を試すだけ無駄なので、代わりに原因と対処法を直接案内する。
+        suggestion = (
+            "; no ControlRepository data in input — copy a wider range of actions"
+            " (including this one's surroundings) to get a verified selector suggestion,"
+            " see README 'UI要素セレクタについて'"
+        )
+    else:
+        suggestion = ""
     return (
         f" (UI element: {joined}; selector not available from DSL, see knowledge 38/39/42/43/46"
         f" — fill in manually{suggestion})"
