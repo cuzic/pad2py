@@ -1,25 +1,28 @@
 """UiPathのClassic Selector文字列(`<wnd .../><ctrl .../>`形式)を解析し、
 pywinautoの検索条件へマッピングする。
 
-design/uipath_xaml_findings.md 知見37(公式ドキュメント調査、VM不使用)で
-把握した範囲のみを扱う——**知見37自体が「属性の名前と意味は分かったが、
-値の語彙(例: UiPathの`role`値とpywinautoの`control_type`値が同じ文字列
-体系かどうか)までは検証していない」と明記している**ことを踏襲し、本モジュールも
-同じ限界を持つ:
+design/uipath_xaml_findings.md 知見37(公式ドキュメント調査、VM不使用)の
+範囲から出発し、知見38(2026-11-05、pad2py-pad-host VMの実機Notepadで
+実際に検証済み)で以下を確定した:
 
 1. **Classic Selector(`WND`/`CTRL`タグ)のみ対応**。Dynamic Selector
    (`{{Value}}`)・Anchor Base・Computer Vision・Modern活動の
    `Fuzzy selector`/`Strict selector`(知見37、実XAML形が未確認のまま)は
    対象外。
-2. **属性「名前」の対応は知見37のヒントに基づく机上の推定**であり、
-   実機でpywinautoセレクタが実際に対象要素を一意特定できることまでは
-   検証していない(design/dsl_format_findings.md 知見56でPAD側は実機検証
-   済みだが、UiPath側はまだ)。
-3. **属性「値」の語彙変換は一切行わない**——特に`role`(UiPathのUI
-   Automationロール名、例: `"editable text"`)を`control_type`へそのまま
-   渡しているが、UIAの`ControlType`列挙値(例: `"Edit"`)と字面が一致する
-   保証は無い。生成コードにはこの不確実性を示すコメントを必ず付す。
-4. マッピング対応表に無い属性(`app`/`aaname`等)は**無言で捨てず**、
+2. **`cls`→`class_name`・`name`→`title`は実機のUIAツリーと一致することを
+   確認済み**(知見38)——実際のNotepadの`Edit`コントロールに対し、
+   `class_name='Edit'`は一意にマッチし、その要素の実`name`属性値も
+   セレクタの`name='Text Editor'`と完全一致した。
+3. **`role`→`control_type`は意図的に未対応のまま**(知見38で確定——
+   当初`role`の値をそのまま`control_type`へ渡していたが、実機で
+   `role='editable text'`を渡すと`control_type`がpywinautoの有効な
+   UIA `ControlType`列挙値と一致せず**`KeyError`で即クラッシュ**すると
+   判明した。実UIAの`control_type`は`'Edit'`で、UiPathの`role`値
+   `'editable text'`とは文字列として一致しない——知見37が警告していた
+   「語彙が一致する保証は無い」を実際に裏付け、かつ単なる不一致ではなく
+   ハードクラッシュという最悪の形で確認されたため、`role`は安全側に倒して
+   意図的に未対応(unmapped)のままにする)。
+4. マッピング対応表に無い属性(`app`/`aaname`/`role`等)は**無言で捨てず**、
    コメントとして残す(他の全モジュールと同じ「データを失わない」方針)。
 """
 from __future__ import annotations
@@ -28,9 +31,11 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
-# design/uipath_xaml_findings.md 知見37で把握した属性語彙のうち、pywinautoの
-# 検索条件への対応が(名前のレベルでは)推定できるものだけをマッピングする。
-# それ以外(app/aaname/ctrlname/ctrlid/aastate等)は未対応のまま残す。
+# design/uipath_xaml_findings.md 知見37・38で把握した属性語彙のうち、
+# 実機検証(知見38)でも安全と確認できたものだけをマッピングする。
+# `role`は意図的にマッピングしない(知見38: control_typeへそのまま渡すと
+# 実機でKeyErrorになると確認済み)。それ以外(app/aaname/ctrlname/ctrlid/
+# aastate等)も未対応のまま残す。
 _WND_ATTR_MAP = {
     "cls": "class_name",
     "title": "title",
@@ -38,7 +43,6 @@ _WND_ATTR_MAP = {
 _CTRL_ATTR_MAP = {
     "automationid": "auto_id",
     "name": "title",
-    "role": "control_type",
 }
 
 
@@ -56,7 +60,6 @@ class MappedNode:
 
     kwargs: dict[str, str]
     unmapped: dict[str, str]
-    is_role_based: bool
     source_tag: str
 
 
@@ -89,7 +92,6 @@ def _map_node(node: SelectorNode) -> MappedNode:
     return MappedNode(
         kwargs=kwargs,
         unmapped=unmapped,
-        is_role_based="control_type" in kwargs,
         source_tag=node.tag,
     )
 
@@ -123,7 +125,6 @@ def render_pywinauto_chain(mapped_nodes: list[MappedNode]) -> RenderedSelector:
     """
     expr = 'Desktop(backend="uia")'
     warnings: list[str] = []
-    any_role_based = False
     for i, mn in enumerate(mapped_nodes):
         if mn.unmapped:
             unmapped_str = ", ".join(f"{k}={v!r}" for k, v in mn.unmapped.items())
@@ -131,8 +132,6 @@ def render_pywinauto_chain(mapped_nodes: list[MappedNode]) -> RenderedSelector:
                 f"node {i} ({mn.source_tag}): unmapped selector attributes ignored: "
                 f"{unmapped_str}"
             )
-        if mn.is_role_based:
-            any_role_based = True
         if not mn.kwargs:
             warnings.append(
                 f"node {i} ({mn.source_tag}): no mappable attributes — this hierarchy "
@@ -142,12 +141,6 @@ def render_pywinauto_chain(mapped_nodes: list[MappedNode]) -> RenderedSelector:
         call = "window" if i == 0 else "child_window"
         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in mn.kwargs.items())
         expr += f".{call}({kwargs_str})"
-    if any_role_based:
-        warnings.append(
-            "control_type values come directly from UiPath's 'role' attribute "
-            "text and have NOT been verified to match UIA ControlType vocabulary "
-            "(design/uipath_xaml_findings.md 知見37) — check against the real UI tree"
-        )
     return RenderedSelector(expr=expr, warnings=warnings)
 
 

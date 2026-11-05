@@ -266,16 +266,17 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
 `# TODO`に倒す。`And`/`Or`/`Xor`→`&`/`|`/`^`変換(両オペランド括弧必須)も
 設計通り実装。`tests/test_uipath_codegen.py`(16件)で検証済み。
 
-**セレクタ解決(`dump_daemon/uipath_selector/`、同日中に追加着手・完了)**:
+**セレクタ解決(`dump_daemon/uipath_selector/`、同日中に追加着手・完了。
+2026-11-05に実機検証(知見38)を反映して更新)**:
 知見37で把握したClassic Selector(`WND`/`CTRL`)の属性語彙に基づき、
 `<wnd .../><ctrl .../>`形式のセレクタ文字列をpywinautoの検索条件連鎖
 (`Desktop(backend="uia").window(...).child_window(...)...`)へマッピング
-する。知見37自体が明記する2つの未検証事項——属性「名前」の対応は机上の
-推定であり実機確認済みではないこと、`role`属性の「値」(例:
-`"editable text"`)がUIAの`ControlType`語彙と一致する保証が無いこと——を
-踏襲し、生成コードには必ず警告コメント(`# WARNING:`)を付す。マッピング
-不能な属性のみのセレクタ(`idx`等)は、でっち上げるより`# TODO`に倒す。
-`tests/test_uipath_selector.py`(5件)で検証済み。
+する。`cls`→`class_name`・`name`→`title`は実機(pad2py-pad-host VMの
+実Notepad)で確認済み(知見38)。`role`→`control_type`は当初マッピング
+していたが、実機で`KeyError`を起こすと判明したため**意図的に未対応へ
+変更**した(安全側の判断、知見38)。マッピング不能な属性(`role`/`idx`等)
+は、でっち上げるより警告コメント(`# WARNING:`)付きで未対応のまま残す。
+`tests/test_uipath_selector.py`(7件)で検証済み。
 
 **実装中に見つかった追加の既知の制約**:
 - `uipath_expr`に配列/コレクションリテラル`{a, b, c}`(知見5で確認済みだが
@@ -311,7 +312,12 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
    `exec()`し、標準出力を実際に検証するところまで確認した——それまでの
    テストは`compile()`レベルの構文確認か生成コード中の行の有無の確認に
    留まっていたのに対し、実行時の正しさまで保証する初めてのテスト
-4. **セレクタマッピングの実機検証**: `uipath_selector`の属性名対応・
-   `role`値の語彙一致は現状いずれも未検証の仮定——VMで実際にpywinauto
-   セレクタが対象要素を一意特定できるかを確認する(design/dsl_format_findings.md
-   知見56でPAD側は実機検証済み、UiPath側はこれから)
+4. **(完了、2026-11-05)** セレクタマッピングの実機検証: pad2py-pad-host
+   VM上の実機Notepadで、知見9のClick実例セレクタに対し`uipath_selector`が
+   生成するpywinautoチェーンを実際に実行した(design/dsl_format_findings.md
+   知見56でPAD側は既に実機検証済み、今回UiPath側も実施)。結果は知見38
+   (design/uipath_xaml_findings.md)参照——`cls`→`class_name`・
+   `name`→`title`は実機で確認(正しい)、`role`→`control_type`は実機で
+   `KeyError`を起こすと判明し、`uipath_selector`から該当マッピングを削除
+   (安全側に倒して意図的に未対応へ変更)。`tests/test_uipath_selector.py`を
+   新しい挙動に追従させ、全607件通過。

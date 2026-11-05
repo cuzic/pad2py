@@ -2,6 +2,10 @@
 
 セレクタ文字列は design/uipath_xaml_findings.md 知見9で実機確認した
 `ui:Click`の`Selector`属性の実例そのもの(でっち上げではない)。
+
+`role`→`control_type`マッピングが実機(pad2py-pad-host VMの実Notepad)で
+`KeyError`を起こすと確認された(知見38)ため、本モジュールは`role`を
+意図的に未対応のままにしている——本テストもその挙動を前提にする。
 """
 from __future__ import annotations
 
@@ -40,31 +44,32 @@ def test_map_selector_nodes_separates_mapped_and_unmapped():
     assert mapped[0].unmapped == {"app": "notepad.exe"}
     assert mapped[1].kwargs == {"class_name": "Edit"}
     assert mapped[1].unmapped == {"aaname": "Horizontal"}
-    assert mapped[2].kwargs == {"title": "Text Editor", "control_type": "editable text"}
-    assert mapped[2].is_role_based is True
+    # roleは知見38で実機KeyErrorが確認されたため意図的に未対応(unmapped)
+    assert mapped[2].kwargs == {"title": "Text Editor"}
+    assert mapped[2].unmapped == {"role": "editable text"}
 
 
 def test_render_pywinauto_chain_builds_expected_call_chain():
+    """知見38: このチェーン(role/control_typeを含まない)は実機
+    pad2py-pad-host VMの実Notepadで実際に対象要素を一意特定できることを
+    確認済み。"""
     result = selector_text_to_pywinauto(KNOWN_SELECTOR)
     assert result.expr == (
         'Desktop(backend="uia")'
         ".window(class_name='Notepad', title='Untitled - Notepad')"
         ".child_window(class_name='Edit')"
-        ".child_window(title='Text Editor', control_type='editable text')"
+        ".child_window(title='Text Editor')"
     )
-    # unmapped属性(app/aaname)が無言で捨てられず警告として残っていること
+    # unmapped属性(app/aaname/role)が無言で捨てられず警告として残っていること
     assert any("app" in w for w in result.warnings)
     assert any("aaname" in w for w in result.warnings)
-    # role由来のcontrol_typeに対する未検証の注意書きがあること
-    assert any("ControlType" in w for w in result.warnings)
+    assert any("role" in w for w in result.warnings)
 
 
 def test_node_with_no_mappable_attrs_is_skipped_not_fabricated():
     """知見37でマッピングが未確定の属性(例: `idx`)しか無いノードは、
     でっち上げたkwargsを出力せず、呼び出し自体を省略して警告に回す。"""
-    mapped = [
-        MappedNode(kwargs={}, unmapped={"idx": "2"}, is_role_based=False, source_tag="wnd")
-    ]
+    mapped = [MappedNode(kwargs={}, unmapped={"idx": "2"}, source_tag="wnd")]
     result = render_pywinauto_chain(mapped)
     assert result.expr == 'Desktop(backend="uia")'
     assert any("no mappable attributes" in w for w in result.warnings)

@@ -1804,6 +1804,64 @@ Object Repository/Modern Design Experienceと合わせて、**旧Studio
   残り3つはv1スコープでは「検出して`# TODO`」止まりにするのが現実的、
   という方向性を支持する材料になった
 
+## 38. セレクタ実機検証——`role`→`control_type`の素朴マッピングは実機で`KeyError`になると確定(知見37の「素のまま変換」方針への修正)
+
+知見37末尾の「pywinautoマッピングへの示唆」(方向性、未確定)のうち、
+`CTRL`の`role`→`control_type`をpad2py-pad-host VM上の実機Notepadで
+検証した。知見9の実例セレクタ(`ui:Click`)
+
+```
+<wnd app='notepad.exe' cls='Notepad' title='Untitled - Notepad' />
+<wnd aaname='Horizontal' cls='Edit' />
+<ctrl name='Text Editor' role='editable text' />
+```
+
+を素直にマッピングすると`uipath_selector`はこう生成していた:
+
+```python
+Desktop(backend="uia").window(class_name='Notepad', title='Untitled - Notepad') \
+  .child_window(class_name='Edit') \
+  .child_window(title='Text Editor', control_type='editable text')
+```
+
+これを実際に起動したNotepadに対して実行すると
+**`KeyError: 'editable text'`で即クラッシュする**(pywinautoは`control_type`を
+UIAの`ControlType`列挙値に対して検証しており、未知の文字列は単なる
+不一致ではなく例外になる)。実機のUIAツリーをダンプして確認した実際の
+`control_type`は`'Edit'`で、UiPathの`role`値`'editable text'`とは
+文字列として一致しない——知見37が「語彙が一致する保証は無い」と警告していた
+内容を実際に裏付け、かつ「単に見つからない」より悪い「ハードクラッシュ」
+という形で確認された。
+
+一方、同じ実機検証で以下は**確認済み(正しい)**と確定した:
+- `cls`→`class_name`: `class_name='Edit'`は実機のUIAツリー上で一意にマッチする
+- `name`→`title`: マッチした要素の実`name`属性値(`'Text Editor'`)は
+  セレクタの`name='Text Editor'`と完全一致する
+- `role`を含めず(`control_type`を指定せず)`class_name='Edit'`
+  (+ あれば`title='Text Editor'`)だけで検索すると、実際に対象要素を
+  一意に特定できる
+
+この結果を受け、`dump_daemon/uipath_selector`は`role`→`control_type`の
+マッピングを削除し、`role`を意図的に未対応(unmapped、警告コメント付きで
+生成コードに残すのみ)へ変更した。1件のみの実機データ(n=1、Notepadの
+`Edit`コントロール)からUiPathの`role`語彙全体の対応表を作る根拠は無い
+(でっち上げになる)ため、「`role`は安全側で使わない」という保守的な結論に
+留め、将来別のUIAコントロール種別で実例が増えた時点で再検討する。
+
+**知見37の「WND/CTRLの第2層(`aaname='Horizontal' cls='Edit'`)が
+Classic Selectorの中間階層として独立したノードになる」という構造について**:
+実機のUIAツリーでは、Notepadの`Edit`コントロール(`Text Editor`)は
+トップレベルウィンドウの**直接の子**であり、`aaname='Horizontal'`に
+対応する別階層のUIA要素は見当たらなかった(水平スクロールバーかそれに
+近い内部的なMSAA/Win32の層を指している可能性があるが未確認)。実際には
+中間の`<wnd cls='Edit'>`ノードがマッピングする`class_name='Edit'`が
+最終ターゲット自身と同じ値になり、`pywinauto`の`child_window()`が
+部分木全体を探索するため、中間ノードの時点で既に最終要素まで一意に
+到達してしまう——Classic Selectorの各ノードが必ずしもUIAツリーの
+隣接する1階層ずつに対応するとは限らないことを示す実例だが、今回の
+1ケースだけでは一般化できないため、構造上の対応ルール自体は変更せず
+今後の検証課題として残す。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
