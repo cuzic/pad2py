@@ -95,6 +95,18 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   テスト2件+フォールバック1件、`uv run pytest`全件green)。次は同じ技法で
   `ExtractImagesFromPDF`/`ExtractTablesFromPDF`/`ExtractPagesToNewPDF`/`MergeFiles`
   (いずれもPDF)、続けてExcel/Word/PowerPointのTier3アクションを1件ずつ確認する(🖥️)。
+  💻 VM待ちの間に知見75/78の手順を`dump_daemon/pad_ui_helpers.py`の再利用可能な関数
+  (`find_descendant`/`paste_dsl_into_action_list`/`copy_action_list_as_text`/
+  `add_action_via_search`/`get_clipboard_text`)として整備した——次回VM接続時は
+  アドホックスクリプトの再構築無しで`add_action_via_search(designer, "Extract images
+  from PDF")`のように1行で試せる。**次にVMが空いたら試す検索語の候補**
+  (docs-local/pad_pdf_findings.mdの推定action_id表より): 「Extract images from PDF」
+  (推定`Pdf.ExtractImagesFromPDF`)・「Extract tables from PDF」
+  (推定`Pdf.ExtractTablesFromPDF`)・「Extract pages to new PDF」
+  (推定`Pdf.ExtractPages`、他の4件と違い`[Action(Name=...)]`のみで`Id`属性が無い点に注意)・
+  「Merge PDF files」(推定`Pdf.MergeFiles`、同じく`Name`属性のみ)——この表自体は
+  decompileのみに基づく推定(🔍)であり、`add_action_via_search()`でエラー無く追加できるかの
+  実機確認が必要。
 
 ## C. 構造的・運用上の課題
 

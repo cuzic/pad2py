@@ -100,3 +100,105 @@ def expand_tree_category(window: Any, category_auto_id: str) -> None:
     item.wait("exists", timeout=10)
     expander = item.child_window(auto_id="Expander", control_type="Button")
     expander.click_input()
+
+
+def find_descendant(
+    window: Any,
+    control_type: str,
+    name: str | None = None,
+    name_substring: str | None = None,
+) -> Any | None:
+    """子孫を `control_type`(+`name`/`name_substring`)で再帰的に探す(最初の一致を返す)。
+
+    `window.child_window()`は一部のPADデザイナーのコントロール(検索結果の`TreeItem`等)を
+    見つけられないことがあるため、`descendants()`の全件スキャンに統一する
+    (RDP不要の知見75/78の各手順で共通して使う下地)。
+    """
+    for c in window.descendants(control_type=control_type):
+        try:
+            info = c.element_info
+        except Exception:
+            continue
+        if name is not None and info.name != name:
+            continue
+        if name_substring is not None and name_substring not in (info.name or ""):
+            continue
+        return c
+    return None
+
+
+def get_clipboard_text() -> str:
+    """クリップボードのテキストを読む(`win32clipboard`直接呼び出し、PowerShell不要)。"""
+    win32clipboard.OpenClipboard()
+    try:
+        return win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+    finally:
+        win32clipboard.CloseClipboard()
+
+
+def paste_dsl_into_action_list(designer_window: Any, dsl_text: str) -> None:
+    """DSLテキストをクリップボード経由で`List "Actions"`に貼り付ける
+    (design/dsl_format_findings.md 知見75、RDP不要)。
+
+    `List "Actions"`コントロール宛の制御対象キー入力(`type_keys()`)は、
+    `pywinauto.keyboard.send_keys()`のような画面全体へのSendInputと違い、
+    アクティブなデスクトップ接続を必要としない。PADは受理した構文を自然文の
+    `ListItem`として表示し、認識できないものには`", Has error"`を付ける——
+    これ自体が構文の正誤を判定するオラクルになる(知見75)。
+    """
+    actions_list = find_descendant(designer_window, "List", name="Actions")
+    if actions_list is None:
+        raise LookupError('List "Actions" control not found')
+    set_clipboard_text(dsl_text)
+    actions_list.set_focus()
+    actions_list.type_keys("^v")
+
+
+def copy_action_list_as_text(designer_window: Any) -> str:
+    """`List "Actions"`全体をCtrl+A→Ctrl+Cでコピーし、テキストとして読み戻す
+    (design/dsl_format_findings.md 知見75の往復確認手順、RDP不要)。
+
+    `paste_dsl_into_action_list()`で貼り付けた内容の読み戻しには有効だが、
+    `add_action_via_search()`(知見78のキーボード追加)で追加したアクションには
+    使えない——キャンバスからのコピー操作(Ctrl+C・Editメニュー・各アクションの
+    "More actions"メニューのいずれも)が`COMError(-2147220992)`で失敗する既知の
+    制約がある(新規に開くポップアップ/メニューの内容がRDP接続無しでは安定しない
+    問題と同根、知見78参照)。
+    """
+    actions_list = find_descendant(designer_window, "List", name="Actions")
+    if actions_list is None:
+        raise LookupError('List "Actions" control not found')
+    actions_list.set_focus()
+    actions_list.type_keys("^a")
+    actions_list.type_keys("^c")
+    return get_clipboard_text()
+
+
+def add_action_via_search(
+    designer_window: Any, search_term: str, result_name: str | None = None
+) -> Any:
+    """検索語を入力し、検索結果へ`.set_focus()`+Enterでアクションをキャンバスへ追加する
+    (design/dsl_format_findings.md 知見78、RDP不要)。
+
+    検索結果の`TreeItem`を`.select()`するだけではUIAの`SelectionItemPattern`
+    (ハイライト)しか変わらずWPFの内部的なキーボードフォーカスは移動しないため、
+    その後の`type_keys("{ENTER}")`は何も起こさない——これが本プロジェクトで
+    何度か観測していた「Enterキーが効かない」現象の原因だった(知見78で特定)。
+    `.set_focus()`で実際にWPFフォーカスを移してからEnterを送る必要がある。
+
+    `result_name`省略時は`search_term`と同じ名前の`TreeItem`を探す(検索結果の
+    表示名が検索語と一致しない場合は明示的に渡す)。追加されたかどうかは、呼び出し元が
+    ステータスバーの「N Actions」/「N Selected action」カウンター(タブの汎用的な
+    "Actions"ラベルではなくこのカウンターで判定すること、知見78で確認済みの罠)で
+    確認する。見つかった`TreeItem`自体を返す。
+    """
+    search_box = find_descendant(designer_window, "Edit", name="Search actions")
+    if search_box is None:
+        raise LookupError('Edit "Search actions" control not found')
+    search_box.set_text(search_term)
+    result = find_descendant(designer_window, "TreeItem", name=result_name or search_term)
+    if result is None:
+        raise LookupError(f"search result TreeItem not found for: {search_term!r}")
+    result.set_focus()
+    result.type_keys("{ENTER}")
+    return result
