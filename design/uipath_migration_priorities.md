@@ -35,7 +35,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | # | 項目 | 状況 |
 |---|---|---|
 | 10 | REFramework(Robotic Enterprise Framework)のXAML構造 | **着手**(知見30): テンプレート一式(Framework/8ファイル+Tests/6ファイル+Data/)の構成、project.jsonの新フィールド(`targetFramework: "Portable"`実例、`fileInfoCollection`等)、Main.xamlがState Machineである構造を確認。重大な副産物: UiPath公式テンプレートが`Framework/AGENTS.md`(`uip`統一CLI・コーディングエージェント向けSkill前提の開発フロー解説)を同梱していると発覚——business context memoryに反映済み |
-| 11 | Coded Workflows(C#/VB code-behindの新機能) | 未着手——REFrameworkテンプレートに`.codedworkflows/ConnectionsFactory.cs`等の雛形ファイルの存在のみ確認(知見30)、中身の記法は未調査。もし広く使われていれば、WFアクティビティ木の変換よりコード→コード変換の方が簡単という切り口の転換もあり得る |
+| 11 | Coded Workflows(C#/VB code-behindの新機能) | 未着手——REFrameworkテンプレートに`.codedworkflows/ConnectionsFactory.cs`等の雛形ファイルの存在のみ確認(知見30)、中身の記法は未調査。もし広く使われていれば、WFアクティビティ木の変換よりコード→コード変換の方が簡単という切り口の転換もあり得る。**より新しいStudio(26.0.204-cloud、知見33)をサイドバイサイドでインストール済み**——Studio/Robotバージョン不整合エラーのためVM再起動待ち、再起動後に再調査 |
 | 12 | Object Repository(`.objects/`配下の構造化セレクタストア) | **着手**(知見31): 有効化には「UIAutomationパッケージのアップグレード」+ Project Settingsの「Modern Design Experience」トグル(既定No)の両方が必要と判明。トグル変更はプロジェクト全体のリロードを要する重い操作のため、既存知見を壊さないよう実際のリロードは見送った。`.objects/`の中身・Modern方式のセレクタXAML表現は未着手のまま——調査する場合は別の専用プローブプロジェクトを使うこと |
 | 13 | Orchestratorアセット/キュー連携アクティビティ | 未着手 |
 | 14 | `.nupkg`パッケージ構造 | **完了**(知見28): OPC形式のZIP、`lib/net45/`配下にコンパイル済み`.dll`(本体+VB式専用の別アセンブリ)。**重大な発見: 元の`.xaml`ソースは同梱されない**——外部Library依存のロジックはXAML解析ができず.NETデコンパイルが必要という、移行戦略上の制約を確認 |
@@ -47,7 +47,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | 15 | State Machineワークフロー種別 | **完了**(知見30): REFrameworkテンプレートのMain.xamlで実機確認。`StateMachine`/`State`/`Transition`要素、`x:Name`/`x:Reference`によるグラフ参照(初出時のみインライン展開、以降は参照のみ)、`State.Entry`/`State.Transitions`/`Transition.Condition`/`Transition.Action`/`IsFinal`属性を確定 |
 | 16 | Computer Vision/画像ベースセレクタ | 未着手(`# TODO`対象として扱う方針は維持) |
 | 17 | Marketplaceカスタムアクティビティパッケージ | 対象外方針を維持(`# TODO`) |
-| 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | **部分的に解決・ネガティブ**: Studio 2021.4.4には式言語を切り替えるUIが(New Project時にもグローバルSettingsにも)一切存在せず、このバージョンは全プロジェクトVB.NET固定と判明。`project.json`に`expressionLanguage`フィールド自体は存在する(知見30でVisualBasic値を実例確認)ので、より新しいStudioバージョンでの実機確認が必要 |
+| 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | **部分的に解決・ネガティブ**: Studio 2021.4.4には式言語を切り替えるUIが(New Project時にもグローバルSettingsにも)一切存在せず、このバージョンは全プロジェクトVB.NET固定と判明。`project.json`に`expressionLanguage`フィールド自体は存在する(知見30でVisualBasic値を実例確認)ので、より新しいStudioバージョンでの実機確認が必要。**より新しいStudio(26.0.204-cloud、知見33)をサイドバイサイドでインストール済み**——Studio/Robotバージョン不整合エラーのためVM再起動待ち |
 | 19 | Test Suite(データ駆動テスト・アサーション) | 未着手(優先度低のまま) |
 
 ## 次の一手の候補(優先度順、2026-11-04時点で更新)
@@ -56,15 +56,21 @@ P0は全項目完了。P1はほぼ完了(#7のWord/PDF/Databaseのみ残り、�
 既存7アクティビティで直列化パターンの型は出尽くした可能性が高い)。
 現時点で情報価値が高い残項目:
 
+0. **(ブロック中)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
+   インストール済み(知見33)——起動時に「Studio/Robotバージョン不整合、
+   マシン再起動が必要」エラー。再起動はVM上の他の作業(PAD Designer等)に
+   影響するためユーザー確認待ち。再起動完了後、以下1・2はこの新Studioで
+   別の専用プローブプロジェクトを使って再調査する
 1. **P2 #11**(Coded Workflows)——REFrameworkテンプレートで雛形ファイルの
    存在は確認済み(知見30)だが、実際のCoded Workflow本体(ビジネスロジックを
-   C#で書いたワークフロー)の記法・XAMLとの連携方法は未確認。より新しい
-   Studioバージョンが必要になる可能性が高い
+   C#で書いたワークフロー)の記法・XAMLとの連携方法は未確認
 2. **P2 #12の続き**(Object Repository)——`.objects/`の中身とModern方式の
    セレクタXAML表現。別の専用プローブプロジェクトでUIAutomationパッケージ
    アップグレード+Modern Design Experience有効化を試す
-3. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・
+3. **P3 #18**(C#式言語)——新Studioで「New Project」ダイアログに式言語選択UIが
+   追加されているか確認
+4. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・
    `<Literal>`要素・比較演算子`=`等)を整理してドキュメント化するだけでも価値がある
-4. **P2 #13**(Orchestratorアセット/キュー連携)——未着手。ただし実際の
+5. **P2 #13**(Orchestratorアセット/キュー連携)——未着手。ただし実際の
    Orchestrator接続を伴うため、共有状態への副作用リスクを要検討
-5. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
+6. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手

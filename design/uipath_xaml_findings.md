@@ -1447,6 +1447,98 @@ CStr(Not True)]</InArgument>
 クリップボードに積んで`Ctrl+V`で貼り付ける、の2通りが有効だった
 ——特に(2)は今回の9演算子複合式のような長い入力で有効。
 
+## 33. より新しいStudioバージョン(26.0.204-cloud)をサイドバイサイドで追加インストール——配布形態がSquirrel per-userからConnected Platform(マシン全体)方式へ刷新されていた
+
+C#式言語・Coded Workflows・Object Repositoryの実機確認にはStudio 2021.4.4より
+新しいバージョンが必要という結論が知見30-7・31・今後の調査候補で繰り返し出ていた
+ため、同じ`pad2py-pad-host` VMに新バージョンを**既存の2021.4.4を残したまま**
+追加インストールした。この過程自体がUiPathの配布アーキテクチャ刷新を実地で
+確認する結果になったため、知見として記録する。
+
+**配布形態の変化**: UiPathの公式ダウンロードページ経由で得られる
+`download.uipath.com/UiPathStudioSetup.exe`という旧来の固定URLは、実際には
+2021年5月付けでピン留めされた古いビルドを返すだけで、もはや「最新版への
+固定リンク」としては機能していなかった(`Last-Modified`ヘッダで確認)。
+現行のCommunity Editionは`UiPathStudioCommunity.msi`という単体の大型MSI
+ではなく、**`UiPathPlatform.msi`という約11MBの小型「Connected Installer」**
+を経由する2段階方式に変わっている:
+
+1. `UiPathPlatform.msi`(MSI、要管理者権限)を実行すると、実際のペイロードは
+   インストールされず、バックグラウンドサービス`UiPath.Connected.Updater.Service`
+   (Squirrelベース、`C:\Program Files\UiPathPlatform\Updater\`に配置)だけが
+   登録・起動される。
+2. そのサービスが`UiPath.Connected.Installer.Ui.exe`(ウィンドウタイトル
+   `UiPath Connected Platform`)という対話的GUIを自動的に開く。このGUIは
+   Studio/Assistant・Delegate・Cartographer/Robot/Extensionsの4項目を
+   チェックボックスで個別選択できる「製品選択+ライセンス同意+Install」の
+   単一画面で、実際の数百MB規模のダウンロード・展開はここで初めて発生する
+   (進捗は「Downloading NN%」のプログレスバーで0→100%まで約数分かけて進行)。
+3. CLI版`UiPath.Connected.Installer.Cli.exe`も同梱されている(`install`/
+   `uninstall`/`upgrade`サブコマンド、`--manifest`必須引数)が、manifest
+   のスキーマが文書化されておらず自己流で組み立てるのはリスクが高いと判断し、
+   今回はGUI版(`...Installer.Ui.exe`)のチェックボックス操作で進めた。
+
+**インストール先の構造変化**: 旧バージョン(2021.4.4)は
+`C:\Users\<user>\AppData\Local\UiPath\app-21.4.4\`というper-user Squirrel
+レイアウトだったが、新バージョンは**`C:\Program Files\UiPathPlatform\Studio\
+26.0.204-cloud.25540\`というマシン全体(Program Files)レイアウト**に変わって
+いる。バージョン番号の表記も`21.4.4`のような単純な3つ組から
+`26.0.204-cloud.25540`(年.月.ビルド-エディション.追加番号)という形式に
+変わった。両者は完全に独立したディレクトリツリーなので、**サイドバイサイド
+インストール自体は特別な配慮なしに成立する**——旧版の起動用ショートカット
+(スタートメニューの`UiPath Studio.lnk`)は旧パスを指したままで更新されず、
+新版はフルパスで直接起動する必要がある。
+
+**実機で踏んだエラー——Studio/Robotバージョン不整合**: 新Studio
+(`UiPath.Studio.exe`、新パス)を初回起動したところ、プロジェクト一覧も
+何も出さずに即座にモーダルエラーが出た:
+
+> The installed versions of Studio and Robot do not match. Please restart
+> your machine and try again.
+
+これは、同じ「Connected Platform」インストーラでRobotコンポーネントも
+同時に更新対象になっていた(GUI上のチェックボックスでは明示的にチェックしたのは
+Studioのみだったが、依存関係としてRobot等も併せて処理された形跡がある)ものの、
+**旧バージョン(21.4.4)時代のRobot関連サービス(`UiPath.RobotJS.UserHost`等)が
+起動中のまま残っていたため、新旧のRobotバイナリ/サービスが同一セッションに
+混在し、Studio起動時の整合性チェックで検出・ブロックされた**という挙動と推定
+される。エラーメッセージが明示的に「マシンの再起動」を要求している通り、
+この手のバージョン不整合はOSレベルのサービス再起動(プロセスの入れ替え)でしか
+解消できない設計になっているらしい——`msiserver`のような単体サービスの再起動
+では足りない。
+
+**VM運用上の制約でこの先は保留**: 再起動はVM上で同時に動いている他の作業
+(PAD Designer側で開いていた`g1g2_test`ワークフロー等)に影響する「共有状態を
+変更する操作」に該当するため、知見化はここで一旦止め、再起動の実施はユーザー
+確認を経てから次のセッションで続行する方針とした(C#式言語・Coded Workflows・
+Object Repositoryの実機確認はこの再起動後に持ち越し)。
+
+**UI操作上の教訓(今後のRDP/VM管理作業全般に有効)**:
+- clipwireのexecセッションは**UAC制限付き(非管理者)トークン**で動く。
+  管理者権限が要る操作(MSIによるマシン全体インストール、`schtasks /RU SYSTEM`)
+  は、対話的UAC確認ダイアログ(`consent.exe`)を要求するか、`Access is denied`
+  で即座に失敗するかのいずれかになる。UACダイアログは**対話セッションが
+  「接続中」状態でないと表示自体が起きない**(切断中セッションに対する昇格要求は
+  ダイアログ無しで単に失敗する)。
+- `consent.exe`/`msiexec`を強制終了(`Stop-Process -Force`)すると、Windows
+  Installerの内部ロックが残り、次のインストール試行が`Error 1500`
+  (「別のインストールが進行中」)で失敗することがある。正規の対処
+  (`Restart-Service msiserver`)自体にも管理者権限が要る場合、同じ理由で失敗し、
+  時間を置いて再試行するしかない。
+- `mss`によるスクリーンショット取得(`BitBlt`)は、RDP接続/切断の前後で
+  原因不明の失敗を起こすことがある(今回は接続中・切断後の両方で失敗した)。
+  これに対する**画面キャプチャに依存しない代替手段**: `pywinauto.Desktop
+  (backend="uia").windows()`+`.descendants()`でUI Automationツリーを直接
+  走査し、`click_input()`(実際のマウス移動を要求し、アクティブデスクトップが
+  無いと`RuntimeError`になる)の代わりに`toggle()`/`invoke()`(UI Automationの
+  Toggle/Invokeパターンをデスクトップ状態に関係なく直接呼ぶ)でコントロールを
+  操作する。この方式は今回、BitBltが機能しない状態でも安定して動作した
+  ——スクリーンショットが取れない状況での自動化の標準手段として今後も使える。
+- `mstsc.exe`にパスワードを渡すCLI引数は存在しない。
+  `cmdkey /generic:TERMSRV/<host> /user:<user> /pass:<password>`で
+  資格情報を事前登録しておくと、後続の`mstsc /v:<host>`がプロンプト無しで
+  繋がる。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
