@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(22/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(14/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -126,15 +126,27 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   続けて消費側の`UIAutomation.CloseWindow.CloseByInstanceOrHandle`(知見57追記、
   `WindowInstance`は裸のVarRef)も`{変数}.close()`へ結線し、`GetWindow`→変数→
   `CloseWindow`という一連の流れを結線完了させた(commit予定)。
-- [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
-  「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
+- [x] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 当初「恒久的に非対応」と
+  結論づけていたが、知見112でこの結論自体が誤りだったと判明し解決した。
+  ✅ **DPAPI保護値(`P'<base64>'`)自体の復号に成功、恒久的に非対応ではなく「元の
+  Windowsユーザー自身が生成スクリプトを実行する場合のみ対応可能」と判明(知見112)**:
+  `Microsoft.Flow.RPA.Desktop.Robin.Core.dll`の`DPApi`クラスをVM上でリフレクションに
+  より発見し、固定20バイトのentropy定数(ソースからは読めない埋め込み配列だが、
+  実行時の値はリフレクションで読める)を実際に取得、`DataProtectionScope.CurrentUser`
+  と組み合わせて実機キャプチャ済みの`P'<base64>'`値を実際に復号できることを確認した
+  (VM不要・decompileとclipwire exec経由の読み取り専用操作のみ)。`pad_dsl.types`に
+  `DpapiSensitiveLiteral`型を追加しパーサーのVarRefフォールバックを解消、
+  `cryptography_actions.decrypt_dpapi_sensitive_value()`(`win32crypt`経由)へ結線した。
+  `codegen_coverage.py`: 181/202→188/202(93%)。元の値を作成したユーザー以外が
+  実行すると`DpapiDecryptionError`になる(でっち上げた平文は返らない)点は正しい
+  設計上の制約として残る。
   ✅ **パスワード省略(PAD UIでPasswordを設定しなかった)ケースの結線自体は既に正しく
   実装・結線済みだと合成DSLで確認完了(知見109)**: `Compression.ZipFiles`/
   `UnzipFiles`の`pad_codegen/actions/compression.py`は元々パスワード無しのケース
   向けに結線だけ用意していた(docstring記載通り)が、それを検証する合成テストが
   無かった。実際にzip作成→解凍の往復まで実行するテストを追加し、既存実装が正しい
-  ことを確認した。DPAPI保護値(`P'<base64>'`)自体の復号は本項目の通り依然未対応
-  (VM/暗号化環境模倣が必要、低優先度のまま)。
+  ことを確認した。DPAPI保護値(`P'<base64>'`)自体の復号は当時未対応だったが、
+  その後知見112で解決した(本項目冒頭参照)。
   ✅ **`Cryptography.*`側も同じパターンで6件を新規結線(知見111)**: `EncryptText`/
   `EncryptFromFile`/`DecryptText`/`DecryptToFile`/`HashTextWithKey`/
   `HashFromFileWithKey`は`pad_action_lib.cryptography_actions`自体は実装済みだが
@@ -142,7 +154,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   分岐しか無かった(Compressionとは違い結線すら未着手だった)。鍵が(DPAPI保護
   ではなく)ふつうの変数参照の場合の結線を新規実装し、Encrypt→Decrypt往復・
   HashTextWithKeyの値一致を合成DSLで実行確認した。DPAPI保護値自体の復号は
-  依然未対応のまま。
+  当時未対応だったが、その後知見112で解決した(本項目冒頭参照)。
 - [x] 💻 `Web.*`の`UserAgent`/`FollowRedirection`が値を読み取らず無視されていたバグの修正。
   ✅ **VM不要・既存フィクスチャの再点検で修正完了(知見94)**: 知見93のパターン
   (値を読み取るように見えて実は無視)を他モジュールでも探索した結果発見。

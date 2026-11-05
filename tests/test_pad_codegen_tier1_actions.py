@@ -56,7 +56,9 @@ def test_text_variables_batch1_all_actions_convert_without_todo() -> None:
     assert "RandomNumber = variables_actions.generate_random_number(0, 100)[0]" in code
 
 
-def test_datetime_folder_clipboard_batch2_converts_except_dpapi_zip_password() -> None:
+def test_datetime_folder_clipboard_batch2_converts_including_dpapi_zip_password() -> None:
+    # design/dsl_format_findings.md 知見112: Passwordは`P'<base64>'`(DPAPI保護値)だが、
+    # 以前のVarRefフォールバックとは違い`decrypt_dpapi_sensitive_value()`へ結線される。
     code = _generate("tier1_datetime_folder_clipboard_batch2.txt")
     assert "CurrentDateTime = datetime_actions.get_current_datetime(date_time_format='DateAndTime')" in code
     assert "ResultedDate = datetime_actions.add_to_datetime('sample', 'sample', time_unit='Seconds')" in code
@@ -65,8 +67,8 @@ def test_datetime_folder_clipboard_batch2_converts_except_dpapi_zip_password() -
     assert "ClipboardText = clipboard_actions.get_clipboard_text()" in code
     assert "clipboard_actions.set_clipboard_text('sample')" in code
     assert "clipboard_actions.clear_clipboard()" in code
-    # Password is a DPAPI-protected `P'<base64>'` value -> unparseable identifier -> TODO.
-    assert _todo("Compression.ZipFiles") in code
+    assert "cryptography_actions.decrypt_dpapi_sensitive_value('AQAAANCMnd8B" in code
+    assert "ZipFile = compression_actions.zip_files(" in code
 
 
 def test_variables_list_datatable_batch3_converts_except_unverified_engines() -> None:
@@ -186,28 +188,30 @@ def test_file_batch6_converts_all_actions_including_csv_header_less_case() -> No
     assert "# TODO" not in code
 
 
-def test_crypto_database_batch7_converts_only_keyless_functions() -> None:
+def test_crypto_database_batch7_converts_all_actions_including_dpapi_keys() -> None:
+    # design/dsl_format_findings.md 知見112(decompile+実機確認済み): `P'<base64>'`の
+    # DPAPI保護値(鍵/パスワード)は、以前はVarRefへフォールバックしTODOのままだったが、
+    # `DpapiSensitiveLiteral`型+`cryptography_actions.decrypt_dpapi_sensitive_value()`
+    # (生成スクリプト実行時にWindows DPAPIで復号)への結線で実コードが生成されるように
+    # なった——「元の値を作成したWindowsユーザー自身が実行する」場合のみ実際に動く
+    # コードだが、でっち上げではなく本物の復号呼び出し。
     code = _generate("tier1_crypto_database_batch7.txt")
     assert "file_actions.binary_to_file('sample', 'sample', if_file_exists='DoNothing')" in code
     assert "TempFile = file_actions.get_temp_file_path()" in code
     assert "HashedText = cryptography_actions.hash_text('sample', encoding='Unicode', " in code
     assert "HashedText2 = cryptography_actions.hash_from_file('sample', encoding='Unicode', " in code
     assert "SQLConnection = database_actions.open_connection('sample')" in code
-    # All of these carry a DPAPI-protected (P'<base64>') key/password parameter.
-    for action_id in (
-        "Cryptography.EncryptText.EncryptTextWithAES",
-        "Cryptography.EncryptFromFile.EncryptFromFileWithAES",
-        "Cryptography.DecryptText.DecryptTextWithAES",
-        "Cryptography.DecryptToFile.DecryptToFileWithAES",
-        "Cryptography.HashTextWithKey",
-        "Cryptography.HashFromFileWithKey",
-    ):
-        assert _todo(action_id) in code
+    assert "# TODO" not in code
+    assert "cryptography_actions.decrypt_dpapi_sensitive_value('AQAAANCMnd8B" in code
+    assert (
+        "EncryptedText = cryptography_actions.encrypt_text('sample', "
+        "cryptography_actions.decrypt_dpapi_sensitive_value('AQAAANCMnd8B" in code
+    )
     # Statement: `` now parses as an empty string, so this is wired (knowledge 74).
     assert "QueryResult = database_actions.execute_sql_statement(SQLConnection, '', timeout=30)" in code
 
 
-def test_web_xml_batch8_converts_except_dpapi_password() -> None:
+def test_web_xml_batch8_converts_except_unzip_missing_output_var() -> None:
     # knowledge 93以前はUserAgent/FollowRedirectionが`web_actions`側で未対応
     # (httpxの既定follow_redirects=Falseのまま実機の既定True と食い違っていた)。
     # 実機キャプチャ済みのUA文字列(ハードコードされたFirefox 3.6)も結線する。
@@ -245,6 +249,8 @@ def test_web_xml_batch8_converts_except_dpapi_password() -> None:
     assert "XmlDocument = xml_actions.insert_xml_element(XmlDocument, 'sample', 'sample')" in code
     assert "XmlDocument = xml_actions.remove_xml_element(XmlDocument, 'sample')" in code
     assert "XPathResults = xml_actions.execute_xpath_query('sample', 'sample')" in code
+    # design/dsl_format_findings.md 知見112以降もTODOのまま——Passwordの復号自体は
+    # 結線済みだが、この実機キャプチャには`=>`出力変数束縛が無いため(知見112参照)。
     assert _todo("Compression.UnzipFiles") in code
     # Xml: `` now parses as an empty string, so this is wired (knowledge 74).
     assert "xml_actions.write_xml_to_file('sample', '', format_xml=True, indentation=2)" in code

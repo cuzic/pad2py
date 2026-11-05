@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from ..pad_dsl import EnumRef, VarRef
+from ..pad_dsl import DpapiSensitiveLiteral, EnumRef, VarRef
 from ..pad_expr import Atom, BinOp, ExprNode, FuncCall, Paren, UnaryOp
 
 # インデント1段あたりの文字列。`pad_codegen`パッケージ全体がここから参照する
@@ -66,6 +66,12 @@ def render_value(value: object) -> str:
         # TODO: PADの列挙値(Namespace.Enum.Value)とPython側の対応表がまだ無いため、
         # ひとまず元の完全修飾名を文字列として埋め込む。
         return repr(value.value)
+    if isinstance(value, DpapiSensitiveLiteral):
+        # design/dsl_format_findings.md 知見112(実機確認済み): `Cryptography.*`/
+        # `Compression.*`の`Sensitive`引数(`P'<base64>'`)は、生成スクリプトの実行時に
+        # `cryptography_actions.decrypt_dpapi_sensitive_value()`(Windows DPAPI、
+        # 元のユーザー/マシンでのみ復号可能)経由で復号する式を生成する。
+        return f"cryptography_actions.decrypt_dpapi_sensitive_value({value.ciphertext_b64!r})"
     if isinstance(value, bool):
         return repr(value)
     if isinstance(value, (int, float)):

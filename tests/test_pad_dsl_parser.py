@@ -16,6 +16,7 @@ from dump_daemon.pad_dsl import (
     CaseRecord,
     CommentRecord,
     ConditionalNode,
+    DpapiSensitiveLiteral,
     ElseIfFunctionRecord,
     ElseIfRecord,
     GuardedNode,
@@ -1639,12 +1640,12 @@ def test_tier1_text_variables_actions_parse_as_generic_action_records() -> None:
 
 
 def test_tier1_datetime_folder_clipboard_actions_parse_without_crashing() -> None:
-    # design/dsl_format_findings.md 知見64・65: DateTime/Folder/Compression/Clipboardの
+    # design/dsl_format_findings.md 知見64・65・112: DateTime/Folder/Compression/Clipboardの
     # 実機DSLキャプチャ。`Compression.ZipFiles`の`Password`(Sensitive扱いの
     # EncryptableObject)は、知見65で確認したDPAPI暗号化済みBase64が`P'...'`という
-    # 新構文(既存の`$'''...'''`とは異なる)で直列化されるが、現状のパーサーは
-    # このP'...'構文を未対応のまま`VarRef`にフォールバックする(クラッシュも
-    # サイレントなデータ欠落も起きないことだけを確認する回帰テスト)。
+    # 新構文(既存の`$'''...'''`とは異なる)で直列化される。知見112で`P'...'`構文専用の
+    # `DpapiSensitiveLiteral`型を追加し、VarRefへのフォールバックを解消した(データを
+    # 失わない方針は維持、保持先の型が変わっただけ)。
     text = (FIXTURES_DIR / "tier1_datetime_folder_clipboard_batch2.txt").read_text(
         encoding="utf-8"
     )
@@ -1654,10 +1655,10 @@ def test_tier1_datetime_folder_clipboard_actions_parse_without_crashing() -> Non
     zip_action = records[4]
     assert zip_action.action_id == "Compression.ZipFiles"  # type: ignore[union-attr]
     password = zip_action.params["Password"]  # type: ignore[union-attr]
-    # P'...'構文は未対応のためVarRefへのフォールバックになるが、生テキストは
-    # 失われず丸ごと保持されていることを確認する(知見15以来の「データを失わない」方針)。
-    assert isinstance(password, VarRef)
-    assert password.name.startswith("P'AQAAANCMnd8B")
+    # 生テキスト(base64部分)は失われず丸ごと保持されていることを確認する
+    # (知見15以来の「データを失わない」方針)。
+    assert isinstance(password, DpapiSensitiveLiteral)
+    assert password.ciphertext_b64.startswith("AQAAANCMnd8B")
     date_subtract = records[2]
     # design/dsl_format_findings.md 知見57相当: SubstractDateというtypoがそのまま
     # 実機のパラメータ名として確認できた(ソース上のプロパティ名のtypoが直列化にも
@@ -1870,11 +1871,11 @@ def test_tier1_crypto_database_batch7_parses_as_generic_action_records() -> None
     encrypt_text = records[2]
     # design/dsl_format_findings.md 知見65の予測通り、CryptographyモジュールのKey系
     # パラメータ(EncryptionKey/DecryptionKey/HashKey)もSensitive扱いのため同じ
-    # P'<DPAPI暗号化Base64>'構文で直列化され、現状のパーサーはVarRefにフォールバック
-    # する(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
+    # P'<DPAPI暗号化Base64>'構文で直列化される。知見112で`DpapiSensitiveLiteral`型
+    # として正しく解釈されるようになった。
     encryption_key = encrypt_text.params["EncryptionKey"]  # type: ignore[union-attr]
-    assert isinstance(encryption_key, VarRef)
-    assert encryption_key.name.startswith("P'AQAAANCMnd8B")
+    assert isinstance(encryption_key, DpapiSensitiveLiteral)
+    assert encryption_key.ciphertext_b64.startswith("AQAAANCMnd8B")
     execute_sql = records[11]
     # design/dsl_format_findings.md 知見66のFilterParameters/知見67のHtmlEditorと
     # 同じ空のバックティック文字列``構文がExecuteSqlStatementのStatementにも

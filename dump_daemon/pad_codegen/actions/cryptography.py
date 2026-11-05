@@ -6,13 +6,12 @@
 `EncryptText`/`EncryptFromFile`/`DecryptText`/`DecryptToFile`/`HashTextWithKey`/
 `HashFromFileWithKey`は、実機キャプチャでは鍵パラメータ(`EncryptionKey`/
 `DecryptionKey`/`HashKey`)が常にWindows DPAPI保護値(`P'<base64>'`、知見72)として
-現れ、現状のパーサーでは正当なPython識別子にならない`VarRef`にフォールバックする
-ため`safe_render()`が`None`を返し、実機キャプチャ済みフィクスチャに対しては
-自動的に汎用`# TODO`フォールバックに委ねられる——しかし知見109の`Compression.*`と
-同じパターンで、鍵パラメータが(DPAPI保護ではなく)ふつうの変数参照や文字列リテラル
-である場合の結線自体は用意しておく(知見111)。`pad_action_lib.cryptography_actions`
-(AES-CBC・HMAC実装、decompile調査で確認済みの弱い既定動作も忠実に再現)へそのまま
-委譲するだけで、でっち上げは発生しない。
+現れる。知見111で鍵パラメータが(DPAPI保護ではなく)ふつうの変数参照や文字列リテラル
+である場合の結線を用意し、知見112で`P'<base64>'`自体も`DpapiSensitiveLiteral`型経由で
+`cryptography_actions.decrypt_dpapi_sensitive_value()`へ結線されるようになった
+(元の値を作成したWindowsユーザー自身が生成スクリプトを実行する場合のみ実際に
+復号できる)。`pad_action_lib.cryptography_actions`(AES-CBC・HMAC実装、decompile調査で
+確認済みの弱い既定動作も忠実に再現)へそのまま委譲するだけで、でっち上げは発生しない。
 """
 from __future__ import annotations
 

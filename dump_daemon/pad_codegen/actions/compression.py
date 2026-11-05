@@ -5,9 +5,11 @@
 `tier1_web_xml_batch8.txt`から確認済み。
 
 実機キャプチャでは`Password`が常にWindows DPAPI保護値(`P'<base64>'`、知見72)で
-現れ、現状のパーサーでは正当なPython識別子にならない`VarRef`にフォールバックする
-ため、`_support.safe_render()`経由で自動的に汎用`# TODO`フォールバックに委ねられる
-——本モジュールはパスワード無しの圧縮/展開フローのために結線だけ用意する。
+現れる。知見109でパスワード無しの圧縮/展開フローの結線を用意し、知見112で
+`P'<base64>'`自体も`DpapiSensitiveLiteral`型経由で
+`cryptography_actions.decrypt_dpapi_sensitive_value()`へ結線されるようになった
+(元の値を作成したWindowsユーザー自身が生成スクリプトを実行する場合のみ実際に
+復号できる)。
 """
 from __future__ import annotations
 

@@ -17,6 +17,7 @@ from .types import (
     CaseDefaultRecord,
     CaseRecord,
     CommentRecord,
+    DpapiSensitiveLiteral,
     ElseIfActionRecord,
     ElseIfFunctionRecord,
     ElseIfRecord,
@@ -52,6 +53,11 @@ _DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 # (完全な曖昧性解消ではない——3セグメント以上のVariableTrailerや2セグメントのEnumRefが
 # 実在すれば依然として誤判定しうるが、これまでの実機証拠に基づく最善の判断)。
 _ENUM_REF_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){2,}$")
+# design/dsl_format_findings.md 知見72(実機検証済み)——`Sensitive`属性付きパラメータ
+# (`Cryptography.*`/`Compression.*`の鍵・パスワード)はWindows DPAPI保護値
+# `P'<base64>'`という専用構文で直列化される。Base64内部に空白/`'`は現れないため
+# 単一トークンのまま、かつ既存のVarRefフォールバックより先に判定すれば十分。
+_DPAPI_SENSITIVE_RE = re.compile(r"^P'([^']*)'$")
 _INT_RE = re.compile(r"-?\d+")
 _FLOAT_RE = re.compile(r"-?\d+\.\d+")
 _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN$")
@@ -142,6 +148,9 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
         return int(token)
     if _ENUM_REF_RE.fullmatch(token):
         return EnumRef(token)
+    dpapi_match = _DPAPI_SENSITIVE_RE.fullmatch(token)
+    if dpapi_match:
+        return DpapiSensitiveLiteral(dpapi_match.group(1))
     return VarRef(token)
 
 

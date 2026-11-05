@@ -137,3 +137,19 @@ def test_hash_from_file_with_key(tmp_path: Path) -> None:
     f = tmp_path / "a.txt"
     f.write_text("hello", encoding="utf-16-le")
     assert ca.hash_from_file_with_key(str(f), "key") == ca.hash_text_with_key("hello", "key")
+
+
+def test_decrypt_dpapi_sensitive_value_raises_cleanly_without_win32crypt() -> None:
+    # design/dsl_format_findings.md 知見112: `win32crypt`(pywin32)が無い環境(CI含む
+    # 非Windows一般)では、でっち上げた結果を返さず明示的な`DpapiDecryptionError`になる
+    # ことを確認する——実際の復号成功(実機の`tomoya_kaw`ユーザーのDPAPIプロファイル
+    # でのみ可能、知見112参照)はこのリポジトリのCI環境では再現できないため、
+    # クリーンな失敗モードだけを回帰テスト化する。
+    try:
+        import win32crypt  # noqa: F401
+
+        pytest.skip("win32crypt is available in this environment; this test only covers its absence")
+    except ImportError:
+        pass
+    with pytest.raises(ca.DpapiDecryptionError):
+        ca.decrypt_dpapi_sensitive_value("AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA")

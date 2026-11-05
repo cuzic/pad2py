@@ -9,11 +9,12 @@
 文字列` `` `・空の`{ }`配列リテラルの2つは解消した(`pad_dsl.line_parser`が
 それぞれ空文字列`""`・空リスト`[]`として正しく解釈する——いずれも実機データが
 「空の場合のみ」確認済みで、非空の場合の表現は未確認のため対応しない)。
-`P'<base64>'`形式のDPAPI保護値は、そもそも暗号化した環境でなければ復号不可能
-なため恒久的に非対応のまま残す(知見65)。これらが`VarRef`へのフォールバックとして
-現れた場合、でっち上げた壊れたPythonコードを出力しないよう、`safe_render()`は
-正当なPython識別子にならない`VarRef`を検出したら`None`を返し、呼び出し元はその場で
-`generate()`から`None`を返して`generate_action()`の汎用`# TODO`フォールバックに
+`P'<base64>'`形式のDPAPI保護値は、知見112で`DpapiSensitiveLiteral`型として
+正しく解釈され`render_value()`が`cryptography_actions.decrypt_dpapi_sensitive_value()`
+呼び出しへ結線するようになった(元の値を作成したWindowsユーザー自身が生成スクリプトを
+実行する場合のみ実際に復号できる)。正当なPython識別子にならない(でっち上げた
+壊れたPythonコードになる)`VarRef`だけが`safe_render()`で`None`を返し、呼び出し元は
+その場で`generate()`から`None`を返して`generate_action()`の汎用`# TODO`フォールバックに
 委ねる。
 """
 from __future__ import annotations

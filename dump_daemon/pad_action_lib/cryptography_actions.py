@@ -9,6 +9,21 @@
 `Encoding="Unicode"`はバイト配列への直接エンコード(`Encoding.Unicode.GetBytes`)
 であり、ファイル書き込み時のBOM付きUTF-16とは違い**BOM無し**のUTF-16LEになる
 (`"utf-16-le"`を使う。`file_actions`の`"utf-16"`——BOM付き——とは意図的に別)。
+
+design/dsl_format_findings.md 知見112(decompile+実機確認済み): `decrypt_dpapi_sensitive_value()`
+は`Cryptography.*`/`Compression.*`の`Sensitive`引数(`P'<base64>'`、知見72)をWindows DPAPI
+(`win32crypt.CryptUnprotectData`)で復号する。PAD自身の`Microsoft.Flow.RPA.Desktop.Robin.Core.dll`
+内の`DPApi`クラス(`EntropyBytes`という固定20バイトのentropy定数+`DataProtectionScope`の
+`CurrentUser`スコープ)をリフレクションで直接読み取り、同じentropy・スコープで実際に復号できる
+ことを実機確認した——`pad_action_lib`層としては初めての「PAD内部の秘密情報を使って
+でっち上げではなく本物の復号を行う」実装。**ただし復号できるのはこの値を作成した
+Windowsユーザー自身のマシンでのみ**(DPAPI CurrentUserスコープの原理上)で、`pad2py`が
+主眼とする「自分の既存フローを自分のマシンでPythonへ移行する」用途とは整合するが、
+他人のフローのエクスポートを無関係なマシンで変換する場合は実行時に例外になる
+(でっち上げではなく、DPAPIの正しい挙動)。entropy定数は本プロジェクトが調査時点で
+インストールされていたPADのビルドから抽出した値であり、将来の別バージョンで
+変更される可能性は否定できない(その場合は復号が失敗するだけで、誤った平文を
+返すことはない——DPAPI自体がentropy不一致を検出して例外にするため)。
 """
 from __future__ import annotations
 
@@ -56,6 +71,43 @@ _OS_FILE_NOT_FOUND_ERROR = FileNotFoundError
 
 class FileNotFoundError(PadActionError):  # noqa: A001
     pass
+
+
+class DpapiDecryptionError(PadActionError):
+    pass
+
+
+# design/dsl_format_findings.md 知見112(decompile+実機確認済み): PAD自身の
+# `Microsoft.Flow.RPA.Desktop.Robin.Core.dll`の`DPApi`クラスが使う、固定20バイトの
+# entropy定数(リフレクションで`DPApi.EntropyBytes`静的フィールドの実行時の値を直接
+# 読み取って確認した)。
+_DPAPI_ENTROPY = base64.b64decode("Sz6nr1A3YB/QAleuNWXcUrk8OOo=")
+
+
+def decrypt_dpapi_sensitive_value(ciphertext_b64: str) -> str:
+    """`P'<base64>'`形式のDPAPI保護値(知見72)を復号する(Windows専用、知見112)。
+
+    このPAD保護値を実際に作成したWindowsユーザー自身が実行する場合のみ復号できる
+    (DPAPI CurrentUserスコープの原理上)。他のユーザー/マシンで実行すると
+    `DpapiDecryptionError`になる——これは正しい挙動であり、でっち上げた復号結果を
+    返すことは無い。
+    """
+    try:
+        import win32crypt  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise DpapiDecryptionError(
+            "win32crypt (pywin32) is required to decrypt DPAPI-protected PAD values; "
+            "this only works on Windows"
+        ) from exc
+    try:
+        raw = base64.b64decode(ciphertext_b64)
+        _, decrypted = win32crypt.CryptUnprotectData(raw, _DPAPI_ENTROPY, None, None, 0)
+        return decrypted.decode("utf-16-le")
+    except Exception as exc:
+        raise DpapiDecryptionError(
+            "Could not decrypt DPAPI-protected value (likely not running as the Windows "
+            "user who created it)"
+        ) from exc
 
 
 def _resolve_encoding(encoding: str) -> str:

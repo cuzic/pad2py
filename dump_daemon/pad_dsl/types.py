@@ -44,6 +44,25 @@ class RawExpr:
 
 
 @dataclass(frozen=True)
+class DpapiSensitiveLiteral:
+    """`P'<base64>'`形式のWindows DPAPI保護値(`Sensitive`属性付きパラメータ、知見72)。
+
+    `Cryptography.*`/`Compression.*`の鍵・パスワード系パラメータは、実機で常に
+    `P'<CryptProtectData保護済みBase64>'`という、通常の`$'''...'''`文字列リテラルとは
+    全く別の構文で直列化される(知見72で発見)。`pad_codegen`の`decrypt_dpapi_sensitive_value()`
+    (`pad_action_lib.cryptography_actions`、知見112)経由で、生成スクリプトの実行時に
+    Windows DPAPI(`win32crypt.CryptUnprotectData`)で復号できる——ただし復号できるのは
+    「生成スクリプトを、このPAD保護値を実際に作成したWindowsユーザー自身が実行する」
+    場合のみ(DPAPI CurrentUserスコープの仕組み上、PADを使っていた元のユーザー/
+    マシンでしか復号できない——`pad2py`が主眼とする「自分の既存フローを自分のマシンで
+    Pythonへ移行する」用途とは整合するが、他人が作成したフローのエクスポートを無関係な
+    マシンで変換する場合は復号できず実行時に例外になる)。
+    """
+
+    ciphertext_b64: str
+
+
+@dataclass(frozen=True)
 class EnumRef:
     """`Namespace.Enum.Value`形式(例: `Display.Icon.None`)の列挙値を表すマーカー型。
 
