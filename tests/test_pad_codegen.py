@@ -1788,3 +1788,50 @@ def test_generate_python_converts_increase_decrease_variable_with_real_variable_
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["Counter"] == 12
+
+
+def test_generate_python_from_compression_zip_unzip_without_password_converts() -> None:
+    # 実機キャプチャ(tier1_datetime_folder_clipboard_batch2.txt/tier1_web_xml_batch8.txt)
+    # はPasswordが常にWindows DPAPI保護値(`P'<base64>'`)で現れ、知見72の通りVarRef
+    # フォールバックになるためTODOのまま残る——`pad_codegen/actions/compression.py`
+    # 自身のdocstringが明記する「パスワード無しの圧縮/展開フローのために結線だけ用意する」
+    # という既に結線済みのコードパスを、Password省略(PDFのPassword省略と同じ既定値扱い、
+    # knowledge 78)の現実的な合成DSLとして検証し、実際にzip/unzip往復まで実行して確認する。
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        src_file = tmp_path / "hello.txt"
+        src_file.write_text("hello world", encoding="utf-8")
+        archive_path = tmp_path / "out.zip"
+        dest_dir = tmp_path / "extracted"
+
+        zip_dsl = (
+            f"Compression.ZipFiles ArchivePath: $'''{archive_path}''' "
+            f"FilesOrFoldersToZip: $'''{src_file}''' "
+            "CompressionLevel: Compression.CompressionLevel.BestBalanceOfSpeedAndCompression "
+            "ArchiveComment: $'''''' ZipFile=> ZipFile"
+        )
+        tree = build_block_tree(parse_dsl(zip_dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert (
+            f"ZipFile = compression_actions.zip_files('{archive_path}', "
+            f"('{src_file}' if isinstance('{src_file}', list) else ['{src_file}']), "
+            "compression_level=6, password='', archive_comment='')" in code
+        )
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert archive_path.is_file()
+
+        unzip_dsl = (
+            f"Compression.UnzipFiles ArchivePath: $'''{archive_path}''' "
+            f"DestinationFolder: $'''{dest_dir}''' IncludeMask: $'''*''' "
+            "ExcludeMask: $'''''' UnzippedFiles=> UnzippedFiles"
+        )
+        tree2 = build_block_tree(parse_dsl(unzip_dsl))
+        code2 = generate_python(tree2)
+        compile(code2, "<generated>", "exec")
+        assert "# TODO" not in code2
+        namespace2: dict[str, object] = {}
+        exec(code2, namespace2)
+        assert (dest_dir / "hello.txt").read_text(encoding="utf-8") == "hello world"

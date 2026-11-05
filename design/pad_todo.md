@@ -128,6 +128,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `CloseWindow`という一連の流れを結線完了させた(commit予定)。
 - [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
   「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
+  ✅ **パスワード省略(PAD UIでPasswordを設定しなかった)ケースの結線自体は既に正しく
+  実装・結線済みだと合成DSLで確認完了(知見109)**: `Compression.ZipFiles`/
+  `UnzipFiles`の`pad_codegen/actions/compression.py`は元々パスワード無しのケース
+  向けに結線だけ用意していた(docstring記載通り)が、それを検証する合成テストが
+  無かった。実際にzip作成→解凍の往復まで実行するテストを追加し、既存実装が正しい
+  ことを確認した。DPAPI保護値(`P'<base64>'`)自体の復号は本項目の通り依然未対応
+  (VM/暗号化環境模倣が必要、低優先度のまま)。
 - [x] 💻 `Web.*`の`UserAgent`/`FollowRedirection`が値を読み取らず無視されていたバグの修正。
   ✅ **VM不要・既存フィクスチャの再点検で修正完了(知見94)**: 知見93のパターン
   (値を読み取るように見えて実は無視)を他モジュールでも探索した結果発見。

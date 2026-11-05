@@ -2128,3 +2128,9 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 知見81の「Run実行+ファイル書き出し」手法を使い、まさにこのテストと同じDSL(`SET Counter TO 10`/`Variables.IncreaseVariable Value: Counter IncrementValue: 5`/`Variables.DecreaseVariable Value: Counter DecrementValue: 3`/`File.WriteText`で`%Counter%`を書き出し)を実機にペーストしてRunした結果、`Counter`は**`12`**(10+5-3)になった——既存の`pad_action_lib.variables_actions.increase_variable()`/`decrease_variable()`の実装(`value + increment`/`value - decrement`)、およびcodegen側の`{var} = variables_actions.{func}({var}, {amount})`という再代入パターンが、ともに実機の挙動と一致すると確定した。
 
 修正は不要(既存実装が既に正しかった)。`test_generate_python_converts_increase_decrease_variable_with_real_variable_ref`のdocstringを「推測」から「知見108で実機確認済み」に更新した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。なお`codegen_coverage.py`のカウントは実物フィクスチャ(`tier1_text_variables_batch4.txt`)基準のため、この合成テストでの確証は0/1(TODO)の表示自体を変えない——これは文字列リテラルの`Value`に対しては書き戻し先が無いためTODOのままで正しい設計判断であり、真の未解決ではない。
+
+## 109. `Compression.ZipFiles`/`UnzipFiles`のパスワード省略ケースを合成DSLで実行確認——既存の結線は正しく実装済みと確定(VM不要)
+
+`pad_codegen/actions/compression.py`は自身のdocstringで「実機キャプチャでは`Password`が常にWindows DPAPI保護値(`P'<base64>'`、知見72)で現れ`VarRef`へフォールバックするため、本モジュールはパスワード無しの圧縮/展開フローのために結線だけ用意する」と明記していたが、その「パスワード無しの場合の結線」自体を実行して確認する合成テストが無かった(知見78のPDF`Password`省略ケースと同じパターン)。
+
+`tempfile.TemporaryDirectory()`で実ファイルを用意し、`Compression.ZipFiles`(`ArchiveComment`のみ空文字列、`Password`省略)→実際にzipファイルが生成されることを確認→続けて`Compression.UnzipFiles`(`IncludeMask: '*'`・`ExcludeMask`省略)→展開結果が元のファイル内容と一致することを確認、という往復を合成DSLで実行するテストを追加した。`pad_action_lib.compression_actions.zip_files()`/`unzip_files()`(`pyzipper`経由のAES対応実装、zip-slip対策含む)・codegen側の結線(`_as_list_expr()`によるリスト/単一文字列の吸収含む)ともに既に正しく実装されていたため、コード修正は不要だった。VM不要(ローカルの`zipfile`/`pyzipper`のみで完結)。DPAPI保護値(`P'<base64>'`)自体の復号は依然未対応のまま(低優先度、pad_todo.md参照)。
