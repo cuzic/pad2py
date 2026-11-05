@@ -37,6 +37,7 @@ API呼び出しをでっち上げず`# TODO`コメントに倒す)を踏襲す�
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ..uipath_dsl.types import (
@@ -72,7 +73,12 @@ from .render import render_expr
 
 INDENT = "    "
 
-__all__ = ["INDENT", "generate_python", "generate_project_python"]
+__all__ = [
+    "INDENT",
+    "generate_python",
+    "generate_project_python",
+    "generate_project_from_json",
+]
 
 # .NET例外型名 → Pythonの組み込み例外へのマッピング。知見確認済みの
 # `s:Exception`(`System.Exception`のCLR名前空間エイリアス表記、知見6)
@@ -616,3 +622,32 @@ def generate_project_python(entry_path: str | Path) -> str:
             generate_python(wf, invoke_resolver=resolver, func_name=func_names[p]).rstrip("\n")
         )
     return "\n\n\n".join(parts) + "\n"
+
+
+def generate_project_from_json(project_dir: str | Path) -> str:
+    """`project.json`からエントリポイント(`"main"`フィールド、知見27)を
+    読み取り、`generate_project_python()`を呼ぶ便利関数。
+
+    v1スコープ(design/uipath_transpiler_roadmap.md Phase 1)はProcess
+    プロジェクトのみのため、`designOptions.outputType`が`"Process"`以外
+    (例: `"Library"`、知見26の`ActivityBuilder`形は`uipath_dsl`が未対応)
+    の場合は`ValueError`で明示的に拒否する——`parse_workflow_file`が
+    Flowchart/State Machineを拒否するのと同じ、スコープ外を黙って
+    誤変換しない方針。
+    """
+    project_dir = Path(project_dir)
+    project_json_path = project_dir / "project.json"
+    data = json.loads(project_json_path.read_text(encoding="utf-8"))
+
+    output_type = data.get("designOptions", {}).get("outputType")
+    if output_type is not None and output_type != "Process":
+        raise ValueError(
+            f"unsupported project outputType: {output_type!r} (expected 'Process', "
+            "v1 scope per design/uipath_transpiler_roadmap.md Phase 1)"
+        )
+
+    main = data.get("main")
+    if not main:
+        raise ValueError(f"project.json has no 'main' entry point: {project_json_path}")
+
+    return generate_project_python(project_dir / main)

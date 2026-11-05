@@ -22,7 +22,11 @@ from pathlib import Path
 
 import pytest
 
-from dump_daemon.uipath_codegen import generate_project_python, generate_python
+from dump_daemon.uipath_codegen import (
+    generate_project_from_json,
+    generate_project_python,
+    generate_python,
+)
 from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
@@ -465,3 +469,31 @@ def test_generate_project_python_missing_reference_falls_back_to_todo(tmp_path):
     assert "def Entry():" in code
     assert "# TODO: unresolved Invoke Workflow File: DoesNotExist.xaml" in code
     _compiles(code)
+
+
+def test_generate_project_from_json_reads_main_entry_point():
+    """design/evidence/uipath_xaml_probe/project.json(実機キャプチャ、知見27)の
+    `"main": "Main.xaml"`を読み取り、そこからgenerate_project_python()と
+    同じ結果(Main.xaml→Sub1.xamlの複数ファイル結線込み)を生成する。"""
+    code = generate_project_from_json(FIXTURE_DIR)
+    assert "def Main():" in code
+    assert "def Sub1(in_text):" in code
+    assert "Sub1(in_text='hello')" in code
+
+
+def test_generate_project_from_json_rejects_non_process_output_type(tmp_path):
+    """v1スコープはProcessプロジェクトのみ(design/uipath_transpiler_roadmap.md
+    Phase 1の決定)——Libraryプロジェクト(知見26のActivityBuilder形、
+    uipath_dsl未対応)を誤って変換しようとせず明示的に拒否する。"""
+    (tmp_path / "project.json").write_text(
+        '{"main": "Main.xaml", "designOptions": {"outputType": "Library"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="outputType"):
+        generate_project_from_json(tmp_path)
+
+
+def test_generate_project_from_json_requires_main_field(tmp_path):
+    (tmp_path / "project.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="main"):
+        generate_project_from_json(tmp_path)

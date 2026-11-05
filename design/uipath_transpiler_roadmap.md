@@ -171,6 +171,15 @@ Main.xaml+サブワークフローファイル+project.jsonから1つのPython�
   変換は実装していない(呼び出し元が戻り値を使う実例が出た時点で再検討)。
   関数名の衝突(同じ`class_name`を持つ複数ファイル)は`_2`サフィックスで
   機械的に回避するだけで、意味のある別名付けはしていない。
+- **(完了、2026-11-05)** `project.json`からのエントリポイント自動発見:
+  `generate_project_from_json(project_dir)`を追加した。`project.json`の
+  `"main"`フィールド(知見27で実機確認済みの実例`"main": "Main.xaml"`)を
+  読み取り、そこから`generate_project_python()`を呼ぶ。v1スコープは
+  Processプロジェクトのみ(Phase 1の決定)のため、
+  `designOptions.outputType`が`"Process"`以外(Library等)の場合は
+  `parse_workflow_file`のFlowchart/State Machine拒否と同じ方針で
+  `ValueError`により明示的に拒否する。`tests/test_uipath_codegen.py`に
+  3件追加、全614件通過。
 - Library参照(知見26・27)→CLR名前空間エイリアス経由の呼び出し→Python
   モジュール参照への変換。ただし**ソースが手元に無い外部Library(他人の
   Library・Marketplace経由)は`.nupkg`からの復元が技術的に不可能**
