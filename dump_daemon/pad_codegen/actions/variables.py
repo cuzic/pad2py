@@ -14,13 +14,14 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 知見85で実機確認済み(文字列は大文字小文字区別、数値文字列と数値は型をまたいで
 等価)のため結線済み。
 
+`Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`の出力契約は
+知見89で実機確認済み: `DataTableMatches`は`(行, 列)`の0始まりペアのリスト(行→列の
+順で走査、`AllMatches: False`でも最初の1件だけを含むリストのまま)。専用の
+`find_item_in_datatable_everywhere()`を実装・結線した。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
 - `Variables.FilterDataTable`/`Variables.JoinDataTable`: フィルタ/結合条件の
   DataTableスキーマが未確認——コードを生成すると実行時に必ず壊れる。
-- `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`: 実機の
-  出力契約(`DataTableMatches`への一致結果)が、`pad_action_lib`の
-  `find_or_replace_in_datatable()`(置換件数の`int`を返す、`replace_value`必須)
-  と一致しない——別の「検索のみ」の関数が必要だが未実装。
 - `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText:
   False`(数値らしき文字列を実際の数値型に変換すると推測されるが未確認)の場合:
   `pad_action_lib.datatable`は常に文字列のまま保持する(`ReadFieldsAsText: True`相当)
@@ -170,6 +171,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if table is None or row is None:
             return None
         return [f"{prefix}variables_actions.add_row_to_datatable({table}, {row})"]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere":
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        all_matches = safe_render(p.get("AllMatches"))
+        match_case = safe_render(p.get("MatchCase"))
+        entire_cell = safe_render(p.get("MatchEntireCellContents"))
+        if None in (table, value, all_matches, match_case, entire_cell) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
+            f"{table}, {value}, all_matches={all_matches}, match_case={match_case}, "
+            f"match_entire_cell_contents={entire_cell})"
+        ]
 
     if action_id == "Variables.DeleteEmptyRowsFromDataTable":
         table = safe_render(p.get("DataTable"))

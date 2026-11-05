@@ -130,6 +130,29 @@ def test_find_or_replace_in_datatable() -> None:
     assert table[0]["a"] == "HI"
 
 
+def test_find_item_in_datatable_everywhere_returns_row_col_pairs() -> None:
+    # design/dsl_format_findings.md 知見89で実機確認済みの出力契約。
+    table = [{"a": "apple", "b": "banana"}, {"a": "Apple", "b": "cherry"}]
+    assert va.find_item_in_datatable_everywhere(table, "apple") == [(0, 0), (1, 0)]
+
+
+def test_find_item_in_datatable_everywhere_all_matches_false_stops_at_first() -> None:
+    table = [{"a": "apple", "b": "banana"}, {"a": "Apple", "b": "cherry"}]
+    assert va.find_item_in_datatable_everywhere(table, "apple", all_matches=False) == [(0, 0)]
+
+
+def test_find_item_in_datatable_everywhere_entire_cell_contents() -> None:
+    table = [{"a": "apple", "b": "banana"}, {"a": "Apple", "b": "cherry"}]
+    assert va.find_item_in_datatable_everywhere(
+        table, "apple", match_entire_cell_contents=True
+    ) == [(0, 0), (1, 0)]
+
+
+def test_find_item_in_datatable_everywhere_no_match_returns_empty() -> None:
+    table = [{"a": "apple", "b": "banana"}]
+    assert va.find_item_in_datatable_everywhere(table, "zzz_nomatch") == []
+
+
 def test_delete_empty_and_duplicate_rows() -> None:
     table = [{"a": "", "b": ""}, {"a": "1", "b": "2"}, {"a": "1", "b": "2"}]
     va.delete_empty_rows_from_datatable(table)

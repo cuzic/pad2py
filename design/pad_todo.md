@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(26/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(25/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -106,6 +106,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
   ブランチ0/4→4/4、全体カバレッジ82%→83%)。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
+- [x] 💻🖥️ `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`の出力契約
+  (`DataTableMatches`の形)を実機確認。
+  ✅ **実機確認・結線完了(知見89)**: RDP不要——`AddRowToDataTable`/`AddColumnToDataTable`等
+  Tier1で既に結線済みのアクションだけでDataTableを組み立て、知見81の「Run実行+ファイル
+  書き出し」手法で検証。`DataTableMatches`は`(行, 列)`の0始まりペアのリスト(行→列の順、
+  `AllMatches: False`でも型は変わらず最初の1件だけのリスト)。既存の`_cell_matches()`を
+  再利用した`find_item_in_datatable_everywhere()`を実装・結線した
+  (`codegen_coverage.py`: 176/202→177/202)。
 - [x] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
   ✅ **実機確認・結線完了(知見86)**: VMが空いたタイミングで知見81の手法を使い、
   `1 + $'''2'''` = `3`・`$'''2''' + 1` = `3`・`$'''a''' + $'''b'''` = `"ab"`を

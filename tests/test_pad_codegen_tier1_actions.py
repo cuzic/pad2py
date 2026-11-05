@@ -97,9 +97,13 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     # 比較エンジンの意味論を実機確認(knowledge 85)したため結線される。
     assert "ListDifference = variables_actions.subtract_lists('sample', 'sample')" in code
     assert "IntersectionList = variables_actions.find_common_list_items('sample', 'sample')" in code
+    # 出力契約(行,列のペアのリスト)を実機確認(knowledge 89)したため結線される。
+    assert (
+        "DataTableMatches = variables_actions.find_item_in_datatable_everywhere('sample', 'sample', "
+        "all_matches=True, match_case=False, match_entire_cell_contents=False)" in code
+    )
     # Deliberately unconverted: unverified-schema actions.
     for action_id in (
-        "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
         "Variables.FilterDataTable",
         "Variables.JoinDataTable",
     ):

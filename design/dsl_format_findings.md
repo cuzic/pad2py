@@ -1898,3 +1898,22 @@ Errorsタブの実際のメッセージは`"The statement isn't allowed inside e
 **確認できた事実**: PADの`=`/`<>`演算子は、知見85で確認した`SubtractLists`等の内部比較エンジン(`ComparisonCalculator.Compare`)と**全く同じ型変換規則**に従う——つまりPAD内部では比較系の全機能(条件式演算子・リスト比較エンジン)が同一の比較ロジックを共有していると考えられる。これにより知見85で残していた留保事項が解消された。
 
 **修正内容**: `dump_daemon/pad_action_lib/expr_runtime.py`に`pad_equal(a, b)`(知見85の`_pad_compare_equal`と同じロジック: 直接の`==`が偽の場合のみ両辺を`float()`でパースして再比較)を追加し、`variables_actions.py`の`_pad_compare_equal`はこちらの再エクスポートに統一(ロジックの重複を解消)。`pad_codegen/render.py`の`render_condition()`(`IF`/`CASE`/`WHILE`で使用)と`_render_expr_as_python()`(`SET`複合式で使用)の両方で、`=`→`expr_runtime.pad_equal(a, b)`・`<>`→`not expr_runtime.pad_equal(a, b)`に変更した(Pythonの素直な`==`/`!=`では数値文字列と数値のクロス型比較を再現できないため、知見86の`pad_add`と同じ理由で専用ヘルパーに委ねる)。既存の`=`演算子を使うテスト4件が期待通り「良い意味で」壊れ、新しい生成結果に合わせて修正した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 89. B節の`Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`の出力契約を実機確認——`DataTableMatches`は`(行, 列)`の0始まりペアのリスト
+
+A/B節のRDP必須項目を再点検した結果、`FindOrReplaceInDataTable.FindItemInDataTableEverywhere`だけは「出力契約(`DataTableMatches`の形)が未確認」という理由で未結線だったが、これは`AddRowToDataTable`/`AddColumnToDataTable`等、既にTier1として実機確認・結線済みのアクションだけでDataTableを組み立てられるため、知見81の「Run実行+ファイル書き出し」手法をそのまま適用できることに気づいた(RDP不要)。
+
+新規テストフロー(`find_replace_check`、保存せず破棄)で、`CreateNewDatatable`+`AddColumnToDataTable`(2列作成)+`CreateNewList`/`AddItemToList`/`AddRowToDataTable`(2行追加: `["apple","banana"]`・`["Apple","cherry"]`)でDataTableを構築し、`FindItemInDataTableEverywhere`を3パターンで実行、結果を`File.WriteText`で書き出した。
+
+**実機確認結果**:
+
+| パラメータ | 結果(`%DataTableMatches%`の生テキスト) | 解釈 |
+| --- | --- | --- |
+| `ValueToFind: "apple"`・`AllMatches: True`・`MatchCase: False`・`MatchEntireCellContents: False` | `"0, 0\n1, 0"` | (0,0)=`"apple"`・(1,0)=`"Apple"`(大文字小文字無視で部分一致)の2件 |
+| 同条件で`AllMatches: False` | `"0, 0"` | 最初の1件のみ(行→列の順で走査した最初の一致)——スカラーではなく要素数1のリストのまま(直列化形式が変わらないため) |
+| 同条件で`MatchEntireCellContents: True` | `"0, 0\n1, 0"` | セル全体一致でも(大文字小文字無視のため)両方一致、結果は変わらず |
+| `ValueToFind: "zzz_nomatch"` | `""`(空) | 一致無しは空リスト |
+
+**確認できた事実**: `DataTableMatches`は`(行インデックス, 列インデックス)`の0始まりペアのリストで、行→列の順で走査して見つかった順に並ぶ。`AllMatches: False`でも型は変わらず(最初の1件だけを含むリストのまま)。`MatchCase`/`MatchEntireCellContents`の意味論は知見85/知見のFindOrReplaceで既に確認済みの`_cell_matches()`ロジック(大文字小文字無視・部分一致/全体一致の切り替え)とそのまま一致した。
+
+**修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`find_item_in_datatable_everywhere()`(既存の`_cell_matches()`ヘルパーを再利用、`is_regex=False`固定)を実装し、`pad_codegen/actions/variables.py`の`Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`を結線した(`codegen_coverage.py`: 176/202→177/202、87%→88%)。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。

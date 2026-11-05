@@ -198,6 +198,32 @@ def find_or_replace_in_datatable(
     return replaced
 
 
+def find_item_in_datatable_everywhere(
+    table: DataTable,
+    value_to_find: str,
+    *,
+    all_matches: bool = True,
+    match_case: bool = False,
+    match_entire_cell_contents: bool = False,
+) -> list[tuple[int, int]]:
+    """design/dsl_format_findings.md 知見89で実機確認済みの出力契約。
+
+    `DataTableMatches`は`(行インデックス, 列インデックス)`の0始まりペアのリストで、
+    行→列の順で走査して見つかった順に並ぶ。`AllMatches: False`でも(スカラーではなく)
+    最初の1件だけを含むリストのまま返る(実機のテキスト直列化`"0, 0"`は要素数1の
+    リストと要素数2のリスト`"0, 0\\n1, 0"`で同じ"行, 列"形式が繰り返されるのみで、
+    型が変わる兆候は無かった)。
+    """
+    matches: list[tuple[int, int]] = []
+    for row_idx, row in enumerate(table):
+        for col_idx, cell in enumerate(row.values()):
+            if _cell_matches(cell, value_to_find, False, not match_case, match_entire_cell_contents):
+                matches.append((row_idx, col_idx))
+                if not all_matches:
+                    return matches
+    return matches
+
+
 def delete_empty_rows_from_datatable(table: DataTable) -> None:
     table[:] = [row for row in table if any(str(v).strip() for v in row.values())]
 
