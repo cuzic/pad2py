@@ -228,7 +228,8 @@ def test_web_xml_batch8_converts_except_dpapi_password() -> None:
     assert (
         "_soap_service_result = web_actions.invoke_soap_service('sample', "
         "request_body='sample', custom_headers='sample', connection_timeout=30, "
-        f"follow_redirection=True, user_agent={_UA!r})" in code
+        f"follow_redirection=True, user_agent={_UA!r}, fail_on_error_status=False, "
+        "trim_request_body=True, accept_untrusted_certificates=False)" in code
     )
     assert "SoapServiceResponse = _soap_service_result.response" in code
     assert "StatusCode2 = _soap_service_result.status_code" in code
@@ -254,3 +255,20 @@ def test_cmd_batch9_converts_all_actions_as_session_method_calls() -> None:
     assert "CmdOutput = CmdSession.read()" in code
     assert "CmdSession.wait_for_text('sample', timeout=0, is_regex=False, ignore_case=True)" in code
     assert "CmdSession.close()" in code
+
+
+def test_folder_get_files_falls_back_to_todo_when_secondary_sort_key_specified() -> None:
+    # SortBy1だけでなくSortBy2/3もNoSortであることを確認するゲート(知見94の追補)。
+    # SortBy1: NoSortでもSortBy2に実際の並べ替えキーが指定されている場合は
+    # でっち上げたコードを出力せずTODOへ倒れる。
+    dsl = (
+        "Folder.GetFiles Folder: $'''sample''' FileFilter: $'''*''' "
+        "IncludeSubfolders: False FailOnAccessDenied: True "
+        "SortBy1: Folder.SortBy.NoSort SortDescending1: False "
+        "SortBy2: Folder.SortBy.Name SortDescending2: False "
+        "SortBy3: Folder.SortBy.NoSort SortDescending3: False Files=> Files"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "folder_actions.get_files_in_folder" not in code
+    assert _todo("Folder.GetFiles") in code

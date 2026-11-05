@@ -6,9 +6,11 @@ tier1_folder_batch5.txt`・知見66の`tier1_datetime_folder_clipboard_batch2.tx
 確認済み。
 
 `Folder.GetFiles`/`Folder.GetSubfolders`の`SortBy1/2/3`は実機で全て`NoSort`
-(未使用)のケースしか確認できていないため、その場合のみ`sort_by=None`相当
-(省略)で呼び出す——実際に並べ替えが指定された場合の複合キー構築は未検証のため
-フォールバックに委ねる。
+(未使用)のケースしか確認できていないため、`SortBy1`/`SortBy2`/`SortBy3`の
+**全て**が`NoSort`の場合のみ`sort_by=None`相当(省略)で呼び出す(従来は
+`SortBy1`だけをゲートしており、`SortBy1: NoSort`かつ`SortBy2`/`SortBy3`に
+実際の並べ替えキーが指定されているケースを見逃す潜在的な不整合があった)。
+実際に並べ替えが指定された場合の複合キー構築は未検証のためフォールバックに委ねる。
 
 `Folder.GetSpecialFolder`は実機で確認できた唯一の値`DesktopDirectory`だけを
 `pad_action_lib.folder_actions.get_special_folder()`が知る`"Desktop"`へ対応付け、
@@ -81,9 +83,15 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         include_sub = safe_render(p.get("IncludeSubfolders"))
         fail_on_denied = safe_render(p.get("FailOnAccessDenied"))
         sort_by1 = enum_last(p.get("SortBy1"))
-        if None in (folder, file_filter, include_sub, fail_on_denied, sort_by1):
+        sort_by2 = enum_last(p.get("SortBy2"))
+        sort_by3 = enum_last(p.get("SortBy3"))
+        if None in (folder, file_filter, include_sub, fail_on_denied, sort_by1, sort_by2, sort_by3):
             return None
-        if sort_by1 != "NoSort" or not node.output_var:
+        # SortBy1だけでなくSortBy2/3もNoSortであることを確認する——SortBy1がNoSortでも
+        # SortBy2/3に実際の並べ替えキーが指定されているケースを見逃さないための完全なゲート。
+        if sort_by1 != "NoSort" or sort_by2 != "NoSort" or sort_by3 != "NoSort":
+            return None
+        if not node.output_var:
             return None
         return [
             f"{prefix}{node.output_var} = folder_actions.get_files_in_folder({folder}, "
@@ -97,9 +105,13 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         include_sub = safe_render(p.get("IncludeSubfolders"))
         fail_on_denied = safe_render(p.get("FailOnAccessDenied"))
         sort_by1 = enum_last(p.get("SortBy1"))
-        if None in (folder, folder_filter, include_sub, fail_on_denied, sort_by1):
+        sort_by2 = enum_last(p.get("SortBy2"))
+        sort_by3 = enum_last(p.get("SortBy3"))
+        if None in (folder, folder_filter, include_sub, fail_on_denied, sort_by1, sort_by2, sort_by3):
             return None
-        if sort_by1 != "NoSort" or not node.output_var:
+        if sort_by1 != "NoSort" or sort_by2 != "NoSort" or sort_by3 != "NoSort":
+            return None
+        if not node.output_var:
             return None
         return [
             f"{prefix}{node.output_var} = folder_actions.get_subfolders_in_folder({folder}, "

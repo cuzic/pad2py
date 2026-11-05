@@ -1998,3 +1998,15 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **修正内容**: `dump_daemon/pad_action_lib/web_actions.py`の`invoke_web_service()`/`invoke_soap_service()`に`follow_redirection: bool = True`・`user_agent: str | None = None`引数を追加し、`httpx.Client(follow_redirects=follow_redirection, ...)`・`headers.setdefault("User-Agent", user_agent)`を適用するようにした(`download_from_web()`と同じパターンに統一)。`pad_codegen/actions/web.py`の3アクション全ての結線で`FollowRedirection`/`UserAgent`パラメータを読み取り、実際に渡すよう修正した(`Web.DownloadFromWeb.Download`は`user_agent`を実装側は既に対応していたのに結線漏れだった)。`httpx.Client`のコンストラクタ引数を捕捉するテスト(`monkeypatch`でクラスを差し替え)で`follow_redirects`が正しく渡ることを、`httpx.MockTransport`で`User-Agent`ヘッダーが正しく送られることをそれぞれ確認した。
 
 **留保事項**: `ClearCookies`/`EncodeRequestBody`は依然未対応のまま意図的にTODOへ残す。`ClearCookies`はPAD側がフロー実行全体で永続的なCookieセッションを持つ前提の挙動と推測されるが、`pad_action_lib`側は呼び出し毎に新規`httpx.Client`を作る設計のためCookie永続化という概念自体が無く、対応には`CodegenContext`へセッション状態を持たせる等の大きな設計変更を伴う。`EncodeRequestBody`はdecompile調査が未着手のため意味論が未確認のまま。
+
+## 95. 【VM不要、全フィクスチャの機械的突き合わせで発見】`Web.InvokeSoapService`の`FailOnErrorStatus`/`TrimRequestBody`/`AcceptUntrustedCertificates`欠落、`Folder.GetFiles`/`GetSubfolders`の`SortBy2/3`ゲート漏れを同時に修正
+
+知見93・94で見つけた「値を読み取っているように見えて実は無視」パターンを体系的に洗い出すため、`tests/fixtures/*.txt`の各実機キャプチャ済みパラメータ名と、対応する`pad_codegen/actions/*.py`の`generate()`分岐内で実際に`p.get(...)`参照されているパラメータ名を機械的に突き合わせるスクリプトを書いて全モジュールを一括点検した(VM不要、ローカルのみ)。
+
+**発見1: `Web.InvokeSoapService.InvokeSoapService`** — 実機キャプチャには`FailOnErrorStatus: False`・`TrimRequestBody: True`・`AcceptUntrustedCertificates: False`が明示的に含まれているが、`invoke_soap_service()`自体がこれらの引数を一切受け付けておらず(`invoke_web_service()`への委譲時に常に既定値のまま呼んでいた)、`pad_codegen`側もこれらを読み取っていなかった。たまたま実機の値が全て既定値と一致していたため今まで表面化しなかった潜在バグ。`invoke_soap_service()`に3引数を追加し`invoke_web_service()`へ素通りさせ、`pad_codegen/actions/web.py`の対応する分岐で実際に読み取るよう修正した。
+
+**発見2: `Web.InvokeWebService`/`InvokeSoapService`の`Encoding`** — `DownloadFromWeb`では`Encoding: AutoDetect`であることをゲートで確認しているが、`InvokeWebService`/`InvokeSoapService`では`Encoding`パラメータ自体を一切読み取らず、値を問わず常に変換を進めてしまっていた。`DownloadFromWeb`と同じ`AutoDetect`確認ゲートを追加した(現時点で両アクションとも応答エンコーディングの明示上書き機能自体を実装していないため、`AutoDetect`以外の値が来たら安全にTODOへ倒す)。
+
+**発見3: `Folder.GetFiles`/`Folder.GetSubfolders`の`SortBy2`/`SortBy3`** — 既存のゲートは`SortBy1 != "NoSort"`のみを確認しており、`SortBy1: NoSort`かつ`SortBy2`/`SortBy3`に実際の並べ替えキーが指定されている(2次・3次キーだけを使うケース)を見逃していた。実機フィクスチャでは3つとも常に`NoSort`だったため今まで表面化しなかった。`SortBy2`/`SortBy3`も`NoSort`であることを確認する完全なゲートに修正した。
+
+**意義**: 知見93・94で見つけた「値を読み取るふりをして無視する」パターンが、個別の思いつきではなく体系的な見落としとして複数箇所に存在していたことが、機械的な突き合わせによって確認できた。この種のバグはテストでは検出されない(生成されたコードがコンパイル・実行自体は成功するため)——実機の既定値が偶然TODOフォールバックの既定動作と一致する限り症状が出ないサイレントな不整合である。

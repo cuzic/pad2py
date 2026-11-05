@@ -169,6 +169,9 @@ def invoke_soap_service(
     connection_timeout: float = 30,
     follow_redirection: bool = True,
     user_agent: str | None = None,
+    fail_on_error_status: bool = False,
+    trim_request_body: bool = True,
+    accept_untrusted_certificates: bool = False,
     *,
     client: httpx.Client | None = None,
 ) -> InvokeWebServiceResult:
@@ -182,5 +185,8 @@ def invoke_soap_service(
         connection_timeout=connection_timeout,
         follow_redirection=follow_redirection,
         user_agent=user_agent,
+        fail_on_error_status=fail_on_error_status,
+        trim_request_body=trim_request_body,
+        accept_untrusted_certificates=accept_untrusted_certificates,
         client=client,
     )

@@ -64,9 +64,15 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         follow = safe_render(p.get("FollowRedirection"))
         user_agent = safe_render(p.get("UserAgent"))
         accept_untrusted = safe_render(p.get("AcceptUntrustedCertificates"))
+        encoding = enum_last(p.get("Encoding"))
         values = (url, method, accept, content_type, custom_headers, request_body, timeout,
-                  fail_on_error, trim_body, follow, user_agent, accept_untrusted)
+                  fail_on_error, trim_body, follow, user_agent, accept_untrusted, encoding)
         if None in values:
+            return None
+        # DownloadFromWebと同じ扱い: `AutoDetect`は「エンコーディングを強制しない」こと
+        # を意味するため確認のみ行い値は渡さない。他の値は実機確認が無いためTODOへ倒す
+        # (従来はEncodingを一切読み取らず、設定されていても無条件に進めてしまっていた)。
+        if encoding != "AutoDetect":
             return None
         response_var = node.output_vars.get("Response")
         headers_var = node.output_vars.get("ResponseHeaders")
@@ -97,7 +103,15 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         timeout = safe_render(p.get("ConnectionTimeout"))
         follow = safe_render(p.get("FollowRedirection"))
         user_agent = safe_render(p.get("UserAgent"))
-        if None in (endpoint, custom_headers, request_body, timeout, follow, user_agent):
+        fail_on_error = safe_render(p.get("FailOnErrorStatus"))
+        trim_body = safe_render(p.get("TrimRequestBody"))
+        accept_untrusted = safe_render(p.get("AcceptUntrustedCertificates"))
+        encoding = enum_last(p.get("Encoding"))
+        values = (endpoint, custom_headers, request_body, timeout, follow, user_agent,
+                  fail_on_error, trim_body, accept_untrusted, encoding)
+        if None in values:
+            return None
+        if encoding != "AutoDetect":
             return None
         response_var = node.output_vars.get("Response")
         headers_var = node.output_vars.get("ResponseHeaders")
@@ -109,7 +123,8 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{tmp} = web_actions.invoke_soap_service({endpoint}, "
             f"request_body={request_body}, custom_headers={custom_headers}, "
             f"connection_timeout={timeout}, follow_redirection={follow}, "
-            f"user_agent={user_agent})"
+            f"user_agent={user_agent}, fail_on_error_status={fail_on_error}, "
+            f"trim_request_body={trim_body}, accept_untrusted_certificates={accept_untrusted})"
         ]
         if response_var:
             lines.append(f"{prefix}{response_var} = {tmp}.response")

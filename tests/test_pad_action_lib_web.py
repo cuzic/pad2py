@@ -196,3 +196,36 @@ def test_invoke_web_service_passes_follow_redirection_to_new_client(monkeypatch)
     monkeypatch.setattr(web.httpx, "Client", _SpyClient)
     web.invoke_web_service("http://example.test/", follow_redirection=False)
     assert captured["follow_redirects"] is False
+
+
+def test_invoke_soap_service_passes_trim_request_body() -> None:
+    # 知見94の追補: invoke_soap_service()はinvoke_web_service()の薄いラッパーだが、
+    # fail_on_error_status/trim_request_body/accept_untrusted_certificatesを実機
+    # キャプチャ済みの値にかかわらず常に既定値のまま呼び出していた(codegen側も
+    # これらを読み取っていなかった)——現在は明示的に渡せる。
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.read()
+        return httpx.Response(200, text="<soap/>")
+
+    web.invoke_soap_service(
+        "http://example.test/soap",
+        request_body="  <Envelope/>  ",
+        trim_request_body=False,
+        client=_client(handler),
+    )
+    assert captured["body"] == b"  <Envelope/>  "
+
+
+def test_invoke_soap_service_passes_fail_on_error_status() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="<soap/>")
+
+    with pytest.raises(web.InvokeWebServiceError):
+        web.invoke_soap_service(
+            "http://example.test/soap",
+            request_body="<Envelope/>",
+            fail_on_error_status=True,
+            client=_client(handler),
+        )

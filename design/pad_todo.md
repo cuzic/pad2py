@@ -134,6 +134,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   httpxの既定`follow_redirects=False`が実機既定`True`と食い違うサイレントなバグ
   だったため修正・結線した。`ClearCookies`/`EncodeRequestBody`は設計変更を伴う/
   decompile未着手のため依然未対応。
+  ✅ **体系的な突き合わせで追加2件発見・修正完了(知見95)**: 全フィクスチャの
+  実機キャプチャ済みパラメータと各codegen分岐の`p.get(...)`参照を機械的に
+  突き合わせたところ、`Web.InvokeSoapService`の`FailOnErrorStatus`/
+  `TrimRequestBody`/`AcceptUntrustedCertificates`が`invoke_soap_service()`
+  自体に引数が無く常に既定値のまま呼ばれていた(実機値が偶然既定値と一致していた
+  ため今まで症状無し)バグと、`Folder.GetFiles`/`GetSubfolders`の`SortBy1`しか
+  ゲートしておらず`SortBy2`/`SortBy3`の実際の並べ替えキー指定を見逃す不完全な
+  ゲートを発見・修正した。
 
 ## B. 一度も実機検証していない領域(TODOより深い穴)
 
