@@ -80,6 +80,8 @@ from .render import (
     VB_CSTR_HELPER_SOURCE,
     VB_DIV_HELPER_NAME,
     VB_DIV_HELPER_SOURCE,
+    VB_MOD_HELPER_NAME,
+    VB_MOD_HELPER_SOURCE,
     VB_NUM_HELPER_NAME,
     VB_NUM_HELPER_SOURCE,
     render_expr,
@@ -167,6 +169,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `_vb_cdbl`(`CDbl`のNothing/桁区切り文字列強制先、知見52)も同様。
     if any(f"{VB_CDBL_HELPER_NAME}(" in line for line in body):
         imports.append(VB_CDBL_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_mod`(`Mod`のゼロ除算の型依存処理先、知見54)も同様。
+    if any(f"{VB_MOD_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_MOD_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

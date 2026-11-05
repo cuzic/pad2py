@@ -2498,9 +2498,8 @@ UiPath関連テスト全130件通過(`test_uipath_codegen.py`/`test_uipath_expr.
 `test_uipath_dsl.py`/`test_uipath_selector.py`)。
 
 **既知の残課題(2026-11-05時点、知見50で`/`のゼロ除算、知見51でBoolean
-オペランドの数値変換はいずれも解消済み)**:
-- `Mod`/`\`のゼロ除算は未解消のまま残る(知見50参照——`/`と違い型依存の
-  ため静的型情報が無いと正しく実装できない)。
+オペランドの数値変換、知見54で`Mod`/`\`のゼロ除算もいずれも解消済み)**:
+今のところ残課題なし。
 
 ## 50. `/`演算子のゼロ除算がVBのDouble方式(Infinity/NaN)になると確定——Pythonは`ZeroDivisionError`で即クラッシュする(VM不使用、公式ドキュメントで確定、知見49の残課題を一部解消)
 
@@ -2703,6 +2702,86 @@ VBの挙動と食い違っていた(知見52作業時には`CInt`まで手が回
 済み(前のtickで実施、`CBool`は既存実装が正しいことを確認済み、
 `&H`/`&O`16進・8進リテラル文字列の非対応のみ軽微な既知の限界として
 残る)。
+
+## 54. `Mod`/`\`の残課題(ゼロ除算の型依存・`\`の銀行丸め先行)を.NETランタイム本体の別ファイルで解決——知見44〜53で最後まで残っていた「型依存で対応不可」の判断を覆した(VM不使用)
+
+知見50で見つけた`Conversions.vb`(`CDbl`/`CInt`/`CBool`等の変換**関数**の
+実体)に続き、比較・算術演算子を実行時にObject型オペランドへ適用する
+ディスパッチャ(`Microsoft.VisualBasic.CompilerServices.Operators`クラス)
+の実体である`Operators.vb`(同じ`dotnet/runtime`リポジトリ、同じ
+ディレクトリ内の別ファイル)の存在に気づき確認した。これにより、
+知見49・50で「型依存のため静的型情報が無いと対応不可」と判断していた
+`Mod`/`\`のゼロ除算について、方針を修正する材料が得られた。
+
+**確定した内容**:
+- **`Mod`のゼロ除算は実際に型依存**(`Operators.vb`の`ModObject`関数で
+  確認——オペランドの`TypeCode`(Integer系/Decimal/Single/Double)に応じて
+  `ModInt32`/`ModInt64`/`ModDecimal`/`ModSingle`/`ModDouble`等へ
+  ディスパッチするだけで、ゼロ除数の特別扱いは無い。結果はCLRのネイティブ
+  `Mod`演算そのものに委ねられる——整数系は`DivideByZeroException`相当の
+  例外、浮動小数点系(Single/Double)は`NaN`(Microsoft Learn「Mod
+  Operator」の「floating-point division returns Double.NaN」とも整合、
+  知見49で既に確認済みだった内容の裏取り)。**この型依存性自体は
+  知見49・50の判断通り**だが、`uipath_codegen`は静的な宣言型を追跡
+  しておらず、代わりに`_vb_num()`後の**実行時のPython型**(`int`→VBの
+  整数系の代理、`float`→VBの浮動小数点系の代理)で判定することにした
+  ——VBランタイム自身も`TypeCode`(実行時の型情報)で分岐しているため、
+  この代理方式は「静的型が必要」という以前の判断ほど悲観的でなくてよい
+  と判明した(知見45の`Not`以来使ってきた設計と同じ発想)。
+- **`\`のゼロ除算は型によらず常に例外**(Microsoft Learn「\ Operator」の
+  「Attempted Division by Zero」節: 「This is true for all numeric data
+  types of the operands」)——`Mod`と違い型依存ではなく、Pythonの`/`も
+  ゼロ除数で型によらず常に`ZeroDivisionError`を送出するため、この点は
+  既に無変換のまま一致していたと判明(修正不要)。
+- **(新発見)`\`は除算の**前**にオペランドをLongへ変換し、その変換は
+  銀行丸めの対象になる**(同ページRemarks節: 「Before performing the
+  division, Visual Basic attempts to convert any floating-point numeric
+  expression to Long... The conversion to Long is also subject to
+  banker's rounding」)——`\`の実機未確認だった残課題として今回新たに
+  発見した。例: `7.5 \ 2`は`7.5`が銀行丸めで`8`になってから切り捨て
+  除算され`4`になる(丸め無しの単純な`int(7.5/2)`は`3`で食い違う)。
+  `67 \ -3 = -22`のような整数オペランド例では丸めが発生しないため
+  この食い違いは見過ごされていた。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `Mod`を型依存の
+ゼロ除算ロジックを持つ`_vb_mod()`ヘルパー経由に変更:
+```python
+def _vb_mod(a, b):
+    if isinstance(a, bool):
+        a = -1 if a else 0
+    elif a is None:
+        a = 0
+    elif isinstance(a, str):
+        a = float(a)
+    if isinstance(b, bool):
+        b = -1 if b else 0
+    elif b is None:
+        b = 0
+    elif isinstance(b, str):
+        b = float(b)
+    if b == 0:
+        if isinstance(a, float) or isinstance(b, float):
+            return float("nan")
+        raise ZeroDivisionError("Mod by zero (VB would raise DivideByZeroException)")
+    return a - (b * int(a / b))
+```
+`\`は両オペランドを`round()`(知見42で確認済みの銀行丸め)してから
+切り捨て除算するよう変更(`int(round(_vb_num(left)) / round(_vb_num(right)))`)。
+
+`tests/test_uipath_codegen.py`に3件追加
+(`test_mod_by_zero_with_float_operand_returns_nan_not_exception`、
+`test_mod_and_intdiv_by_zero_with_integer_operands_raises`、
+`test_intdiv_rounds_operands_to_long_before_truncating_not_truncating_raw_value`)。
+UiPath関連テスト全160件通過、回帰無し。
+
+**この知見で確定したこと**: 知見44〜53で唯一「型依存のため対応不可」
+として残していた`Mod`/`\`のゼロ除算を、実行時型による代理判定という
+既存の設計パターンを適用することで解決できた——これにより知見44〜54の
+「VB.NET演算子・型変換関数の値の食い違い」系統点検は、公式に確認
+できた範囲で完全に完了した(現時点で既知の残課題は無し)。この経緯は
+「型依存だから対応不可」という判断自体を鵜呑みにせず、より多くの一次
+情報源(ランタイム本体のソース)に当たることで覆せる場合があるという
+教訓として記録する価値がある。
 
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

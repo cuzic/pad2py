@@ -736,6 +736,77 @@ def test_division_by_zero_matches_vb_double_semantics_not_python_zerodivisionerr
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # .NETランタイム本体のソース(Operators.vbのModObject、知見54)で
+        # Modのゼロ除算が型依存(浮動小数点系はNaN、整数系は例外)と確定。
+        ("10.5 Mod 0.0", "NaN"),
+        ("0.0 Mod 0", "NaN"),
+    ],
+)
+def test_mod_by_zero_with_float_operand_returns_nan_not_exception(
+    vb_text: str, expected: str
+) -> None:
+    """知見54: `Mod`のゼロ除算は型依存——浮動小数点系オペランドが絡む
+    場合はVBは`NaN`を返す(整数系のみの場合は例外、下記の別テストで確認)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize("vb_text", ["10 Mod 0", "10 \\ 0"])
+def test_mod_and_intdiv_by_zero_with_integer_operands_raises(vb_text: str) -> None:
+    """知見54: `Mod`(整数系オペランドのみの場合)と`\\`(型によらず常に)
+    のゼロ除算はVBで例外になる(それぞれ`DivideByZeroException`)——
+    Pythonの`ZeroDivisionError`は例外クラスは異なるが「静かに間違った
+    結果を返さず失敗を伝播させる」という点で挙動が一致する。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with pytest.raises(ZeroDivisionError):
+        namespace["Test"]()
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `\`は除算の前にオペランドをLongへ変換する際、銀行丸めを適用する
+        # (Microsoft Learn「\ Operator」Remarks節、知見54)——`7.5 \ 2`は
+        # `7.5`が銀行丸めで`8`になってから切り捨て除算され`4`になる。
+        # 丸め無しの単純な`int(7.5/2)`は`3`になり食い違う。
+        ("7.5 \\ 2", 4),
+        ("2.5 \\ 2", 1),
+    ],
+)
+def test_intdiv_rounds_operands_to_long_before_truncating_not_truncating_raw_value(
+    vb_text: str, expected: int
+) -> None:
+    """知見54: `\\`はゼロ方向への切り捨て(知見42)だけでなく、切り捨て
+    除算の**前**に両オペランドを銀行丸めでLongへ変換する——公式ドキュメント
+    のRemarks節で確定。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # VBはBooleanを数値へ変換する際、Falseは0、Trueは-1になる
         # (Microsoft Learn「Boolean Data Type」で確定、知見51)——Pythonの
         # boolはintのサブクラスでTrueは1相当のため、符号が逆になる。

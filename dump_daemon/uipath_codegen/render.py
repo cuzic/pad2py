@@ -221,6 +221,40 @@ def _vb_div(a, b):
     return a / b
 """
 
+# `Mod`のゼロ除算は.NETランタイム本体のソース(`Operators.vb`の
+# `ModObject`、知見52・53と同じ探索手法、知見54参照)で型依存と確定した。
+# `ModObject`はオペランドの`TypeCode`(Integer系/Decimal/Single/Double)で
+# 実際の`Mod`演算をディスパッチするだけで、ゼロ除数の特別扱いは無い
+# ——結果としてCLRのネイティブ`Mod`演算そのものの挙動がそのまま出る:
+# 整数系なら`DivideByZeroException`相当の例外、浮動小数点系
+# (Single/Double)なら`NaN`(CLRの浮動小数点`Mod`命令の標準挙動、
+# Microsoft Learn「Mod Operator」の「floating-point division returns
+# Double.NaN」とも整合)。静的型情報を持たないため、`_vb_num()`後の
+# Python実行時型(`int`→整数系の代理、`float`→浮動小数点系の代理)で
+# 判定する——この代理方式自体、VBランタイムの`TypeCode`分岐と同じ発想
+# (型で挙動を変える)であり、知見45の`Not`以来一貫して使ってきた設計。
+VB_MOD_HELPER_NAME = "_vb_mod"
+VB_MOD_HELPER_SOURCE = """\
+def _vb_mod(a, b):
+    if isinstance(a, bool):
+        a = -1 if a else 0
+    elif a is None:
+        a = 0
+    elif isinstance(a, str):
+        a = float(a)
+    if isinstance(b, bool):
+        b = -1 if b else 0
+    elif b is None:
+        b = 0
+    elif isinstance(b, str):
+        b = float(b)
+    if b == 0:
+        if isinstance(a, float) or isinstance(b, float):
+            return float("nan")
+        raise ZeroDivisionError("Mod by zero (VB would raise DivideByZeroException)")
+    return a - (b * int(a / b))
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
 # Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
@@ -403,11 +437,9 @@ def _render_bin_op(node: BinOp) -> str:
         # (`-7 % 3`は`2`)で、両オペランドの符号が異なる場合に値が食い違う
         # ため単純な`%`への変換は不可——VBの公式変換式をそのまま再現する
         # (`int()`はPythonのtruncate-toward-zeroで、VBの`Fix()`と一致)。
-        # `Mod`も`Nothing`を`0`として扱う数値演算子(知見49、同ページで
-        # 確定)なので`_vb_num()`で両オペランドを事前に揃える。
-        a = f"{VB_NUM_HELPER_NAME}({left})"
-        b = f"{VB_NUM_HELPER_NAME}({right})"
-        return f"({a}) - (({b}) * int(({a}) / ({b})))"
+        # ゼロ除算は型依存(知見54、`_vb_mod()`参照)なので専用ヘルパーに
+        # 一本化した(`Nothing`→`0`の処理も内包、知見49)。
+        return f"{VB_MOD_HELPER_NAME}({left}, {right})"
     if op == "\\":
         # VBの`\`(整数除算)はゼロ方向への切り捨て(truncation、Microsoft
         # Learn「\ Operator」——例: `67 \ -3`は`-22`)。Pythonの`//`は
@@ -415,7 +447,18 @@ def _render_bin_op(node: BinOp) -> str:
         # 符号が異なる場合に値が食い違うため単純な`//`への変換は不可。
         # `int()`はtruncate-toward-zeroなので`int(a / b)`で正しく再現できる。
         # `\`も`Nothing`を`0`として扱う数値演算子(知見49)。
-        return f"int({VB_NUM_HELPER_NAME}({left}) / {VB_NUM_HELPER_NAME}({right}))"
+        # さらに同ページRemarksが「除算の前に浮動小数点オペランドをLongへ
+        # 変換しようとする、この変換は銀行丸めの対象」と明記(知見54で
+        # 発見、実機未確認だった残課題)——`round()`で両オペランドを先に
+        # Longへ丸めてから切り捨て除算する(例: `7.5 \ 2`はVBで`4`
+        # (7.5→銀行丸めで8、8\2=4)になり、丸め無しの単純な
+        # `int(7.5/2)=3`とは食い違う)。ゼロ除算は型に依存せず常に例外
+        # (同ページ「This is true for all numeric data types」)——
+        # Pythonの`/`もゼロ除数で型によらず常に`ZeroDivisionError`を
+        # 送出するため、この点は無変換のままで既に一致している。
+        a = f"round({VB_NUM_HELPER_NAME}({left}))"
+        b = f"round({VB_NUM_HELPER_NAME}({right}))"
+        return f"int(({a}) / ({b}))"
     if op == "*":
         return f"{VB_NUM_HELPER_NAME}({left}) * {VB_NUM_HELPER_NAME}({right})"
     if op == "/":
