@@ -259,6 +259,20 @@ def test_message_box_maps_to_print():
     _compiles(code)
 
 
+def test_message_box_with_caption_includes_it_in_print_output():
+    """知見79: `Caption`は捕捉済みだが従来使われていなかった——設定
+    されている場合は`print()`の出力に含め、情報を失わない。"""
+    wf = _wrap([MessageBoxNode(text=Literal(value="hi"), caption=Literal(value="Info"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "Info: hi"
+
+
 def test_if_then_else():
     wf = _wrap(
         [

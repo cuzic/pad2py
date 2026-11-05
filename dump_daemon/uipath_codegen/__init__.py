@@ -311,11 +311,24 @@ def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
     """`ui:MessageBox`はPythonのネイティブ対話ダイアログに相当するものが
     無いため、最も単純で誤解の少ない代替としてコンソール出力`print()`に
     変換する(確定的な仕様ではなく、v1の暫定的な既定選択——将来tkinter等の
-    実モーダルダイアログへ差し替える余地を残す)。"""
+    実モーダルダイアログへ差し替える余地を残す)。
+
+    知見79: `Caption`(ダイアログのタイトルバー文字列)は捕捉済みだが、
+    これまで生成コードで一切使われていなかった——実機フィクスチャでは
+    常に`{x:Null}`(未設定)だったため動作は変わらないが、設定されている
+    場合は`print()`の出力に含めることで情報を失わない(知見75と同じ
+    「捕捉済みのデータを活かす」方針)。`Caption`/`Text`いずれも非文字列が
+    束縛される可能性があるため`_vb_cstr()`(知見46)で文字列化する。"""
     prefix = INDENT * indent
     todo: list[str] = []
     text = _render_value_or_todo(node.text, prefix, todo)
-    return [*todo, f"{prefix}print({text})"]
+    if node.caption is None:
+        return [*todo, f"{prefix}print({text})"]
+    caption = _render_value_or_todo(node.caption, prefix, todo)
+    return [
+        *todo,
+        f"{prefix}print({VB_CSTR_HELPER_NAME}({caption}) + ': ' + {VB_CSTR_HELPER_NAME}({text}))",
+    ]
 
 
 def _generate_if(

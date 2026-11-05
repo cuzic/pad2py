@@ -3833,6 +3833,38 @@ Pythonの関数パラメータは常に値渡しで、関数内での再代入�
 「この簡略化がVBの意味論と本当に一致しているか」を各レイヤーで
 問い直す姿勢が継続して有効だった。
 
+## 79. `ui:MessageBox`の`Caption`が捕捉済みなのに生成コードで一度も使われていなかった——`print()`の出力に含めて情報を活かす(VM不使用、知見78に続く「既存コードの読み返し」)
+
+知見76〜78で見つけたバグ3件とは異なり、今回見つけたのはバグではなく
+「データの未活用」。`MessageBoxNode.caption`(`ui:MessageBox`の
+`Caption`属性、ダイアログのタイトルバー文字列)は`xaml_tree.py`で既に
+捕捉されているが、`_generate_message_box`は`node.text`だけを
+`print()`に変換し、`node.caption`を完全に無視していた。
+
+実機フィクスチャ(`Main.xaml`)の`Caption`は全て`{x:Null}`(未設定)で、
+これまでこの未活用が問題を起こすことは無かった——知見71(Click属性)・
+知見73(CursorPosition)と同じ「現状は安全だが情報を失っている」パターン。
+`Caption`が設定されている場合、生成コードはそれを完全に捨てていた。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`_generate_message_box`): `node.caption`が`None`でない場合、
+`print(_vb_cstr(caption) + ': ' + _vb_cstr(text))`のように出力へ含める
+(`Caption`/`Text`いずれも非文字列が束縛される可能性があるため知見46の
+`_vb_cstr()`で文字列化)。`Caption`が`None`(未設定、実機確認済みの
+既定)の場合は従来通り`print(text)`のみ——挙動を変えない。
+
+`tests/test_uipath_codegen.py`に
+`test_message_box_with_caption_includes_it_in_print_output`を追加。
+UiPath関連テスト全253件通過、リポジトリ全体で全880件通過(知見70の
+カバレッジは72%のまま、実機フィクスチャの`Caption`は`None`のため変化
+無し)。
+
+**この知見で確定したこと**: 知見75(TODOコメントへのフィールド追記)・
+知見71・73(Click属性の捕捉)と同じ「捕捉済みだが未活用のデータを
+活かす」系の改善が、`MessageBox`のような既に完全対応済みと見えていた
+アクティビティにもまだ残っていた——「カバレッジ100%」や「TODO無し」
+だけでは「捕捉した全データを活用しているか」までは保証しないと再確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
