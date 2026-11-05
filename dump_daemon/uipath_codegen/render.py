@@ -340,37 +340,72 @@ def _vb_mod(a, b):
 #   **他方のオペランドをそのまま返す**(型も維持される——`OrObject`
 #   「Empty with Int32: Return Right」、`XorObject`も同じパターン)。
 #   両方`Nothing`は`0`(Integer)。
+# 知見91: 知見89・90(単項`-`/`+`・`Not`)と全く同じ理由で、`And`/`Or`/
+# `Xor`も両オペランドが非`Nothing`の場合に文字列を一切コンバートせず
+# `a & b`等へそのまま渡していたため、`"5" And 3`のような式が
+# `TypeError: unsupported operand type(s) for &: 'str' and 'int'`で
+# クラッシュすると`exec()`で確認した。`Nothing`絡みの分岐(知見59、
+# 上記コメント参照)は実機のランタイムソースで個別に確定済みのロジック
+# のため変更せず、両オペランドが非`Nothing`の最終行(`a & b`等)にのみ
+# 文字列コンバート(`_vb_num`+`round()`と同じ規則、`&H`/`&O`含む)を
+# 局所関数`_s2i`として追加する——`_collect_imports`が生成コードに
+# 文字通り現れるヘルパー名だけを検知する仕組み上、他のヘルパーを直接
+# 呼ぶ構造にはできないため(知見50の`_vb_div`と同じ制約)。
 VB_AND_HELPER_NAME = "_vb_and"
 VB_AND_HELPER_SOURCE = """\
 def _vb_and(a, b):
+    def _s2i(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return int(s[2:], 16 if s[1].lower() == "h" else 8)
+        return round(float(s))
     if a is None and b is None:
         return 0
     if a is None:
         return False if isinstance(b, bool) else 0
     if b is None:
         return False if isinstance(a, bool) else 0
+    if isinstance(a, str):
+        a = _s2i(a)
+    if isinstance(b, str):
+        b = _s2i(b)
     return a & b
 """
 VB_OR_HELPER_NAME = "_vb_or"
 VB_OR_HELPER_SOURCE = """\
 def _vb_or(a, b):
+    def _s2i(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return int(s[2:], 16 if s[1].lower() == "h" else 8)
+        return round(float(s))
     if a is None and b is None:
         return 0
     if a is None:
         return b
     if b is None:
         return a
+    if isinstance(a, str):
+        a = _s2i(a)
+    if isinstance(b, str):
+        b = _s2i(b)
     return a | b
 """
 VB_XOR_HELPER_NAME = "_vb_xor"
 VB_XOR_HELPER_SOURCE = """\
 def _vb_xor(a, b):
+    def _s2i(s):
+        if len(s) >= 3 and s[0] == "&" and s[1].lower() in "ho":
+            return int(s[2:], 16 if s[1].lower() == "h" else 8)
+        return round(float(s))
     if a is None and b is None:
         return 0
     if a is None:
         return b
     if b is None:
         return a
+    if isinstance(a, str):
+        a = _s2i(a)
+    if isinstance(b, str):
+        b = _s2i(b)
     return a ^ b
 """
 

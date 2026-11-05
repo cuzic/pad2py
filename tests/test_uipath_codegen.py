@@ -1749,6 +1749,34 @@ def test_and_or_xor_coerce_nothing_operand_not_raising_typeerror(
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # 知見91: 知見89・90(単項`-`/`+`・`Not`)と全く同じ理由で、`And`/
+        # `Or`/`Xor`も両オペランドが非`Nothing`の場合に文字列を一切
+        # コンバートせず`a & b`等へそのまま渡していたため、
+        # `TypeError: unsupported operand type(s) for &: 'str' and
+        # 'int'`でクラッシュしていた。
+        ('"5" And 3', "1"),
+        ('"5" Or 3', "7"),
+        ('"5" Xor 3', "6"),
+        ('"&H5" And 3', "1"),
+    ],
+)
+def test_and_or_xor_coerce_string_operand_not_raising_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # 公式ドキュメント(Microsoft Learn「AndAlso Operator」)が
         # 「両オペランドを評価前にBooleanへ変換し、結果も常にBoolean」と
         # 明記(知見60)——単純な`and`/`or`への変換はPythonが生のオペランド
