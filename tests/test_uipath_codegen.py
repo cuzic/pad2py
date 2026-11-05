@@ -1654,6 +1654,29 @@ def test_not_matches_vb_bitwise_complement_on_integer_not_just_boolean_negation(
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # 知見90: `Not`は`Nothing`オペランドだけを特別扱いしており、知見89
+        # (単項`-`/`+`)と全く同じ理由で文字列オペランドは未対応のまま
+        # `~"5"`で`TypeError: bad operand type for unary ~: 'str'`に
+        # なっていた——`&H`限定の問題ではなく単純な数値文字列でも再現した。
+        ('Not "5"', "-6"),
+        ('Not "&H5"', "-6"),
+    ],
+)
+def test_not_coerces_string_operand_not_raising_typeerror(vb_text: str, expected: str) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # 単項`Not`/`-`/`+`の`Nothing`オペランドは整数`0`として扱われる
         # (知見58、`Operators.vb`の`NotObject`/`NegateObject`/
         # `PlusObject`で確認)——`Not Nothing`は`Not 0`=`-1`、

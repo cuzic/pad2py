@@ -459,15 +459,20 @@ def _render_node(node: ExprNode) -> str:
             # `-2`で論理否定と一致しない)ため、実行時にisinstanceで型を
             # 分岐するラムダを生成する。式は一度だけ評価する(副作用の
             # ある呼び出しが二重評価されないように)。
-            # `Nothing`オペランドは整数`0`として扱われる(知見58、
-            # `Operators.vb`の`NotObject`で`Case TypeCode.Empty: Return
-            # Not 0I`=`-1`を確認)——`~None`は`TypeError`になるため、
-            # `~`を適用する前に`None`を`0`へ読み替える(`~0`は`-1`なので
-            # 結果は自然に一致する)。
+            #
+            # 知見90: `Nothing`オペランドだけを`0`へ読み替えていたが
+            # (知見58)、知見89(単項`-`/`+`)と全く同じ理由で文字列
+            # オペランド(`CStr(Not "5")`等)は未対応のままで`~"5"`が
+            # `TypeError: bad operand type for unary ~: 'str'`になる
+            # ——実際に`exec()`して再現した。他の数値演算子と同じ
+            # `_vb_num()`で文字列(`&H`/`&O`含む)/`Nothing`/`bool`を
+            # 一貫してコンバートしてから`round()`で整数化する(`\`の
+            # オペランド変換、知見54と同じ銀行丸め——Integerビット反転は
+            # 整数値に対してのみ意味を持つため)。
             operand = _render_node(node.operand)
             return (
                 "(lambda _x: (not _x) if isinstance(_x, bool) "
-                f"else ~(0 if _x is None else _x))({operand})"
+                f"else ~round({VB_NUM_HELPER_NAME}(_x)))({operand})"
             )
         if op in ("-", "+"):
             # 知見89: 単項`-`/`+`は`Nothing`オペランドだけを特別扱いして
