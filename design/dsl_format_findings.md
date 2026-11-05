@@ -1820,3 +1820,21 @@ Column#1,Column#2,Column#3
 **修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`/`datatable_to_csv_text()`に`first_line_contains_column_names`/`include_column_names`引数を追加し、ヘッダー無し時は`f"Column#{i + 1}"`(1始まり)を列名として割り当てるようにした。`file_actions.read_from_csv_file()`/`write_to_csv_file()`・`variables_actions`が再公開する同名関数(`File.*`/`Variables.*`で実装を共有)に引数を伝播させ、`pad_codegen`の`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`/`Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator`を新たに結線した。`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`は同じ列名規則が適用できるものの、実機キャプチャの`ReadFieldsAsText: False`(数値らしき文字列を実際の数値型に変換すると推測されるが`pad_action_lib`は常に文字列のまま保持する実装のため未確認のまま)が明示的`True`の場合のみ結線し、`False`の場合は依然TODOのまま安全に倒す。
 
 これでA節の「CSVヘッダー無しケースの実機確認」は完了した(`TrimFields`・`ReadFieldsAsText: False`の正確な変換規則は別の未解決課題として残る)。テスト用フロー・アップロードしたCSV・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 85. `Variables.SubtractLists`/`FindCommonListItems`が使う`ComparisonCalculator.Compare`の比較規則を実機確認——文字列は大文字小文字を区別、数値文字列と数値は型をまたいで等価
+
+B節に残っていた、PAD独自の汎用比較エンジン(`ComparisonCalculator.Compare`)の正確な意味論を、知見81の「Run実行+ファイル書き出し」手法で確認した。VMが空いたタイミングで新規テストフロー(`list_compare_check`、保存せず破棄)を使い、全て既に実機確認・結線済みのTier1アクション(`Variables.CreateNewList`/`AddItemToList`/`SubtractLists`/`FindCommonListItems`/`File.WriteText`)のみで組んだパイプラインを知見75のペースト技法で貼り付け・Run実行した。
+
+**テスト内容と結果**:
+
+| テスト | 入力 | 結果(書き出された`%OutputList%`) | 解釈 |
+| --- | --- | --- | --- |
+| 大文字小文字 | `["Apple"] - ["apple"]` | `"Apple"`(空ではない) | 大文字小文字を**区別する**(一致せず、取り除かれない) |
+| 型の違い | `["1"] - [1]`(文字列"1" vs 数値1) | `""`(空) | 数値文字列と数値は**型をまたいで等価**(一致し、取り除かれる) |
+| 大文字小文字(交差検証) | `["Apple"] ∩ ["apple"]`(FindCommonListItems) | `""`(空) | 上の大文字小文字の結果と整合(共通要素なし) |
+
+**確認できた事実**: PADの`ComparisonCalculator.Compare`は、文字列同士は厳密な大文字小文字区別で比較するが、片方が数値を表す文字列で片方が数値の場合は型変換して数値として比較する(VB.NETの`Option Strict Off`的な緩い型変換と整合する挙動)。
+
+**重要な留保(未解決のまま残す点)**: `pad_action_lib/variables_actions.py`のモジュールdocstringが以前から「この比較エンジンは`IF`/`SET`の`=`/`<>`演算子と同じものではないか」と推測していたが、**今回確認したのは`SubtractLists`/`FindCommonListItems`専用の比較エンジンのみ**であり、`IF (A = B) THEN`や`SET ... TO A = B`で使われる`=`演算子が同じ型変換規則に従うかどうかは依然未確認のまま。`pad_codegen`の`_OPERATOR_MAP`(`"=" → "=="`というPythonの素直な対応)はこれまでの実機キャプチャ全件が同一型同士の比較だったため矛盾は一度も表面化していないが、`=`演算子自体がクロス型比較で同じ緩い型変換をするなら、将知見この境界を実機確認した際に`render_condition()`の実装見直しが必要になる可能性がある(別の調査項目として持ち越す)。
+
+**修正内容**: `pad_action_lib/variables_actions.py`に`_pad_compare_equal()`(直接の`==`が偽の場合のみ両辺を`float()`でパースして再比較する、最も狭い解釈)を追加し、`subtract_lists()`/`find_common_list_items()`の`NotImplementedError`を実装に置き換えた。`pad_codegen/actions/variables.py`の`Variables.SubtractLists`/`Variables.FindCommonListItems`を結線した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。

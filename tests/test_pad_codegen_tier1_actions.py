@@ -94,10 +94,11 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     assert "DataTable = variables_actions.create_new_datatable([])" in code
     # ヘッダー無しCSV変換(knowledge 84): IncludeColumnNames: Falseでも結線される。
     assert "CSVText = variables_actions.datatable_to_csv_text('sample', include_column_names=False)" in code
-    # Deliberately unconverted: PAD's ComparisonCalculator-dependent / unverified-schema actions.
+    # 比較エンジンの意味論を実機確認(knowledge 85)したため結線される。
+    assert "ListDifference = variables_actions.subtract_lists('sample', 'sample')" in code
+    assert "IntersectionList = variables_actions.find_common_list_items('sample', 'sample')" in code
+    # Deliberately unconverted: unverified-schema actions.
     for action_id in (
-        "Variables.SubtractLists",
-        "Variables.FindCommonListItems",
         "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
         "Variables.FilterDataTable",
         "Variables.JoinDataTable",

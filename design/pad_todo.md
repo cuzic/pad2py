@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(28/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(26/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -26,8 +26,18 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   意味論は別の未解決課題として残る(低優先度)。
 - [ ] 🖥️ `Variables.FilterDataTable`/`JoinDataTable`の条件/結合キー指定方法を実機で確認(スキーマ未確認のため
   現状`NotImplementedError`)。
-- [ ] 🖥️ `Variables.SubtractLists`/`FindCommonListItems`が使うPAD独自比較エンジン
+- [x] 🖥️ `Variables.SubtractLists`/`FindCommonListItems`が使うPAD独自比較エンジン
   (`ComparisonCalculator.Compare`)の挙動確認(大文字小文字・型変換ルール)。
+  ✅ **実機確認・結線完了(知見85)**: VMが空いたタイミングで知見81の「Run実行+
+  ファイル書き出し」手法を使い、`["Apple"] - ["apple"]`(大文字小文字)・
+  `["1"] - [1]`(文字列vs数値)を実機で検証。結果: 文字列は大文字小文字を
+  **区別する**が、数値文字列と数値は**型をまたいで等価**と判定される。
+  `variables_actions.py`に`_pad_compare_equal()`を実装し、`subtract_lists()`/
+  `find_common_list_items()`の`NotImplementedError`を解消、`pad_codegen`も結線した。
+  🖥️ **新たな残課題**: 今回確認したのはこの比較エンジン専用で、`IF`/`SET`の
+  `=`/`<>`演算子(`_OPERATOR_MAP`、Pythonの`==`/`!=`への素直な対応のまま)が
+  同じ型変換規則に従うかは別途未確認——クロス型比較(例: `"1" = 1`)の実機DSLを
+  捕まえた際に再検討する(低優先度、実害が出た実例はまだ無い)。
 - [ ] 🖥️ UI要素系の残り2条件アクション`UIAutomation.IfImage.ExistsOnScreen`/
   `UIAutomation.IfWindowContains.WindowContainsElement`のPython変換ロジック(セレクタ/画像照合の意味論)。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、

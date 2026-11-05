@@ -10,11 +10,13 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 では2次元配列を編集しなかったため常に空。非空の配列リテラルの表現は実機未確認のため
 依然対応しない)。
 
+`Variables.SubtractLists`/`Variables.FindCommonListItems`が使う比較エンジンは
+知見85で実機確認済み(文字列は大文字小文字区別、数値文字列と数値は型をまたいで
+等価)のため結線済み。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
-- `Variables.SubtractLists`/`Variables.FindCommonListItems`/
-  `Variables.FilterDataTable`/`Variables.JoinDataTable`: `pad_action_lib`側が
-  常に`NotImplementedError`を投げる(PAD独自の比較エンジン・フィルタ/結合条件の
-  DataTableスキーマが未確認)——コードを生成すると実行時に必ず壊れる。
+- `Variables.FilterDataTable`/`Variables.JoinDataTable`: フィルタ/結合条件の
+  DataTableスキーマが未確認——コードを生成すると実行時に必ず壊れる。
 - `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`: 実機の
   出力契約(`DataTableMatches`への一致結果)が、`pad_action_lib`の
   `find_or_replace_in_datatable()`(置換件数の`int`を返す、`replace_value`必須)
@@ -105,6 +107,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if first is None or second is None or not node.output_var:
             return None
         return [f"{prefix}{node.output_var} = {first} + {second}"]
+
+    if action_id == "Variables.SubtractLists":
+        first = safe_render(p.get("FirstList"))
+        second = safe_render(p.get("SecondList"))
+        if first is None or second is None or not node.output_var:
+            return None
+        return [f"{prefix}{node.output_var} = variables_actions.subtract_lists({first}, {second})"]
+
+    if action_id == "Variables.FindCommonListItems":
+        first = safe_render(p.get("FirstList"))
+        second = safe_render(p.get("SecondList"))
+        if first is None or second is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_common_list_items({first}, {second})"
+        ]
 
     if action_id == "Variables.RemoveDuplicateItemsFromList":
         items = safe_render(p.get("List"))

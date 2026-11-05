@@ -6,11 +6,13 @@ PADのDataTable/List系アクションの多くは対象コレクションを`[I
 する**関数として実装する(新しいリストを作って返す関数と誤って混用しないよう、
 全てのin-place関数は戻り値`None`に統一する)。
 
-`SubtractLists`/`FindCommonListItems`はPAD独自の汎用比較エンジン
-(`ComparisonCalculator.Compare`)に依存しており、その比較演算子の正確な意味論は
-本プロジェクトの別の未解決課題(IF/SETの`=`/`<>`の挙動)と同じもの——安全側に倒し
-`NotImplementedError`とする。`FilterDataTableAction`/`JoinDataTableAction`の
-フィルタ条件・結合条件のDataTableスキーマも未確認のため同様に未実装とする。
+`SubtractLists`/`FindCommonListItems`が使うPAD独自の汎用比較エンジン
+(`ComparisonCalculator.Compare`)は design/dsl_format_findings.md 知見85で実機確認
+済み(文字列は大文字小文字を区別するが、数値を表す文字列と数値は型をまたいで
+等価)。**注意**: このエンジンが`IF`/`SET`の`=`/`<>`演算子と同じものかどうかは
+未確認のまま(知見85参照)——`pad_codegen`の`_OPERATOR_MAP`はPythonの`==`/`!=`への
+素直な対応のままにしている。`FilterDataTableAction`/`JoinDataTableAction`の
+フィルタ条件・結合条件のDataTableスキーマは別途未確認のため未実装のまま残す。
 """
 from __future__ import annotations
 
@@ -96,18 +98,28 @@ def merge_lists(target: list, other: list) -> None:
     target.extend(other)
 
 
+def _pad_compare_equal(a: object, b: object) -> bool:
+    """design/dsl_format_findings.md 知見85(実機確認済み)の`ComparisonCalculator.Compare`。
+
+    文字列同士は大文字小文字を区別する(`"Apple"`と`"apple"`は不一致)が、数値を表す
+    文字列と数値は型をまたいで等価と判定される(`"1"`と`1`は一致)。実機で確認したのは
+    この1組の値のみのため、両辺を`float()`でパースできる場合に限り数値として比較する
+    という、最も狭い解釈を採用する(パースできない場合は通常の`==`にフォールバック)。
+    """
+    if a == b:
+        return True
+    try:
+        return float(a) == float(b)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+
+
 def subtract_lists(items: list, other: list) -> list:
-    raise NotImplementedError(
-        "SubtractLists depends on PAD's ComparisonCalculator.Compare engine, "
-        "whose exact comparison semantics are not yet resolved"
-    )
+    return [item for item in items if not any(_pad_compare_equal(item, o) for o in other)]
 
 
 def find_common_list_items(items: list, other: list) -> list:
-    raise NotImplementedError(
-        "FindCommonListItems depends on PAD's ComparisonCalculator.Compare engine, "
-        "whose exact comparison semantics are not yet resolved"
-    )
+    return [item for item in items if any(_pad_compare_equal(item, o) for o in other)]
 
 
 def remove_duplicate_items_from_list(items: list, ignore_case: bool = False) -> None:

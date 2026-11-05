@@ -69,11 +69,24 @@ def test_merge_lists_extends_target() -> None:
     assert target == [1, 2, 3, 4]
 
 
-def test_subtract_lists_and_find_common_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        va.subtract_lists([1, 2], [2])
-    with pytest.raises(NotImplementedError):
-        va.find_common_list_items([1, 2], [2])
+def test_subtract_lists_is_case_sensitive_for_strings() -> None:
+    # design/dsl_format_findings.md 知見85(実機確認済み): PADのComparisonCalculator.Compare
+    # は文字列の大文字小文字を区別する(SubtractListsは一致する要素だけを取り除く)。
+    assert va.subtract_lists(["Apple"], ["apple"]) == ["Apple"]
+
+
+def test_subtract_lists_coerces_numeric_string_and_number_as_equal() -> None:
+    # design/dsl_format_findings.md 知見85(実機確認済み): 数値を表す文字列と数値は
+    # 型をまたいで等価と判定される(SubtractListsが一致とみなして取り除く)。
+    assert va.subtract_lists(["1"], [1]) == []
+
+
+def test_find_common_list_items_is_case_sensitive_for_strings() -> None:
+    assert va.find_common_list_items(["Apple"], ["apple"]) == []
+
+
+def test_find_common_list_items_coerces_numeric_string_and_number_as_equal() -> None:
+    assert va.find_common_list_items(["1"], [1]) == ["1"]
 
 
 def test_remove_duplicate_items_ignore_case_only_for_all_string_lists() -> None:
