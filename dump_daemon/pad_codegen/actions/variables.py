@@ -158,6 +158,28 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{node.output_var} = variables_actions.generate_random_number({minimum}, {maximum})[0]"
         ]
 
+    if action_id == "Variables.GenerateRandomNumber.ListOfRandomNumbers":
+        # design/dsl_format_findings.md 知見122(decompile確認済み): `GenerateRandomNumber`の
+        # 兄弟セレクタ(`GenerateMultipleNumbers: True`固定)。`pad_action_lib.variables_actions.
+        # generate_random_number()`は元から`count`/`allow_duplicates`引数を持ち複数生成に
+        # 対応済みだったため、結線を追加するだけで済む(新規実装は不要)。
+        minimum = safe_render(p.get("MinimumValue"))
+        maximum = safe_render(p.get("MaximumValue"))
+        count = safe_render(p.get("NumbersCount"))
+        allow_duplicates = p.get("AllowDuplicates", False)
+        if (
+            minimum is None
+            or maximum is None
+            or count is None
+            or not isinstance(allow_duplicates, bool)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.generate_random_number("
+            f"{minimum}, {maximum}, {count}, allow_duplicates={allow_duplicates!r})"
+        ]
+
     if action_id == "Variables.ConvertJsonToCustomObject":
         json_text = safe_render(p.get("Json"))
         if json_text is None or not node.output_var:

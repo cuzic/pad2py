@@ -2137,6 +2137,31 @@ def test_generate_python_converts_increase_decrease_variable_with_real_variable_
     assert namespace["Counter"] == 12
 
 
+def test_generate_python_from_list_of_random_numbers_converts() -> None:
+    # design/dsl_format_findings.md 知見122(decompile確認済み): `GenerateRandomNumber`の
+    # 兄弟セレクタ`ListOfRandomNumbers`(`GenerateMultipleNumbers: True`固定)。
+    # `pad_action_lib.variables_actions.generate_random_number()`は元から`count`/
+    # `allow_duplicates`引数を持ち複数生成に対応済みだったため、結線を追加するだけで済んだ
+    # (新規実装は不要)。
+    dsl = (
+        "Variables.GenerateRandomNumber.ListOfRandomNumbers MinimumValue: 1 MaximumValue: 10 "
+        "NumbersCount: 5 AllowDuplicates: False RandomNumbers=> Nums"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "Nums = variables_actions.generate_random_number(1, 10, 5, allow_duplicates=False)" in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    nums = namespace["Nums"]
+    assert isinstance(nums, list)
+    assert len(nums) == 5
+    assert len(set(nums)) == 5
+    assert all(1 <= n <= 10 for n in nums)
+
+
 def test_generate_python_from_compression_zip_unzip_without_password_converts() -> None:
     # 実機キャプチャ(tier1_datetime_folder_clipboard_batch2.txt/tier1_web_xml_batch8.txt)
     # はPasswordが常にWindows DPAPI保護値(`P'<base64>'`)で現れ、知見72の通りVarRef

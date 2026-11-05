@@ -2240,3 +2240,11 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 `UIAutomation.Actions.dll`内の全`[Action]`/`[ConditionAction]`/`[WaitAction]`属性クラス(14個)を洗い出し、`Windows`カテゴリ以外もチェックしたところ、条件式アクション`IfWindow`(`ConditionAction`)も知見117〜120と同じ3セレクタ構造を4モード(`IsOpen`/`IsNotOpen`/`IsFocused`/`IsNotFocused`)それぞれに持つ(計12セレクタ)と確認した——既存の`render_if_window_condition()`は`Control`ベースの4つしか結線しておらず、`ByInstanceOrHandle`/`ByTitleClass`の兄弟セレクタ(計8つ)が未結線だった。
 
 ウィンドウ参照の取得元(`Control`経由のセレクタ式/`WindowInstance`のVarRef/`Title`+`Class`)が違うだけで、以降の`exists()`/`is_active()`という真偽値ロジックは完全に同一だと確認できたため、`render_if_window_condition()`をaction_idの接尾辞(`ByInstanceOrHandle`/`ByTitleClass`の有無)で分岐し、window式の組み立て方法だけを切り替える形に書き換えた。`exists()`/`is_active()`自体は既存の`Control`ベース4セレクタで既に実機確認済みのロジックの再利用のため、新たなVM確認は不要だった。16件のパラメトライズテストを追加した(既存4件+新規12件)。`UIAutomation.IfRemoteDesktopIsAvailable`(`IsDesktopAvailable`というランタイムプロキシ側の実装で、decompile済みDLL群には実体が無く意味論の確証が得られない)は、条件分岐の誤判定という最悪のでっち上げリスクがあるため今回は見送った。
+
+## 122. 同じ手法を`Variables.Actions.dll`にも適用——`GenerateRandomNumber`の兄弟セレクタ`ListOfRandomNumbers`を発見、既存の`pad_action_lib`実装がそのまま使えると確認して結線(VM不要)
+
+知見117〜121の「decompileされたソース上の`UseName()`呼び出しを直接読む」手法を`Variables.Actions.dll`にも適用したところ、`GenerateRandomNumber`アクションに`RandomNumber`(単一値、結線済み)の他に`ListOfRandomNumbers`(複数値、`GenerateMultipleNumbers: True`固定、`NumbersCount`/`AllowDuplicates`/`RandomNumbers`[リスト出力]を使う)という兄弟セレクタが存在し、未結線だったと判明した。
+
+`pad_action_lib.variables_actions.generate_random_number()`を確認したところ、**元から`count`/`allow_duplicates`引数を持ち複数生成に完全対応済み**だった(既存の`RandomNumber`セレクタは単に`[0]`で先頭要素だけを取り出していただけ)——新規実装は一切不要で、codegenの結線を1分岐追加するだけで済んだ。合成DSLで実際に実行し、指定件数・重複無し・範囲内という3条件を満たすリストが返ることを確認するテストを追加した。
+
+同じ`Variables.Actions.dll`には他にも`FindOrReplaceInDataTable`(8セレクタ中1つのみ結線——`ByColumnIndex`/`WithRegex`系7個が未結線)・`GenerateDataTableFromCSVAction`(3セレクタ中1つのみ結線——`ReadCustomSeparator`/`ReadFixedColumnWidths`が未結線)という同種の未結線セレクタ群が見つかっており、次の調査対象として記録する(対応する`pad_action_lib`関数の有無を要確認)。
