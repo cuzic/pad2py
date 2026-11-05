@@ -2159,6 +2159,69 @@ docstringに明記)。文字列リテラルが`"True"`/`"False"`でも数値で�
 (design/uipath_transpiler_roadmap.mdの「次にやること」に追加)。
 それ以外の演算子・関数は全て再点検済みで新たな問題は見つからなかった。
 
+## 45. `^`/`Not`の残る2点を実機(Sub1.xaml、Debug File)で検証——両方とも実在のバグと確定し修正した
+
+知見44で公式ドキュメントだけでは白黒つけられず未解決のまま残った2点
+(`^`の負の底+非整数指数、`Not`のIntegerオペランド)について、ユーザーの
+指示で実機検証を行った。
+
+**検証方法**: `design/evidence/uipath_xaml_probe/Sub1.xaml`(知見38などで
+使っている、Main.xamlから隔離した最小フィクスチャ)を一時的に使い、
+VM(`pad2py-pad-host`)上のUiPath Studioで以下を実施——
+
+1. Sub1.xamlを開き、クリップボード貼り付け(知見のクリップボード手法)で
+   `Assign`+`AppendLine`のペアを2組追加: `CStr((-8.0) ^ 0.5)`の結果と
+   `CStr(Not 5)`の結果をそれぞれテキストファイルへ書き出す式。
+2. StudioのDebug File(Designタブのリボンボタン)でSub1.xamlを直接実行
+   ——Main.xamlの他のアクティビティ(副作用やダイアログを持つもの)を
+   経由せず、Sub1単体だけが実行されることを確認済み。
+3. 出力されたテキストファイルをclipwire execで読み取り。
+4. 検証用に追加した4つのアクティビティを1つずつ削除(固定座標のループでは
+   なく、都度スクリーンショットで次の削除対象の座標を確認しながら個別に
+   削除——`AppendLine`カードは`Assign`より縦に大きく、削除ごとに後続の
+   位置がずれるため固定座標の決め打ちは危険と判断して避けた)。
+5. 削除後、diffで`Sub1.xaml`のワークフロー本体が元のコミット済み
+   フィクスチャと完全に一致することを確認(HintSize等、今回の作業とは
+   無関係な既存の差異のみ残存)。
+6. 一時出力ファイル2つをVM上から削除し、`Test-Path`で消失を確認。
+
+**確定した結果**:
+
+- `(-8.0) ^ 0.5`(負の底+非整数の指数)→ `NaN`。知見44で懸念していた
+  「例外」ではなく「NaN」だった。Pythonの`**`は同じ入力に複素数
+  (`1.7320508075688772e-16+2.8284271247461903j`相当)を返すため、単純な
+  `**`変換のままでは誤った結果になる——実在するバグと確定。
+- `Not 5`(Integer)→ `-6`。知見44で懸念していた通り、ビット反転
+  (2の補数)——Pythonの`~5`と一致、`not 5`(=`False`)とは全く異なる。
+  実在するバグと確定。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`):
+
+- `^`: 負の底かつ指数が整数でない場合のみ`float('nan')`に分岐し、
+  それ以外は従来通り`**`で計算する式に変更。
+  ```python
+  f"(float('nan') if (({left}) < 0 and ({right}) != int({right})) "
+  f"else (({left}) ** ({right})))"
+  ```
+- `Not`: 実行時にoperandの型を判定し、`bool`なら論理否定、それ以外
+  (Integer等)ならビット反転するラムダ式に変更(式を二重評価しないよう
+  一度だけ評価する)。
+  ```python
+  f"(lambda _x: (not _x) if isinstance(_x, bool) else ~_x)({operand})"
+  ```
+
+`tests/test_uipath_codegen.py`に`test_pow_matches_vb_nan_on_negative_base_with_fractional_exponent`
+と`test_not_matches_vb_bitwise_complement_on_integer_not_just_boolean_negation`を追加
+(`render_expr()`の出力を直接`eval()`して値を確認——`CStr`/`print`経由の
+文字列比較はしない。`CStr(Double.NaN)`はVBで`"NaN"`、Pythonの
+`str(float('nan'))`は`"nan"`になるという、この演算子の正しさとは別論点の
+casing差異を誤って拾わないため)。
+
+**この知見で確定したこと**: 知見44で未解決のまま残っていた2点は両方とも
+実在するバグであり、実機確認済みの値(`NaN`/`-6`)に基づいて修正・
+テスト済み。これで知見42〜45の一連の「VB.NET演算子の値の食い違い」
+系統点検は完全に完了した。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

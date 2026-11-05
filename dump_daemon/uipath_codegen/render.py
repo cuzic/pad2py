@@ -83,17 +83,19 @@ def _render_node(node: ExprNode) -> str:
     if isinstance(node, UnaryOp):
         op = node.op.lower()
         if op == "not":
-            # 既知の未解決リスク(design/uipath_vb_expression_mapping.md参照):
             # VBの`Not`はAnd/Or/Xorと同じ型依存の二重性質を持ち、Boolean
             # オペランドには論理否定、Integerオペランドにはビット反転
-            # (2の補数)として働く。Pythonの`not x`はBooleanの場合のみ
-            # 正しく、Integerの場合は`~x`が必要——ただしAnd/Or/Xorの
-            # `&`/`|`/`^`と違い、Booleanにも正しく働く単一のPython演算子が
-            # 無い(`~True`は`-2`になり論理否定と一致しない)。知見32・36の
-            # 実機確認例は`Not True`(Boolean)のみで、Integerオペランドの
-            # 実例・実機検証が無いため、型を判定するでっち上げコードを
-            # 挿入せず、確認済みのBoolean前提のまま`not (...)`とする。
-            return f"not ({_render_node(node.operand)})"
+            # (2の補数)として働く(Microsoft Learn「Operator Precedence」
+            # Logical and Bitwise Operators節)。実機(UiPath Studio Debug
+            # File、Sub1.xaml、2026-11-05)で`Not 5`(Integer)を実行して
+            # `-6`を確認——Pythonの`~5`と一致、`not 5`(=`False`)とは違う
+            # (design/uipath_xaml_findings.md 知見45参照)。Pythonには
+            # BooleanにもIntegerにも正しく働く単一演算子が無い(`~True`は
+            # `-2`で論理否定と一致しない)ため、実行時にisinstanceで型を
+            # 分岐するラムダを生成する。式は一度だけ評価する(副作用の
+            # ある呼び出しが二重評価されないように)。
+            operand = _render_node(node.operand)
+            return f"(lambda _x: (not _x) if isinstance(_x, bool) else ~_x)({operand})"
         if op in ("-", "+"):
             return f"{node.op}({_render_node(node.operand)})"
         raise NotImplementedError(f"unsupported unary operator: {node.op!r}")
@@ -213,15 +215,18 @@ def _render_bin_op(node: BinOp) -> str:
     if op == "/":
         return f"({left}) / ({right})"
     if op == "^":
-        # 既知の未解決リスク(design/uipath_vb_expression_mapping.md参照):
         # VBの`^`は常にDouble型で計算される(Microsoft Learn「^ Operator」)
         # ため`2^2`はVBでは`4.0`相当になるが、Pythonの`2 ** 2`は整数`4`の
         # まま——通常は数値として等価だが文字列化の見た目が変わりうる。
-        # さらに負の底に非整数の指数を与えた場合(例: `(-8) ^ 0.5`)、
-        # Pythonの`**`は複素数を返すが、VB側の挙動(NaN相当か実行時例外か)
-        # を公式ドキュメントで確認できておらず実機未検証——でっち上げた
-        # 分岐処理は挿入せず、単純な`**`変換のまま残す。
-        return f"({left}) ** ({right})"
+        # さらに負の底に非整数の指数を与えた場合、実機(UiPath Studio
+        # Debug File、Sub1.xaml、2026-11-05)で`(-8.0) ^ 0.5`を実行して
+        # `NaN`を確認——Pythonの`**`はこの場合複素数を返すため単純な`**`
+        # 変換は不可(design/uipath_xaml_findings.md 知見45参照)。負の底
+        # かつ指数が非整数の場合のみNaNに分岐する。
+        return (
+            f"(float('nan') if (({left}) < 0 and ({right}) != int({right})) "
+            f"else (({left}) ** ({right})))"
+        )
     if op in _BITWISE_OPS:
         return f"({left}) {_BITWISE_OPS[op]} ({right})"
     if op in _SHORT_CIRCUIT_OPS:

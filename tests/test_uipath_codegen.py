@@ -22,10 +22,13 @@ from pathlib import Path
 
 import pytest
 
+import math
+
 from dump_daemon.uipath_codegen import (
     generate_project_from_json,
     generate_project_python,
     generate_python,
+    render_expr,
 )
 from dump_daemon.uipath_dsl import (
     AssignNode,
@@ -407,6 +410,64 @@ def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
     code = generate_python(wf)
     assert "bool(someVar)" in code
     _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expect_nan"),
+    [
+        # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。
+        ("(-8.0) ^ 0.5", True),
+        ("(-4.0) ^ 1.5", True),
+        # 通常の底/整数指数は複素数に迂回せず通常どおり計算される。
+        ("2 ^ 3", False),
+        ("(-8.0) ^ 2", False),
+    ],
+)
+def test_pow_matches_vb_nan_on_negative_base_with_fractional_exponent(
+    vb_text: str, expect_nan: bool
+) -> None:
+    """知見44で未確認だった`^`のリスクを実機(UiPath Studio Debug File、
+    2026-11-05)で確認——負の底に非整数の指数を与えるとVBは`NaN`を返す。
+    Pythonの`**`は同条件で複素数を返すため単純な`**`変換は不可(知見45)。
+
+    値そのものを`eval()`で確認する(`CStr`/`print`経由の文字列比較は
+    しない——VBの`CStr(Double)`とPythonの`str(float)`は書式が異なる
+    既知の別論点(`render.py`の`^`実装コメント参照)で、この演算子自体の
+    正しさとは無関係のため混同しない)。
+    """
+    code = render_expr(VbExpr(text=vb_text))
+    result = eval(code)  # noqa: S307 - テスト対象は信頼できる自作コード
+    if expect_nan:
+        assert isinstance(result, float) and math.isnan(result)
+    else:
+        assert not (isinstance(result, float) and math.isnan(result))
+        assert result == eval(f"({vb_text.replace('^', '**')})")  # noqa: S307
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # IntegerオペランドへのNotはビット反転(2の補数、知見45、実機確認)。
+        ("Not 5", -6),
+        ("Not 0", -1),
+        ("Not -1", 0),
+        # Booleanオペランドへの`Not`は論理否定(知見32・36で既に確認済み)。
+        ("Not True", False),
+        ("Not False", True),
+    ],
+)
+def test_not_matches_vb_bitwise_complement_on_integer_not_just_boolean_negation(
+    vb_text: str, expected: bool | int
+) -> None:
+    """知見44で未確認だった`Not`のリスクを実機(UiPath Studio Debug File、
+    2026-11-05)で確認——Integerオペランドの`Not 5`はビット反転`-6`になる。
+    Pythonの`not 5`は`False`になり食い違うため、型に応じて`~x`/`not x`を
+    実行時に分岐する必要がある(知見45)。
+    """
+    code = render_expr(VbExpr(text=vb_text))
+    result = eval(code)  # noqa: S307 - テスト対象は信頼できる自作コード
+    assert result == expected
+    assert isinstance(result, bool) == isinstance(expected, bool)
 
 
 def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():
