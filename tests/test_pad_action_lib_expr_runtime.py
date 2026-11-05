@@ -75,3 +75,15 @@ def test_pad_equal_treats_thousands_separator_as_numeric() -> None:
     # 実機確認済み: "1,000" = 1000は真。
     assert er.pad_equal("1,000", 1000) is True
     assert er.pad_equal(1000, "1,000") is True
+
+
+def test_pad_add_treats_whitespace_padded_sign_and_leading_dot_as_numeric() -> None:
+    # design/dsl_format_findings.md 知見104(実機確認済み): 前後の空白・明示的な+符号・
+    # 先頭ゼロ省略の小数もいずれも数値として認識される。
+    assert er.pad_add(1, "  5  ") == 6
+    assert er.pad_add(1, "+5") == 6
+    assert er.pad_add(1, ".5") == 1.5
+
+
+def test_pad_equal_treats_whitespace_padded_number_as_numeric() -> None:
+    assert er.pad_equal("  5  ", 5) is True
