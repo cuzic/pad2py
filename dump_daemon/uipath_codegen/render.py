@@ -83,6 +83,16 @@ def _render_node(node: ExprNode) -> str:
     if isinstance(node, UnaryOp):
         op = node.op.lower()
         if op == "not":
+            # 既知の未解決リスク(design/uipath_vb_expression_mapping.md参照):
+            # VBの`Not`はAnd/Or/Xorと同じ型依存の二重性質を持ち、Boolean
+            # オペランドには論理否定、Integerオペランドにはビット反転
+            # (2の補数)として働く。Pythonの`not x`はBooleanの場合のみ
+            # 正しく、Integerの場合は`~x`が必要——ただしAnd/Or/Xorの
+            # `&`/`|`/`^`と違い、Booleanにも正しく働く単一のPython演算子が
+            # 無い(`~True`は`-2`になり論理否定と一致しない)。知見32・36の
+            # 実機確認例は`Not True`(Boolean)のみで、Integerオペランドの
+            # 実例・実機検証が無いため、型を判定するでっち上げコードを
+            # 挿入せず、確認済みのBoolean前提のまま`not (...)`とする。
             return f"not ({_render_node(node.operand)})"
         if op in ("-", "+"):
             return f"{node.op}({_render_node(node.operand)})"
@@ -203,6 +213,14 @@ def _render_bin_op(node: BinOp) -> str:
     if op == "/":
         return f"({left}) / ({right})"
     if op == "^":
+        # 既知の未解決リスク(design/uipath_vb_expression_mapping.md参照):
+        # VBの`^`は常にDouble型で計算される(Microsoft Learn「^ Operator」)
+        # ため`2^2`はVBでは`4.0`相当になるが、Pythonの`2 ** 2`は整数`4`の
+        # まま——通常は数値として等価だが文字列化の見た目が変わりうる。
+        # さらに負の底に非整数の指数を与えた場合(例: `(-8) ^ 0.5`)、
+        # Pythonの`**`は複素数を返すが、VB側の挙動(NaN相当か実行時例外か)
+        # を公式ドキュメントで確認できておらず実機未検証——でっち上げた
+        # 分岐処理は挿入せず、単純な`**`変換のまま残す。
         return f"({left}) ** ({right})"
     if op in _BITWISE_OPS:
         return f"({left}) {_BITWISE_OPS[op]} ({right})"
