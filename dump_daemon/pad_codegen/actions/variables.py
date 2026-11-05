@@ -19,9 +19,15 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 順で走査、`AllMatches: False`でも最初の1件だけを含むリストのまま)。専用の
 `find_item_in_datatable_everywhere()`を実装・結線した。
 
+`Variables.FilterDataTable`の`FilterParameters`スキーマ(`COLUMN`/`OPERATOR`/`VALUE`/
+`RULE`列)は知見90でdecompile(`FilterDataTableUtilities.cs`)+実機のRun実行による
+検証(`Equal`の2条件AND・`Contains`)で確認済みのため結線した(`filter_datatable()`)。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
-- `Variables.FilterDataTable`/`Variables.JoinDataTable`: フィルタ/結合条件の
-  DataTableスキーマが未確認——コードを生成すると実行時に必ず壊れる。
+- `Variables.JoinDataTable`: 結合条件のDataTableスキーマが未確認——
+  コードを生成すると実行時に必ず壊れる(`FilterDataTable`と同じdecompile手法で
+  次回調査できる見込み、`JoinDataTableExtensions.TryGetJoinFirstColumnName`等が
+  手がかり)。
 - `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText:
   False`(数値らしき文字列を実際の数値型に変換すると推測されるが未確認)の場合:
   `pad_action_lib.datatable`は常に文字列のまま保持する(`ReadFieldsAsText: True`相当)
@@ -184,6 +190,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
             f"{table}, {value}, all_matches={all_matches}, match_case={match_case}, "
             f"match_entire_cell_contents={entire_cell})"
+        ]
+
+    if action_id == "Variables.FilterDataTable":
+        table = safe_render(p.get("DataTable"))
+        # 知見72の「一度も編集されていない」空バックティック文字列(`` `` ``→Pythonの`""`)は
+        # 「フィルタ未設定」を意味し、`FilterDataTableAction.Execute()`自身も
+        # `FilterParameters.Rows.Count == 0`で元のテーブルをそのまま返す——
+        # `filter_datatable(table, [])`の既定動作と一致するため`[]`に読み替える。
+        raw_filter_parameters = p.get("FilterParameters")
+        filter_parameters = "[]" if raw_filter_parameters == "" else safe_render(raw_filter_parameters)
+        match_case = safe_render(p.get("MatchCase"))
+        if None in (table, filter_parameters, match_case) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.filter_datatable("
+            f"{table}, {filter_parameters}, match_case={match_case})"
         ]
 
     if action_id == "Variables.DeleteEmptyRowsFromDataTable":

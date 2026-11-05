@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(25/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(24/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -24,8 +24,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`は`ReadFieldsAsText`
   の数値コレーション挙動が別途未確認のため`True`の場合のみ)。`TrimFields`の正確な
   意味論は別の未解決課題として残る(低優先度)。
-- [ ] 🖥️ `Variables.FilterDataTable`/`JoinDataTable`の条件/結合キー指定方法を実機で確認(スキーマ未確認のため
-  現状`NotImplementedError`)。
+- [x] 💻🖥️ `Variables.FilterDataTable`の条件(`FilterParameters`)スキーマを特定・結線。
+  ✅ **decompile+実機確認・結線完了(知見90)**: RDP不要——`ilspycmd`でVM上の
+  `Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`を再デコンパイルし、
+  `FilterParameters`が`COLUMN`/`OPERATOR`/`VALUE`/`RULE`列(16種の`FilterConditionOperator`・
+  `Or`/`And`の`RULE`)だと判明。知見81のRun実行手法でTier1確認済みアクションだけから
+  `FilterParameters`テーブル自体を組み立て、`Equal`・`Contains`・2条件ANDの3パターンを
+  実機検証、全て一致。`filter_datatable()`を実装・結線した(`codegen_coverage.py`:
+  177/202→178/202)。
+- [ ] 🖥️ `Variables.JoinDataTable`の結合条件(`JoinParameters`)スキーマを特定・結線。
+  知見90と同じDLLに`JoinDataTableExtensions`(`TryGetJoinFirstColumnName`等)が見つかって
+  おり、同じdecompile→Run検証の2段階アプローチで続けられる見込みだが、`JoinDataTableAction`
+  自体はFilterより実装が複雑(複合インデックス最適化・Left/Full結合のnull埋め・重複列名の
+  ` (2)`リネーム)なため未着手。
 - [x] 🖥️ `Variables.SubtractLists`/`FindCommonListItems`が使うPAD独自比較エンジン
   (`ComparisonCalculator.Compare`)の挙動確認(大文字小文字・型変換ルール)。
   ✅ **実機確認・結線完了(知見85)**: VMが空いたタイミングで知見81の「Run実行+

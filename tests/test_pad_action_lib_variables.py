@@ -181,11 +181,71 @@ def test_merge_datatables() -> None:
     assert target == [{"a": 1}, {"a": 2}]
 
 
-def test_filter_and_join_datatable_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        va.filter_datatable([{"a": 1}], [])
+def test_join_datatable_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         va.join_datatable([{"a": 1}], [{"a": 1}])
+
+
+def test_filter_datatable_no_conditions_returns_copy() -> None:
+    # design/dsl_format_findings.md 知見90(実機確認済み): FilterParametersが空なら
+    # FilterDataTableAction.Execute()自身がDataTable.Copy()を返す。
+    table = [{"a": 1}]
+    result = va.filter_datatable(table, [])
+    assert result == table
+    assert result is not table
+
+
+def test_filter_datatable_equal_matches_same_type_values() -> None:
+    table = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}, {"Name": "Carol", "Age": "30"}]
+    conditions = [{"COLUMN": "Age", "OPERATOR": "Equal", "VALUE": "30", "RULE": "And"}]
+    assert va.filter_datatable(table, conditions) == [
+        {"Name": "Alice", "Age": "30"},
+        {"Name": "Carol", "Age": "30"},
+    ]
+
+
+def test_filter_datatable_equal_type_mismatch_never_matches() -> None:
+    # decompile済みソースの`flag`判定: 列の実際の型とVALUEの型が食い違う場合、
+    # Equalは常に偽(NotEqualは常に真)になる。
+    table = [{"Age": 30}]
+    conditions = [{"COLUMN": "Age", "OPERATOR": "Equal", "VALUE": "30", "RULE": "And"}]
+    assert va.filter_datatable(table, conditions) == []
+
+
+def test_filter_datatable_contains_matches_substring() -> None:
+    table = [{"Name": "Alice"}, {"Name": "Bob"}, {"Name": "Carol"}]
+    conditions = [{"COLUMN": "Name", "OPERATOR": "Contains", "VALUE": "ob", "RULE": "And"}]
+    assert va.filter_datatable(table, conditions) == [{"Name": "Bob"}]
+
+
+def test_filter_datatable_and_combines_consecutive_conditions() -> None:
+    table = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}, {"Name": "Carol", "Age": "30"}]
+    conditions = [
+        {"COLUMN": "Age", "OPERATOR": "Equal", "VALUE": "30", "RULE": "And"},
+        {"COLUMN": "Name", "OPERATOR": "Equal", "VALUE": "Carol", "RULE": "And"},
+    ]
+    assert va.filter_datatable(table, conditions) == [{"Name": "Carol", "Age": "30"}]
+
+
+def test_filter_datatable_or_starts_a_new_and_group() -> None:
+    table = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}, {"Name": "Carol", "Age": "30"}]
+    conditions = [
+        {"COLUMN": "Name", "OPERATOR": "Equal", "VALUE": "Bob", "RULE": "And"},
+        {"COLUMN": "Age", "OPERATOR": "Equal", "VALUE": "30", "RULE": "Or"},
+    ]
+    result = va.filter_datatable(table, conditions)
+    assert result == [
+        {"Name": "Alice", "Age": "30"},
+        {"Name": "Bob", "Age": "25"},
+        {"Name": "Carol", "Age": "30"},
+    ]
+
+
+def test_filter_datatable_match_case_false_ignores_case() -> None:
+    table = [{"Name": "alice"}]
+    conditions = [{"COLUMN": "Name", "OPERATOR": "Equal", "VALUE": "Alice", "RULE": "And"}]
+    assert va.filter_datatable(table, conditions, match_case=True) == []
+    assert va.filter_datatable(table, conditions, match_case=False) == table
 
 
 def test_retrieve_column_into_list() -> None:

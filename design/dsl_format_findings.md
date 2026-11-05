@@ -1917,3 +1917,23 @@ A/B節のRDP必須項目を再点検した結果、`FindOrReplaceInDataTable.Fin
 **確認できた事実**: `DataTableMatches`は`(行インデックス, 列インデックス)`の0始まりペアのリストで、行→列の順で走査して見つかった順に並ぶ。`AllMatches: False`でも型は変わらず(最初の1件だけを含むリストのまま)。`MatchCase`/`MatchEntireCellContents`の意味論は知見85/知見のFindOrReplaceで既に確認済みの`_cell_matches()`ロジック(大文字小文字無視・部分一致/全体一致の切り替え)とそのまま一致した。
 
 **修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`find_item_in_datatable_everywhere()`(既存の`_cell_matches()`ヘルパーを再利用、`is_regex=False`固定)を実装し、`pad_codegen/actions/variables.py`の`Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`を結線した(`codegen_coverage.py`: 176/202→177/202、87%→88%)。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 90. 【新手法】decompile(ilspycmd)+知見81のRun実行検証を組み合わせ、`Variables.FilterDataTable`の`FilterParameters`スキーマを特定・結線
+
+知見89の「Tier1確認済みアクションだけでDataTableを組み立てられるなら、未知の出力/入力契約もRun実行で検証できる」という発見を、A節で長らく`NotImplementedError`のまま残っていた`Variables.FilterDataTable`(フィルタ条件のDataTableスキーマが未確認)にも適用した。ただし今回は「出力の形」ではなく「入力(`FilterParameters`)に何を書けば受理されるか」自体が未知だったため、まず知見76/77の手法(`ilspycmd`でPAD本体のDLLを再デコンパイル)でソースを特定してから、知見81のRun実行で裏取りする、という2段階のアプローチを取った。
+
+**手順1(decompile)**: `clipwire exec`でVM上の`C:\Program Files (x86)\Power Automate Desktop\Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`(259,864バイト)をBase64化して取得し、ローカルの`ilspycmd`で逆コンパイル(本リポジトリには逆コンパイル結果自体はコミットしない方針は従来通り)。`FilterDataTableAction.Execute()`・`FilterDataTableExtensions`・`FilterDataTableUtilities.BuildFilterExpression()`から、`FilterParameters`の列スキーマが**`COLUMN`/`OPERATOR`/`VALUE`/`RULE`**(いずれも大文字)の4列であり、`OPERATOR`は`FilterConditionOperator`という16種(`Equal`/`NotEqual`/`GreaterThan`/`GreaterThanOrEqual`/`LessThan`/`LessThanOrEqual`/`IsEmpty`/`IsNotEmpty`/`IsBlank`/`IsNotBlank`/`StartsWith`/`EndsWith`/`Contains`/`NotContains`/`NotStartsWith`/`NotEndsWith`)の列挙型名の文字列、`RULE`は`FilterLogicalOperator`(`Or`/`And`、2行目以降でのみ読まれ前の行との結合方法を表す)だと判明した。さらに`Equal`/`NotEqual`限定の非自明な挙動も発見: 列の実際の値の型とフィルタ値(`VALUE`)の型が一致しない場合、`Equal`は**常に偽**、`NotEqual`は**常に真**になる(`columnType != rawValue.GetType()`という`flag`判定)。
+
+**手順2(実機検証)**: decompileで判明したスキーマが本当に受理されるか、`CreateNewDatatable`+`AddColumnToDataTable`+`AddItemToList`/`AddRowToDataTable`(いずれもTier1確認済み)だけで`FilterParameters`テーブル自体を組み立て、知見81のRun実行+ファイル書き出しで検証した(新規テストフロー`filter_dt_check`、保存せず破棄)。
+
+| テスト | 条件 | 結果(`FilteredDataTable`をCSV変換した内容) | 解釈 |
+| --- | --- | --- | --- |
+| 単一条件 | `Age Equal "30"`(Name/Age列、値は全て文字列) | `Alice,30`/`Carol,30`(Bobの25は除外) | decompile通りの単純`Equal`が機能 |
+| 2条件AND | `Age Equal "30"` AND `Name Equal "Carol"` | `Carol,30`のみ | `RULE: And`による2条件の結合が機能 |
+| `Contains` | `Name Contains "ob"` | `Bob,25`のみ | 部分一致演算子も機能 |
+
+3パターンとも一切のエラー無く実行でき、全て期待通りの結果になった——decompileで読んだスキーマが完全に正しいと確証された。
+
+**修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`filter_datatable(table, conditions, match_case=True)`を実装した。論理演算子の優先順位(ANDがORより強く結合)に従い、`RULE: Or`が現れた位置でOR区切りのAND-groupに分割してから評価する(単純な左から右への畳み込みではない)。`Equal`/`NotEqual`の型不一致時の挙動もdecompileの`flag`判定を忠実に再現した。`pad_codegen/actions/variables.py`の`Variables.FilterDataTable`を結線し、`FilterParameters`が知見72の「一度も編集されていない」空バックティック文字列(`` `` ``→Pythonの`""`)の場合は`[]`に読み替える(`FilterDataTableAction.Execute()`自身も`FilterParameters.Rows.Count == 0`で元のテーブルをそのまま返すため、この既定動作と一致する)。`codegen_coverage.py`: 177/202→178/202(88%)。
+
+**留保事項**: 実機で直接検証したのは`Equal`・`Contains`・`RULE: And`の組み合わせのみ。残り13種の演算子(`GreaterThan`等の順序比較・`IsEmpty`/`IsBlank`系・`StartsWith`等)と`RULE: Or`(OR-group分割)自体はdecompileしたソースコードに忠実な実装であり、ソースの正確性自体は`Equal`/`Contains`の一致で裏付けられたが、個別には実機未検証のまま。`Variables.JoinDataTable`も同じDLL内に`JoinDataTableExtensions`(`TryGetJoinFirstColumnName`等)が見つかっており、同じ2段階アプローチ(decompile→Run検証)で次に調査できる見込みだが、`JoinDataTableAction`自体はFilterより実装が複雑(複合インデックスによる最適化パス・Left/Full結合でのnull埋め・重複列名の` (2)`リネーム等)なため、本tickでは着手しなかった。

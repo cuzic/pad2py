@@ -11,8 +11,10 @@ PADのDataTable/List系アクションの多くは対象コレクションを`[I
 済み(文字列は大文字小文字を区別するが、数値を表す文字列と数値は型をまたいで
 等価)。知見88で`IF`/`SET`の`=`/`<>`演算子も同じ規則に従うことを実機確認済み
 (`pad_action_lib.expr_runtime.pad_equal()`に共通実装、`pad_codegen`側もこれを使うよう
-結線済み)。`FilterDataTableAction`/`JoinDataTableAction`のフィルタ条件・結合条件の
-DataTableスキーマは別途未確認のため未実装のまま残す。
+結線済み)。`FilterDataTableAction`のフィルタ条件(`FilterParameters`)のDataTableスキーマ
+(`COLUMN`/`OPERATOR`/`VALUE`/`RULE`列)は知見90でdecompile+実機確認済みのため結線済み
+(`filter_datatable()`)。`JoinDataTableAction`の結合条件スキーマは同じ手法で続けて
+調査できる見込みだが本モジュールでは依然未確認のため未実装のまま残す。
 """
 from __future__ import annotations
 
@@ -257,12 +259,101 @@ def merge_datatables(target: DataTable, other: DataTable) -> None:
     target.extend(dict(row) for row in other)
 
 
-def filter_datatable(table: DataTable, conditions: DataTable) -> DataTable:
-    raise NotImplementedError(
-        "FilterDataTableAction's filter-condition DataTable schema "
-        "(FilterConditionOperator and its parameters) has not been read from "
-        "FilterDataTableUtilities.cs; not implemented"
-    )
+def _filter_column_type(table: DataTable, column: str) -> type | None:
+    seen: type | None = None
+    for row in table:
+        value = row.get(column)
+        if value is None:
+            continue
+        value_type = type(value)
+        if seen is None:
+            seen = value_type
+        elif value_type is not seen:
+            raise ValueError(f"Column {column!r} has mixed types: {seen} vs {value_type}")
+    return seen
+
+
+def _filter_text_equal(a: object, b: object, match_case: bool) -> bool:
+    if isinstance(a, str) and isinstance(b, str) and not match_case:
+        return a.lower() == b.lower()
+    return a == b
+
+
+def _filter_condition_matches(row: Row, condition: Row, column_types: dict, match_case: bool) -> bool:
+    column = str(condition.get("COLUMN"))
+    operator = str(condition.get("OPERATOR"))
+    value = condition.get("VALUE")
+    cell = row.get(column)
+    if operator == "IsBlank":
+        return cell is None
+    if operator == "IsNotBlank":
+        return cell is not None
+    if operator == "IsEmpty":
+        return cell is None or str(cell) == ""
+    if operator == "IsNotEmpty":
+        return not (cell is None or str(cell) == "")
+    if operator in ("Equal", "NotEqual"):
+        type_mismatch = cell is not None and value is not None and type(cell) is not type(value)
+        if operator == "Equal":
+            return False if type_mismatch else _filter_text_equal(cell, value, match_case)
+        return True if type_mismatch else (cell is None or not _filter_text_equal(cell, value, match_case))
+    if operator in ("GreaterThan", "GreaterThanOrEqual", "LessThan", "LessThanOrEqual"):
+        if cell is None:
+            return False
+        if operator == "GreaterThan":
+            return cell > value  # type: ignore[operator]
+        if operator == "GreaterThanOrEqual":
+            return cell >= value  # type: ignore[operator]
+        if operator == "LessThan":
+            return cell < value  # type: ignore[operator]
+        return cell <= value  # type: ignore[operator]
+    text = "" if cell is None else str(cell)
+    needle = "" if value is None else str(value)
+    if not match_case:
+        text, needle = text.lower(), needle.lower()
+    if operator == "StartsWith":
+        return text.startswith(needle)
+    if operator == "EndsWith":
+        return text.endswith(needle)
+    if operator == "Contains":
+        return needle in text
+    if operator == "NotContains":
+        return needle not in text
+    if operator == "NotStartsWith":
+        return not text.startswith(needle)
+    if operator == "NotEndsWith":
+        return not text.endswith(needle)
+    raise ValueError(f"Unsupported FilterDataTable operator: {operator!r}")
+
+
+def filter_datatable(table: DataTable, conditions: DataTable, match_case: bool = True) -> DataTable:
+    """design/dsl_format_findings.md 知見90で実機確認済みの出力契約。
+
+    `conditions`(`FilterParameters`)は`COLUMN`/`OPERATOR`/`VALUE`/`RULE`列を持つDataTable
+    (decompileした`FilterDataTableUtilities`/`FilterDataTableExtensions`から判明、`Equal`で
+    3行(`Age Equal 30 AND Name Equal Carol`)・`Contains`を実機のRun実行+ファイル書き出しで
+    検証済み)。`RULE`は2行目以降で前の行との結合方法(`"Or"`/`"And"`、既定は`"And"`)を表す。
+    標準的な論理演算子の優先順位(ANDがORより強く結合)に従い、OR区切りのAND-group群として
+    評価する。`Equal`/`NotEqual`は両辺のPython型が一致しない場合、常に不一致(`Equal`→常に偽、
+    `NotEqual`→常に真)という実機特有の挙動(decompile済みソースの`flag`判定)を再現する。
+    """
+    if not conditions:
+        return [dict(row) for row in table]
+    columns = {str(c.get("COLUMN")) for c in conditions}
+    column_types = {col: _filter_column_type(table, col) for col in columns}
+    groups: list[list[Row]] = [[]]
+    for i, condition in enumerate(conditions):
+        if i > 0 and condition.get("RULE") == "Or":
+            groups.append([])
+        groups[-1].append(condition)
+
+    def row_matches(row: Row) -> bool:
+        return any(
+            all(_filter_condition_matches(row, cond, column_types, match_case) for cond in group)
+            for group in groups
+        )
+
+    return [dict(row) for row in table if row_matches(row)]
 
 
 def join_datatable(left: DataTable, right: DataTable, join_type: str = "Inner") -> DataTable:
