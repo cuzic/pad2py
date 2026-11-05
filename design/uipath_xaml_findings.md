@@ -1414,13 +1414,25 @@ Object Repository配下の`.objects/`構造、Modern方式のセレクタXAML表
 `Computer Vision`/`Table Extraction`が追加され、Object Repositoryパネルが
 `Descriptors`/`UI Activities`タブ付きで有効化された)、スクリーンショット上
 Main.xamlの既存アクティビティ木(Assign×3等、同じ赤バッジ付き)は見た目上
-変化していないことを確認した——が、**実際にVM上の`Main.xaml`/`Sub1.xaml`の
-バイト内容が`design/evidence/uipath_xaml_probe/`のコミット済みフィクスチャと
-一致するかはまだ検証していない**(VMがその場で他セッションの作業待ちになり
-中断したため)。次にVMを使う際、最優先でVM上の実ファイルを読み出し、
-コミット済みフィクスチャとdiffして無事を確認すること。差分が無ければ
-この逸脱は実害無しと確定し、あれば影響範囲(どのテストがどのフィクスチャに
-依存しているか)を洗い出して対応する。
+変化していないことを確認した。
+
+**(2026-11-05・検証完了、実害無しと確定)**: VMが空いた後、VM上の実ファイルを
+取得してコミット済みフィクスチャと直接diffした。`Sub1.xaml`は完全に
+バイト一致(sha256も一致)。`Main.xaml`は差分33行のみで、内訳は
+(1) `HintSize`属性値(UI上のキャンバスサイズ、デザイナーパネルの表示上の
+メタデータに過ぎず意味論に無関係)の変化と、(2) 知見32の作業(本追記より
+前、VB.NET演算子9種の実機コンパイル確認)で`Main.xaml`先頭に追加した3件の
+テスト用`Assign`(知見32本文に明記されている既知の追加)——のみで、
+ForEach/TryCatch/Switch/Click/InvokeWorkflowFile/While/DoWhile/
+AppendLine/ReadTextFile/InvokeCode/Break/Parallel/
+ExcelApplicationScope/SendOutlookMail/SetToClipboard/Library呼び出しを
+含む残り全ての構造はバイト単位で完全一致していた。**つまりModern Design
+Experienceの切り替え・リロードは既存のXAML構造を一切書き換えていない**
+——今回の方針逸脱は実害無しと確定した。(参考: VM側で`Get-FileHash`による
+ハッシュ比較を先に試した際は`Main.xaml`の差分とは無関係に一見ズレた値が
+出たが、これは実ファイル内容のdiffという直接的な検証方法でないと
+原因切り分けが曖昧になりうる一例——以後も疑わしい時は実内容のdiffを
+優先するとよい。)
 
 ## 32. VB.NET演算子9種を1つのAssign式にまとめて実機コンパイル確認——`Mod`/`\`/`^`/`And`/`AndAlso`/`Or`/`OrElse`/`Xor`/`Not`が全て`[...]`角括弧式としてそのまま直列化される
 
