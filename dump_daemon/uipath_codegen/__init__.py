@@ -299,9 +299,16 @@ def _generate_if(
 ) -> list[str]:
     prefix = INDENT * indent
     # 条件式は値より厳格——変換できなければ例外を伝播させてコード生成自体を
-    # 失敗させる(モジュールdocstring参照)。
+    # 失敗させる(モジュールdocstring参照)。`If...Then...Else Statement`
+    # ページが「conditionはTrue/Falseに評価できるか、暗黙的にBooleanへ
+    # 変換可能な型」と明記しているため(知見61)、`_vb_bool()`(知見60の
+    # `AndAlso`/`OrElse`と同じヘルパー)で明示的にBooleanへ変換する——
+    # Pythonの`if`文自体の素の真偽値判定(`bool(文字列)`は空文字列以外
+    # 常に`True`)はVBのCBool規則と食い違う(例: `If someStr Then`で
+    # `someStr`が`"False"`/`"0"`の場合、VBは`False`扱いだがPythonの
+    # 素の`if "False":`は`True`になる)。
     cond = render_expr(node.condition)
-    lines = [f"{prefix}if {cond}:"]
+    lines = [f"{prefix}if {VB_BOOL_HELPER_NAME}({cond}):"]
     then_body = _ensure_nonempty_suite(
         _generate_body(node.then_body, indent + 1, invoke_resolver), indent + 1
     )
@@ -332,8 +339,9 @@ def _generate_while(
     node: WhileNode, indent: int, invoke_resolver: dict[str, str] | None = None
 ) -> list[str]:
     prefix = INDENT * indent
+    # `While`の条件も`If`と同じBoolean変換規則に従う(知見61)。
     cond = render_expr(node.condition)
-    lines = [f"{prefix}while {cond}:"]
+    lines = [f"{prefix}while {VB_BOOL_HELPER_NAME}({cond}):"]
     body = _ensure_nonempty_suite(
         _generate_body(node.body, indent + 1, invoke_resolver), indent + 1
     )
@@ -351,10 +359,11 @@ def _generate_do_while(
     prefix = INDENT * indent
     if node.condition is None:
         return [f"{prefix}# TODO: Do While with no Condition set — intent unclear"]
+    # `DoWhile`の条件も`If`/`While`と同じBoolean変換規則に従う(知見61)。
     cond = render_expr(node.condition)
     lines = [f"{prefix}while True:"]
     body = _generate_body(node.body, indent + 1, invoke_resolver)
-    body.append(f"{INDENT * (indent + 1)}if not ({cond}):")
+    body.append(f"{INDENT * (indent + 1)}if not ({VB_BOOL_HELPER_NAME}({cond})):")
     body.append(f"{INDENT * (indent + 2)}break")
     lines.extend(_ensure_nonempty_suite(body, indent + 1))
     return lines

@@ -39,7 +39,7 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | `True` / `False` | 同上 | `True` / `False` |
 | `IsNot`(参照比較の否定) | `[CStr(If(result IsNot Nothing, "notnothing", "isnothing")) & ...]`(知見36、実機コンパイル確認) | `is not` |
 | `Nothing` | 同上 | `None` |
-| 三項演算子 `If(cond, whenTrue, whenFalse)` | 同上 | `whenTrue if cond else whenFalse` |
+| 三項演算子 `If(cond, whenTrue, whenFalse)` | 同上 | `whenTrue if _vb_bool(cond) else whenFalse`(2026-11-05修正、知見61参照——`cond`はBooleanへの暗黙変換が必要、下記「注意点」参照) |
 | `CInt(x)` | `[... & CStr(CInt("5")) & ...]`(知見36、実機コンパイル確認) | `round(_vb_cdbl(x))`(2026-11-05修正、知見42・53参照——VBの`CInt`は銀行丸め/round-half-to-even(知見42)に加え、`Nothing`→`0`・桁区切り文字列・`Boolean`→`-1`も`CDbl`と同じ変換を内部で使う(知見53、.NETランタイム本体のソースで確定)ため`_vb_cdbl()`経由にする) |
 | `CDbl(x)` | 同上 | `_vb_cdbl(x)`(2026-11-05修正、知見52参照——.NETランタイム本体のソース(`Conversions.vb`)で確定。`Nothing`→`0`、桁区切り文字列(`"1,234.5"`)を受理、`Boolean`は`True→-1`) |
 | `CBool(x)` | 同上 | 引数が文字列リテラルならコード生成時に`"True"`/`"False"`(大文字小文字無視)か数値として確定済みの`True`/`False`を埋め込む(2026-11-05修正、知見42参照——Pythonの`bool(文字列)`は空文字列以外は常に`True`になり食い違う。例: `bool("False")`は`True`)。リテラル以外(変数参照等)は実行時の型が不明なため`bool(x)`のまま(既知の限界、文字列型なら上記と同じ理由で誤りうる) |
@@ -181,6 +181,16 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
     `0 and True`は`0`)。`_vb_bool()`ヘルパーで両オペランドを明示的に
     Booleanへ変換してから`and`/`or`(短絡評価自体はそのまま活用)を
     適用するよう修正した。
+- **`If`/`While`/`DoWhile`の条件式・三項`If()`の第1引数(2026-11-05、
+  知見61——`AndAlso`/`OrElse`と同じ食い違いが制御構文にも波及していた)**:
+  Microsoft Learn「If...Then...Else Statement」が条件式を「Must evaluate
+  to True or False, or to a data type that is implicitly convertible to
+  Boolean」と定義しており、`AndAlso`/`OrElse`(知見60)と同じBoolean
+  変換規則に従う。Pythonの`if`/`while`文の素の真偽値判定(`bool(文字列)`
+  は空文字列以外常に`True`)はVBのCBool規則と食い違うため(例:
+  `If "False" Then`はVBでは偽になるが、Pythonの素の`if "False":`は
+  真)、`_vb_bool()`(`AndAlso`/`OrElse`と同じヘルパー)で明示的に
+  条件式をBooleanへ変換してから`if`/`while`文へ渡すよう修正した。
 - **`Xor`(2026-11-05、`And`/`Or`の検証過程で判明)**: 当初「ブール同士なら
   `!=`、整数同士なら`^`」と型依存の変換が必要だと考えていたが、`And`/`Or`
   の`&`/`|`統一変換と全く同じ理由(Pythonの`bool`は`int`のサブクラスで、

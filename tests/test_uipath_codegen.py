@@ -101,7 +101,7 @@ def test_if_then_else():
         ]
     )
     code = generate_python(wf)
-    assert "if (lambda _t: _t[0] == _t[1])(_vb_cmp(x, 'ok')):" in code
+    assert "if _vb_bool((lambda _t: _t[0] == _t[1])(_vb_cmp(x, 'ok'))):" in code
     assert "else:" in code
     _compiles(code)
 
@@ -139,7 +139,7 @@ def test_while_loop():
         ]
     )
     code = generate_python(wf)
-    assert "while (lambda _t: _t[0] != _t[1])(_vb_cmp(x, 'done')):" in code
+    assert "while _vb_bool((lambda _t: _t[0] != _t[1])(_vb_cmp(x, 'done'))):" in code
     assert "break" in code
     _compiles(code)
 
@@ -1063,6 +1063,82 @@ def test_andalso_short_circuits_without_evaluating_right_side_effect() -> None:
     code = render_expr(VbExpr(text="a AndAlso b"))
     assert code == "(_vb_bool(a)) and (_vb_bool(b))"
     assert code.count("_vb_bool(b)") == 1
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 公式ドキュメント(Microsoft Learn「If...Then...Else Statement」)
+        # が「conditionはTrue/Falseに評価できるか、暗黙的にBooleanへ
+        # 変換可能な型」と明記(知見61)——Pythonの素の`if`文の真偽値判定
+        # (`bool("False")`は`True`)はVBのCBool規則と食い違う。
+        ('"False"', "NO"),
+        ('"0"', "NO"),
+        ('"True"', "YES"),
+        ("Nothing", "NO"),
+        ("5", "YES"),
+    ],
+)
+def test_if_condition_coerces_to_boolean_like_vb_not_python_truthiness(
+    vb_text: str, expected: str
+) -> None:
+    """知見61: `If`の条件がPythonの素の真偽値判定ではなくVBのCBool規則
+    (`_vb_bool()`、知見60と同じヘルパー)に従うことの回帰テスト。"""
+    wf = _wrap(
+        [
+            IfNode(
+                condition=VbExpr(text=vb_text),
+                then_body=[MessageBoxNode(text=Literal(value="YES"))],
+                else_body=[MessageBoxNode(text=Literal(value="NO"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+def test_while_condition_coerces_to_boolean_like_vb_not_python_truthiness() -> None:
+    """知見61: `While`の条件も`If`と同じBoolean変換規則に従う回帰テスト
+    ——`"False"`という非空文字列は(Pythonの素の真偽値判定なら`True`に
+    なってしまうところ)VBのCBool規則で`False`扱いになり、ループ本体が
+    一度も実行されない。
+    """
+    wf = _wrap(
+        [
+            WhileNode(
+                condition=VbExpr(text='"False"'),
+                body=[MessageBoxNode(text=Literal(value="should not print"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == ""
+
+
+def test_ternary_if_condition_coerces_to_boolean_like_vb_not_python_truthiness() -> None:
+    """知見61: 三項演算子`If(cond, t, f)`の条件も同じBoolean変換規則に
+    従う回帰テスト。"""
+    wf = _wrap([MessageBoxNode(text=VbExpr(text='If("False", "YES", "NO")'))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "NO"
 
 
 def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():

@@ -569,3 +569,19 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     よう修正。回帰テスト追加(短絡評価が引き続き機能することも生成
     コード自体で確認)、UiPath関連テスト全189件通過。知見44〜60の系統
     点検はこれで完全に完了した。
+23. **(完了、2026-11-05)** `If`/`While`/`DoWhile`/三項`If()`の条件も
+    Boolean変換が必要と判明し修正(VM不使用、知見61——知見60と同じ
+    食い違いが制御構文全体に波及していた、7回連続のクロスチェック的中、
+    今回の系統点検で最も実用上のインパクトが大きい発見): Microsoft
+    Learn「If...Then...Else Statement」が条件式を「Must evaluate to
+    True or False, or to a data type that is implicitly convertible to
+    Boolean」と定義——`AndAlso`/`OrElse`(知見60)と全く同じ規則。
+    修正前は`If`/`While`/`DoWhile`/三項`If()`いずれも条件式をPythonの
+    素の真偽値判定にそのまま委ねており、`If "False" Then`のような
+    (緩い型のUiPath変数で現実的に起こりうる)ケースでVBと食い違って
+    いた(VBはCBool規則で偽、Pythonの素の`if "False":`は非空文字列
+    なので真)。知見60の`_vb_bool()`ヘルパーを全ての条件式(`ElseIf`は
+    `IfNode`の再帰構造で自動的に対応)・三項`If()`の第1引数に適用する
+    よう修正。既存のブリトルなテスト2件を新形式に追従させ、回帰テスト
+    3件追加。UiPath関連テスト全196件通過、リポジトリ全体で全804件通過。
+    知見44〜61の系統点検はこれで完全に完了した。

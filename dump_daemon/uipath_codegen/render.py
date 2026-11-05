@@ -509,8 +509,12 @@ def _render_func_call(node: FuncCall) -> str:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
     if key == "if" and len(args) == 3:
-        # 三項演算子`If(cond, whenTrue, whenFalse)`(知見36)。
-        return f"({args[1]} if {args[0]} else {args[2]})"
+        # 三項演算子`If(cond, whenTrue, whenFalse)`(知見36)。`cond`は
+        # `If...Then`文と同じく「True/Falseに評価できるか、暗黙的に
+        # Booleanへ変換可能な型」が要求される(知見61、`If...Then...Else
+        # Statement`ページの`condition`定義で確定)——`_vb_bool()`
+        # (知見60の`AndAlso`/`OrElse`と同じヘルパー)で変換する。
+        return f"({args[1]} if {VB_BOOL_HELPER_NAME}({args[0]}) else {args[2]})"
     raise NotImplementedError(
         f"unsupported function call (not in the confirmed Tier1 set): {node.name}(...)"
     )

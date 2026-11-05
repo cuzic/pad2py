@@ -3043,6 +3043,55 @@ UiPath関連テスト全189件通過。
 手法だと分かる。知見44〜60の系統点検はこれで(現時点で既知の課題は)
 完全に完了した。
 
+## 61. `If`/`While`/`DoWhile`/三項`If()`の条件もPythonの素の真偽値判定を使っており、VBのBoolean変換規則と食い違うバグを発見・修正——最も影響範囲が広い発見(VM不使用、クロスチェック7件目)
+
+知見60で`AndAlso`/`OrElse`がBoolean変換を要求すると確定した流れで、
+同じ「条件式としてBooleanへの暗黙変換が必要な構文」が他にも無いか
+確認したところ、`If`/`While`/`DoWhile`文と三項演算子`If(cond, t, f)`
+**全ての条件式**が、同じ食い違いを抱えていたと判明した——UiPathの
+ワークフローで最も頻繁に使われる制御構文だけに、影響範囲は今回の
+系統点検の中で最も広い。
+
+**確定した内容**(Microsoft Learn「If...Then...Else Statement」):
+「condition: Required. Expression. **Must evaluate to True or False,
+or to a data type that is implicitly convertible to Boolean.**」——
+`If`文の条件式は`AndAlso`/`OrElse`(知見60)と全く同じ「暗黙的に
+Booleanへ変換可能な型なら受理し、評価前にBooleanへ変換する」規則に
+従う。
+
+修正前の`_generate_if`/`_generate_while`/`_generate_do_while`
+(`dump_daemon/uipath_codegen/__init__.py`)と`_render_func_call`の
+三項`If`(`render.py`)は、いずれも条件式をPythonの`if`/`while`文の
+**素の真偽値判定**(`bool(x)`相当、文字列は空文字列以外常に`True`)に
+そのまま委ねていた——これはVBのCBool規則と根本的に食い違う。例えば
+`If someVar Then`で`someVar`が文字列`"False"`や`"0"`を保持している
+場合(緩い型のUiPath変数で現実的に起こりうる)、VBはCBool規則で`False`
+扱いになるが、Pythonの素の`if "False":`は非空文字列なので`True`に
+なってしまう。
+
+**修正内容**: `_generate_if`/`_generate_while`/`_generate_do_while`の
+条件式、および三項`If()`の第1引数全てを、知見60で導入した`_vb_bool()`
+ヘルパーで明示的にBooleanへ変換してから評価するよう変更(`ElseIf`は
+`IfNode`の再帰構造を通じて自動的に同じ修正が適用される)。
+
+`tests/test_uipath_codegen.py`に
+`test_if_condition_coerces_to_boolean_like_vb_not_python_truthiness`
+(`"False"`→`"NO"`、`"0"`→`"NO"`、`Nothing`→`"NO"`等)、
+`test_while_condition_coerces_to_boolean_like_vb_not_python_truthiness`、
+`test_ternary_if_condition_coerces_to_boolean_like_vb_not_python_truthiness`
+を追加。既存のブリトルな生成コード文字列完全一致テスト2件
+(`test_if_then_else`・`test_while_loop`)も新形式に追従させた。UiPath
+関連テスト全196件通過、リポジトリ全体で全804件通過。
+
+**この知見で確定したこと**: 知見55〜61で7回連続、クロスチェックから
+実在するバグが見つかった——今回は制御構文という、今までの算術・比較・
+論理演算子とは異なるカテゴリへの波及で、かつ実際の自動化ワークフローで
+最も使用頻度の高い構文(`If`/`While`)に影響する点で、これまでで最も
+実用上のインパクトが大きい発見だった。「ある構文クラス(演算子)で
+確定した規則は、同じ公式ドキュメントが言及する隣接構文(条件式一般)
+にも波及していないか確認する」という、知見60で得た教訓をさらに一段
+深掘りした形になる。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
