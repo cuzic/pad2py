@@ -3981,6 +3981,35 @@ Studio/Robotが実際に何を基準に相対パスを解決するか(プロジ�
 倒れたコードを書くより、不確実性そのものを正直に記録する方が誠実だと
 判断した。
 
+## 83. `InvokeCodeNode.arguments`(知見23)も知見75のTODOコメント追記対象に拡張——捕捉済みなのに未表示だったデータ(VM不使用)
+
+知見68(零除算との相互作用確認)・知見81(自己点検)に続けて既存の実装を
+見返していたところ、`InvokeCodeNode.arguments`(知見23、`Code`内で
+参照しうる引数名→外側の式の対応表、実機フィクスチャでは`myArg`→
+`content`)が知見75のTODOコメント追記対象に**入っていなかった**と
+判明した——`Code`自体は表示されるが、どの外部変数が渡されているかは
+元のXAMLを見ないと分からないままだった。
+
+**でっち上げを避けた判断**: `Code`テキスト自体が必ずしも`Arguments`の
+キー名を直接参照するとは限らない(知見17・23の実機確認時、
+`Code="content=content.ToUpper()"`に対し`Arguments`は`myArg`という
+別名で`content`を束縛していた——両者の対応関係の正確な意味論は未確認
+のまま)。このため「`Code`中の`content`は実は`myArg`経由で渡された値だ」
+のような対応付けの説明はでっち上げず、捕捉した生データ(`{引数名: 式}`)
+をそのまま`Arguments={myArg=[content]}`という形で素通しするに留めた。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`_generate_unresolved_activity`): `InvokeCodeNode`の分岐で`node.
+arguments`が空でない場合、`Arguments={...}`を`Code=...`に続けて追記する
+(`_describe_expr_for_comment`、知見75と同じ非破壊の説明用ヘルパーを
+再利用)。`arguments`が空の場合は従来通り`Code`のみ。
+
+`tests/test_uipath_codegen.py`に
+`test_invoke_code_todo_includes_arguments_when_present`
+(知見17・23の実機確認式そのもの)を追加。UiPath関連テスト全260件通過、
+リポジトリ全体で全907件通過(知見70のカバレッジは72%のまま、`# TODO`
+判定自体は変えていないため)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

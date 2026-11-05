@@ -667,6 +667,27 @@ def test_unresolved_activity_todo_includes_captured_fields(node, expected_detail
     _compiles(code)
 
 
+def test_invoke_code_todo_includes_arguments_when_present():
+    """知見83: 知見17・23の実機確認式そのもの(`Code="content=
+    content.ToUpper()"`、`Arguments`は`myArg`という別名で`content`を
+    束縛)——`Code`テキストが`Arguments`のキー名を直接参照するとは限らない
+    ため、でっち上げた対応付けはせず捕捉した生データをそのまま表示する。"""
+    wf = _wrap(
+        [
+            InvokeCodeNode(
+                code="content=content.ToUpper()",
+                arguments={"myArg": VbExpr(text="content")},
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: unsupported in v1 codegen: InvokeCodeNode "
+        "(Code='content=content.ToUpper()', Arguments={myArg=[content]})"
+    ) in code
+    _compiles(code)
+
+
 def test_parallel_runs_sequentially_with_note():
     wf = _wrap(
         [

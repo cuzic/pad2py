@@ -774,11 +774,25 @@ def _generate_unresolved_activity(node, indent: int) -> list[str]:
     倒れた後に人間が手動でポートする際、生成コードだけを見て元のXAMLを
     探しに戻らなくて済むようにする(どのメールを送る予定だったか・どの
     インラインコードが埋め込まれていたか等)。でっち上げた実装では
-    なく、既に捕捉済みのデータをそのまま見やすくするだけ。"""
+    なく、既に捕捉済みのデータをそのまま見やすくするだけ。
+
+    知見83: `InvokeCodeNode.arguments`(知見23、`Code`内で参照される
+    引数名→外側の式の対応表)も同じ理由で追記する——`Code`テキスト自体が
+    必ずしも`arguments`のキー名をそのまま参照するわけではない(知見17・
+    23の実機確認時、`Code="content=content.ToUpper()"`に対し`Arguments`は
+    `myArg`という別名で`content`を束縛していた、実際の対応関係は未確認の
+    まま)ため、でっち上げた対応付けの説明はせず、捕捉した生データ
+    (`{引数名: 式}`)をそのまま表示するに留める。"""
     prefix = INDENT * indent
     detail = ""
     if isinstance(node, InvokeCodeNode):
-        detail = f" (Code={node.code!r})"
+        if node.arguments:
+            args_desc = ", ".join(
+                f"{k}={_describe_expr_for_comment(v)}" for k, v in node.arguments.items()
+            )
+            detail = f" (Code={node.code!r}, Arguments={{{args_desc}}})"
+        else:
+            detail = f" (Code={node.code!r})"
     elif isinstance(node, ExcelApplicationScopeNode):
         detail = f" (WorkbookPath={node.workbook_path!r})"
     elif isinstance(node, ExcelWriteCellNode):
