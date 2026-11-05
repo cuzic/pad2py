@@ -409,6 +409,33 @@ def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
     _compiles(code)
 
 
+def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():
+    """知見32の実機確認式(9演算子複合式)をそのまま生成Pythonコードへ変換し
+    `exec()`して、VB.NET側の実際の結果と一致することまで確認する統合
+    テスト。`Mod`/`\\`/`CInt`/`CBool`の修正(知見42・43)が実在する
+    `uipath_vb_expression_mapping.md`の実例に対しても連携して正しく
+    動くことの最終確認——個々の演算子を単体でテストするのとは別に、
+    実際にUiPath Studioで確認された複合式そのものを通す。
+
+    期待値はVB.NET側の実際の評価結果を手計算したもの: `1 Mod 3`=1、
+    `5 \\ 2`=2、`2 ^ 2`=4、`True And False`=False、
+    `True AndAlso False`=False、`True Or False`=True、
+    `True OrElse False`=True、`True Xor False`=True、`Not True`=False
+    (`&`で単純連結)。
+    """
+    from tests.test_uipath_expr import KNOWN_OP_COMPOUND
+
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=KNOWN_OP_COMPOUND))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "124FalseFalseTrueTrueTrueFalse"
+
+
 def test_invoke_workflow_file_without_resolver_falls_back_to_todo():
     """単体の`generate_python()`呼び出し(`invoke_resolver`省略)では、
     呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""
