@@ -1562,7 +1562,7 @@ def test_get_window_foreground_mode_has_two_output_variables() -> None:
     # 束縛を同時に持つ**という、これまで一度も実機確認していなかったパターンに遭遇した
     # (`WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2`)。
     # `SetVariableRecord.output_var`は「後方互換のため最後に見つかったものを保持する」設計に
-    # 当初から意図的になっていた(dump_daemon/pad_dsl_parser.pyの既存コメント参照)ため、
+    # 当初から意図的になっていた(dump_daemon/pad_dsl/line_parser.pyの既存コメント参照)ため、
     # 実際に複数`=>`を持つ実例に遭遇した今回も、既存の`output_vars`辞書(複数キー対応)で
     # 一切のコード変更無しで正しくパースできることを確認した。
     dsl = "UIAutomation.GetWindow.GetForegroundWindow WindowTitle=> WindowTitle2 WindowInstance=> AutomationWindow2"

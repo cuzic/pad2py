@@ -1,7 +1,7 @@
 """`parse_dsl()` → `build_block_tree()` → `generate_python()` を1コマンドで結ぶCLIエントリポイント。
 
 design/dsl_format_findings.mdの実機検証で育てた
-`pad_dsl_parser.py`/`pad_codegen.py`には、これまで「ユーザーが実際のフローのDSLテキストを
+`pad_dsl`/`pad_codegen`coreには、これまで「ユーザーが実際のフローのDSLテキストを
 どう渡して、生成Pythonをどう受け取るか」という入出力経路が存在しなかった(`argparse`等を
 grepしても何も出てこない状態)。このモジュールはその最小限の橋渡しだけを行う——
 
@@ -12,7 +12,7 @@ research_notes/の調査・design/dsl_format_findings.md 知見43の通り、そ
 対象アクション群を選択してコピーしたテキストを渡す運用を前提にする。
 出力: 生成されたPythonソースコード(ファイル、または標準出力)。
 
-変換不能な構文・アクションは(`pad_dsl_parser.py`/`pad_codegen.py`の既存の方針通り)
+変換不能な構文・アクションは(`pad_dsl`/`pad_codegen`の既存の方針通り)
 サイレントに無視せず、`RawRecord`や`# TODO`コメントとしてそのまま出力に残る——このCLIは
 その挙動に一切手を加えない、薄いI/Oラッパーに徹する。
 """
