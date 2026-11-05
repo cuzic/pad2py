@@ -187,13 +187,26 @@ Main.xaml+サブワークフローファイル+project.jsonから1つのPython�
   PAD側の`raw_fallback.py`と同じ「正直にTODOスタブを出す」方針を踏襲し、
   .NETデコンパイルという全く別の技術トラックには踏み込まない
 
-## Phase 7: 検証基盤
+## Phase 7: 検証基盤【見直し・2026-11-05】
 
-PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る。
-`xaml_probe`(および`xaml_probe_lib`・`xaml_probe_reframework`)を
-体系的なフィクスチャ集に育て、パース→コード生成→期待Pythonの比較を
-回帰テスト化する。知見ごとに1つ以上の実機XAMLフィクスチャが既にある状態
-なので、素材自体はかなり揃っている。
+初版では「PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る」
+としていたが、実際に両ファイルを確認したところ**UiPath側の検証ニーズとは
+別物**だと判明した——`test_round_trip.py`はWindows専用のUI自動化セレクタ
+再検出検証(E1/E2、プロセス再起動後もAutomationIdで要素を再発見できるか)、
+`trace_compare.py`はPBD(プログラミング・バイ・デモンストレーション)の
+複数トレース比較によるループ推測プロトタイプで、どちらも「XAMLパース→
+コード生成→期待Pythonとの比較」という回帰テストの話ではなかった。
+
+その「パース→コード生成→期待Pythonの比較を回帰テスト化する」という
+Phase 7本来の目的自体は、既に`tests/test_uipath_dsl.py`・
+`tests/test_uipath_expr.py`・`tests/test_uipath_codegen.py`・
+`tests/test_uipath_selector.py`(2026-11-05時点で合計100件超)が
+`design/evidence/uipath_xaml_probe/`の実機フィクスチャ2本
+(`Main.xaml`/`Sub1.xaml`)に対して既に果たしている——専用の汎用カバレッジ
+フレームワーク(PAD側の`codegen_coverage.py`相当)を今から作るのは、
+実機フィクスチャがまだ2本しか無い現時点では時期尚早な過剰設計と判断し、
+見送る。実機フィクスチャが今後複数のプロジェクト規模に増えた時点で
+改めて検討する。
 
 ## Phase 8: 明示的にスコープ外とするもの(v1では着手しない)
 
