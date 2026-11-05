@@ -132,8 +132,23 @@ Get Text等のUI自動化アクティビティを扱う以上避けて通れな�
 Main.xaml+サブワークフローファイル+project.jsonから1つのPythonパッケージ
 を生成する。
 
-- `Invoke Workflow File`(知見12)→関数呼び出しへの変換、ワークフロー引数
-  (`<x:Members>`宣言)→Python関数シグネチャへの変換
+- **(完了、2026-11-05)** `Invoke Workflow File`(知見12)→関数呼び出しへの
+  変換、ワークフロー引数(`<x:Members>`宣言)→Python関数シグネチャへの変換:
+  `generate_project_python(entry_path)`を実装した。`entry_path`から
+  `Invoke Workflow File`で到達可能な`.xaml`をBFSで発見し(`_discover_workflow_files`、
+  相対パスは参照元ファイルのディレクトリ基準で解決)、各ファイルを個別の
+  Python関数として生成した上で、ファイル間の`Invoke Workflow File`呼び出しを
+  対応する関数呼び出し(`Sub1(in_text='hello')`のような形)へ変換する。
+  参照先が解決できない場合(存在しないファイル、未提供)は接続済みと偽らず
+  `# TODO: unresolved Invoke Workflow File: ...`に倒す——`generate_python()`
+  単体呼び出し(`invoke_resolver`省略)も同じ既定動作のまま後方互換を保つ。
+  `tests/test_uipath_codegen.py`に4件追加(うち1件は合成した2ファイル構成を
+  `exec()`して実際に関数呼び出しが連携することまで検証)、全603件通過。
+  **既知の制約**: ワークフロー引数の方向(In/Out)は区別せず全て関数の
+  仮引数として扱うのみで、`OutArgument`をPythonの`return`へ対応させる
+  変換は実装していない(呼び出し元が戻り値を使う実例が出た時点で再検討)。
+  関数名の衝突(同じ`class_name`を持つ複数ファイル)は`_2`サフィックスで
+  機械的に回避するだけで、意味のある別名付けはしていない。
 - Library参照(知見26・27)→CLR名前空間エイリアス経由の呼び出し→Python
   モジュール参照への変換。ただし**ソースが手元に無い外部Library(他人の
   Library・Marketplace経由)は`.nupkg`からの復元が技術的に不可能**
@@ -263,8 +278,10 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
    (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
    解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
    のため、使用タイミングの調整が必要
-2. **複数ファイル結線**(Phase 6): `Invoke Workflow File`で参照される
-   サブワークフローを実際に解決し、Python関数呼び出しへ変換する
+2. **(完了、2026-11-05)** 複数ファイル結線(Phase 6):
+   `generate_project_python()`を`dump_daemon/uipath_codegen/`に追加し、
+   `Invoke Workflow File`で参照されるサブワークフローをBFSで実際に辿って
+   解決し、Python関数呼び出しへ変換するようにした。詳細はPhase 6節参照。
 3. **(完了)** より現実的なフィクスチャでの検証:
    `test_realistic_workflow_actually_executes_correctly`
    (`tests/test_uipath_codegen.py`)で、手作りの現実的なワークフローIR

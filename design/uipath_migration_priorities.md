@@ -81,12 +81,18 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
    pywinautoマッピングを実装(`tests/test_uipath_selector.py`、5件全通過)。
    知見37の未検証点(属性名対応・role値の語彙一致)を踏まえ、生成コードには
    常に`# WARNING`を付す
-6. **次点**: 複数ファイル結線(Invoke Workflow Fileの実解決)。詳細は
+6. **(完了)** Phase 6: 複数ファイル結線。`generate_project_python()`を
+   `dump_daemon/uipath_codegen/`に追加し、`Invoke Workflow File`で
+   参照されるサブワークフローを実際にBFSで解決、Python関数呼び出しへ
+   変換(`tests/test_uipath_codegen.py`に4件追加、全603件通過)。
+   詳細はdesign/uipath_transpiler_roadmap.mdのPhase 6節参照
+7. **次点**: セレクタマッピングの実機検証・Modern selector実XAML確認
+   (いずれもVM要、他セッションとの共用タイミング調整が必要)。詳細は
    design/uipath_transpiler_roadmap.mdの「次にやること」参照
 
 以下は(長期ブロック・保留中の)新Studio側の調査で、再開には別途対応が必要:
 
-7. **(長期ブロック・保留)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
+8. **(長期ブロック・保留)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
    インストール済み(知見33)——起動時に「Studio/Robotバージョン不整合、
    マシン再起動が必要」エラー。2回の`gcloud compute instances reset`(いずれも
    ユーザー承認済み)を実施し、2回目ではファイル配置・サービス登録パスとも
@@ -96,10 +102,10 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
    特定・解消できないと判断し、この経路の自動調査は一旦終了。再開するには
    ユーザーによる対話的な調査(RDP接続して画面を直接確認、または旧2021.4.4を
    完全アンインストールしてからの再インストール)が必要
-8. **P2 #11**(Coded Workflows)——v1スコープ外(ロードマップPhase 8)と
+9. **P2 #11**(Coded Workflows)——v1スコープ外(ロードマップPhase 8)と
    確定。再調査するとしても優先度は下がった
-9. **P2 #12の続き**(Object Repository)・**P3 #18**(C#式言語)——同じく
-   v1スコープ外、#7解消後に再検討
-10. **P2 #13**(Orchestratorアセット/キュー連携)——v1スコープ外
+10. **P2 #12の続き**(Object Repository)・**P3 #18**(C#式言語)——同じく
+    v1スコープ外、#8解消後に再検討
+11. **P2 #13**(Orchestratorアセット/キュー連携)——v1スコープ外
     (ロードマップPhase 8、ランタイム統合の別イニシアチブ)
-11. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
+12. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手

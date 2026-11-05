@@ -22,13 +22,14 @@ from pathlib import Path
 
 import pytest
 
-from dump_daemon.uipath_codegen import generate_python
+from dump_daemon.uipath_codegen import generate_project_python, generate_python
 from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
     ClickNode,
     ForEachNode,
     IfNode,
+    InvokeWorkflowFileNode,
     Literal,
     MessageBoxNode,
     ParallelNode,
@@ -296,3 +297,108 @@ def test_realistic_workflow_actually_executes_correctly():
     with contextlib.redirect_stdout(stdout):
         namespace["Test"]()
     assert stdout.getvalue().strip() == "matched"
+
+
+def test_invoke_workflow_file_without_resolver_falls_back_to_todo():
+    """単体の`generate_python()`呼び出し(`invoke_resolver`省略)では、
+    呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""
+    wf = _wrap([InvokeWorkflowFileNode(workflow_file="Sub1.xaml", arguments={})])
+    code = generate_python(wf)
+    assert "# TODO: unresolved Invoke Workflow File: Sub1.xaml" in code
+    _compiles(code)
+
+
+def test_invoke_workflow_file_with_resolver_becomes_function_call():
+    wf = _wrap(
+        [
+            InvokeWorkflowFileNode(
+                workflow_file="Sub1.xaml", arguments={"in_text": Literal(value="hi")}
+            )
+        ]
+    )
+    code = generate_python(wf, invoke_resolver={"Sub1.xaml": "Sub1"})
+    assert "Sub1(in_text='hi')" in code
+    _compiles(code)
+
+
+def test_generate_project_python_links_main_and_sub1():
+    """design/evidence/uipath_xaml_probe/Main.xamlが参照する
+    Sub1.xamlを実際に解決し、1モジュールへ結線する結合テスト。
+    複数ファイル結線(design/uipath_transpiler_roadmap.md Phase 6)が
+    実際に動くことを確認する——`Main`から`Sub1(in_text='hello')`という
+    実関数呼び出しが生成され、両方の関数定義が同じモジュールに存在する。
+    `Main.xaml`自体はモジュールdocstring参照の既知の理由(ループ外の
+    `<ui:Break />`)で全体がコンパイル可能とは主張しない——実行時の
+    結線検証は`test_generate_project_python_actually_calls_sub_workflow`
+    で別途、破綻の無い合成フィクスチャに対して行う。
+    """
+    code = generate_project_python(FIXTURE_DIR / "Main.xaml")
+    assert "def Main():" in code
+    assert "def Sub1(in_text):" in code
+    assert "Sub1(in_text='hello')" in code
+    assert "# TODO: unresolved Invoke Workflow File" not in code
+
+
+def test_generate_project_python_actually_calls_sub_workflow(tmp_path):
+    """合成した2ファイル構成(`Entry.xaml`→`Greet.xaml`)で、`exec()`後に
+    実際に関数として呼び出すところまで確認する——文字列の有無だけでなく
+    呼び出しが実行時に正しく連携することの実機不要な代替証拠。
+
+    **既知の制約**: v1の`generate_python`はワークフロー引数の方向
+    (In/Out)を区別せず全て関数の仮引数にするだけで、戻り値も生成しない
+    (`test_workflow_arguments_become_function_params`と同じ既存の
+    簡略化——OutArgumentをPythonの`return`へ対応させることはv1スコープ外)。
+    そのため`Greet`が受け取った引数を`MessageBox`で出力し、`Entry`から
+    呼んだときにそれが実際に標準出力に現れることで連携を確認する。
+    """
+    (tmp_path / "Greet.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Greet">'
+        '<x:Members><x:Property Name="name" Type="InArgument(x:String)" /></x:Members>'
+        '<Sequence DisplayName="Greet">'
+        '<ui:MessageBox Text="[name &amp; &quot;!&quot;]" />'
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    (tmp_path / "Entry.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Entry">'
+        '<Sequence DisplayName="Entry">'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Greet.xaml">'
+        "<ui:InvokeWorkflowFile.Arguments>"
+        '<InArgument x:TypeArguments="x:String" x:Key="name">world</InArgument>'
+        "</ui:InvokeWorkflowFile.Arguments>"
+        "</ui:InvokeWorkflowFile>"
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    code = generate_project_python(tmp_path / "Entry.xaml")
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Entry"]()
+    assert stdout.getvalue().strip() == "world!"
+
+
+def test_generate_project_python_missing_reference_falls_back_to_todo(tmp_path):
+    """参照先ファイルが存在しない場合、`generate_project_python()`は
+    でっち上げた解決済み関数呼び出しを生成せず`# TODO`に倒す(探索自体は
+    クラッシュせず完了する)。"""
+    entry = tmp_path / "Entry.xaml"
+    entry.write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Entry">'
+        '<Sequence DisplayName="Entry">'
+        '<ui:InvokeWorkflowFile WorkflowFileName="DoesNotExist.xaml" />'
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    code = generate_project_python(entry)
+    assert "def Entry():" in code
+    assert "# TODO: unresolved Invoke Workflow File: DoesNotExist.xaml" in code
+    _compiles(code)

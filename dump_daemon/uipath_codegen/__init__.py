@@ -1,11 +1,11 @@
 """`uipath_dsl`のIR(`Node`) → Pythonソース文字列を生成する codegen core。
 
-`generate_python()`が唯一の公開エントリポイント。`pad_codegen`と同じ設計
-方針(`generate_python()`単一公開関数、値・条件式の文字列化は`render.py`に
-分離、未対応の構文は架空のAPI呼び出しをでっち上げず`# TODO`コメントに倒す)
-を踏襲するが、v1スコープ(design/uipath_transpiler_roadmap.md Phase 1)の
-アクティビティ種類が`pad_codegen`の`action_id`空間よりずっと小さいため、
-`actions/`のようなサブパッケージへの分割はせずこのモジュール1つに収めている。
+`generate_python()`が単一ファイル用の公開エントリポイント。`pad_codegen`と
+同じ設計方針(値・条件式の文字列化は`render.py`に分離、未対応の構文は架空の
+API呼び出しをでっち上げず`# TODO`コメントに倒す)を踏襲するが、v1スコープ
+(design/uipath_transpiler_roadmap.md Phase 1)のアクティビティ種類が
+`pad_codegen`の`action_id`空間よりずっと小さいため、`actions/`のような
+サブパッケージへの分割はせずこのモジュール1つに収めている。
 
 **条件式は値とは異なる失敗モードを採用する**(`pad_codegen`の
 `IfActionRecord`処理と同じ判断): `If.Condition`/`While.Condition`/
@@ -14,8 +14,20 @@
 をそのまま伝播させる)。値(`Assign`の右辺等)が変換できない場合は
 `# TODO`コメント+`None`プレースホルダへ倒す(値の誤りは局所的だが、
 条件の誤りは分岐全体を反転させうるため)。
+
+**複数ファイル結線**: `generate_project_python()`が、`Invoke Workflow File`
+で参照されるサブワークフロー(同じディレクトリ内の別`.xaml`)を実際に辿り、
+1つのPythonモジュールへまとめて変換する公開エントリポイント。到達できる
+参照先ファイルをBFSで発見し、各ファイルを個別のPython関数として生成した上で、
+`Invoke Workflow File`呼び出しをそのファイル名に対応する関数呼び出しへ
+変換する(`generate_python()`はこの解決情報を持たないため単体で呼ぶと
+常に`# TODO`へ倒れる、後方互換のデフォルト動作)。参照先ファイルが存在しない
+場合もでっち上げず`# TODO`に倒す——相対パス解決自体の間違いである可能性を
+含めて、黒箱化しない。
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from ..uipath_dsl.types import (
     AppendLineNode,
@@ -43,12 +55,13 @@ from ..uipath_dsl.types import (
     WhileNode,
     WorkflowFile,
 )
+from ..uipath_dsl.xaml_tree import parse_workflow_file
 from ..uipath_selector import selector_text_to_pywinauto
 from .render import render_expr
 
 INDENT = "    "
 
-__all__ = ["INDENT", "generate_python"]
+__all__ = ["INDENT", "generate_python", "generate_project_python"]
 
 # .NET例外型名 → Pythonの組み込み例外へのマッピング。知見確認済みの
 # `s:Exception`(`System.Exception`のCLR名前空間エイリアス表記、知見6)
@@ -61,15 +74,29 @@ _EXCEPTION_TYPE_MAP = {
 }
 
 
-def generate_python(workflow: WorkflowFile) -> str:
+def generate_python(
+    workflow: WorkflowFile,
+    invoke_resolver: dict[str, str] | None = None,
+    func_name: str | None = None,
+) -> str:
     """`WorkflowFile`(`uipath_dsl.parse_workflow_file()`の戻り値)から
     スタンドアロンのPython関数定義ソースを生成する(末尾改行付き)。
 
     ワークフロー引数(`workflow.arguments`)をそのまま関数の仮引数にする。
+
+    `invoke_resolver`は`Invoke Workflow File`の`workflow_file`属性文字列
+    (例: `"Sub1.xaml"`)→呼び出し先Python関数名の対応表。単体で
+    `generate_python()`を呼ぶ場合は省略してよく、その場合は全ての
+    `Invoke Workflow File`が`# TODO`に倒れる(`generate_project_python()`
+    参照)。
+
+    `func_name`は定義する関数名を`class_name`由来のデフォルトから上書きする
+    (`generate_project_python()`が同名クラスの衝突を避けるために使う)。
     """
     params = list(workflow.arguments.keys())
-    header = f"def {_safe_func_name(workflow.class_name)}({', '.join(params)}):"
-    body = _generate_body(workflow.root.body, indent=1)
+    name = func_name or _safe_func_name(workflow.class_name)
+    header = f"def {name}({', '.join(params)}):"
+    body = _generate_body(workflow.root.body, indent=1, invoke_resolver=invoke_resolver)
     body = _ensure_nonempty_suite(body, indent=1)
     imports = _collect_imports(body)
     lines = [*imports, ""] if imports else []
@@ -91,10 +118,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     return imports
 
 
-def _generate_body(nodes: list[Node], indent: int) -> list[str]:
+def _generate_body(
+    nodes: list[Node], indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     lines: list[str] = []
     for node in nodes:
-        lines.extend(_generate_node(node, indent))
+        lines.extend(_generate_node(node, indent, invoke_resolver))
     return lines
 
 
@@ -123,30 +152,32 @@ def _render_value_or_todo(expr, prefix: str, todo_lines: list[str]) -> str:
         return "None"
 
 
-def _generate_node(node: Node, indent: int) -> list[str]:
+def _generate_node(
+    node: Node, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     if isinstance(node, SequenceNode):
-        return _generate_body(node.body, indent)
+        return _generate_body(node.body, indent, invoke_resolver)
     if isinstance(node, AssignNode):
         return _generate_assign(node, indent)
     if isinstance(node, MessageBoxNode):
         return _generate_message_box(node, indent)
     if isinstance(node, IfNode):
-        return _generate_if(node, indent)
+        return _generate_if(node, indent, invoke_resolver)
     if isinstance(node, ForEachNode):
-        return _generate_for_each(node, indent)
+        return _generate_for_each(node, indent, invoke_resolver)
     if isinstance(node, TryCatchNode):
-        return _generate_try_catch(node, indent)
+        return _generate_try_catch(node, indent, invoke_resolver)
     if isinstance(node, SwitchNode):
-        return _generate_switch(node, indent)
+        return _generate_switch(node, indent, invoke_resolver)
     if isinstance(node, WhileNode):
-        return _generate_while(node, indent)
+        return _generate_while(node, indent, invoke_resolver)
     if isinstance(node, DoWhileNode):
-        return _generate_do_while(node, indent)
+        return _generate_do_while(node, indent, invoke_resolver)
     if isinstance(node, BreakNode):
         return [f"{prefix}break"]
     if isinstance(node, ParallelNode):
-        return _generate_parallel(node, indent)
+        return _generate_parallel(node, indent, invoke_resolver)
     if isinstance(node, AppendLineNode):
         return _generate_append_line(node, indent)
     if isinstance(node, ReadTextFileNode):
@@ -155,8 +186,9 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return _generate_set_to_clipboard(node, indent)
     if isinstance(node, ClickNode):
         return _generate_click(node, indent)
-    if isinstance(node, (InvokeWorkflowFileNode, InvokeCodeNode,
-                          ExcelApplicationScopeNode, ExcelWriteCellNode,
+    if isinstance(node, InvokeWorkflowFileNode):
+        return _generate_invoke_workflow_file(node, indent, invoke_resolver)
+    if isinstance(node, (InvokeCodeNode, ExcelApplicationScopeNode, ExcelWriteCellNode,
                           SendOutlookMailNode, HttpClientNode)):
         return _generate_unresolved_activity(node, indent)
     if isinstance(node, UnknownActivityNode):
@@ -183,42 +215,56 @@ def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
     return [*todo, f"{prefix}print({text})"]
 
 
-def _generate_if(node: IfNode, indent: int) -> list[str]:
+def _generate_if(
+    node: IfNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     # 条件式は値より厳格——変換できなければ例外を伝播させてコード生成自体を
     # 失敗させる(モジュールdocstring参照)。
     cond = render_expr(node.condition)
     lines = [f"{prefix}if {cond}:"]
-    then_body = _ensure_nonempty_suite(_generate_body(node.then_body, indent + 1), indent + 1)
+    then_body = _ensure_nonempty_suite(
+        _generate_body(node.then_body, indent + 1, invoke_resolver), indent + 1
+    )
     lines.extend(then_body)
     if node.else_body:
         lines.append(f"{prefix}else:")
         else_body = _ensure_nonempty_suite(
-            _generate_body(node.else_body, indent + 1), indent + 1
+            _generate_body(node.else_body, indent + 1, invoke_resolver), indent + 1
         )
         lines.extend(else_body)
     return lines
 
 
-def _generate_for_each(node: ForEachNode, indent: int) -> list[str]:
+def _generate_for_each(
+    node: ForEachNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     values = render_expr(node.values)
     lines = [f"{prefix}for {node.item_var or '_item'} in {values}:"]
-    body = _ensure_nonempty_suite(_generate_body(node.body, indent + 1), indent + 1)
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver), indent + 1
+    )
     lines.extend(body)
     return lines
 
 
-def _generate_while(node: WhileNode, indent: int) -> list[str]:
+def _generate_while(
+    node: WhileNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     cond = render_expr(node.condition)
     lines = [f"{prefix}while {cond}:"]
-    body = _ensure_nonempty_suite(_generate_body(node.body, indent + 1), indent + 1)
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver), indent + 1
+    )
     lines.extend(body)
     return lines
 
 
-def _generate_do_while(node: DoWhileNode, indent: int) -> list[str]:
+def _generate_do_while(
+    node: DoWhileNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     """WFの`InterruptibleDoWhile`に相当するPythonネイティブ構文は無いため、
     `while True: ... ; if not (cond): break`の定石パターンへ変換する。
     `Condition`が未設定(本fixtureでの実例、design/uipath_xaml_findings.md
@@ -228,27 +274,35 @@ def _generate_do_while(node: DoWhileNode, indent: int) -> list[str]:
         return [f"{prefix}# TODO: Do While with no Condition set — intent unclear"]
     cond = render_expr(node.condition)
     lines = [f"{prefix}while True:"]
-    body = _generate_body(node.body, indent + 1)
+    body = _generate_body(node.body, indent + 1, invoke_resolver)
     body.append(f"{INDENT * (indent + 1)}if not ({cond}):")
     body.append(f"{INDENT * (indent + 2)}break")
     lines.extend(_ensure_nonempty_suite(body, indent + 1))
     return lines
 
 
-def _generate_try_catch(node: TryCatchNode, indent: int) -> list[str]:
+def _generate_try_catch(
+    node: TryCatchNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     lines = [f"{prefix}try:"]
-    try_body = _ensure_nonempty_suite(_generate_body(node.try_body, indent + 1), indent + 1)
+    try_body = _ensure_nonempty_suite(
+        _generate_body(node.try_body, indent + 1, invoke_resolver), indent + 1
+    )
     lines.extend(try_body)
     for catch in node.catches:
         exc_type = _EXCEPTION_TYPE_MAP.get(catch.exception_type.lower(), "Exception")
         as_clause = f" as {catch.var_name}" if catch.var_name else ""
         lines.append(f"{prefix}except {exc_type}{as_clause}:")
-        body = _ensure_nonempty_suite(_generate_body(catch.body, indent + 1), indent + 1)
+        body = _ensure_nonempty_suite(
+            _generate_body(catch.body, indent + 1, invoke_resolver), indent + 1
+        )
         lines.extend(body)
     if node.finally_body:
         lines.append(f"{prefix}finally:")
-        body = _ensure_nonempty_suite(_generate_body(node.finally_body, indent + 1), indent + 1)
+        body = _ensure_nonempty_suite(
+            _generate_body(node.finally_body, indent + 1, invoke_resolver), indent + 1
+        )
         lines.extend(body)
     return lines
 
@@ -269,7 +323,9 @@ def _render_switch_key(key: str, type_arguments: str) -> str:
     return repr(key)
 
 
-def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
+def _generate_switch(
+    node: SwitchNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     prefix = INDENT * indent
     expr = render_expr(node.expression)
     lines: list[str] = []
@@ -284,26 +340,32 @@ def _generate_switch(node: SwitchNode, indent: int) -> list[str]:
         keyword = "if" if i == 0 else "elif"
         key_literal = _render_switch_key(arm.key, node.type_arguments)
         lines.append(f"{prefix}{keyword} {expr} == {key_literal}:")
-        body = _ensure_nonempty_suite(_generate_body(arm.body, indent + 1), indent + 1)
+        body = _ensure_nonempty_suite(
+            _generate_body(arm.body, indent + 1, invoke_resolver), indent + 1
+        )
         lines.extend(body)
     if default_arm is not None:
         header = "else" if value_arms else "if True"
         lines.append(f"{prefix}{header}:")
-        body = _ensure_nonempty_suite(_generate_body(default_arm.body, indent + 1), indent + 1)
+        body = _ensure_nonempty_suite(
+            _generate_body(default_arm.body, indent + 1, invoke_resolver), indent + 1
+        )
         lines.extend(body)
     if not lines:
         return [f"{prefix}# TODO: Switch with no arms: {expr}"]
     return lines
 
 
-def _generate_parallel(node: ParallelNode, indent: int) -> list[str]:
+def _generate_parallel(
+    node: ParallelNode, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     """WFの`Parallel`(複数ブランチを並行実行)に相当するPythonネイティブの
     軽量な代替は無いため、v1では**ブランチを単純に順次実行**する
     (でっち上げた並行実行を装わない、明示的なコメント付きの簡略化)。"""
     prefix = INDENT * indent
     lines = [f"{prefix}# NOTE: source used Parallel; branches run sequentially here"]
     for branch in node.branches:
-        lines.extend(_generate_node(branch, indent))
+        lines.extend(_generate_node(branch, indent, invoke_resolver))
     return lines
 
 
@@ -358,11 +420,32 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
     return lines
 
 
+def _generate_invoke_workflow_file(
+    node: InvokeWorkflowFileNode, indent: int, invoke_resolver: dict[str, str] | None
+) -> list[str]:
+    """`invoke_resolver`(`generate_project_python()`が構築する、
+    `workflow_file`文字列→Python関数名の対応表)に解決先が見つかった場合のみ
+    実際の関数呼び出しへ変換する。単体の`generate_python()`呼び出し
+    (`invoke_resolver=None`)や、参照先が解決できなかった場合は、
+    呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""
+    prefix = INDENT * indent
+    func_name = (invoke_resolver or {}).get(node.workflow_file)
+    if func_name is None:
+        return [f"{prefix}# TODO: unresolved Invoke Workflow File: {node.workflow_file}"]
+    todo: list[str] = []
+    kwargs = []
+    for key, expr in node.arguments.items():
+        value = _render_value_or_todo(expr, prefix, todo)
+        kwargs.append(f"{key}={value}")
+    return [*todo, f"{prefix}{func_name}({', '.join(kwargs)})"]
+
+
 def _generate_unresolved_activity(node, indent: int) -> list[str]:
     """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
-    (複数ファイル結線・インラインコード・ライブExcel/Outlook連携・
-    `HttpClient`のHeaders等プロパティ要素未パース)——架空の変換を
-    でっち上げず`# TODO`に倒す。"""
+    (インラインコード・ライブExcel/Outlook連携・`HttpClient`のHeaders等
+    プロパティ要素未パース)——架空の変換をでっち上げず`# TODO`に倒す。
+    `Invoke Workflow File`自体は`_generate_invoke_workflow_file`が担当する
+    (`generate_project_python()`経由であれば実関数呼び出しへ解決される)。"""
     prefix = INDENT * indent
     return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}"]
 
@@ -371,3 +454,112 @@ def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     display = f" ({node.display_name})" if node.display_name else ""
     return [f"{prefix}# TODO: unknown activity{display}: {node.tag}"]
+
+
+# --- 複数ファイル結線(generate_project_python) -----------------------------
+
+# 子ノードリストを持つ複合ノード種別 → それらのリストの一覧。
+# `Invoke Workflow File`参照の発見(`_iter_invoke_nodes`)専用の走査であり、
+# codegen本体の`_generate_node`ディスパッチとは別の関心事(静的な呼び出し
+# グラフ解析 vs コード生成)のため意図的に分離している。
+def _child_node_lists(node: Node) -> list[list[Node]]:
+    if isinstance(node, SequenceNode):
+        return [node.body]
+    if isinstance(node, IfNode):
+        lists = [node.then_body]
+        if node.else_body:
+            lists.append(node.else_body)
+        return lists
+    if isinstance(node, (ForEachNode, WhileNode, DoWhileNode)):
+        return [node.body]
+    if isinstance(node, TryCatchNode):
+        lists = [node.try_body, *(c.body for c in node.catches)]
+        if node.finally_body:
+            lists.append(node.finally_body)
+        return lists
+    if isinstance(node, SwitchNode):
+        return [arm.body for arm in node.arms]
+    if isinstance(node, ParallelNode):
+        return [node.branches]
+    return []
+
+
+def _iter_invoke_nodes(nodes: list[Node]):
+    """`nodes`配下(任意の深さにネストした分岐・ループ・try/catch内含む)の
+    `InvokeWorkflowFileNode`を全て列挙する。"""
+    for node in nodes:
+        if isinstance(node, InvokeWorkflowFileNode):
+            yield node
+        for child_list in _child_node_lists(node):
+            yield from _iter_invoke_nodes(child_list)
+
+
+def _discover_workflow_files(
+    path: Path, cache: dict[Path, WorkflowFile], order: list[Path]
+) -> None:
+    """`path`から`Invoke Workflow File`で到達可能な`.xaml`をBFS的に発見し、
+    `cache`/`order`へ積む。参照先が実在しない(相対パス解決の誤り、または
+    単に未提供)場合はそこで探索を打ち切る——存在しないファイルをでっち上げて
+    解決済みと偽ることはしない(`generate_project_python`側で`# TODO`に
+    倒れる)。"""
+    if path in cache:
+        return
+    wf = parse_workflow_file(path)
+    cache[path] = wf
+    order.append(path)
+    for inv in _iter_invoke_nodes(wf.root.body):
+        target = (path.parent / inv.workflow_file).resolve()
+        if target.is_file():
+            _discover_workflow_files(target, cache, order)
+
+
+def _unique_func_names(order: list[Path], cache: dict[Path, WorkflowFile]) -> dict[Path, str]:
+    used: set[str] = set()
+    names: dict[Path, str] = {}
+    for p in order:
+        base = _safe_func_name(cache[p].class_name)
+        name = base
+        n = 2
+        while name in used:
+            name = f"{base}_{n}"
+            n += 1
+        used.add(name)
+        names[p] = name
+    return names
+
+
+def _build_invoke_resolver(
+    path: Path,
+    wf: WorkflowFile,
+    func_names: dict[Path, str],
+) -> dict[str, str]:
+    resolver: dict[str, str] = {}
+    for inv in _iter_invoke_nodes(wf.root.body):
+        target = (path.parent / inv.workflow_file).resolve()
+        if target in func_names:
+            resolver[inv.workflow_file] = func_names[target]
+    return resolver
+
+
+def generate_project_python(entry_path: str | Path) -> str:
+    """`entry_path`から`Invoke Workflow File`で到達可能な全`.xaml`を
+    1つのPythonモジュール(複数の`def`を並べたソース文字列)へ変換する。
+
+    各ファイルは個別のPython関数になり、ファイル間の`Invoke Workflow File`
+    呼び出しは対応する関数呼び出しへ変換される(到達できなかった参照は
+    `generate_python()`単体呼び出しと同じく`# TODO`に倒れる)。
+    """
+    entry = Path(entry_path).resolve()
+    cache: dict[Path, WorkflowFile] = {}
+    order: list[Path] = []
+    _discover_workflow_files(entry, cache, order)
+    func_names = _unique_func_names(order, cache)
+
+    parts = []
+    for p in order:
+        wf = cache[p]
+        resolver = _build_invoke_resolver(p, wf, func_names)
+        parts.append(
+            generate_python(wf, invoke_resolver=resolver, func_name=func_names[p]).rstrip("\n")
+        )
+    return "\n\n\n".join(parts) + "\n"
