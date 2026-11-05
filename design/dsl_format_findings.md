@@ -1698,3 +1698,23 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 テスト後、このフロー(`pdf_tier3_probe`)は保存せず閉じて破棄した(知見78の`ExtractTextFromPDF`の結線と同じく、実機に変更を残さない)。
 
 **この知見の結論・方針判断**: 知見78と同じ(1)decompile式、(2)UI自身のAutomationId、(3)キーボード追加での実機受理、という3経路が4件ともすべて一致したため、同じ確証水準に到達したと判断し、`pad_action_lib.pdf_actions`の`extract_images_from_pdf()`/`extract_tables_from_pdf()`/`extract_pages_to_new_pdf()`/`merge_pdf_files()`への`pad_codegen`結線を進める(このコミット以降を参照)。`Pdf.MergeFiles`の`Passwords`(`EncryptableObject`+`PasswordDelimiter`区切り)の実機シリアライズ形式は依然未確認のため、指定されている場合は結線せず安全にTODOフォールバックへ委ねた。`Pdf.ExtractImagesFromPDF`はPAD側に`OutputArgument`が無い(ファイル書き出しのみ)ため、他の4件と違い`node.output_var`を要求しない結線にした。これでPDFモジュール5アクション全件のaction_id確認・`pad_codegen`結線が完了した。
+
+## 80. 検索結果TreeItemのAutomationIdを直接読むだけで、Excel/Word/PowerPointモジュール全体のaction_idカタログを一括確認(キーボード追加さえ不要)
+
+知見78/79では「検索→`.set_focus()`→`{ENTER}`でキャンバスに追加し、ステータスバーのカウンターでエラー無しを確認する」という手順を使っていたが、今回はさらに手前の段階——**検索結果に出てきた`TreeItem`の`AutomationId`を読むだけ**(知見77で`Pdf.ExtractTextFromPDF`1件に対して行った方法)を、検索語を1語入力するだけで**その検索語にマッチする全件を一括で**読み取れることに気づき、Excel/Word/PowerPointモジュール全体に適用した。
+
+**手順**(新規テストフロー`tier3_discover`、保存せず破棄):
+
+1. アクション検索ボックスに単一の広い検索語(モジュール名そのもの、例「Excel」)を入力する。
+2. 検索結果に現れる**全ての`TreeItem`**(カテゴリ見出し含む)を`descendants(control_type="TreeItem")`で列挙し、各々の`element_info.name`(表示名)と`element_info.automation_id`(=action_id)を読む。
+3. キーボード追加(`{ENTER}`)やクリップボード操作は一切不要——検索結果を表示した時点で、PADデザイナー自身のUIにすでに正しいAutomationIdが乗っている。
+
+**実機確認結果**(`docs-local/pad_excel_findings.md`・`pad_word_findings.md`・`pad_powerpoint_findings.md`の推定対象アクション全件が、decompileの予測と完全一致):
+
+- `Excel`で検索: スコープ内の14アクション全て確認——`Excel.LaunchExcel`/`Excel.CloseExcel`/`Excel.SaveExcel`/`Excel.ReadFromExcel`/`Excel.WriteToExcel`/`Excel.AddWorksheet`/`Excel.DeleteWorksheet`/`Excel.RenameWorksheet`/`Excel.SetActiveWorksheet`/`Excel.GetAllWorksheets`/`Excel.GetActiveWorksheet`/`Excel.GetColumnName`/`Excel.GetFirstFreeColumnRow`/`Excel.GetFirstFreeRowOnColumn`。`Excel.AddWorksheet`の表示名は「Add new worksheet」で検索語に"Excel"を含まないため、最初の「Excel」検索では一覧に出てこず、「worksheet」で再検索して発見した(検索は表示名の部分一致らしく、モジュール名検索だけでは網羅できない場合がある、という運用上の注意点)。他にもスコープ外(ライブExcel COM専用、`pad_action_lib`側で元から未対応)の多数のアクション(`Excel.ResizeColumnsOrRows`/`Excel.RunMacro`/`Excel.CopyExcelWorksheet`/`Excel.SortCellsFromExcel`等)も同じ検索で見つかったが、これらはdocs-local調査時点のスコープ外のまま。
+- `Word`で検索: `Word.LaunchWord`/`Word.Attach`/`Word.SaveWord`/`Word.CloseWord`/`Word.ReadFromWord`/`Word.WriteToWord`/`Word.InsertImageToWord`/`Word.FindAndReplaceWord`を確認(`CyberArk.*`という無関係なモジュールも「Word」の部分一致でヒットした)。
+- `PowerPoint`で検索: `PowerPoint.LaunchPowerPoint`/`PowerPoint.AddPowerPointSlide`/`PowerPoint.SavePowerPoint`/`PowerPoint.ClosePowerPoint`/`PowerPoint.DeletePowerPointSlide`/`PowerPoint.CopyPastePowerPointSlide`/`PowerPoint.AttachToRunningPowerPoint`/`PowerPoint.MovePowerPointSlide`/`PowerPoint.ReadFromPowerPoint`/`PowerPoint.WriteToPowerPoint`を確認。
+
+いずれもモジュール接頭辞(`Excel.`/`Word.`/`PowerPoint.`)はdocs-local調査では未確認だった(知見76のAssemblyTitle方式の裏付けが取れていなかった)が、今回の実機確認で**モジュール名そのものがAssemblyTitleとして使われている**ことが確定した(PDFモジュールの`Pdf`のような特別な大小文字の違いは無い)。
+
+**この知見の結論・方針判断**: 知見77の「AutomationIdを直接読む」手法は、キーボード追加や貼り付けを一切せずに**検索語1つでモジュール全体のaction_idカタログを一括取得できる**、最も安価でリスクの低い実機確認手段だと分かった——今後Tier3の新しいモジュールを調査する際は、まずこの一括検索で候補を洗い出し、個別のcodegen結線時に必要なものだけ知見78/79のキーボード追加で追加確認する、という段取りが効率的。このコミット以降で、スコープ内が確認できた`Excel.*`の`pad_codegen`結線を進める(`Word`/`PowerPoint`は別途)。

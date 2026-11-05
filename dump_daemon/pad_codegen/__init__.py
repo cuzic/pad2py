@@ -102,6 +102,7 @@ def generate_python(
         "web_actions",
         "xml_actions",
         "pdf_actions",
+        "excel_actions",
         "cmd_actions",
         "clipboard_actions",
     ):

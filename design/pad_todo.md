@@ -116,6 +116,22 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   action_id確認・codegen結線が完了**。次はExcel/Word/PowerPointのTier3アクションに
   同じ技法(`add_action_via_search`)を適用する(🖥️)。テスト用フロー`pdf_tier3_probe`は
   保存せず破棄、VM解放もpad2py-57へ通知済み。
+  ✅ **さらに効率的な確認手段を発見、Excelモジュール全件を一括確認・結線完了(知見80)**:
+  キーボード追加すら不要——検索語を1つ入力して結果の`TreeItem`全件の`AutomationId`を
+  読むだけで、モジュール丸ごとのaction_idカタログが一括取得できることに気づいた
+  (知見77のAutomationId読み取りを「1件ずつ」から「検索語1つで全件」に拡張)。
+  これで`Excel.*`14件(スコープ内全件)・`Word.*`8件・`PowerPoint.*`10件の
+  action_idを一括実機確認(いずれもdecompile予測と完全一致、モジュール接頭辞は
+  `Excel`/`Word`/`PowerPoint`そのもので特別な大小文字差は無し)。`Excel.*`の
+  pad_codegen結線(`LaunchExcel`/`SaveExcel`/`CloseExcel`/`ReadFromExcel`/
+  `WriteToExcel`/`AddWorksheet`/`DeleteWorksheet`/`RenameWorksheet`/
+  `SetActiveWorksheet`/`GetAllWorksheets`/`GetActiveWorksheet`/`GetColumnName`/
+  `GetFirstFreeColumnRow`/`GetFirstFreeRowOnColumn`の14件全て)も完了した
+  (`Instance`参照はPAD側では不透明参照だが、Python側では他の変数参照と同じなので
+  特別な結線は不要だった)。テスト用フロー`tier3_discover`は保存せず破棄済み。
+  残課題: `Word.*`/`PowerPoint.*`はaction_id確認済みだがcodegen結線はまだ(🖥️不要、
+  💻のみで進められる——パラメータ名の確認にはdocs-local調査+decompileの追加確認が
+  必要な場合がある)。
 
 ## C. 構造的・運用上の課題
 

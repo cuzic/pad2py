@@ -1358,3 +1358,114 @@ def test_generate_python_from_pdf_merge_files_with_passwords_falls_back_to_todo(
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Pdf.MergeFiles" in code
+
+
+def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -> None:
+    # design/dsl_format_findings.md 知見80: Excel.*のaction_idは全て、PADデザイナー自身の
+    # 検索結果TreeItemのAutomationIdを直接読んで実機確認済み(知見77と同じ経路、キーボード
+    # 追加さえ不要)。パラメータ名はdocs-local/pad_excel_findings.mdのdecompile調査から。
+    # `Instance`はPAD側では不透明な参照だが、Python側では他の変数参照と同じ
+    # (ここではLaunchExcelの出力変数名をそのまま後続アクションに渡す)。
+    dsl = (
+        "Excel.LaunchExcel LaunchExcelMode: Excel.LaunchExcelMode.NewDocument "
+        "ReadOnly: False Instance=> ExcelInstance\n"
+        "Excel.AddWorksheet Instance: ExcelInstance Name: $'''Sheet2''' "
+        "WorksheetPosition: Excel.WorksheetPosition.Last\n"
+        "Excel.WriteToExcel Instance: ExcelInstance Value: $'''hello''' "
+        "WriteMode: Excel.WriteExcelMode.SpecifiedCell Column: $'''B''' Row: 2\n"
+        "Excel.ReadFromExcel Instance: ExcelInstance "
+        "ReadMode: Excel.ReadExcelCellsMode.SingleCell StartColumn: $'''B''' StartRow: 2 "
+        "CellValue=> CellValue\n"
+        "Excel.DeleteWorksheet Instance: ExcelInstance "
+        "FindWorksheetBy: Excel.FindWorksheetBy.Name Name: $'''Sheet2'''\n"
+        "Excel.RenameWorksheet Instance: ExcelInstance NewName: $'''Renamed''' "
+        "FindWorksheetBy: Excel.FindWorksheetBy.Index Index: 0\n"
+        "Excel.SetActiveWorksheet Instance: ExcelInstance "
+        "FindWorksheetBy: Excel.FindWorksheetBy.Name Name: $'''Renamed'''\n"
+        "Excel.GetActiveWorksheet Instance: ExcelInstance "
+        "Name=> SheetName Index=> SheetIndex\n"
+        "Excel.GetAllWorksheets Instance: ExcelInstance Worksheets=> SheetNames\n"
+        "Excel.GetColumnName CellColumnIndex: 28 ColumnName=> ColumnName\n"
+        "Excel.GetFirstFreeColumnRow Instance: ExcelInstance "
+        "FirstFreeColumn=> FreeCol FirstFreeRow=> FreeRow\n"
+        "Excel.GetFirstFreeRowOnColumn Instance: ExcelInstance Column: $'''A''' "
+        "FirstFreeRowOnColumn=> FreeRowOnA\n"
+        "Excel.SaveExcel Instance: ExcelInstance SaveMode: Excel.SaveExcelMode.Save\n"
+        "Excel.CloseExcel Instance: ExcelInstance CloseMode: Excel.CloseExcelMode.DoNotSave"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import excel_actions" in code
+    assert (
+        "ExcelInstance = excel_actions.launch_excel("
+        "launch_excel_mode='NewDocument', path=None, read_only=False)" in code
+    )
+    assert "excel_actions.add_worksheet(ExcelInstance, 'Sheet2', worksheet_position='Last')" in code
+    assert (
+        "excel_actions.write_to_excel(ExcelInstance, 'hello', write_mode='SpecifiedCell', "
+        "column='B', row=2, cell_name='', write_to_all_cells=False)" in code
+    )
+    assert (
+        "CellValue = excel_actions.read_from_excel(ExcelInstance, read_mode='SingleCell', "
+        "start_column='B', start_row=2, end_column='A', end_row=1, cell_name='', "
+        "first_line_is_header=False, trim_empty_cells=False)" in code
+    )
+    assert (
+        "excel_actions.delete_worksheet(ExcelInstance, find_worksheet_by='Name', "
+        "name='Sheet2', index=0)" in code
+    )
+    assert (
+        "excel_actions.rename_worksheet(ExcelInstance, 'Renamed', find_worksheet_by='Index', "
+        "name='', index=0)" in code
+    )
+    assert (
+        "excel_actions.set_active_worksheet(ExcelInstance, find_worksheet_by='Name', "
+        "name='Renamed', index=0)" in code
+    )
+    assert "_active_worksheet = excel_actions.get_active_worksheet(ExcelInstance)" in code
+    assert "SheetName = _active_worksheet[0]" in code
+    assert "SheetIndex = _active_worksheet[1]" in code
+    assert "SheetNames = excel_actions.get_all_worksheets(ExcelInstance)" in code
+    assert "ColumnName = excel_actions.get_column_name(28)" in code
+    assert "_first_free = excel_actions.get_first_free_column_row(ExcelInstance)" in code
+    assert "FreeCol = _first_free[0]" in code
+    assert "FreeRow = _first_free[1]" in code
+    assert (
+        "FreeRowOnA = excel_actions.get_first_free_row_on_column(ExcelInstance, 'A')" in code
+    )
+    assert "excel_actions.save_excel(ExcelInstance, save_mode='Save', document_path=None)" in code
+    assert (
+        "excel_actions.close_excel(ExcelInstance, close_mode='DoNotSave', document_path=None)"
+        in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
+    # ライブExcel UIの「現在の選択範囲/アクティブセル」依存の値は、openpyxlベースの
+    # バックエンドでは意味を持たないため(docs-local/pad_excel_findings.md)、でっち上げた
+    # コードを出力せず安全にTODOへ倒れることを確認する。
+    read_selection_dsl = (
+        "Excel.ReadFromExcel Instance: ExcelInstance "
+        "ReadMode: Excel.ReadExcelCellsMode.Selection CellValue=> CellValue"
+    )
+    tree = build_block_tree(parse_dsl(read_selection_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.ReadFromExcel" in code
+
+    write_active_cell_dsl = (
+        "Excel.WriteToExcel Instance: ExcelInstance Value: $'''x''' "
+        "WriteMode: Excel.WriteExcelMode.ActiveCell"
+    )
+    tree = build_block_tree(parse_dsl(write_active_cell_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.WriteToExcel" in code
+
+    plain_text_dsl = (
+        "Excel.ReadFromExcel Instance: ExcelInstance "
+        "GetCellContentsMode: Excel.GetCellContentsMode.PlainText CellValue=> CellValue"
+    )
+    tree = build_block_tree(parse_dsl(plain_text_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.ReadFromExcel" in code

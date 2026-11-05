@@ -17,6 +17,7 @@ from . import (
     compression,
     cryptography,
     database,
+    excel,
     file,
     folder,
     mouse_keyboard,
@@ -49,6 +50,7 @@ _FAMILIES = (
     cmd,
     clipboard,
     pdf,
+    excel,
 )
 
 
