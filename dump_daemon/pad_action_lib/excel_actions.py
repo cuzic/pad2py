@@ -225,6 +225,9 @@ def _range_to_datatable(
         header = [str(c.value) if c.value is not None else "" for c in rows[0]]
         data_rows = rows[1:]
     else:
+        # FirstLineIsHeader=falseの場合のDataTableヘッダー名は実機未確認の近似:
+        # Excelの列名(A/B/C...)をそのままヘッダーに使う(PDF.Actions側の無ヘッダー時の
+        # 命名規則"Column1"等とは異なる——両者が実機でも一致する保証は無い)。
         header = [get_column_letter(c.column) for c in rows[0]]
         data_rows = rows
     return [dict(zip(header, (c.value for c in row))) for row in data_rows]

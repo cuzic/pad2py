@@ -46,12 +46,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
 - [ ] 🖥️ Tier3(Excel/Word/PowerPoint/PDF)アクションの実機DSLキャプチャ・codegen結線 —
   `pad_action_lib`には純粋関数実装(openpyxl/python-docx/python-pptx/pdfium)が既にあるが、
   action_id/パラメータ名の実機確認・codegenへの結線は未着手。
-  💻 検証済み(このtick): `pdf_actions.py`/`word_actions.py`を`docs-local/pad_pdf_findings.md`/
-  `pad_word_findings.md`(decompile調査)と逐語的に照合し、非自明な挙動(ページ範囲クランプ
-  の非対称性・AppendNewLineが前置・CloseWordのno-op/エラー非ラップ等)まで含めて既に忠実に
-  実装済みであることを確認した(バグ無し)。残る障壁は`pad_action_lib`側の実装ではなく、
-  action_id文字列・パラメータ直列化形式の実機確認(🖥️)のみ——結線作業自体は知見73と同じ
-  パターンで機械的に進められる見込み。
+  💻 検証済み(このtick、Excel/PowerPointも追加確認): `pdf_actions.py`/`word_actions.py`/
+  `excel_actions.py`/`powerpoint_actions.py`を対応するdocs-local/のdecompile調査ドキュメント
+  と逐語的に照合し、非自明な挙動(ページ範囲クランプの非対称性・AppendNewLineが前置/後置・
+  CloseWord/CloseExcelのno-op・SlideRange終了側クランプ対単独番号スキップの非対称・Move先の
+  範囲が同一/別プレゼンテーションで非対称等)まで含めて既に忠実に実装済みであることを確認した。
+  唯一の見つかった改善点: `excel_actions.py`の`_range_to_datatable()`で`FirstLineIsHeader=false`
+  時のヘッダー名(列名A/B/C...)が実機未確認の近似であることを示すコメントが無かったので追加
+  (commit この後)——PDF側の無ヘッダー時命名("Column1"等)と一致する保証が無いことも明記。
+  残る障壁は`pad_action_lib`側の実装ではなく、action_id文字列・パラメータ直列化形式の実機確認
+  (🖥️)のみ——結線作業自体は知見73と同じパターンで機械的に進められる見込み。
 
 ## C. 構造的・運用上の課題
 
