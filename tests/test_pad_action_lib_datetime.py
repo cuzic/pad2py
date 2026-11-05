@@ -48,7 +48,7 @@ def test_get_current_datetime_unknown_zone_raises() -> None:
 def test_get_current_datetime_windows_mode_unknown_location_raises() -> None:
     # design/dsl_format_findings.md 知見116: `time_zone_location`はPAD自身の
     # `TimeZoneLocation`列挙名(例: "TokyoStandardTime"、スペース無し)で渡す
-    # ——実機DSLでの直列化形式自体は未確認のため、`pad_codegen`側はまだ結線していない。
+    # ——知見138でcodegen側も結線済み。
     with pytest.raises(da.CountryOrRegionNotFoundError):
         da.get_current_datetime(time_zone_mode="Windows", time_zone_location="NotARealTimeZone")
 
@@ -62,6 +62,23 @@ def test_get_current_datetime_windows_mode_resolves_known_location() -> None:
     from datetime import timezone
 
     result = da.get_current_datetime(time_zone_mode="Windows", time_zone_location="TokyoStandardTime")
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    delta = (result - now_utc).total_seconds() - 9 * 3600
+    assert abs(delta) < 5
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows専用(win32timezone)")
+def test_get_current_datetime_custom_input_type_windows_matches_custom_offset() -> None:
+    # design/dsl_format_findings.md 知見138(VM上で`GetCurrentDateTime.Execute()`を直接
+    # 呼び出して確認済み): `TimeZoneMode.Custom`+`InputType.Windows`は`custom_timezone`に
+    # .NETの`TimeZoneInfo.Id`文字列("Tokyo Standard Time"、スペースを含む——`TimeZoneLocation`
+    # 列挙名とは別形式)をルックアップ無しで直接渡す経路。実機で`custom_offset=9.0`と
+    # 同一結果になることを確認済み。
+    from datetime import timezone
+
+    result = da.get_current_datetime(
+        time_zone_mode="Custom", input_type="Windows", custom_timezone="Tokyo Standard Time"
+    )
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     delta = (result - now_utc).total_seconds() - 9 * 3600
     assert abs(delta) < 5

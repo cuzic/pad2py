@@ -2926,3 +2926,25 @@ def test_generate_python_from_rename_files_change_extension_converts() -> None:
         renamed = Path(tmp) / "report.csv"
         assert namespace["R"] == [str(renamed)]
         assert renamed.is_file()
+
+
+def test_generate_python_from_get_current_datetime_custom_offset_converts() -> None:
+    # design/dsl_format_findings.md 知見138: `GetCurrentDateTime`の兄弟セレクタ
+    # `CustomOffset`(`Local`以外、`ActionSelectorBase`一括列挙の監査で発見・VM上の
+    # 直接呼び出しで仕様確認)。プラットフォーム非依存(`win32timezone`不要)なので
+    # ここで検証する。
+    from datetime import datetime, timedelta, timezone
+
+    dsl = (
+        "DateTime.GetCurrentDateTime.CustomOffset DateTimeFormat: DateTime.DateTimeFormat.DateAndTime "
+        "CustomOffset: 5 CurrentDateTime=> D"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    delta = (namespace["D"] - now_utc) - timedelta(hours=5)
+    assert abs(delta.total_seconds()) < 5

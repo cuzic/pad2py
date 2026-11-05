@@ -2429,3 +2429,17 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 知見136の次の調査対象として`Folder.Actions.dll`に同じ監査を適用した。ここで、過去の簡易チェック(型名が`"IfFolder"`という部分文字列を含むかで検索)では、実際のセレクタクラス名`FolderExistsSelector`/`FolderDoesNotExistSelector`(`IfFolder`という文字列を含まない)を取り逃していたと判明した——`BaseType`を`ActionSelectorBase`まで正しく遡る列挙方法(知見135・136で確立した本来の手法)で再確認し、`Folder.IfFolderExists.DoesNotExist`(`File.IfFile.DoesNotExist`と全く同じ、`IfFolderExistsAction`の`CheckMode`を切り替えるだけの構造)を発見した。既存の`_EXISTENCE_CHECKS`マップの`negate`フラグをそのまま再利用して結線した。`Compression.Actions.dll`には`ActionSelector`サブクラスが1つも無い(ZipFiles/UnzipFilesは単一モード)ことも確認した。
 
 **教訓**: 型名の部分文字列一致は便利だが、PAD側のクラス命名規則(`FolderExistsSelector`等、ホストアクション名を省略する命名)に依存すると取り逃しが起こる——必ず`BaseType`を`ActionSelectorBase`まで辿る正式な方法を使うべきと確定した。
+
+## 138. `DateTime.GetCurrentDateTime`の未結線セレクタ4件(`Current`/`Windows`/`CustomOffset`/`CustomTimeZone`)を新規結線——`CustomTimeZone`はルックアップテーブルを経由しない別経路だと発見
+
+`DateTime.Actions.dll`に知見135-137の監査を適用し、`Local`のみ結線済みだった`GetCurrentDateTime`に残り4つの兄弟セレクタがあると確認した。全て同じ`GetCurrentDateTime`アクションの`TimeZoneMode`(`System`/`Specific`/`Windows`/`Custom`)+`InputType`(`Offset`/`Windows`、`Custom`モード内のみ意味を持つ)の組み合わせで表現されている。
+
+**VM上の直接呼び出しで確認した対応関係**(decompile不要):
+- `Current`(実機で`[Deprecated]`属性付き)→`TimeZoneMode.Specific`、`Offset`パラメータ(IANA文字列、既存の`get_current_datetime()`がそのまま対応済み)
+- `Windows`→`TimeZoneMode.Windows`、`TimeZoneLocation`パラメータ(知見116で解決済みの141エントリ対応表を経由)
+- `CustomOffset`→`TimeZoneMode.Custom`+`InputType.Offset`、`CustomOffset`パラメータ(既存のUTC+Nシフト)
+- `CustomTimeZone`→`TimeZoneMode.Custom`+`InputType.Windows`、`CustomTimeZone`パラメータ——**これが新発見**: `custom_timezone`引数は既存の関数シグネチャに存在していたが本体で一度も使われていなかった。VM上で`CustomOffset=9.0`と`CustomTimeZone="Tokyo Standard Time"`を実行し、どちらも同一の結果(UTC+9)になることを確認した——つまり`Windows`モードの`TimeZoneLocation`(スペース無しの141値、ルックアップテーブル経由)とは違い、`CustomTimeZone`は.NETの`TimeZoneInfo.Id`形式の文字列(スペースを含む、例: `"Tokyo Standard Time"`)を**ルックアップテーブルを経由せず直接**`win32timezone.TimeZoneInfo()`へ渡す別経路。
+
+`get_current_datetime()`に`input_type: str = "Offset"`引数を追加し、`Custom`モード内で`Offset`/`Windows`の2経路に分岐するよう修正した。知見116が「実機DSLでの直列化形式(パラメータ名)が未確認」として保留していた点は、本セッション中に確立した「リフレクションのプロパティ名=DSL上のパラメータ名」という実証済みパターン(知見117以降で繰り返し確認済み)に基づき結線した——個々のパラメータの実機キャプチャ例自体はまだ無いが、この対応規則自体は多数の既存知見で裏付けられている。
+
+テストは`tests/test_pad_action_lib_datetime.py`に`CustomTimeZone`系1件(Windows専用skip)、`tests/test_pad_codegen.py`にプラットフォーム非依存な`CustomOffset`のend-to-endテスト1件(実際に`exec()`してUTC+5時間が正しく計算されることを検証)を追加した。

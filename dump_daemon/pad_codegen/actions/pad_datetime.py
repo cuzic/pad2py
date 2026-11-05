@@ -29,6 +29,57 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"date_time_format={date_format!r})"
         ]
 
+    if action_id == "DateTime.GetCurrentDateTime.Current":
+        # design/dsl_format_findings.md 知見138: `Local`の兄弟セレクタ(`Current`は実機で
+        # `[Deprecated]`属性付き、`Specific`モードの別名——decompileで確認済み)。
+        date_format = enum_last(p.get("DateTimeFormat"))
+        offset = safe_render(p.get("Offset"))
+        if date_format is None or offset is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = datetime_actions.get_current_datetime("
+            f"date_time_format={date_format!r}, time_zone_mode='Specific', offset={offset})"
+        ]
+
+    if action_id == "DateTime.GetCurrentDateTime.Windows":
+        # design/dsl_format_findings.md 知見116・138: `TimeZoneLocation`は`TimeZoneMode`列挙と
+        # 同じ命名規則(スペース無しの141値)で、`get_current_datetime()`の
+        # `_TIME_ZONE_LOCATION_TO_WINDOWS_ID`がそのままキーとして受け付ける。
+        date_format = enum_last(p.get("DateTimeFormat"))
+        tz_location = enum_last(p.get("TimeZoneLocation"))
+        if date_format is None or tz_location is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = datetime_actions.get_current_datetime("
+            f"date_time_format={date_format!r}, time_zone_mode='Windows', "
+            f"time_zone_location={tz_location!r})"
+        ]
+
+    if action_id == "DateTime.GetCurrentDateTime.CustomOffset":
+        date_format = enum_last(p.get("DateTimeFormat"))
+        custom_offset = safe_render(p.get("CustomOffset"))
+        if date_format is None or custom_offset is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = datetime_actions.get_current_datetime("
+            f"date_time_format={date_format!r}, time_zone_mode='Custom', "
+            f"custom_offset={custom_offset}, input_type='Offset')"
+        ]
+
+    if action_id == "DateTime.GetCurrentDateTime.CustomTimeZone":
+        # design/dsl_format_findings.md 知見138: `CustomTimeZone`はルックアップテーブルを
+        # 経由せず、.NETの`TimeZoneInfo.Id`形式の文字列(スペースを含む、例:
+        # `"Tokyo Standard Time"`)をそのまま渡す経路だとVM上の直接呼び出しで確認済み。
+        date_format = enum_last(p.get("DateTimeFormat"))
+        custom_timezone = safe_render(p.get("CustomTimeZone"))
+        if date_format is None or custom_timezone is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = datetime_actions.get_current_datetime("
+            f"date_time_format={date_format!r}, time_zone_mode='Custom', "
+            f"custom_timezone={custom_timezone}, input_type='Windows')"
+        ]
+
     if action_id == "DateTime.Add":
         value = safe_render(p.get("DateTime"))
         time_to_add = safe_render(p.get("TimeToAdd"))

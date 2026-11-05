@@ -194,9 +194,28 @@ def get_current_datetime(
     time_zone_location: str = "",
     custom_offset: float = 0.0,
     custom_timezone: str = "",
+    input_type: str = "Offset",
 ) -> datetime:
+    """design/dsl_format_findings.md 知見138(VM上で`GetCurrentDateTime.Execute()`を
+    直接呼び出して確認済み): `TimeZoneMode.Custom`には実機の`InputType`列挙値
+    (`Offset`/`Windows`)で2つの入力方式がある——`Offset`(既定)は従来の`custom_offset`
+    (UTC+N時間シフト)、`Windows`は`custom_timezone`に.NETの`TimeZoneInfo.Id`形式の
+    文字列(例: `"Tokyo Standard Time"`、スペースを含む——`TimeZoneMode.Windows`の
+    `TimeZoneLocation`列挙値のようなハイフン無しキー名ではない)を直接渡す、
+    ルックアップテーブルを経由しない経路。`custom_offset=9.0`と
+    `custom_timezone="Tokyo Standard Time"`が実機で同一の結果(UTC+9)になることを確認済み。
+    """
     if time_zone_mode == "System":
         value = datetime.now()
+    elif time_zone_mode == "Custom" and input_type == "Windows":
+        try:
+            import win32timezone
+        except ImportError as exc:
+            raise GetCurrentDateTimeError(
+                "win32timezone (pywin32) is required for TimeZoneMode.Custom "
+                "(InputType.Windows); this only works on Windows"
+            ) from exc
+        value = datetime.now(win32timezone.TimeZoneInfo(custom_timezone)).replace(tzinfo=None)
     elif time_zone_mode == "Custom":
         # DSTを無視した単純なUTC+Nシフト。
         value = (datetime.now(timezone.utc) + timedelta(hours=custom_offset)).replace(tzinfo=None)
