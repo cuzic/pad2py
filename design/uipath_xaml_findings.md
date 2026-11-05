@@ -4084,7 +4084,7 @@ indent, invoke_resolver)`で子アクティビティを通常通り再帰生成�
 未知の型の子要素を無条件に再帰生成するような「修正」を加えてしまう
 ことを防ぐための、予防的なドキュメント整備。
 
-## 86. 知見78の`# TODO`は呼び出し先(`Sub1`)の関数本体にのみ出現し、呼び出し元(`Main`)側は無警告——呼び出し元にも警告を出す拡張を検討したが、アーキテクチャ上のコスト対効果で今回は見送り(VM不使用、知見78の延長)
+## 86. 知見78の`# TODO`は呼び出し先(`Sub1`)の関数本体にのみ出現し、呼び出し元(`Main`)側は無警告だったが、後続の知見87で実装した(VM不使用、知見78の延長)
 
 知見78で`Out`/`InOutArgument`方向のワークフロー引数を検出し、関数本体の
 先頭に`# TODO`を追記する修正を行った。これが`generate_project_python()`
@@ -4095,23 +4095,71 @@ indent, invoke_resolver)`で子アクティビティを通常通り再帰生成�
 本来`Sub1`の結果を受け取るはずだったのに実際には受け取れないことを
 示す手がかりが一切無い。
 
-**実装を検討した設計**: `_build_invoke_resolver`(`generate_project_
-python`内)が各呼び出し先の`WorkflowFile.arguments`からOut/InOutArgument
-方向の引数名集合も合わせて収集し、`_generate_invoke_workflow_file`が
-呼び出し時の`x:Key`がその集合に含まれる場合に`# WARNING:`コメントを
-追記する、という方向性は technically 可能。
+このtickでは一度、`invoke_resolver`パラメータ(`dict[str, str]`、
+`generate_python()`の公開APIの一部で既存テスト複数件がこの型を直接
+構築している)を拡張する(例: `dict[str, tuple[str, frozenset[str]]]`)
+と後方互換性が崩れ、`_generate_node`/`_generate_body`の呼び出し経路
+全体に新しいパラメータを通す変更が必要になる——1 tickで安全に実装し
+切るには見積もりより侵襲的だと判断し、「半端な実装はしない」方針に
+従って実装を見送っていた。**その直後のtick(知見87)で、`invoke_resolver`
+の型を拡張するのではなく別の新規オプション引数(`out_arg_resolver`)を
+追加するという、後方互換性を壊さない設計に気づき、実際に実装した**
+(詳細は知見87参照)。
 
-**今回は実装を見送った理由**: 現在の`invoke_resolver`パラメータは
-`dict[str, str]`(workflow_file文字列→関数名)という型で、
-`generate_python()`の公開APIの一部として既存テスト複数件がこの型を
-直接構築している。この型を拡張する(例:
-`dict[str, tuple[str, frozenset[str]]]`)と後方互換性が崩れ、
-`_generate_node`/`_generate_body`の呼び出し経路全体に新しいパラメータを
-通す変更が必要になる——1 tickで安全に実装し切るには見積もりより
-侵襲的だと判断し、「半端な実装はしない」方針に従って今回は見送った。
-将来、呼び出し元側への警告拡張に着手する場合は、`invoke_resolver`の型を
-拡張するか、別の専用パラメータ(`out_arg_resolver`等)を`generate_python`
-以下の呼び出し経路全体に追加で通す設計が必要になる。
+## 87. 知見86で見送った呼び出し元側への警告を実装——`invoke_resolver`の型を拡張せず、別の新規オプション引数で後方互換を保ったまま実現(VM不使用)
+
+知見86で「`invoke_resolver`の型拡張は既存の公開APIを壊す」と判断して
+実装を見送ったが、あらためて設計を見直したところ、型を変更する必要は
+無く、**既存の`invoke_resolver`と並行する、全く新しい第4のオプション
+引数`out_arg_resolver: dict[str, frozenset[str]] | None = None`を
+追加するだけで、既存の呼び出し(`generate_python(wf, invoke_resolver=
+...)`)を一切変更せずに実現できる**と気づいた——`invoke_resolver`
+(`_build_invoke_resolver`が構築、`workflow_file`文字列→関数名)と
+同じキー体系で、`out_arg_resolver`は`workflow_file`文字列→その呼び出し
+先が持つOut/InOutArgument方向の引数名集合を保持する、独立した並行
+パラメータ。
+
+**実装内容**(`dump_daemon/uipath_codegen/__init__.py`):
+1. 知見78の判定ロジック(`type_str.lower().startswith(("outargument",
+   "inoutargument"))`)を`_collect_out_arg_names()`という共通ヘルパーへ
+   切り出し、`generate_python()`本体と`generate_project_python()`
+   (新設の`_build_out_arg_resolver`)の両方から再利用する。
+2. `generate_python()`/`_generate_node()`/`_generate_body()`、および
+   `If`/`ForEach`/`While`/`DoWhile`/`TryCatch`/`Switch`/`Parallel`の各
+   生成関数——`invoke_resolver`を素通しするのと全く同じ経路に
+   `out_arg_resolver`も素通しで追加する(既存の`invoke_resolver`の
+   配線パターンをそのまま複製、新しいデザインの発明ではない)。
+3. `_generate_invoke_workflow_file()`が、解決済みの呼び出し先
+   (`func_name`)に対応する`out_arg_resolver`のエントリと、今回の
+   呼び出しの`node.arguments`のキー集合との**積集合**を取り、1件以上
+   あれば呼び出し文の直前に`# WARNING: {引数名...} are Out/InOutArgument
+   on {func_name}() — the bound variable here will NOT be updated after
+   this call`を追記する——呼び出し自体は(`In`方向の引数は正しく機能
+   するため)通常通り生成を続ける。
+4. `generate_project_python()`が新設の`_build_out_arg_resolver()`
+   (`_build_invoke_resolver`と並行する構造、`cache[target].arguments`
+   から対象ワークフローのOut/InOutArgument名を集める)を呼び、
+   `generate_python()`へ渡す。
+
+**実機確認**: 合成した2ファイル構成(`Main`→`Sub1`、`Sub1`の
+`out_result`が`OutArgument`)で`generate_project_python()`を実行し、
+`Main()`の呼び出し文`Sub1(out_result=myVar)`の直前に`# WARNING`が
+正しく追記されることを確認。実機確認済みの`Main.xaml`/`Sub1.xaml`
+(`in_text`は`InArgument`のみ)では新しい警告が出ないことも確認——
+既存の生成結果に対する退行は無い。
+
+`tests/test_uipath_codegen.py`に
+`test_generate_project_python_warns_caller_about_out_argument_binding`
+を追加。UiPath関連テスト全264件通過、リポジトリ全体で全920件通過
+(知見70のカバレッジは72%のまま)。
+
+**この知見で確定したこと**: 知見86で「侵襲的すぎる」と判断した設計を、
+型拡張ではなく**並行する新規オプション引数の追加**という形に言い換える
+だけで、既存の配線パターン(`invoke_resolver`の素通し)を忠実に複製する
+機械的な変更へ縮小できた——「既存の型を変える」と「既存のパターンに
+倣った新しいパラメータを追加する」は見た目は似た規模の変更に見えて
+リスクが大きく異なる、という教訓。1 tick前の「見送り」判断自体を
+再検証し、より安全な設計を見つけた上で実際に実装まで完了させた。
 
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

@@ -188,15 +188,15 @@ Main.xaml+サブワークフローファイル+project.jsonから1つのPython�
   Pythonの値渡しでは呼び出し元への反映が失われるという限界を明示する
   (下記「次にやること」項目39参照)。関数名の衝突(同じ`class_name`を
   持つ複数ファイル)は`_2`サフィックスで機械的に回避するだけで、意味の
-  ある別名付けはしていない。**(残課題、2026-11-05、知見86)** この
-  `# TODO`は呼び出し先(`Sub1`)の関数定義側にのみ出現し、呼び出し元
-  (`Main`)の呼び出し文(`Sub1(out_result=myVar)`)には何の警告も出ない
-  ——呼び出し元側にも警告を拡張する設計(`invoke_resolver`の型拡張、
-  または新規の専用パラメータ追加)を検討したが、`_generate_node`/
-  `_generate_body`の呼び出し経路全体への侵襲的な変更が必要でアーキ
-  テクチャ上のコストが見積もりを超えると判断し、「半端な実装はしない」
-  方針に従って今回は実装を見送った(詳細は`design/uipath_xaml_findings.md`
-  知見86参照)。
+  ある別名付けはしていない。**(完了、2026-11-05、知見86・87)** 知見86で
+  「`# TODO`は呼び出し先(`Sub1`)の関数定義側にのみ出現し、呼び出し元
+  (`Main`)の呼び出し文には何の警告も出ない」という残課題を見つけ、
+  一度は`invoke_resolver`の型拡張が既存の公開APIを壊すと判断して実装を
+  見送ったが、直後の知見87で「型を変えず、並行する新規オプション引数
+  (`out_arg_resolver`)を追加するだけでよい」という後方互換なより安全な
+  設計に気づき、実際に実装した——`Main()`の呼び出し文の直前に
+  `# WARNING: out_result are Out/InOutArgument on Sub1() — ...`が
+  正しく追記されることを実機確認済みの合成2ファイル構成で確認。
 - **(完了、2026-11-05)** `project.json`からのエントリポイント自動発見:
   `generate_project_from_json(project_dir)`を追加した。`project.json`の
   `"main"`フィールド(知見27で実機確認済みの実例`"main": "Main.xaml"`)を
@@ -873,3 +873,19 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     知見22でその特定の型の構造を個別に確認していたからであり、未知の型全般に
     同じ仮定を広げるのはでっち上げになる。コードは変更せず、将来の誤修正
     を防ぐための注記のみ`UnknownActivityNode`のdocstringに追加した。
+47. **(完了、2026-11-05)** 知見86で見送った、呼び出し元側への`Out`/
+    `InOutArgument`警告を実装(VM不使用、知見87——`invoke_resolver`の型を
+    拡張せず、並行する新規オプション引数`out_arg_resolver`を追加する
+    ことで後方互換性を保ったまま実現): 知見78の判定ロジックを
+    `_collect_out_arg_names()`へ共通化し、`generate_python()`/
+    `_generate_node()`/`_generate_body()`以下の全生成関数に
+    `invoke_resolver`と並行して素通しする(既存の配線パターンを複製する
+    だけの機械的な変更)。`_generate_invoke_workflow_file()`が解決済みの
+    呼び出し先の`out_arg_resolver`エントリと今回の呼び出しの引数キーの
+    積集合を取り、該当があれば呼び出し文の直前に`# WARNING`を追記する。
+    `generate_project_python()`が新設の`_build_out_arg_resolver()`で
+    これを構築する。合成2ファイル構成で実際に`# WARNING`が正しく出る
+    ことを確認、実機確認済みの`Main.xaml`/`Sub1.xaml`(`In`方向のみ)では
+    新しい警告が出ないことも確認——既存の生成結果への退行は無い。
+    回帰テスト追加、UiPath関連テスト全264件通過、リポジトリ全体で全920件
+    通過。

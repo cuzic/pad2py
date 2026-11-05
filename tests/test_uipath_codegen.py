@@ -1885,9 +1885,10 @@ def test_generate_project_python_actually_calls_sub_workflow(tmp_path):
     **既知の制約**: v1の`generate_python`はワークフロー引数の方向
     (In/Out)を区別せず全て関数の仮引数にするだけで、戻り値も生成しない
     (`test_workflow_arguments_become_function_params`と同じ既存の
-    簡略化——OutArgumentをPythonの`return`へ対応させることはv1スコープ外)。
-    そのため`Greet`が受け取った引数を`MessageBox`で出力し、`Entry`から
-    呼んだときにそれが実際に標準出力に現れることで連携を確認する。
+    簡略化——OutArgumentをPythonの`return`へ対応させることはv1スコープ外、
+    知見78・86参照)。そのため`Greet`が受け取った引数を`MessageBox`で
+    出力し、`Entry`から呼んだときにそれが実際に標準出力に現れることで
+    連携を確認する。
     """
     (tmp_path / "Greet.xaml").write_text(
         '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
@@ -1920,6 +1921,47 @@ def test_generate_project_python_actually_calls_sub_workflow(tmp_path):
     with contextlib.redirect_stdout(stdout):
         namespace["Entry"]()
     assert stdout.getvalue().strip() == "world!"
+
+
+def test_generate_project_python_warns_caller_about_out_argument_binding(tmp_path):
+    """知見86: 知見78の`# TODO`は呼び出し先(`Sub1`)の関数定義側にのみ
+    出現し、呼び出し元(`Main`)の呼び出し文には何の警告も出なかった——
+    `generate_project_python()`経由で`out_arg_resolver`を構築し、呼び出し
+    元の呼び出し文自体にも`# WARNING`を追記するようにした(呼び出し自体は
+    通常通り生成する)。"""
+    (tmp_path / "Sub1.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Sub1">'
+        '<x:Members><x:Property Name="out_result" Type="OutArgument(x:String)" /></x:Members>'
+        "<Sequence>"
+        "<Assign>"
+        '<Assign.To><OutArgument x:TypeArguments="x:String">[out_result]</OutArgument></Assign.To>'
+        '<Assign.Value><InArgument x:TypeArguments="x:String">hi</InArgument></Assign.Value>'
+        "</Assign>"
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Main">'
+        "<Sequence>"
+        '<ui:InvokeWorkflowFile WorkflowFileName="Sub1.xaml">'
+        "<ui:InvokeWorkflowFile.Arguments>"
+        '<OutArgument x:Key="out_result" x:TypeArguments="x:String">[myVar]</OutArgument>'
+        "</ui:InvokeWorkflowFile.Arguments>"
+        "</ui:InvokeWorkflowFile>"
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    code = generate_project_python(tmp_path / "Main.xaml")
+    _compiles(code)
+    assert (
+        "# WARNING: out_result are Out/InOutArgument on Sub1() — the bound variable "
+        "here will NOT be updated after this call" in code
+    )
+    assert "Sub1(out_result=myVar)" in code
+    assert "# TODO: argument(s) out_result are Out/InOutArgument" in code
 
 
 def test_sequence_variable_with_default_is_initialized():
