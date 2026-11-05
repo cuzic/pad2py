@@ -1616,6 +1616,55 @@ reset`を実施し、再起動後の状態確認は次の知見に持ち越し�
   サービスバイナリを差し替えても、OS再起動かサービス自体の再起動
   (admin権限が必要)のどちらかが無い限り、旧プロセスが動き続ける。
 
+## 35. 2回のVM再起動を経ても新Robotバイナリへの切り替わりが発生せず——Studio/Robotバージョン不一致エラーはこのセッションの権限内では解決不能と判断
+
+知見34で保留にした2回目の`gcloud compute instances reset`実施後も、新Studio
+(26.0.204-cloud.25540)は全く同じ`The installed versions of Studio and Robot
+do not match. Please restart your machine and try again.`エラーで起動不能
+だった。この過程で以下を確認・反証した:
+
+- `C:\Program Files\UiPathPlatform\Robot\26.0.204-cloud.25540\`配下に新Robot
+  バイナリ(`UiPath.RobotJS.UserHost.exe`等)は実在し、再起動後も
+  `UiPath.RobotJS.UserHost`プロセスは新パスから正常に起動していた。
+  `Get-CimInstance Win32_Service`で見た`UiPath RobotJS Service`の登録
+  `PathName`も新パスを指していた。**つまりファイル配置・サービス登録情報の
+  面では新バージョンへの切り替えは完了している**。
+- 一方、旧2021.4.4側のper-userプロセス`UiPath.Service.UserHost.exe`
+  (`AppData\Local\UiPath\app-21.4.4\`)が、スケジュールタスク`UiPath RobotJS`
+  (状態`Running`、ログオントリガーと思われる)によって自動的に再起動され続けて
+  いることを発見した。このタスクを`Disable-ScheduledTask`で無効化しようと
+  したが`Access is denied`(非管理者トークンでは不可)。
+- 旧プロセスを`Stop-Process -Force`で止めた直後(タスクの再起動が間に合わない
+  ほど短い間隔)に新Studioを起動しても、**依然として同一エラーが即座(起動後
+  10秒未満)に発生**した。これは、エラーの原因が「旧User Hostプロセスが生きて
+  いること」ではなく、**`UiPath.RobotJS.ServiceHost`サービス自体(SYSTEM権限で
+  動作、非管理者トークンからはパス・コマンドラインの参照すら`Get-CimInstance
+  Win32_Process`/`Get-Process`で空になり中身を検証できない)が、ファイル配置は
+  新バージョンでもメモリ上では旧バージョンのまま動き続けている**可能性を
+  強く示唆する。
+- Studio側のログ(`2026-11-05_UiPath.Studio.log`)は再起動後も一貫して
+  `Incompatible version found Robot: 21.4.4.0, Studio 26.0.204.0`と出力し、
+  `21.4.4.0`という具体的な旧バージョン番号を報告し続けている
+  (単なるプレースホルダ値ではなく実際に何らかの経路で旧バージョン情報を
+  取得できている様子)。エラーダイアログの「Copy to Clipboard」でコピーした
+  内容にはバージョン番号の詳細は含まれず、ログ以上の情報は得られなかった。
+- 同じエラーダイアログの「OK」ボタンを押すとStudioプロセスは即座に終了する
+  ——これは警告的なモーダルではなく**致命的な起動失敗ダイアログ**であり、
+  閉じて別の画面に進むことはできない。
+
+**結論**: `gcloud compute instances reset`によるハードリセットを2回実施しても
+解消しなかったことから、この問題はOS再起動では直らない何らかの状態
+(Squirrelの「現在のバージョン」解決ファイルの不整合、またはサービスの
+実行中プロセスがハードリセットでは正しく再読み込みされない等)に起因する
+可能性が高い。原因の特定・解消には管理者権限での`sc.exe query`/
+サービスバイナリの直接検査、または画面を直接見ながらの対話的操作
+(RDP接続中にユーザー自身が確認する)が必要であり、**このclipwireの非管理者
+execセッションの権限・可視性では追加の自動化では解決できないと判断し、
+この経路の調査はここで一旦終了する**。C#式言語・Coded Workflows・
+Object Repositoryの実機確認は、別の解決手段(例: 旧2021.4.4を完全アン
+インストールしてから新規インストールし直す、またはユーザーが対話的に
+修復する)が取れるまで保留とする。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
