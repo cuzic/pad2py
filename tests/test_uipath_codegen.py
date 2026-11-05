@@ -75,6 +75,39 @@ def test_assign_object_typed_expr():
     wf = _wrap([AssignNode(target=VbExpr(text="result"), value=VbExpr(text='"ok"'))])
     code = generate_python(wf)
     assert "result = 'ok'" in code
+
+
+@pytest.mark.parametrize("type_str", ["OutArgument(x:String)", "InOutArgument(x:String)"])
+def test_workflow_out_or_inout_argument_warns_about_unsupported_byref_writeback(
+    type_str: str,
+) -> None:
+    """知見78: `OutArgument`/`InOutArgument`はVBのByRef渡し(呼び出し元の
+    変数へ結果を書き戻す)に相当するが、Pythonの関数パラメータは常に
+    値渡しのため、この書き戻しは実現できない——架空の`return`/呼び出し側
+    変換をでっち上げる代わりに`# TODO`で明示する(関数自体の生成は続ける、
+    `In`方向の引数は正しく機能するため)。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[AssignNode(target=VbExpr(text="out_result"), value=Literal(value="x"))]
+        ),
+        arguments={"out_result": type_str},
+    )
+    code = generate_python(wf)
+    assert "# TODO: argument(s) out_result are Out/InOutArgument" in code
+    assert "def Test(out_result):" in code
+    _compiles(code)
+
+
+def test_workflow_in_argument_only_has_no_byref_warning():
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(body=[]),
+        arguments={"in_text": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
     _compiles(code)
 
 

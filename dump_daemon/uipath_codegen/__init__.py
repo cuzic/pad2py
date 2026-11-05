@@ -136,11 +136,32 @@ def generate_python(
 
     `func_name`は定義する関数名を`class_name`由来のデフォルトから上書きする
     (`generate_project_python()`が同名クラスの衝突を避けるために使う)。
+
+    知見78: `workflow.arguments`の値(`<x:Property Type="...">`の生テキスト、
+    例: `"InArgument(x:String)"`)が`OutArgument`/`InOutArgument`で始まる
+    場合、VBの引数方向付きByRef渡し(呼び出し元の変数へ結果を書き戻す)に
+    相当するPython機能は無い——Pythonの関数パラメータは常に値渡しで、
+    関数側での再代入は呼び出し元に伝播しない。架空の戻り値バインディング
+    (`return`文の追加や呼び出し側での`var = func(...)`への変換)をでっち
+    上げる代わりに、関数本体の先頭に`# TODO`を1行追記して明示する
+    ——関数自体は(`In`方向の引数は問題無く機能するため)生成を続ける。
     """
     params = list(workflow.arguments.keys())
     name = func_name or _safe_func_name(workflow.class_name)
     header = f"def {name}({', '.join(params)}):"
     body = _generate_node(workflow.root, indent=1, invoke_resolver=invoke_resolver)
+    out_params = [
+        arg_name
+        for arg_name, type_str in workflow.arguments.items()
+        if type_str.lower().startswith(("outargument", "inoutargument"))
+    ]
+    if out_params:
+        body = [
+            f"{INDENT}# TODO: argument(s) {', '.join(out_params)} are Out/InOutArgument "
+            "— VB ByRef write-back to the caller's variable is not supported, Python "
+            "parameters are always by-value; the caller will not see any updated value",
+            *body,
+        ]
     body = _ensure_nonempty_suite(body, indent=1)
     imports = _collect_imports(body)
     lines = [*imports, ""] if imports else []

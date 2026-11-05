@@ -3788,6 +3788,51 @@ key_literal))`——`_render_bin_op`の`=`演算子と全く同じレンダリ�
 あるが、`If`/`While`/`DoWhile`/三項`If`は既に知見61で確認済みのため、残る
 候補は今のところ見当たらない。
 
+## 78. ワークフロー引数の`OutArgument`/`InOutArgument`方向がPythonの値渡しパラメータでは呼び出し元への書き戻しを実現できないと確認・`# TODO`で明示(VM不使用、新規発見)
+
+知見76・77の「既存コードの読み返し」を`generate_python()`自体にも
+適用したところ、`workflow.arguments`(`<x:Members><x:Property Name="..."
+Type="InArgument(x:String)" /></x:Members>`、知見12)の値が
+`InArgument(...)`/`OutArgument(...)`/`InOutArgument(...)`という方向
+付きの型文字列であるにもかかわらず、`generate_python()`がこの方向を
+一切見ず、全ての引数を単純に`def func(arg1, arg2, ...):`の値渡し
+パラメータとして扱っていると判明した。
+
+VB.NETの`OutArgument`/`InOutArgument`は、呼び出し元の変数を関数終了後に
+更新する(ByRef相当の)渡し方——`Invoke Workflow File`で`[myVar]`を
+`OutArgument`の`x:Key`に束縛した場合、呼び出し先が値を設定すると
+`myVar`が更新される、という挙動がVBの意味論として期待される。一方
+Pythonの関数パラメータは常に値渡しで、関数内での再代入は呼び出し元に
+一切伝播しない——`return`文も呼び出し側での変数再束縛も生成していない
+現在の実装では、この書き戻しがサイレントに失われる。
+
+**確認できたこと**: 実機確認済みのフィクスチャ(`Sub1.xaml`)の引数は
+`in_text`(`InArgument(x:String)`)の1件のみで、`Out`/`InOut`方向の実例は
+無い——この知見は実機属性ではなく型文字列自体から直接確定できる
+(言語レベルの事実であり実機確認を要しない)。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`generate_python`): `workflow.arguments`の値が`OutArgument`/
+`InOutArgument`で始まる引数名を検出し、関数本体の先頭に`# TODO`を
+1行追記する——架空の`return`文/呼び出し側変換をでっち上げる代わりに、
+この限界を明示する。関数自体の生成は継続する(`In`方向の引数は正しく
+機能するため、全体を`# TODO`に倒す必要は無い)。
+
+`tests/test_uipath_codegen.py`に
+`test_workflow_out_or_inout_argument_warns_about_unsupported_byref_writeback`
+(`OutArgument`/`InOutArgument`両方をパラメトライズ)、
+`test_workflow_in_argument_only_has_no_byref_warning`(`InArgument`のみ
+なら警告が出ないことの確認)を追加。UiPath関連テスト全251件通過、
+リポジトリ全体で全876件通過(知見70のカバレッジは72%のまま、実機
+フィクスチャが`InArgument`のみだったため変化無し)。
+
+**この知見で確定したこと**: 知見76・77の「既存コードの読み返し」という
+発見経路を、個々のノード生成関数(`_generate_try_catch`/
+`_generate_switch`)だけでなく、トップレベルの`generate_python()`自体
+(関数シグネチャ・引数の扱い)にも適用する価値があると実証した——
+「この簡略化がVBの意味論と本当に一致しているか」を各レイヤーで
+問い直す姿勢が継続して有効だった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
