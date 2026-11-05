@@ -32,7 +32,8 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | 累乗 `^` | 同上 | `float('nan') if (_vb_num(a)<0 and _vb_num(b)!=int(_vb_num(b))) else (_vb_num(a)**_vb_num(b))`(2026-11-05修正、知見45・57参照——負の底+非整数の指数のみ`NaN`に分岐、文字列/`Nothing`オペランドも`_vb_num()`で数値強制) |
 | `And` / `Or`(非短絡評価) | 同上(構文としての受理は知見32)。変換ルールは2026-11-05にPython実挙動で検証し確定(下記「注意点」参照) | `(a) & (b)` / `(a) \| (b)`(ビット演算子、両オペランドを必ず括弧で囲む) |
 | `AndAlso` / `OrElse`(短絡評価) | 同上 | `and`/`or` |
-| `Not` | 同上(Integerオペランドは知見45で実機確認) | `(lambda _x: (not _x) if isinstance(_x, bool) else ~_x)(x)`(2026-11-05修正、知見45参照——Booleanは論理否定、Integerはビット反転) |
+| `Not` | 同上(Integerオペランドは知見45で実機確認) | `(lambda _x: (not _x) if isinstance(_x, bool) else ~(0 if _x is None else _x))(x)`(2026-11-05修正、知見45・58参照——Booleanは論理否定、Integerはビット反転、`Nothing`は整数`0`扱い) |
+| 単項`-`/`+` | 構文としての受理は知見32 | `(lambda _x: OP(0 if _x is None else _x))(x)`(2026-11-05修正、知見58参照——`Nothing`は整数`0`扱い、`Operators.vb`の`NegateObject`/`PlusObject`で確定) |
 | `Xor` | 同上 | `(a) ^ (b)`(ビット演算子。`And`/`Or`の`&`/`|`と同じ理由でPython実挙動で検証済み、下記「注意点」参照) |
 | `CStr(x)` | 同上 | `_vb_cstr(x)`(2026-11-05修正、知見46・56参照——VBのDouble既定書式(G15)は整数値の小数点を省略するため単純な`str(x)`では食い違う。例: `CStr(4.0)`は`"4"`だが`str(4.0)`は`"4.0"`。`NaN`/`Infinity`/`-Infinity`も特別扱い。`Nothing`は空文字列に近似(知見56、厳密にはnullだが`&`での実用シナリオを優先)) |
 | `True` / `False` | 同上 | `True` / `False` |

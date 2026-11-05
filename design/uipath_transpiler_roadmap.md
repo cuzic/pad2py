@@ -531,3 +531,15 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     実在するバグが見つかった——残りの演算子ディスパッチャ
     (`And`/`Or`/`Xor`/`Not`の`Nothing`絡み、単項`-`)も確認する価値が
     ある。
+20. **(完了、2026-11-05)** 単項`Not`/`-`/`+`も`Nothing`オペランドで
+    `TypeError`になるバグを解決(VM不使用、知見58——知見57の提案を実行し
+    4回連続のクロスチェック的中): `NotObject`/`NegateObject`/
+    `PlusObject`いずれも`Case TypeCode.Empty`で`Nothing`を整数`0`として
+    扱う(`Not Nothing`=`Not 0`=`-1`、`-Nothing`/`+Nothing`=`0`)。
+    修正前は`~None`/`-(None)`/`+(None)`がいずれも`TypeError`を送出して
+    いた。3演算子とも`None`を`0`へ読み替えてから演算するよう修正。
+    回帰テスト追加、UiPath関連テスト全169件通過。`And`/`Or`/`Xor`
+    (二項)の`Nothing`絡みは型依存の分岐が複雑(`Boolean`相手なら論理
+    演算結果、`Integer`相手ならそのオペランドの型を維持する等)なため、
+    でっち上げた中途半端な実装を避け未対応のまま明示的に記録——実データで
+    このパターンが見つかった時点で改めて着手する。

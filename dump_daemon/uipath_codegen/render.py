@@ -329,10 +329,22 @@ def _render_node(node: ExprNode) -> str:
             # `-2`で論理否定と一致しない)ため、実行時にisinstanceで型を
             # 分岐するラムダを生成する。式は一度だけ評価する(副作用の
             # ある呼び出しが二重評価されないように)。
+            # `Nothing`オペランドは整数`0`として扱われる(知見58、
+            # `Operators.vb`の`NotObject`で`Case TypeCode.Empty: Return
+            # Not 0I`=`-1`を確認)——`~None`は`TypeError`になるため、
+            # `~`を適用する前に`None`を`0`へ読み替える(`~0`は`-1`なので
+            # 結果は自然に一致する)。
             operand = _render_node(node.operand)
-            return f"(lambda _x: (not _x) if isinstance(_x, bool) else ~_x)({operand})"
+            return (
+                "(lambda _x: (not _x) if isinstance(_x, bool) "
+                f"else ~(0 if _x is None else _x))({operand})"
+            )
         if op in ("-", "+"):
-            return f"{node.op}({_render_node(node.operand)})"
+            # 単項`-`/`+`も`Nothing`オペランドは整数`0`として扱われる
+            # (知見58、`Operators.vb`の`NegateObject`/`PlusObject`で
+            # `Case TypeCode.Empty: Return Boxed_ZeroInteger`を確認)。
+            operand = _render_node(node.operand)
+            return f"(lambda _x: {node.op}(0 if _x is None else _x))({operand})"
         raise NotImplementedError(f"unsupported unary operator: {node.op!r}")
     if isinstance(node, FuncCall):
         return _render_func_call(node)

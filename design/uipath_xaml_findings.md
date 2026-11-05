@@ -2900,6 +2900,48 @@ nullを返す」という点までは完全には再現せず、「`&`での最�
 `NotObject`の`Nothing`絡み、`NegateObject`(単項`-`)等)も確認する価値が
 ある。知見44〜57でこれまでに見つかった全ての問題は現時点で解消済み。
 
+## 58. 単項`Not`/`-`/`+`も`Nothing`オペランドで`TypeError`になるバグを発見・修正——クロスチェック4件目(VM不使用)
+
+知見57の「残りの演算子ディスパッチャも確認する価値がある」を実行し、
+`Operators.vb`の`NotObject`(単項`Not`)・`NegateObject`(単項`-`)・
+`PlusObject`(単項`+`)を確認したところ、3つとも`Nothing`オペランドで
+バグが見つかった。
+
+**確定した内容**:
+- `NotObject`の`Case TypeCode.Empty`は`Return Not 0I`——`Nothing`を整数
+  `0`として`Not`を適用し`-1`を返す。
+- `NegateObject`/`PlusObject`の`Case TypeCode.Empty`はいずれも
+  `Return Boxed_ZeroInteger`——`Nothing`を整数`0`として扱い、単項`-`/`+`
+  いずれも`0`を返す。
+
+修正前の実装はいずれも`Nothing`(`None`)を考慮しておらず、`~None`
+(`Not`)・`-(None)`(単項`-`)・`+(None)`(単項`+`)がPython側で
+`TypeError`を送出していた。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `Not`のラムダ式を
+「`~`を適用する前に`None`を`0`へ読み替える」よう変更(`~0`は`-1`なので
+自然に一致する)。単項`-`/`+`も同様に`None`を`0`へ読み替えるラムダ式へ
+変更(従来の単純な`{op}({operand})`から`(lambda _x: {op}(0 if _x is
+None else _x))({operand})`へ)。
+
+`tests/test_uipath_codegen.py`に
+`test_unary_operators_coerce_nothing_operand_not_raising_typeerror`を
+追加(`Not Nothing`→`"-1"`、`-Nothing`→`"0"`、`+Nothing`→`"0"`)。UiPath
+関連テスト全169件通過。
+
+**既知の残課題(未調査のまま記録)**: `And`/`Or`/`Xor`(二項、知見49で
+`_BITWISE_OPS`経由の単純な`&`/`|`/`^`に変換している)の`Nothing`絡み
+エッジケースは今回確認しなかった——`AndObject`/`OrObject`/`XorObject`の
+`Empty`絡み分岐は、Boolean相手なら論理演算結果(`Boolean`型)、Integer
+相手ならそのオペランドの型に応じた結果になるなど型依存の分岐が`+`より
+複雑で(例: `Empty Or Int32`は「右辺をそのまま返す」、`Empty Or
+Boolean`は`OrBoolean`経由)、単純な`None→0`読み替えだけでは`Nothing
+And True`が本来`Boolean`の`False`になるべきところ整数`0`になってしまう
+等、新たな型の食い違いを生みかねない。中途半端な実装をでっち上げるより
+未対応のまま明示的に記録するに留める——実際の自動化データでこの
+パターン(`And`/`Or`/`Xor`を`Nothing`絡みで使う)が見つかった時点で
+改めて着手する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

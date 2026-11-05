@@ -944,6 +944,37 @@ def test_not_matches_vb_bitwise_complement_on_integer_not_just_boolean_negation(
     assert isinstance(result, bool) == isinstance(expected, bool)
 
 
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 単項`Not`/`-`/`+`の`Nothing`オペランドは整数`0`として扱われる
+        # (知見58、`Operators.vb`の`NotObject`/`NegateObject`/
+        # `PlusObject`で確認)——`Not Nothing`は`Not 0`=`-1`、
+        # `-Nothing`/`+Nothing`は`0`。単純な`~None`/`-(None)`は
+        # `TypeError`になっていた。
+        ("Not Nothing", "-1"),
+        ("-Nothing", "0"),
+        ("+Nothing", "0"),
+    ],
+)
+def test_unary_operators_coerce_nothing_operand_not_raising_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見58: 単項`Not`/`-`/`+`が`Nothing`オペランドで`TypeError`に
+    なっていたバグの回帰テスト(知見55〜57に続くランタイムソース
+    クロスチェックでの4件目の発見)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
 def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():
     """知見32の実機確認式(9演算子複合式)をそのまま生成Pythonコードへ変換し
     `exec()`して、VB.NET側の実際の結果と一致することまで確認する統合
