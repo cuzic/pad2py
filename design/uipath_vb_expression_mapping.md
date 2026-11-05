@@ -33,6 +33,14 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | `Xor` | 同上 | ブール同士なら`!=`、整数同士なら`^` |
 | `CStr(x)` | 同上 | `str(x)` |
 | `True` / `False` | 同上 | `True` / `False` |
+| `IsNot`(参照比較の否定) | `[CStr(If(result IsNot Nothing, "notnothing", "isnothing")) & ...]`(知見36、実機コンパイル確認) | `is not` |
+| `Nothing` | 同上 | `None` |
+| 三項演算子 `If(cond, whenTrue, whenFalse)` | 同上 | `whenTrue if cond else whenFalse` |
+| `CInt(x)` | `[... & CStr(CInt("5")) & ...]`(知見36、実機コンパイル確認) | `int(x)`(ただしVBの`CInt`は四捨五入、Pythonの`int()`は切り捨て——丸め方向の違いに注意) |
+| `CDbl(x)` | 同上 | `float(x)` |
+| `CBool(x)` | 同上 | `bool(x)` |
+| `IsNothing(x)` | 同上 | `x is None` |
+| 文字列補間 `$"...{expr}..."` | `[$"value={result}-end"]`(知見36、実機コンパイル確認——`{`/`}`含めそのまま`[...]`内に直列化される) | f-string `f"...{expr}..."` |
 
 ### 確認済み演算子の変換上の注意点
 
@@ -50,30 +58,17 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 
 ## 未確認・公開VB.NET仕様に基づく机上整理(実装前に要裏取り)
 
-### 演算子
-
-| VB.NET | 意味 | Python | 注意点 |
-|---|---|---|---|
-| `IsNot` | 参照比較(否定) | `is not` | `Is`は確認済み表を参照 |
-
 ### リテラル・定数
 
 | VB.NET | Python |
 |---|---|
-| `Nothing` | `None` |
 | 文字列中のダブルクォートエスケープ `""` | `\"` |
 
 ### 関数・型変換
 
 | VB.NET | Python |
 |---|---|
-| `CInt(x)` | `int(x)`(ただしVBの`CInt`は四捨五入、Pythonの`int()`は切り捨て——丸め方向の違いに注意、`round()`との使い分けが必要) |
-| `CDbl(x)` | `float(x)` |
-| `CBool(x)` | `bool(x)` |
-| `IsNothing(x)` | `x is None` |
 | `String.IsNullOrEmpty(x)` | `not x`(ただし空白のみの文字列の扱いに差——`String.IsNullOrWhiteSpace`との混同に注意) |
-| `If(cond, whenTrue, whenFalse)`(VBの三項演算子関数) | `whenTrue if cond else whenFalse` |
-| `$"...{expr}..."`(文字列補間) | f-string `f"...{expr}..."` |
 
 ### その他の構造
 
@@ -82,11 +77,8 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 
 ## 今後の作業
 
-1. 残る「未確認」項目(`IsNot`・`Nothing`・`CInt`/`CDbl`/`CBool`・
-   `IsNothing`/`String.IsNullOrEmpty`・三項演算子`If(...)`・文字列補間
-   `$"..."`等)も、知見32と同じ手法(Assignの値欄に複合式を組んで保存→
-   XAML確認)で裏取りする。主要な演算子(`Mod`/`\`/`^`/`And`/`AndAlso`/
-   `Or`/`OrElse`/`Xor`/`Not`/`&`/`CStr`)は知見32で確認済み。
+1. 残る「未確認」項目は`String.IsNullOrEmpty`と文字列中のダブルクォート
+   エスケープ`""`のみ(他の主要演算子・関数は知見32・36で実機確認済み)。
 2. `And`/`Or`の非短絡評価からPythonへの安全な変換ルール(評価順序・副作用を
    保つ変換パターン)は構文確認だけでは解決しない——実際の変換アルゴリズム
    設計時に改めて検討が必要。

@@ -16,7 +16,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | # | 項目 | 状況 |
 |---|---|---|
 | 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **完了**: If・ForEach・TryCatch+Catch・Switch(知見5・6・9・11、caseへのアクティビティ追加時の実XAML形=`x:Key`はアクティビティ要素自身の属性になる、を知見21で確定)・While/DoWhile(知見14、実体は`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`)・Break(知見18、属性なしの自己終了タグ)・Parallel(知見19、`ui:`プレフィックスを持たない素のWFアクティビティ、知見20でブランチ構造も確定=直接の子`Activity`要素)。ドロップゾーンへのドラッグ&ドロップ自動化も知見20で解決(`drag_activity_from_panel()`)。**残課題**: Parallelの複数ブランチの並び、1ブランチ/case内に複数ステップを入れる場合のSequenceラップ(今後の調査候補参照) |
-| 2 | VB.NET式 → Python式の変換ルール | **机上整理に着手+一部検証済み**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に初期の変換表を作成。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。演算子・型変換・`And`/`Or`と`AndAlso`/`OrElse`の非短絡/短絡の違い等は大半まだ未検証 |
+| 2 | VB.NET式 → Python式の変換ルール | **大半完了**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に変換表を整理。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。主要演算子9種(知見32)・`IsNot`/`Nothing`/三項`If`/`CInt`/`CDbl`/`CBool`/`IsNothing`/文字列補間`$"..."`(知見36)を実機コンパイル確認済み。残るは`String.IsNullOrEmpty`等ごく一部と、`And`/`Or`非短絡評価の安全な変換アルゴリズム設計のみ |
 | 3 | Variables/Argumentsの正式宣言のXAML形 | **完了**: Variablesは知見8(`<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)、Argumentsは知見12(ファイル先頭の`<x:Members><x:Property Name="..." Type="InArgument(x:String)" /></x:Members>`) |
 | 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Process/Library完了**(知見1・知見25)。LibraryはProcessと4点の構造差分(`main`の既定ファイル名、`dependencies`バージョン記法の角括弧有無、`designOptions.outputType`、`entryPoints`キーの有無)を確定。`targetFramework`は**知見30でPortable側の実例を確認完了**(`"Legacy"`=知見28/`.NETFramework4.6.1`、`"Portable"`=知見30/UI表記「Cross-platform」、`System.Private.CoreLib`名前空間を使用)。Studio UI自体に切替箇所が無いのは変わらず(REFrameworkテンプレート等、テンプレート側が指定する形でのみ実例を確認できた)。Testプロジェクトのみ未着手 |
 | 5 | 捕獲用ツールの内製化(pywinauto操作のスクリプト化) | **着手**: 繰り返し使った操作パターンを[dump_daemon/uipath_ui_helpers.py](../dump_daemon/uipath_ui_helpers.py)に関数として切り出した(`pad_ui_helpers.py`のUiPath版)。`pad_dsl_parser.py`/`codegen_coverage.py`に相当する本格的なキャプチャ自動化ツール(アクティビティ名を渡すだけで単独ワークフロー生成→XAML差分取得)はまだ無い |
@@ -50,11 +50,11 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | 18 | C#式言語プロジェクト(`expressionLanguage: "CSharp"`) | **部分的に解決・ネガティブ**: Studio 2021.4.4には式言語を切り替えるUIが(New Project時にもグローバルSettingsにも)一切存在せず、このバージョンは全プロジェクトVB.NET固定と判明。`project.json`に`expressionLanguage`フィールド自体は存在する(知見30でVisualBasic値を実例確認)ので、より新しいStudioバージョンでの実機確認が必要。**より新しいStudio(26.0.204-cloud、知見33)をサイドバイサイドでインストール済み**——Studio/Robotバージョン不整合エラーのためVM再起動待ち |
 | 19 | Test Suite(データ駆動テスト・アサーション) | 未着手(優先度低のまま) |
 
-## 次の一手の候補(優先度順、2026-11-04時点で更新)
+## 次の一手の候補(優先度順、2026-11-05時点で更新)
 
-P0は全項目完了。P1はほぼ完了(#7のWord/PDF/Databaseのみ残り、優先度は低め——
-既存7アクティビティで直列化パターンの型は出尽くした可能性が高い)。
-現時点で情報価値が高い残項目:
+P0はVB式変換ルール(#2)含めほぼ全項目完了(知見36)。P1はほぼ完了(#7の
+Word/PDF/Databaseのみ残り、優先度は低め——既存7アクティビティで直列化
+パターンの型は出尽くした可能性が高い)。現時点で情報価値が高い残項目:
 
 0. **(長期ブロック・保留)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
    インストール済み(知見33)——起動時に「Studio/Robotバージョン不整合、
@@ -75,8 +75,10 @@ P0は全項目完了。P1はほぼ完了(#7のWord/PDF/Databaseのみ残り、�
    アップグレード+Modern Design Experience有効化を試す
 3. **P3 #18**(C#式言語)——新Studioで「New Project」ダイアログに式言語選択UIが
    追加されているか確認
-4. **P0 #2**(VB式変換ルールの体系化)——ここまでの実データ(`[...]`記法・
-   `<Literal>`要素・比較演算子`=`等)を整理してドキュメント化するだけでも価値がある
-5. **P2 #13**(Orchestratorアセット/キュー連携)——未着手。ただし実際の
+4. **P2 #13**(Orchestratorアセット/キュー連携)——未着手。ただし実際の
    Orchestrator接続を伴うため、共有状態への副作用リスクを要検討
-6. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
+5. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
+
+(上記1〜3は新Studio側のブロック(#0)解消待ち。旧Studioで続行できる調査が
+尽きたため、次はブロック状況の再確認、または#4/#5など低優先度項目の着手を
+検討する)

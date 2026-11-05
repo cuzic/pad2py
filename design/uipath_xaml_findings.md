@@ -1665,6 +1665,59 @@ Object Repositoryの実機確認は、別の解決手段(例: 旧2021.4.4を完�
 インストールしてから新規インストールし直す、またはユーザーが対話的に
 修復する)が取れるまで保留とする。
 
+## 36. VB.NET式の残り未検証項目(IsNot/Nothing/三項If/CInt/CDbl/CBool/IsNothing/文字列補間)を実機コンパイル確認——クリップボード貼り付けがIntelliSense干渉を回避する確実な入力手段だと判明
+
+新Studio側の調査が知見35で一旦行き詰まったため、旧Studio(2021.4.4、サイド
+バイサイドインストールの影響を受けていない)で`xaml_probe`を使い、知見32の
+時点で「公開VB.NET仕様に基づく机上整理」のまま残っていた項目——`IsNot`・
+`Nothing`・三項演算子`If(cond, t, f)`・`CInt`/`CDbl`/`CBool`・`IsNothing`・
+文字列補間`$"...{expr}..."`——を実機コンパイル確認した。
+
+**確認方法**: 知見32と同じ「Assignの値欄に複合式を組んで保存→Error Listで
+検証」の手法。1つ目のAssignで`CStr(If(result IsNot Nothing, "notnothing",
+"isnothing")) & CStr(CInt("5")) & CStr(CDbl("2.5")) & CStr(CBool("True")) &
+CStr(IsNothing(Nothing))`、2つ目のAssignで`$"value={result}-end"`を入力し、
+いずれもError Listで「No errors found」を確認した上でXAMLを直接読み、
+以下の通りあらゆる項目が**変換無しでそのまま`[...]`角括弧式内に直列化
+される**ことを確認した(知見13の原則——`x:TypeArguments`が`x:Object`なら
+角括弧形、という以前からの知見と整合):
+
+```xml
+<InArgument x:TypeArguments="x:Object">[CStr(If(result IsNot Nothing, "notnothing", "isnothing")) &amp; CStr(CInt("5")) &amp; CStr(CDbl("2.5")) &amp; CStr(CBool("True")) &amp; CStr(IsNothing(Nothing))]</InArgument>
+...
+<InArgument x:TypeArguments="x:Object">[$"value={result}-end"]</InArgument>
+```
+
+文字列補間`$"..."`の`{`/`}`もエスケープ不要でそのまま埋め込まれる
+(VB式自体は`&amp;`以外XMLエスケープの対象にならない、知見2以来の一般則通り)。
+
+**UI自動化上の重要な発見——VB式入力欄への文字入力は「1文字ずつsend_keys」
+より「クリップボード貼り付け」の方が確実**: `uipath_ui_helpers.py`の
+`set_vb_expression_field()`は1文字ずつ`send_keys()`する方式を採っているが、
+今回`result IsNot Nothing`のように予約語(`IsNot`/`Nothing`)が連続する式を
+この方式で打つと、**予約語の直後のスペースがIntelliSenseの割り込みで
+脱落し**`resultIsNotNothing`という無意味な1トークンになってコンパイル
+エラーになった。さらに`CStr`が`Cttr`に化けるなど、文字の欠落・誤変換も
+発生した(知見2の脚注で既に指摘されていた同種の問題が、英単語が連続する式で
+より頻発することを確認)。**対処として、Windowsクリップボードに完全な式
+文字列をセットしてから`Ctrl+A`→`Delete`→`Ctrl+V`で貼り付ける方式に切り替えたところ、
+一度も文字化けせず確実に入力できた**。`Set-Clipboard`を使う際はPowerShell側の
+引用符ネストを避けるため、式文字列をbase64エンコードして
+`[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('...'))`経由で
+渡すのが安全(`$`で始まる文字列補間式はPowerShellの変数展開と衝突するため
+特に有効)。**今後VB式入力欄にテキストを設定する処理は、1文字ずつの
+`send_keys`ではなくクリップボード貼り付けを標準手順とすべき**——
+`set_vb_expression_field()`のdocstringで「今後試す価値あり」とされていた
+代替案が、今回実証的に優位と判明した。
+
+**副次的な発見**: 新Studio側の調査(知見33〜35)でStudio/Robotプロセスを
+何度も強制終了した影響で、旧Studio(2021.4.4)もサインアウト状態になって
+いた。認証情報の入力はユーザーに依頼し、サインイン後に旧Studioで
+`xaml_probe`を問題なく開けることを確認した——サイドバイサイドインストール
+したStudio同士でも、Assistant/Robotのプロセスレベルでは認証状態を共有して
+いるらしく、一方の強制終了がもう一方のサインイン状態に影響しうる点は
+今後の作業で注意が必要。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
