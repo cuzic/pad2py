@@ -93,6 +93,44 @@ def test_interpolated_string_is_opaque():
     assert rendered == KNOWN_INTERP
 
 
+def test_interpolated_string_with_multiple_nested_quoted_literals_parses():
+    """知見66: `{expr}`を2回以上含み、それぞれにネストした文字列リテラル
+    がある場合でも、`_prescan_interpolated_strings()`のプレースホルダが
+    区間ごとに独立して割り振られ、取り違えなく元の生テキストへ戻ることを
+    確認する。"""
+    text = '$"{If(a=1,"","s")}-{If(b=1,"","s")}"'
+    node, rendered = parse_vb_expr(text)
+    assert node == InterpolatedString(raw=text)
+    assert rendered == text
+
+
+def test_unterminated_interpolated_string_falls_back_safely():
+    """知見66: 閉じる`"`が無い補間文字列は`_find_interp_string_span()`が
+    `None`を返し、置換されないまま元のテキストがLarkに渡る——構文エラーに
+    なって`parse_vb_expr`が`(None, raw_text)`を返す既存の安全な
+    フォールバックに委ねられ、クラッシュしないことを確認する。"""
+    text = '$"abc{x'
+    node, rendered = parse_vb_expr(text)
+    assert node is None
+    assert rendered == text
+
+
+def test_interpolated_string_with_nested_quoted_literal_still_parses():
+    """知見66: `{expr}`内部にネストしたVB文字列リテラル(公式ドキュメント
+    「Interpolated Strings」自身の`If(age = 1, "", "s")`の例)は、知見65時点
+    では`INTERP_STRING`トークンの正規表現がレクサの時点で誤って境界を
+    打ち切ってしまい`(None, raw_text)`へ安全にフォールバックしていた。
+    `_prescan_interpolated_strings()`が`{`/`}`の深さとネストしたクォート
+    状態を見て正しい境界を先に確定するようになったため、`$"..."`全体が
+    1つの`InterpolatedString`として(生テキストを変えずに)パースできる
+    ことを確認する——`raw`は元のテキストと完全一致(プレースホルダが
+    漏れ出していない)。"""
+    text = '$"{name} is old{If(age = 1, "", "s")}."'
+    node, rendered = parse_vb_expr(text)
+    assert node == InterpolatedString(raw=text)
+    assert rendered == text
+
+
 def test_ternary_if_is_plain_func_call():
     """知見36: 三項`If(cond, t, f)`はXAML上も特別扱いされない通常の
     関数呼び出し構文——パーサー側でも同様に扱う。"""

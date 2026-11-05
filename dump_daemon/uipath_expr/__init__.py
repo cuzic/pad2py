@@ -33,22 +33,26 @@
    揺れうる。
 4. **文字列補間`$"...{expr}..."`の中身は、この文法(Lark)のレクサ自体は
    解析しない**: `$"..."`全体を1つの不透明な`InterpolatedString`
-   アトムとして文字列のまま保持する(`INTERP_STRING`トークンの正規表現
+   アトムとして文字列のまま保持する。`INTERP_STRING`トークンの正規表現
    (下記`_GRAMMAR`定義参照)は、`{expr}`内部にネストしたVB文字列リテラル
    (例: `If(age = 1, "", "s")`の`""`/`"s"`)と、補間文字列自身の`""`
-   エスケープを区別できないため——`{`で始まるかどうかを見ない単純な
+   エスケープを区別できない——`{`で始まるかどうかを見ない単純な
    正規表現では、レクサの時点でこの2つの意味論的に別物な`"`の使われ方を
-   判別不能。**ただし`InterpolatedString.raw`に残った生テキストに対し、
-   `uipath_codegen/render.py`側(知見65)で`{`/`}`の深さとネストした
-   クォート状態を追跡する手書きの状態機械により、書式指定子・フィールド幅
-   (`{expr:format}`/`{expr,width}`)を伴わないプレーンな`{expr}`補間は
-   コード生成まで到達できるようになった**——知見15・16・32・36の実機
-   確認例(`$"value={result}-end"`等)はいずれもこのプレーンな形だった。
-   `{expr}`内部にネストした文字列リテラルを含む式(上記`If(...)`の例)は、
-   レクサの時点で依然失敗し(`parse_vb_expr`が`(None, raw_text)`を返す、
-   安全なフォールバック)、呼び出し側で`# TODO`に倒れる——この限界自体は
-   まだ解消していない(Larkのレクサ自体を書き換えるか、Lark呼び出し前の
-   独自プリスキャンが必要で、より大きな変更になるため今回は見送った)。
+   判別不能。**この限界は知見66で解消した**: Larkに渡す前に
+   `_prescan_interpolated_strings()`が`{`/`}`の深さとネストしたクォート
+   状態を追跡する専用の状態機械(`_find_interp_string_span()`)で
+   `$"..."`の正しい境界を自前で確定し、見つかった区間を不透明な
+   プレースホルダ(`$"INTERP<n>"`)へ一時的に置き換えてからLarkへ渡す
+   ——Lark自身の正規表現は書き換えず、前処理1段で区別不能問題を回避する。
+   パース後、`_ExprTransformer`がプレースホルダを元の生テキストへ
+   戻して`InterpolatedString.raw`に格納するため、`uipath_codegen/
+   render.py`側(知見65)の`{`/`}`状態機械がそのまま`{expr}`内の
+   ネストした文字列リテラルも含めて正しく分割・コード生成できる
+   (知見65の時点で既にこの能力は実装済みだったが、レクサ側がそもそも
+   境界を誤検出していたため到達できなかった)。境界が最後まで
+   見つからない(閉じる`"`が無い等)場合は置き換えずに元のテキストを
+   そのまま残し、Larkの構文エラー→`(None, raw_text)`という既存の
+   安全なフォールバックに委ねる——でっち上げた置換はしない。
 """
 from __future__ import annotations
 
@@ -271,6 +275,10 @@ def _unescape_vb_string(raw: str) -> str:
 
 
 class _ExprTransformer(Transformer):
+    def __init__(self, interp_placeholders: dict[str, str] | None = None):
+        super().__init__()
+        self._interp_placeholders = interp_placeholders or {}
+
     def ident(self, children: list) -> Ident:
         (tok,) = children
         return Ident(name=str(tok))
@@ -281,7 +289,8 @@ class _ExprTransformer(Transformer):
 
     def interp_string(self, children: list) -> InterpolatedString:
         (tok,) = children
-        return InterpolatedString(raw=str(tok))
+        raw = self._interp_placeholders.get(str(tok), str(tok))
+        return InterpolatedString(raw=raw)
 
     def number_lit(self, children: list) -> NumberLiteral:
         (tok,) = children
@@ -426,6 +435,97 @@ def render_expr(node: ExprNode) -> str:
     raise TypeError(f"Unsupported expr node: {node!r}")
 
 
+def _find_interp_string_span(text: str, start: int) -> int | None:
+    """`text[start:start+2] == '$"'`を前提に、この補間文字列リテラルの
+    終端(閉じる`"`の次のインデックス)を返す(知見66)。
+
+    `{`/`}`の深さを追跡し、深さ0の間の`"`は補間文字列自身の境界/`""`
+    エスケープとして、深さ1以上(`{expr}`の内部)の間の`"`はネストした
+    VB文字列リテラルの開始/終了として扱う——`uipath_codegen/render.py`
+    の`_split_interpolated_string`(知見65)と同じ発想だが、あちらは
+    既に境界が確定した生テキストの分割用、こちらはLarkに渡す前の
+    境界検出そのものが目的という違いがある。閉じる`"`が最後まで
+    見つからない場合は`None`を返す(呼び出し側は置換せずLarkの構文
+    エラー任せの既存フォールバックへ委ねる)。
+    """
+    n = len(text)
+    i = start + 2
+    depth = 0
+    in_nested_quote = False
+    while i < n:
+        c = text[i]
+        if depth == 0:
+            if c == '"':
+                if i + 1 < n and text[i + 1] == '"':
+                    i += 2
+                    continue
+                return i + 1
+            if c == "{":
+                if i + 1 < n and text[i + 1] == "{":
+                    i += 2
+                    continue
+                depth = 1
+                i += 1
+                continue
+            if c == "}" and i + 1 < n and text[i + 1] == "}":
+                i += 2
+                continue
+            i += 1
+            continue
+        if in_nested_quote:
+            if c == '"':
+                if i + 1 < n and text[i + 1] == '"':
+                    i += 2
+                    continue
+                in_nested_quote = False
+            i += 1
+            continue
+        if c == '"':
+            in_nested_quote = True
+            i += 1
+            continue
+        if c == "{":
+            depth += 1
+            i += 1
+            continue
+        if c == "}":
+            depth -= 1
+            i += 1
+            continue
+        i += 1
+    return None
+
+
+def _prescan_interpolated_strings(text: str) -> tuple[str, dict[str, str]]:
+    """Larkに渡す前に`$"..."`区間を`_find_interp_string_span`で境界確定
+    し、不透明なプレースホルダ`$"INTERP<n>"`へ一時的に置き換える(知見66)。
+
+    既存の`INTERP_STRING`トークンの正規表現はこの関数が確定した境界を
+    信頼してそのまま丸ごとマッチするだけでよくなる(プレースホルダの中身
+    は`"`を含まないため、`{expr}`内のネストした文字列リテラルと混同する
+    余地が無い)。境界が確定できなかった`$"`はそのまま残し、Larkの構文
+    エラー→既存の安全なフォールバックに委ねる。
+    """
+    placeholders: dict[str, str] = {}
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    counter = 0
+    while i < n:
+        if text[i] == "$" and i + 1 < n and text[i + 1] == '"':
+            end = _find_interp_string_span(text, i)
+            if end is not None:
+                placeholder = f'$"INTERP{counter}"'
+                placeholders[placeholder] = text[i:end]
+                out.append(placeholder)
+                counter += 1
+                i = end
+                continue
+        out.append(text[i])
+        i += 1
+    return "".join(out), placeholders
+
+
 def parse_vb_expr(text: str) -> tuple[ExprNode | None, str]:
     """`uipath_dsl.types.VbExpr.text`(`[...]`角括弧を除いた中身)をパースする。
 
@@ -436,10 +536,14 @@ def parse_vb_expr(text: str) -> tuple[ExprNode | None, str]:
     構造化を諦めて`tree=None`を返し、テキストはそのまま素通しする——
     構文解析の失敗でテキストそのものを失うことは無い(`pad_expr`と同じ
     フォールバック方針)。
+
+    Larkに渡す前に`_prescan_interpolated_strings()`で`$"..."`区間を
+    プレースホルダへ置き換える(知見66、モジュールdocstring点4参照)。
     """
+    processed_text, interp_placeholders = _prescan_interpolated_strings(text)
     try:
-        parse_tree = _PARSER.parse(text)
-        node = _ExprTransformer().transform(parse_tree)
+        parse_tree = _PARSER.parse(processed_text)
+        node = _ExprTransformer(interp_placeholders).transform(parse_tree)
     except LarkError:
         return None, text
     return node, render_expr(node)

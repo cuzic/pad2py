@@ -3254,6 +3254,64 @@ UiPath関連テスト全204件通過、リポジトリ全体で全818件通過�
 という、知見15・16・32・36の実機確認例が全てカバーされる範囲に絞って
 実装し、でっち上げた拡張は避けた。
 
+## 66. 文字列補間の`{expr}`内部にネストした文字列リテラルを含む式も解決——知見65で「より大きな変更が必要」として見送っていたLarkレクサの限界を、Lark呼び出し前のプリスキャンで解消(VM不使用)
+
+知見65の「既知の残課題」で明示していた、`{expr}`内部にネストした
+VB文字列リテラル(公式ドキュメント自身の例`If(age = 1, "", "s")`)を
+含む補間がLarkレクサの時点で崩れる問題を、`uipath_expr`側に
+Lark呼び出し前の専用プリスキャンを追加して解消した。知見65の時点で
+「`INTERP_STRING`トークンの正規表現自体を書き換えるか、Lark呼び出し前の
+独自プリスキャンが必要」と2つの選択肢を記録していたうち、後者を採用
+した——正規表現には任意の`{}`ネスト深さを扱う能力が無いため、前者は
+原理的に不可能だった。
+
+**実装**(`dump_daemon/uipath_expr/__init__.py`): `_find_interp_string_span()`
+が`{`/`}`の深さを追跡する手書きの状態機械で`$"..."`の正しい終端を
+確定する——深さ0の間の`"`は補間文字列自身の境界/`""`エスケープ、
+深さ1以上(`{expr}`内部)の間の`"`はネストしたVB文字列リテラルの
+開始/終了として扱う(知見65の`render.py`の`_split_interpolated_string`
+と同じ発想だが、あちらは既に境界が確定した生テキストの*分割*用、
+こちらはLarkに渡す前の境界*検出*そのものが目的という違いがある)。
+`_prescan_interpolated_strings()`が`parse_vb_expr()`内で`Lark.parse()`の
+直前に呼ばれ、見つかった`$"..."`区間を不透明なプレースホルダ
+(`$"INTERP<n>"`、`"`を含まないため既存の`INTERP_STRING`正規表現と
+確実にマッチする)へ一時置換してからLarkへ渡す。パース後、
+`_ExprTransformer`がプレースホルダを元の生テキストへ戻して
+`InterpolatedString.raw`に格納するため、知見65で既に実装済みの
+`render.py`の`_split_interpolated_string`がそのままネストした文字列
+リテラルを含む式も正しく分割・コード生成できるようになった——
+知見65の時点でコード生成側の能力は既にあったが、レクサ側がそもそも
+境界を誤検出していたため到達できなかった、という構図。
+
+境界が最後まで見つからない(閉じる`"`が無い等)場合は`None`を返し、
+置換せず元のテキストをそのままLarkへ渡す——構文エラー→既存の
+`(None, raw_text)`フォールバックに安全に委ねる(でっち上げた置換は
+しない)。
+
+`tests/test_uipath_expr.py`に
+`test_interpolated_string_with_nested_quoted_literal_still_parses`
+(公式ドキュメント自身の`If(age = 1, "", "s")`の例そのもの)、
+`test_interpolated_string_with_multiple_nested_quoted_literals_parses`
+(`{expr}`が複数ある場合にプレースホルダの取り違えが無いこと)、
+`test_unterminated_interpolated_string_falls_back_safely`
+(閉じる`"`が無い場合に安全にフォールバックすることの回帰テスト)を
+追加。`tests/test_uipath_codegen.py`の
+`test_interpolation_with_nested_quoted_expression_still_falls_back_to_todo`
+は前提(「このケースは`# TODO`に倒れる」)がこの修正で偽になったため、
+`test_interpolation_with_nested_quoted_expression_now_renders_correctly`
+へ置き換え、実際に`exec()`して`"Alice is old."`という正しい実行結果に
+なることまで確認する内容に強化した。UiPath関連テスト全207件通過、
+リポジトリ全体で全825件通過。
+
+**この知見で確定したこと**: 知見65から知見66まで、2つのtickに分けて
+段階的に実装した(知見65でコード生成側の能力を先に作り、知見66で
+その能力に到達できるようレクサ側の限界を解消)——一度に両方を実装
+しようとせず、知見65の時点で明示的に「今回は見送った」と記録して
+おいたことで、次のtickでスコープが明確なまま着手できた。文字列補間の
+既知の残課題はこれで解消し、現時点で残るのは書式指定子・フィールド幅
+(`{expr:format}`/`{expr,width}`、知見65参照、VBの書式指定子の対応表が
+確証不足のため意図的に未対応のまま)のみ。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

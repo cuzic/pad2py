@@ -95,24 +95,36 @@ def test_interpolation_with_format_string_falls_back_to_todo():
     _compiles(code)
 
 
-def test_interpolation_with_nested_quoted_expression_still_falls_back_to_todo():
-    """知見65: `{expr}`内部にネストしたVB文字列リテラル(例:
-    `If(age = 1, "", "s")`の`""`/`"s"`)を含む式は、この文法のレクサ
-    自体がまだ区別できない既知の限界として残る——`uipath_expr`の
-    モジュールdocstring参照。でっち上げた変換はせず安全に`# TODO`へ
-    倒れることを確認する(クラッシュしないことの回帰テスト)。"""
+def test_interpolation_with_nested_quoted_expression_now_renders_correctly():
+    """知見66: 知見65時点では`{expr}`内部にネストしたVB文字列リテラル
+    (公式ドキュメント自身の`If(age = 1, "", "s")`の例)を含む補間は
+    `uipath_expr`のレクサが境界を誤検出し`# TODO`へ安全フォールバックして
+    いた。`uipath_expr._prescan_interpolated_strings()`(知見66)が
+    Larkに渡す前に正しい境界を確定するようになったため、この入力も
+    もう`# TODO`に倒れず、`render.py`の`_split_interpolated_string`
+    (知見65で実装済み)がそのままネストした文字列リテラルを含む式を
+    分割・コード生成できることを確認する——実行結果もVBの意味論
+    (`age = 1`なので`If(...)`は空文字列)と一致する。"""
     wf = _wrap(
         [
+            AssignNode(target=VbExpr(text="name"), value=Literal(value="Alice")),
+            AssignNode(target=VbExpr(text="age"), value=VbExpr(text="1")),
             AssignNode(
                 target=VbExpr(text="x"),
                 value=VbExpr(text='$"{name} is old{If(age = 1, "", "s")}."'),
-            )
+            ),
+            MessageBoxNode(text=VbExpr(text="x")),
         ]
     )
     code = generate_python(wf)
-    assert "# TODO" in code
-    assert "x = None" in code
+    assert "# TODO" not in code
     _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "Alice is old."
 
 
 @pytest.mark.parametrize(
