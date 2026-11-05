@@ -4010,6 +4010,55 @@ arguments`が空でない場合、`Arguments={...}`を`Code=...`に続けて追�
 リポジトリ全体で全907件通過(知見70のカバレッジは72%のまま、`# TODO`
 判定自体は変えていないため)。
 
+## 84. `ExcelApplicationScopeNode`の子アクティビティが、スコープ自体の`# TODO`化と一緒にサイレントに失われていた実在するバグを発見・修正(VM不使用、知見83に続く既存実装の読み返し)
+
+知見83で`InvokeCodeNode.arguments`の表示漏れを見つけた直後、同じ
+`_generate_unresolved_activity`を対象に「他にも見落としが無いか」を
+確認したところ、知見70で発見した5つの未対応アクティビティのうち
+`ExcelApplicationScopeNode`だけが**子アクティビティ(`node.body`)を
+持つ**ことに気づいた——`InvokeCodeNode`/`ExcelWriteCellNode`/
+`SendOutlookMailNode`/`HttpClientNode`はいずれも子を持たない単純な
+リーフノードだが、`ExcelApplicationScopeNode`は`ui:ForEach`等と同じ
+「子アクティビティを束ねるコンテナ」構造(知見22、`ActivityAction`+
+`DelegateInArgument`)を持つ。
+
+`_generate_unresolved_activity`は`node`全体を1行の`# TODO`コメントへ
+置き換えるだけで、`node.body`を一切見ていなかった——これは単に
+「スコープ自体が未対応」という以上の問題で、**スコープ内にたまたま
+含まれる、スコープ自体とは無関係に正しく生成できる子アクティビティ
+(例: 単純な`print()`で済む`MessageBox`)まで、サイレントに完全に
+失われる**ことを意味する。実機フィクスチャ(`Main.xaml`)の
+`ExcelApplicationScopeNode`の子は`ExcelWriteCellNode`(これ自体も
+知見70で未対応と確認済み)1件だけだったため、実際にはこの影響は
+「子のTODOコメントそのものが消える」という形で現れていた(実際に
+`generate_python()`を実行して確認——修正前は`ExcelWriteCellNode`の
+`# TODO`行が生成結果に一切出現しなかった)。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`_generate_unresolved_activity`): `invoke_resolver`を新たに引数として
+受け取るようにし、`ExcelApplicationScopeNode`かつ`node.body`が空でない
+場合、スコープ自体の`# TODO`コメントに続けて`_generate_body(node.body,
+indent, invoke_resolver)`で子アクティビティを通常通り再帰生成する
+——子がさらに未対応(`ExcelWriteCellNode`等)なら、子自身の`# TODO`が
+個別に出るだけで、親と子の情報が二重に失われることはない。`MessageBox`
+のような独立して生成可能な子は、スコープのTODOに続けて実際に動作する
+`print(...)`として生成される。
+
+`tests/test_uipath_codegen.py`に
+`test_excel_application_scope_still_generates_its_child_activities`
+(`MessageBox`子が実際に`print()`になることの確認)、
+`test_excel_application_scope_with_unsupported_child_shows_both_todos`
+(`Main.xaml`実例と同じ構成——親子両方の`# TODO`が出ることの確認)を
+追加。UiPath関連テスト全262件通過、リポジトリ全体で全916件通過(知見70の
+カバレッジは72%のまま——`# TODO`判定自体は変えていないため)。
+
+**この知見で確定したこと**: 知見76〜83にわたる一連の「既存実装の
+読み返し」の中でも、今回は単なる「捕捉済みデータが未活用」(知見75・
+79・80・83)ではなく「子アクティビティそのものが完全に失われる」という、
+より深刻な種類のデータ損失だった——`# TODO`へ倒す処理を実装する際は、
+「このノードは本当にリーフノードか、それとも子を持つコンテナか」を
+毎回確認する価値があると再確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

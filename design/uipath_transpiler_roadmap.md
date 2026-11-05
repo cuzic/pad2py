@@ -843,3 +843,16 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     付けの説明はでっち上げず捕捉した生データをそのまま素通しする。
     回帰テスト追加、UiPath関連テスト全260件通過、リポジトリ全体で全907件
     通過。
+45. **(完了、2026-11-05)** `ExcelApplicationScopeNode`の子アクティビティが
+    スコープ自体の`# TODO`化と一緒にサイレントに失われていた実在するバグ
+    を発見・修正(VM不使用、知見84——知見70の5つの未対応アクティビティの
+    うちこれだけが子を持つコンテナ構造と気づいて発見): スコープ全体を
+    1行の`# TODO`へ潰す従来の実装は`node.body`を一切見ておらず、スコープ
+    自体とは無関係に正しく生成できる子アクティビティ(例: `print()`で
+    済む`MessageBox`)まで完全に失っていた。`_generate_unresolved_
+    activity`が`invoke_resolver`を受け取り、`ExcelApplicationScopeNode`
+    の場合はスコープのTODOに続けて子を`_generate_body`で通常通り再帰
+    生成するよう修正。実機フィクスチャ(`Main.xaml`)で、修正前は子の
+    `ExcelWriteCellNode`の`# TODO`行が生成結果に一切出現しなかったことを
+    確認した上で修正。回帰テスト追加、UiPath関連テスト全262件通過、
+    リポジトリ全体で全916件通過。

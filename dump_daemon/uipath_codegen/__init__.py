@@ -293,7 +293,7 @@ def _generate_node(
         return _generate_invoke_workflow_file(node, indent, invoke_resolver)
     if isinstance(node, (InvokeCodeNode, ExcelApplicationScopeNode, ExcelWriteCellNode,
                           SendOutlookMailNode, HttpClientNode)):
-        return _generate_unresolved_activity(node, indent)
+        return _generate_unresolved_activity(node, indent, invoke_resolver)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
     raise TypeError(f"Unsupported node type for codegen: {type(node)!r}")
@@ -763,12 +763,24 @@ def _describe_expr_for_comment(expr: Expr) -> str:
     return repr(expr)
 
 
-def _generate_unresolved_activity(node, indent: int) -> list[str]:
+def _generate_unresolved_activity(
+    node, indent: int, invoke_resolver: dict[str, str] | None = None
+) -> list[str]:
     """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
     (インラインコード・ライブExcel/Outlook連携・`HttpClient`のHeaders等
     プロパティ要素未パース)——架空の変換をでっち上げず`# TODO`に倒す。
     `Invoke Workflow File`自体は`_generate_invoke_workflow_file`が担当する
     (`generate_project_python()`経由であれば実関数呼び出しへ解決される)。
+
+    知見84: `ExcelApplicationScopeNode`は唯一、子アクティビティ
+    (`node.body`)を持つ——これを無視して丸ごと1行の`# TODO`に潰すと、
+    スコープ内にたまたま含まれる他の(スコープ自体とは無関係に正しく
+    生成できる)子アクティビティまでサイレントに失われる(例:
+    状態を`print()`するだけの`MessageBox`がスコープ内にあっても、
+    スコープ全体のTODO化で一緒に消えてしまう)。スコープ自体の
+    `# TODO`は変えず、その直後に子アクティビティを通常通り再帰生成する
+    (子がさらに未対応なら、子自身の`# TODO`が個別に出るだけで、親の
+    TODOと二重に情報を失うことはない)。
 
     知見75: 捕捉済みの主要フィールドをコメントへ追記する——`# TODO`へ
     倒れた後に人間が手動でポートする際、生成コードだけを見て元のXAMLを
@@ -807,7 +819,10 @@ def _generate_unresolved_activity(node, indent: int) -> list[str]:
             f" (EndPoint={_describe_expr_for_comment(node.endpoint)}, "
             f"Method={node.method!r})"
         )
-    return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
+    lines = [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
+    if isinstance(node, ExcelApplicationScopeNode) and node.body:
+        lines.extend(_generate_body(node.body, indent, invoke_resolver))
+    return lines
 
 
 def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:

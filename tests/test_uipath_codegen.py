@@ -688,6 +688,46 @@ def test_invoke_code_todo_includes_arguments_when_present():
     _compiles(code)
 
 
+def test_excel_application_scope_still_generates_its_child_activities():
+    """知見84: `ExcelApplicationScopeNode`は唯一子アクティビティを持つ
+    未対応アクティビティ——スコープ自体を`# TODO`に倒しても、スコープ内の
+    子アクティビティ(スコープとは無関係に正しく生成できるもの)まで
+    サイレントに失ってはいけない。`MessageBox`のような独立して生成可能な
+    子は、スコープのTODOに続けて実際に`print()`として生成されることを
+    確認する。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[MessageBoxNode(text=Literal(value="status"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode" in code
+    assert "print('status')" in code
+    _compiles(code)
+
+
+def test_excel_application_scope_with_unsupported_child_shows_both_todos():
+    """知見84: 知見70で発見した5つの未対応アクティビティの1つ
+    (`ExcelWriteCellNode`)が子として入っている実機確認済みの実例
+    (`Main.xaml`)でも、親スコープのTODOと子のTODOの両方が出ることを
+    確認する(修正前は子のTODOが完全に失われていた)。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode" in code
+    assert "# TODO: unsupported in v1 codegen: ExcelWriteCellNode" in code
+    _compiles(code)
+
+
 def test_parallel_runs_sequentially_with_note():
     wf = _wrap(
         [
