@@ -31,14 +31,34 @@ def rows_of(table: DataTable, columns: list[str] | None = None) -> list[list[obj
     return [[row.get(col, "") for col in cols] for row in table]
 
 
+def _csv_as_number(value: str) -> int | float | str:
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
 def datatable_from_csv_text(
-    text: str, delimiter: str = ",", first_line_contains_column_names: bool = True
+    text: str,
+    delimiter: str = ",",
+    first_line_contains_column_names: bool = True,
+    read_fields_as_text: bool = True,
 ) -> DataTable:
     """標準/カスタム区切りCSVテキストを`DataTable`に変換する。
 
     design/dsl_format_findings.md 知見84(実機確認済み): `first_line_contains_column_names=
     False`の場合、列名は実機と同じ`"Column#1"`/`"Column#2"`...(1始まり、`#`付き)が
     割り当てられ、1行目もヘッダーとして切り出さず全ての行がデータ行として扱われる。
+
+    知見92(実機確認済み): `read_fields_as_text=False`の場合、数値として解釈できる
+    フィールド(`"007"`等)は実際に数値型へ変換される(`int`→`float`の順でパースを試みる、
+    先頭ゼロは失われる——`"007"`は`7`になる)。数値として解釈できないフィールドは文字列
+    のまま変化しない。既定の`True`では常に文字列のまま保持する(従来通り)。
     """
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     rows = list(reader)
@@ -49,6 +69,8 @@ def datatable_from_csv_text(
     else:
         header = [f"Column#{i + 1}" for i in range(len(rows[0]))]
         data = rows
+    if not read_fields_as_text:
+        data = [[_csv_as_number(cell) for cell in row] for row in data]
     return [dict(zip(header, row)) for row in data]
 
 

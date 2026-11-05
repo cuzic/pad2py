@@ -1957,3 +1957,15 @@ A/B節のRDP必須項目を再点検した結果、`FindOrReplaceInDataTable.Fin
 **修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`join_datatable(first, second, join_parameters, join_operation="Inner")`を実装した。`Equal`/`NotEqual`は知見85/88の`pad_equal()`、順序比較系は数値変換できる場合のみ数値として比較する(decompileのComparisonCalculator委譲を再現、個別の実機検証は`Equal`のみ)。`pad_codegen/actions/variables.py`の`Variables.JoinDataTable`を結線し、`JoinParameters`が空バックティック文字列の場合は`[]`に読み替える——`FilterDataTable`と違い`JoinDataTableAction.Execute()`には早期returnが無く、空条件での`all()`判定がPAD側の`.All()`と同じVacuous-True(直積/cartesian product)になるため、この読み替えは実機の挙動と一致する(知見90の「未設定なら元のテーブルのまま」とは異なる意味論)。`codegen_coverage.py`: 178/202→179/202(89%)。
 
 **留保事項**: 実機で直接検証したのは`Equal`のみ。残り5種の順序比較演算子はdecompileしたソースコードに忠実な実装だが個別には実機未検証。これで`pad_todo.md`のA節に長年残っていた「`FilterDataTable`/`JoinDataTable`のスキーマ未確認」というブロッカーは両方解消された。
+
+## 92. A節最後の未確認項目を解決——`Variables.GenerateDataTableFromCSV`の`ReadFieldsAsText: False`は数値らしきフィールドを実際の数値型に変換すると実機確認(先頭ゼロが失われる)
+
+A節に長く残っていた「`ReadFieldsAsText: False`の数値コレーション挙動は推測のみで未確認」という項目を、知見81の「Run実行+ファイル書き出し」手法で解決した。ヘッダー無しCSVテキスト`"007,abc\n1,2"`を`SET`で変数に入れ、`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`(`ReadFieldsAsText: False`)で読み込んだ結果を`Variables.ConvertDataTableToCSV`でCSVテキストに戻し、`File.WriteText`で書き出した(新規テストフロー`csv_type_check`、保存せず破棄)。
+
+**実機確認結果**: 書き出されたテキストは`"7,abc\n1,2\n"`——`"007"`が`"7"`になり**先頭ゼロが失われた**。これは文字列のままなら起こり得ない変化であり、`ReadFieldsAsText: False`が数値として解釈できるフィールドを実際に数値型へ変換していることの直接証拠になる(`"abc"`は変化せず文字列のまま)。
+
+**確認できた事実**: `ReadFieldsAsText: False`時、CSVの各フィールドは数値としてパースできれば数値型に変換され(整数らしき文字列は整数に、そうでなければ浮動小数点数にパースされると推測され、今回のテストでは整数ケースのみ確認)、パースできない場合は文字列のまま保持される——`int()`→`float()`の順でパースを試みるPython側の既存パターン(知見86の`pad_add`等と同系統)と一致する解釈で実装できる。
+
+**修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`に`read_fields_as_text: bool = True`引数を追加し、`False`の場合は各セルに`_csv_as_number()`(`int()`→`float()`の順でパース、失敗時は元の文字列のまま)を適用するようにした。`pad_codegen/actions/variables.py`の`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の結線条件を「`ReadFieldsAsText`が`True`のときのみ」から「`True`/`False`どちらでも結線」に緩和した。これでA節に残っていたDataTable/CSV関連の実機未確認事項は全て解決し、A節の未解決分岐点は23/202→22/202(89%→89%、小数点以下では変化なし、整数部では180/202)になった。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+**留保事項**: 浮動小数点数(小数点を含むフィールド、例: `"3.14"`)が実際に`float`へ変換されるか、負数・指数表記等の扱いは未検証のまま(整数ケースのみ実機確認)。`TrimFields`パラメータ(今回は`True`のまま固定)の効果も`pad_codegen`側では依然未結線(別の低優先度の未解決項目として残る)。

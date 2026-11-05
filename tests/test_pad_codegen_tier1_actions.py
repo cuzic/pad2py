@@ -111,8 +111,11 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
         "JoinedDataTable = variables_actions.join_datatable('sample', 'sample', [], "
         "join_operation='Inner')" in code
     )
-    # ReadFieldsAsText: False(数値コレーション挙動が未確認)のため依然TODO(knowledge 84)。
-    assert _todo("Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator") in code
+    # ReadFieldsAsText: Falseの数値変換挙動を実機確認(knowledge 92)したため結線される。
+    assert (
+        "CSVTable = variables_actions.datatable_from_csv_text('sample', "
+        "first_line_contains_column_names=False, read_fields_as_text=False)" in code
+    )
 
 
 def test_text_variables_batch4_converts_except_unverified_ones() -> None:

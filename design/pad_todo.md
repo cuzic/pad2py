@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(23/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(22/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -22,8 +22,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   追加し、`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`/
   `Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator`を結線した
   (`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`は`ReadFieldsAsText`
-  の数値コレーション挙動が別途未確認のため`True`の場合のみ)。`TrimFields`の正確な
-  意味論は別の未解決課題として残る(低優先度)。
+  の数値コレーション挙動が別途未確認のため`True`の場合のみ)。
+  ✅ **`ReadFieldsAsText: False`も実機確認・結線完了(知見92)**: VMが空いたタイミングで
+  知見81の手法を使い、`"007"`が`"7"`に変化(先頭ゼロ消失)することを確認——数値として
+  解釈できるフィールドは実際に数値型へ変換されると確定した。`datatable_from_csv_text()`
+  に`read_fields_as_text`引数を追加し`True`/`False`両方を結線した
+  (`codegen_coverage.py`: 179/202→180/202)。`TrimFields`の正確な意味論は別の
+  未解決課題として残る(低優先度)。
 - [x] 💻🖥️ `Variables.FilterDataTable`の条件(`FilterParameters`)スキーマを特定・結線。
   ✅ **decompile+実機確認・結線完了(知見90)**: RDP不要——`ilspycmd`でVM上の
   `Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`を再デコンパイルし、

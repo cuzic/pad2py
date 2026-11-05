@@ -298,6 +298,26 @@ def test_csv_round_trip() -> None:
     assert parsed == table
 
 
+def test_csv_read_fields_as_text_false_converts_numeric_fields() -> None:
+    # design/dsl_format_findings.md 知見92(実機確認済み): 数値として解釈できる
+    # フィールドは実際の数値型に変換される(先頭ゼロは失われる、"007" -> 7)。
+    # 数値として解釈できないフィールドは文字列のまま変化しない。
+    text = "007,abc\r\n1,2\r\n"
+    table = va.datatable_from_csv_text(
+        text, first_line_contains_column_names=False, read_fields_as_text=False
+    )
+    assert table == [
+        {"Column#1": 7, "Column#2": "abc"},
+        {"Column#1": 1, "Column#2": 2},
+    ]
+
+
+def test_csv_read_fields_as_text_true_keeps_strings() -> None:
+    text = "007,abc\r\n"
+    table = va.datatable_from_csv_text(text, first_line_contains_column_names=False)
+    assert table == [{"Column#1": "007", "Column#2": "abc"}]
+
+
 def test_json_custom_object_round_trip() -> None:
     obj = {"a": 1, "b": [1, 2, 3]}
     text = va.custom_object_to_json(obj)

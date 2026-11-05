@@ -28,13 +28,9 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 `Full`の実機Run実行検証)で確認済みのため結線した(`join_datatable()`)。両テーブルの
 列名重複時は2番目のテーブル側に`" (2)"`を付けて区別する実機挙動も確認済み。
 
-以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
-- `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText:
-  False`(数値らしき文字列を実際の数値型に変換すると推測されるが未確認)の場合:
-  `pad_action_lib.datatable`は常に文字列のまま保持する(`ReadFieldsAsText: True`相当)
-  実装のため、`True`の場合のみ結線する(`False`は実機キャプチャの既定値だが、
-  その変換規則自体は未確認のためTODOのまま——`IncludeColumnNames`/
-  `FirstLineContainsColumnNames`のヘッダー無しケースは知見84で解決済み)。
+`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText: False`
+(数値らしき文字列を実際の数値型に変換する)は知見92で実機確認済みのため`True`/`False`
+両方を結線した(`datatable_from_csv_text()`の`read_fields_as_text`引数に委譲)。
 
 `Variables.ConvertDataTableToCSV.*`/`Variables.GenerateDataTableFromCSV.*`の
 ヘッダー無しケース(`IncludeColumnNames`/`FirstLineContainsColumnNames: False`)は
@@ -327,13 +323,14 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             text is None
             or first_line is None
             or separator != "SystemDefault"
-            or read_as_text is not True
+            or not isinstance(read_as_text, bool)
             or not node.output_var
         ):
             return None
         return [
             f"{prefix}{node.output_var} = variables_actions.datatable_from_csv_text("
-            f"{text}, first_line_contains_column_names={first_line})"
+            f"{text}, first_line_contains_column_names={first_line}, "
+            f"read_fields_as_text={read_as_text!r})"
         ]
 
     return None
