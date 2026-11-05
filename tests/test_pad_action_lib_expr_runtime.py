@@ -62,3 +62,16 @@ def test_pad_equal_treats_exponent_notation_as_non_numeric() -> None:
     # 実機確認済み: "1e2" = 100は偽になる。
     assert er.pad_equal("1e2", 100) is False
     assert er.pad_equal(100, "1e2") is False
+
+
+def test_pad_add_treats_thousands_separator_as_numeric() -> None:
+    # design/dsl_format_findings.md 知見102(実機確認済み): "1,000"は数値として認識され
+    # 1 + "1,000" = 1001になる(文字列結合の"11,000"ではない)。
+    assert er.pad_add(1, "1,000") == 1001
+    assert er.pad_add("1,000", 1) == 1001
+
+
+def test_pad_equal_treats_thousands_separator_as_numeric() -> None:
+    # 実機確認済み: "1,000" = 1000は真。
+    assert er.pad_equal("1,000", 1000) is True
+    assert er.pad_equal(1000, "1,000") is True

@@ -17,26 +17,30 @@ design/dsl_format_findings.md 知見101(実機確認済み): `+`/`=`演算子が
 数値として認識しない**——`1 + "1e2"`は数値加算ではなく文字列結合(`"11e2"`)に、
 `"1e2" = 100`は偽になる(知見84/92/100のCSV読み込み系の数値変換はこれとは別の
 PADサブシステムで、こちらは指数表記を数値として受理する——両者は異なる規則)。
-`_NUMERIC_STRING_RE`で単純な符号+整数+小数部のみを数値文字列として認識するよう
-制限する。
+一方で知見102(実機確認済み)の通り、**桁区切りコンマ(`"1,000"`)は数値として
+認識する**——`1 + "1,000"` = `1001`(文字列結合ではない)・`"1,000" = 1000`は真。
+`_NUMERIC_STRING_RE`で「符号+(コンマ区切り可の)整数+小数部」のみを数値文字列
+として認識するよう制限し(指数表記は除外、桁区切りコンマは許容)、実際の数値
+変換時はコンマを取り除いてから`int()`/`float()`に渡す。
 """
 from __future__ import annotations
 
 import re
 
-_NUMERIC_STRING_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)$")
+_NUMERIC_STRING_RE = re.compile(r"^[+-]?[\d,]+(\.\d+)?$")
 
 
 def _as_number(value: object) -> int | float | None:
     if isinstance(value, (int, float)):
         return value
     if isinstance(value, str) and _NUMERIC_STRING_RE.match(value):
+        cleaned = value.replace(",", "")
         try:
-            return int(value)
+            return int(cleaned)
         except ValueError:
             pass
         try:
-            return float(value)
+            return float(cleaned)
         except ValueError:
             pass
     return None
