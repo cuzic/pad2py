@@ -470,11 +470,24 @@ def _render_node(node: ExprNode) -> str:
                 f"else ~(0 if _x is None else _x))({operand})"
             )
         if op in ("-", "+"):
-            # 単項`-`/`+`も`Nothing`オペランドは整数`0`として扱われる
-            # (知見58、`Operators.vb`の`NegateObject`/`PlusObject`で
-            # `Case TypeCode.Empty: Return Boxed_ZeroInteger`を確認)。
+            # 知見89: 単項`-`/`+`は`Nothing`オペランドだけを特別扱いして
+            # いたが(知見58、`Operators.vb`の`NegateObject`/
+            # `PlusObject`で`Case TypeCode.Empty: Return
+            # Boxed_ZeroInteger`を確認)、文字列オペランド(数値文字列・
+            # `&H`/`&O`16進8進リテラル文字列いずれも、知見49・68)は
+            # 一切コンバートせず素の`-`/`+`を適用していたため
+            # `TypeError: bad operand type for unary -: 'str'`で
+            # クラッシュする——`CStr(-"5")`のような式で実際に再現した
+            # (`"&H5"`のような16進リテラル文字列限定の問題ではなく、
+            # 単純な数値文字列でも同じクラッシュを再現)。他の全ての
+            # 数値演算子(`-`/`*`/`\`/`^`、知見49・68)と同じ`_vb_num()`
+            # ヘルパーに統一して解消する——`_vb_num`は`bool`/`Nothing`/
+            # 文字列(`&H`/`&O`含む)を一貫して数値へコンバートするため、
+            # `operand`の参照が1回だけなので(以前の`Nothing`専用分岐が
+            # 必要としていた、副作用の二重評価を避けるための`lambda`
+            # ラップも不要になった)。
             operand = _render_node(node.operand)
-            return f"(lambda _x: {node.op}(0 if _x is None else _x))({operand})"
+            return f"{node.op}{VB_NUM_HELPER_NAME}({operand})"
         raise NotImplementedError(f"unsupported unary operator: {node.op!r}")
     if isinstance(node, FuncCall):
         return _render_func_call(node)

@@ -1593,6 +1593,34 @@ def test_pow_coerces_string_and_nothing_operands_not_raising_typeerror(
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # 知見89: 単項`-`/`+`は`Nothing`オペランドだけを特別扱いしており、
+        # 文字列オペランド(数値文字列・`&H`/`&O`16進8進リテラル文字列
+        # いずれも)は一切コンバートせず`TypeError: bad operand type for
+        # unary -: 'str'`でクラッシュしていた——`&H`限定の問題ではなく、
+        # 単純な数値文字列`"5"`でも同じクラッシュを再現した。
+        ('-"5"', "-5"),
+        ('+"5"', "5"),
+        ('-"&H5"', "-5"),
+        ('+"&O17"', "15"),
+    ],
+)
+def test_unary_minus_plus_coerce_string_operand_not_raising_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # IntegerオペランドへのNotはビット反転(2の補数、知見45、実機確認)。
         ("Not 5", -6),
         ("Not 0", -1),
@@ -1611,7 +1639,14 @@ def test_not_matches_vb_bitwise_complement_on_integer_not_just_boolean_negation(
     実行時に分岐する必要がある(知見45)。
     """
     code = render_expr(VbExpr(text=vb_text))
-    result = eval(code)  # noqa: S307 - テスト対象は信頼できる自作コード
+    # 知見89: 単項`-`が`_vb_num()`経由になったため(`Not -1`は内側に単項
+    # `-`を含む)、素の`eval()`では`_vb_num`が未定義になる——
+    # `generate_python()`の自動注入を経由しないこの軽量テストでは、
+    # 使うヘルパーのソースを手動で名前空間へ注入する(知見57の`^`テスト
+    # と同じ対処)。
+    namespace: dict[str, object] = {}
+    exec(VB_NUM_HELPER_SOURCE, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = eval(code, namespace)  # noqa: S307 - テスト対象は信頼できる自作コード
     assert result == expected
     assert isinstance(result, bool) == isinstance(expected, bool)
 
