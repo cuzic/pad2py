@@ -64,13 +64,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (commit この後)——PDF側の無ヘッダー時命名("Column1"等)と一致する保証が無いことも明記。
   残る障壁は`pad_action_lib`側の実装ではなく、action_id文字列・パラメータ直列化形式の実機確認
   (🖥️)のみ——結線作業自体は知見73と同じパターンで機械的に進められる見込み。
-  🚫 **試したが失敗(このtick)**: 知見75のペースト技法(`IfFunctionRecord`向け)をTier3の
+  🚫 **ペースト技法は使えないと判明**: 知見75のペースト技法(`IfFunctionRecord`向け)をTier3の
   action_id発見にも使えないか試したが、`PDF.ExtractTextFromPDF`の推定action_idを複数の
   モジュール接頭辞パターンで貼り付けても全て`"Unknown action, Has error"`(または無反応)に
   なった——`IfFunctionRecord`(条件式の文法として汎用的に解釈される)とは違い、`ActionRecord`は
-  貼り付け時に閉じた内部カタログへ厳密一致で解決されるらしく、推測では当たらない。この経路は
-  見送り、Tier3のaction_id確定には従来通りUIの検索+ドラッグ(RDP必須)が必要と判断
-  (memory `pad2py_clipboard_paste_technique`に詳細を記録)。
+  貼り付け時に閉じた内部カタログへ厳密一致で解決されるらしく、推測では当たらない。
+  🔍 **ユーザー提案(dll/exeのリバース解析)で前進、ただし未決着(知見76)**: `ilspycmd`で
+  `Robin.Engine.dll`等を再デコンパイルし、action_id構築の一般式
+  (`{AssemblyTitle}.{[Action]属性のId}[.{セレクタ名}]`)を`ActionMapperExport`のソースから
+  発見・`Text.Trim`で実証した。ただしPDFモジュールにこの式を当てても`"Pdf.ExtractTextFromPDF"`
+  (AssemblyTitleは`"Pdf"`、大文字PDFではない)は依然`"Unknown action"`——`VirtualModuleInfo`
+  という別経路が`Robin.Core.dll`/`Robin.Language.dll`(未取得)にある可能性が高く、続きはそこから。
+  Tier3のaction_id確定には、この式の検証継続(🖥️+デコンパイル)または従来のUI検索+ドラッグ
+  (RDP必須)が必要(memory `pad2py_clipboard_paste_technique`に詳細を記録)。
 
 ## C. 構造的・運用上の課題
 

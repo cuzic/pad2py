@@ -1602,3 +1602,34 @@ END
 **pad_codegen結線**: `IfFunctionRecord`/`ElseIfFunctionRecord`の`function_name`が上記4つのいずれかの場合、Pythonの`in`/`not in`演算子・真偽値判定へ変換する(`Contains`→`b in a`、`NotContains`→`b not in a`、`IsEmpty`→`not a`、`IsNotEmpty`→`bool(a)`)。未知の関数名(前述の対照実験が示す通り、PAD自体が認識しない可能性が高い)は安全に`# TODO`へフォールバックする——`pad_codegen/__init__.py`の`_generate_conditional()`が`IfFunctionRecord`を無条件で`NotImplementedError`にしていた既存のポリシーを、この4つの既知関数名に限定して緩和した。
 
 **検証**: `tests/test_pad_codegen.py`に実機フィクスチャベースのテストを追加し、4つの関数それぞれが正しいPython条件式に変換されること・未知の関数名(`Blurgle`等)は従来通り`NotImplementedError`のままであることを確認した。
+
+## 76. ユーザー提案により`Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`等を再デコンパイルし、action_id構築ロジックの一般式を発見——ただしPDFモジュールでは依然不一致
+
+知見75のペースト技法でTier3(PDF)のaction_idを推測しても`"Unknown action"`になり続けた(design/pad_todo.md参照)ことを受け、ユーザーから「dotnetのdll/exeをリバース解析してみたら」との提案があり、`ilspycmd`(`~/.dotnet`に導入済み、`DOTNET_ROOT`/`PATH`の設定が必要だった)で関連DLLを再デコンパイルした(本リポジトリには逆コンパイル結果自体はコミットしない方針は従来通り——知見の要旨のみ記録)。
+
+**取得・デコンパイルしたDLL**(いずれも`C:\Program Files (x86)\Power Automate Desktop\`直下、WinRM/clipwire経由でBase64取得):
+- `Microsoft.Flow.RPA.Desktop.Modules.PDF.Actions.dll`(123,680バイト)
+- `Microsoft.Flow.RPA.Desktop.Modules.Text.Actions.dll`(181,048バイト、既に実機確認済みの`Text.Trim`との対比用)
+- `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`(766,248バイト)
+- `Microsoft.PowerPlatform.PowerAutomate.Desktop.Actions.SDK.dll`(42,272バイト)
+
+**発見した一般式**(`Robin.Engine.ExportTools.ActionMapperExport.GetMapper()`、`NewSelectorId`の計算ロジックそのもの):
+
+```csharp
+val.ModuleName = virtualModule?.Name ?? module.Name;  // module.Nameは[assembly: AssemblyTitle("...")]
+val.NewSelectorId = ModuleName + "." + action.Id
+    + (HasSelectors(action) ? ("." + selector.ActionName) : "");  // 複数セレクタ持ちの場合のみ3セグメント目
+```
+
+つまり**DSL上のaction_idは`{AssemblyTitleAttribute}.{[Action]属性のId(またはNameの後継)}[.{個別セレクタ名}]`という式で構築される**——これは知見66「複数ActionSelectorを持つアクションのaction_idは3セグメント、単一セレクタは2セグメント」を裏付け、かつ**モジュール接頭辞(1セグメント目)の正確な出どころを初めて特定した**(従来は「察するに`Module.Action`形式」という帰納的推測だった)。
+
+**`Text.Trim`で実証**: `TrimTextAction`の属性は`[Action(Name = "Trim", Order = 4)]`(`Name`は`[Obsolete("Use ActionAttribute.Id instead.")]`——新しいアクションは`Id`、古いものは`Name`を使う过渡期と判明)、assembly titleは`[assembly: AssemblyTitle("Text")]`。式を適用すると`"Text" + "." + "Trim"` = `"Text.Trim"`——既に実機確認済みの値と完全一致。
+
+**`PDF`モジュールでは式を適用しても不一致**: `ExtractTextFromPDFAction`の属性は`[Action(Order = 1, Id = "ExtractTextFromPDF")]`、assembly titleは`[assembly: AssemblyTitle("Pdf")]`(大文字小文字に注意——`"PDF"`ではなく`"Pdf"`)。式通りなら`"Pdf.ExtractTextFromPDF"`になるはずだが、知見75のペースト技法でこの文字列(および`"PDF.ExtractTextFromPDF"`・`"PDF.Actions.ExtractTextFromPDF"`・`"PDF.ExtractTextFromPDF.Execute"`の各パターン)を試しても全て`"Unknown action, Has error"`になった(同じtickで実機確認・design/pad_todo.md参照)。`ActionMapperExport`のコードには`action.VirtualModule`という、`module.Name`を上書きできる別経路(`VirtualModuleInfo`)が存在することも判明したが、`VirtualModuleAttribute`自体の定義・使用箇所はまだ追えていない(`Robin.Core.dll`/`Robin.Language.dll`等、未取得の別アセンブリに実装がある可能性が高い)。
+
+**今回のtickで決着しなかった理由と持ち越し事項**:
+- `ActionInfoBase.Id`の実際の算出ロジック(`[Action]`属性の`Id`/`Name`から最終的な`Id`プロパティがどう作られるか)自体のソースはまだ未確認(`ActionInfoBase`/`ActionInfo`クラスの実装は`Robin.Core.dll`または`Robin.Language.dll`にあると推測されるが未取得)。
+- `VirtualModuleInfo`がPDFモジュールに適用されているかどうかも未確認(属性自体をPDF.Actionsのデコンパイル結果からは見つけられなかったため、無関係かもしれない)。
+- 貼り付けインポートの判定経路(`Unknown action`になる条件)自体が、ここで調べた`Robin.Engine.dll`のエクスポート/マッピング用コードと同じロジックを使っているかどうかも未確認——別の判定ロジックを経由している可能性がある。
+
+**価値**: PDFモジュール自体の特定には至らなかったが、**action_id構築の一般式が実機データ(`Text.Trim`)で検証できたこと自体が、今後Tier1/2の他モジュールのaction_id予測精度を上げる再利用可能な知見**(知見66の帰納的推測を裏付ける一次ソースが見つかった)。次回この経路を続けるなら、`Robin.Core.dll`/`Robin.Language.dll`の取得・デコンパイルから始めるとよい。
