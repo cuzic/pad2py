@@ -132,11 +132,15 @@ Get Text等のUI自動化アクティビティを扱う以上避けて通れな�
 スコープ)で初期化する。`tests/test_uipath_codegen.py`に3件追加、全606件
 通過。
 
+**(完了、2026-11-05追補)** `Variable.Default`の子要素形
+(`<Variable.Default><Literal>...</Literal></Variable.Default>`、知見7で
+公式ドキュメント上は確認されていたが本fixtureには実例が無かった方)にも
+`xaml_tree._parse_variable_default`が対応した——属性形(`Default="init"`)が
+優先、無ければ`<Variable.Default>`配下の`<Literal>`要素の`.text`を使う。
+実機にその実例が無いため合成XML(`tests/test_uipath_dsl.py`の
+`test_variable_default_literal_child_element_form`)で検証、全607件通過。
+
 **既知の制約として引き続き残るもの**:
-- `Variable.Default`の別の直列化形(知見7で公式ドキュメント上は確認された
-  `<Variable.Default><Literal>...</Literal></Variable.Default>`という子要素形)
-  は`xaml_tree.py`の`_parse_variables`が未対応——本fixtureの実例は常に
-  属性形(`Default="init"`)だったため、属性形のみに対応した
 - ワークフロー引数(`<x:Members>`)は従来通りPython関数の仮引数に
   そのまま対応させるのみで、クロージャによる「Python的レキシカルスコープ」
   への変換は行っていない(関数境界=Sequence境界という単純対応のままで

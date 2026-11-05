@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from lxml import etree
+
 from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
@@ -35,6 +37,7 @@ from dump_daemon.uipath_dsl import (
     UnknownActivityNode,
     VbExpr,
     WhileNode,
+    parse_activity,
     parse_workflow_file,
 )
 
@@ -110,6 +113,32 @@ def test_try_catch(main_wf):
     assert catch.exception_type == "s:Exception"
     assert catch.var_name == "exception"
     assert catch.body == []
+
+
+def test_variable_default_literal_child_element_form():
+    """知見7が記録した`Variable.Default`の2つの直列化形のうち、本fixtureには
+    実例が無かった`<Literal>`子要素形(公式ドキュメント上は確認済み)を
+    合成XMLで確認する——属性形(`test_try_catch`のMain.xaml実例)とは別の
+    直列化だが同じ`VariableDecl.default`文字列に正規化されることを検証する。
+    """
+    xml = (
+        '<Sequence xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" DisplayName="Seq">'
+        "<Sequence.Variables>"
+        '<Variable x:TypeArguments="x:String" Name="myVar">'
+        "<Variable.Default>"
+        '<Literal x:TypeArguments="x:String">init</Literal>'
+        "</Variable.Default>"
+        "</Variable>"
+        "</Sequence.Variables>"
+        "</Sequence>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SequenceNode)
+    assert len(node.variables) == 1
+    assert node.variables[0].name == "myVar"
+    assert node.variables[0].type_arguments == "x:String"
+    assert node.variables[0].default == "init"
 
 
 def test_switch(main_wf):

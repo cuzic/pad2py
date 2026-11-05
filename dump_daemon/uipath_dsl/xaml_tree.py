@@ -139,6 +139,28 @@ def _single_body(elem: etree._Element | None) -> list[Node]:
     return _parse_body(elem)
 
 
+def _parse_variable_default(var_elem: etree._Element) -> str | None:
+    """`Variable.Default`の値を取得する。知見7が記録した2つの直列化形の
+    両方に対応する——(1)本fixtureの実例である属性形(`Default="init"`)、
+    (2)公式ドキュメント上は確認されているが本fixtureには実例が無かった
+    子要素形(`<Variable.Default><Literal x:TypeArguments="...">init
+    </Literal></Variable.Default>`)。後者は`Literal`要素の`.text`を使う
+    (`Literal`自身の`x:TypeArguments`は変数本体の型と一致するはずという
+    前提——実機で不一致の実例が出た場合は要再検討)。属性形が優先
+    (両方が同時に存在する実例は無いはずだが、存在する場合は属性を信じる)。
+    """
+    attr_default = _attr(var_elem, "Default")
+    if attr_default is not None:
+        return attr_default
+    default_elem = _find_property_element(var_elem, "Default")
+    if default_elem is None:
+        return None
+    children = _direct_children(default_elem)
+    if not children:
+        return None
+    return children[0].text
+
+
 def _parse_variables(elem: etree._Element) -> list[VariableDecl]:
     """`Sequence.Variables`/`TryCatch.Variables`配下の`<Variable>`列。"""
     container = _find_property_element(elem, "Variables")
@@ -155,7 +177,7 @@ def _parse_variables(elem: etree._Element) -> list[VariableDecl]:
                 type_arguments=_attr(var_elem, "TypeArguments", X_NS)
                 or _attr(var_elem, "TypeArguments")
                 or "x:Object",
-                default=_attr(var_elem, "Default"),
+                default=_parse_variable_default(var_elem),
             )
         )
     return decls

@@ -56,10 +56,12 @@ class VariableDecl:
     """`<Variable x:TypeArguments="..." Name="..." Default="..."? />`
     (`Sequence.Variables`・`TryCatch.Variables`等のコンテナ内、知見8)。
 
-    `default`はこの最小実装では属性形(`Default="init"`のような単純リテラル)
-    のみ対応——Object型等の複雑な既定値が`<Literal>`子要素になるケース
-    (知見8の一部、公式ドキュメントで確認済みだが本fixtureには実例が無い)は
-    未対応で、将来`xaml_tree.py`を拡張する際の既知のギャップとして残す。
+    `default`は知見7が記録した2つの直列化形の両方に対応する——属性形
+    (`Default="init"`、本fixtureの実例)と、`<Variable.Default><Literal
+    x:TypeArguments="...">init</Literal></Variable.Default>`という子要素形
+    (公式ドキュメント上は確認済みだが本fixtureには実例が無かったもの、
+    `xaml_tree._parse_variable_default`参照)。いずれの形でも最終的には
+    文字列として格納する。
     """
 
     name: str
