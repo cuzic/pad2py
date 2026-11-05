@@ -1,6 +1,7 @@
 """`pad_action_lib.folder_actions`の単体テスト(tmp_pathで実ファイルシステムを使う)。"""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -114,3 +115,36 @@ def test_get_subfolders_in_folder(tmp_path: Path) -> None:
 def test_if_folder_exists(tmp_path: Path) -> None:
     assert fo.if_folder_exists(str(tmp_path)) is True
     assert fo.if_folder_exists(str(tmp_path / "missing")) is False
+
+
+def test_get_special_folder_temp_always_resolves() -> None:
+    # 生成スクリプトは常にWindows上で実行される前提だが、`tempfile.gettempdir()`は
+    # クロスプラットフォームで常に動く(TMPDIR/TEMP/TMPいずれかの環境変数、または
+    # OS既定のtempディレクトリ)ため、"Temp"だけはこのリポジトリのCI(Linux)上でも
+    # 実際にテストできる。
+    import tempfile
+
+    assert fo.get_special_folder("Temp") == tempfile.gettempdir()
+
+
+def test_get_special_folder_respects_xdg_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_DESKTOP_DIR", "/tmp/fake-desktop")
+    assert fo.get_special_folder("Desktop") == "/tmp/fake-desktop"
+
+
+def test_get_special_folder_unknown_name_raises() -> None:
+    with pytest.raises(NotImplementedError):
+        fo.get_special_folder("SomeUnmappedSpecialFolder")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows専用(SHGetFolderPath)")
+def test_get_special_folder_desktop_resolves_via_csidl_on_windows() -> None:
+    # design/dsl_format_findings.md 知見84: `Folder.GetSpecialFolder`の唯一の実機確認
+    # 済み値`DesktopDirectory`は`pad_codegen`が`"Desktop"`へ結線する。以前の実装は
+    # Linux向けのXDG環境変数しか見ておらず、実際のWindows実行環境では(XDG変数が
+    # 存在しないため)常にNotImplementedErrorになっていた——`win32com.shell.shell.
+    # SHGetFolderPath`(公開されたWindows API、PAD固有の推測ではない)経由で実際に
+    # 解決できることを確認する。
+    path = fo.get_special_folder("Desktop")
+    assert path
+    assert Path(path).name.lower() in ("desktop",)

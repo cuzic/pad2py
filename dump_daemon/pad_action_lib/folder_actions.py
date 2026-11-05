@@ -206,6 +206,25 @@ def _sort_key(path: Path, key: str) -> object:
     raise ValueError(f"Unknown sort key: {key!r}")
 
 
+# PADの`Folder.SpecialFolder`列挙は.NETの`Environment.SpecialFolder`(Windows CSIDL定数の
+# ラッパー、公開されたMicrosoft APIの一部でPAD固有の推測ではない)を模している。このうち
+# `pad_codegen`が実機確認済みで結線しているのは`"Desktop"`(`DesktopDirectory`、知見84)
+# のみだが、生成スクリプトは常にWindows上で実行される前提のため、ここで実際に動く
+# 実装(`win32com.shell.shell.SHGetFolderPath`)を用意しておく——結線されていない他の
+# キーも同じ理由で併せて対応付けておく(`pad_codegen`側が新たに結線する際のでっち上げ
+# 防止にはならないが、関数自体は正しく動く)。
+_SPECIAL_FOLDER_CSIDL_NAMES = {
+    "Desktop": "CSIDL_DESKTOPDIRECTORY",
+    # 実機のVM(pywin32)で確認済み: `CSIDL_MYDOCUMENTS`は属性としては存在するが
+    # `SHGetFolderPath`に渡すと`com_error: The parameter is incorrect.`になる
+    # (値が12=本来のCSIDL_CONNECTIONSと食い違う、pywin32側の既知の別名違いらしい)。
+    # 正しく動くのは`CSIDL_PERSONAL`(実機で`C:\Users\<user>\Documents`を確認)。
+    "Documents": "CSIDL_PERSONAL",
+    "AppData": "CSIDL_APPDATA",
+    "Temp": None,  # CSIDLに無い(`tempfile.gettempdir()`を使う)。
+}
+
+
 def get_special_folder(name: str) -> str:
     env_map = {
         "Desktop": "XDG_DESKTOP_DIR",
@@ -216,8 +235,23 @@ def get_special_folder(name: str) -> str:
     env_var = env_map.get(name)
     if env_var and os.environ.get(env_var):
         return os.environ[env_var]
-    # Windowsの`Environment.SpecialFolder`(20種)はLinux上に対応物が無いため、
-    # 確認できないものは安全側に倒しNotImplementedErrorとする(でっち上げたパスは返さない)。
+    if name == "Temp":
+        import tempfile
+
+        return tempfile.gettempdir()
+    csidl_name = _SPECIAL_FOLDER_CSIDL_NAMES.get(name)
+    if csidl_name is not None:
+        try:
+            import win32com.shell.shell as shell  # type: ignore[import-not-found]
+            import win32com.shell.shellcon as shellcon  # type: ignore[import-not-found]
+        except ImportError:
+            pass
+        else:
+            csidl = getattr(shellcon, csidl_name, None)
+            if csidl is not None:
+                return shell.SHGetFolderPath(0, csidl, 0, 0)
+    # Windowsの`Environment.SpecialFolder`(20種以上)のうち、上記で解決できなかった
+    # ものは、でっち上げたパスを返す代わりにNotImplementedErrorとする。
     raise NotImplementedError(f"Special folder {name!r} is not mapped on this platform")
 
 
