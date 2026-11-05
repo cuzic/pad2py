@@ -9,13 +9,8 @@ from __future__ import annotations
 from ...pad_dsl import ActionRecord, EnumRef, VarRef
 from ..context import CodegenContext
 from ..render import INDENT, render_value
-
-# UIAutomation.WindowState.* の列挙値 → pywinautoのWindowSpecificationメソッド名。
-_WINDOW_STATE_TO_PYWINAUTO_METHOD = {
-    "UIAutomation.WindowState.Maximized": "maximize",
-    "UIAutomation.WindowState.Minimized": "minimize",
-    "UIAutomation.WindowState.Restored": "restore",
-}
+from ._window_state import WINDOW_STATE_TO_PYWINAUTO_METHOD as _WINDOW_STATE_TO_PYWINAUTO_METHOD
+from ._window_state import render_move_or_resize
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -27,19 +22,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             method = _WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
             return [f"{prefix}{window_expr}.{method}()"]
     if node.action_id == "UIAutomation.MoveWindow.MoveByTitleClass":
+        # design/dsl_format_findings.md 知見119(実機確認済み): pywinautoの
+        # `WindowSpecification`には`move_window()`メソッド自体が無い(UIAバックエンドで
+        # `AttributeError`になることをVM上の実venvで確認した)。`render_move_or_resize()`
+        # (`win32gui.MoveWindow`経由、知見119)に差し替えた。
         window_expr = _window_lookup_expr(node)
         x = node.params.get("X")
         y = node.params.get("Y")
         if window_expr and isinstance(x, (int, float)) and isinstance(y, (int, float)):
-            return [f"{prefix}{window_expr}.move_window(x={render_value(x)}, y={render_value(y)})"]
+            return render_move_or_resize(prefix, window_expr, x=render_value(x), y=render_value(y))
     if node.action_id == "UIAutomation.ResizeWindow.ResizeByTitleClass":
         window_expr = _window_lookup_expr(node)
         width = node.params.get("Width")
         height = node.params.get("Height")
         if window_expr and isinstance(width, (int, float)) and isinstance(height, (int, float)):
-            return [
-                f"{prefix}{window_expr}.move_window(width={render_value(width)}, height={render_value(height)})"
-            ]
+            return render_move_or_resize(
+                prefix, window_expr, width=render_value(width), height=render_value(height)
+            )
     if node.action_id == "UIAutomation.FocusWindow.FocusByTitleClass":
         # design/dsl_format_findings.md 知見27(実機確認済み、SetWindowState等と同じ
         # ByTitleClassパターン)。
@@ -69,6 +68,39 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         window_instance = node.params.get("WindowInstance")
         if isinstance(window_instance, VarRef):
             return [f"{prefix}{render_value(window_instance)}.set_focus()"]
+    if node.action_id == "UIAutomation.MoveWindow.MoveByInstanceOrHandle":
+        # design/dsl_format_findings.md 知見119(decompile確認済み): `MoveWindow`/
+        # `ResizeWindow`/`SetWindowState`も`GetWindow`/`CloseWindow`/`FocusWindow`と
+        # 全く同じ3セレクタ構造を持つ——`WindowInstance`ベースの兄弟セレクタ。
+        window_instance = node.params.get("WindowInstance")
+        x = node.params.get("X")
+        y = node.params.get("Y")
+        if isinstance(window_instance, VarRef) and isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            return render_move_or_resize(
+                prefix, render_value(window_instance), x=render_value(x), y=render_value(y)
+            )
+    if node.action_id == "UIAutomation.ResizeWindow.ResizeByInstanceOrHandle":
+        window_instance = node.params.get("WindowInstance")
+        width = node.params.get("Width")
+        height = node.params.get("Height")
+        if (
+            isinstance(window_instance, VarRef)
+            and isinstance(width, (int, float))
+            and isinstance(height, (int, float))
+        ):
+            return render_move_or_resize(
+                prefix, render_value(window_instance), width=render_value(width), height=render_value(height)
+            )
+    if node.action_id == "UIAutomation.SetWindowState.SetStateByInstanceOrHandle":
+        window_instance = node.params.get("WindowInstance")
+        state = node.params.get("State")
+        if (
+            isinstance(window_instance, VarRef)
+            and isinstance(state, EnumRef)
+            and state.value in _WINDOW_STATE_TO_PYWINAUTO_METHOD
+        ):
+            method = _WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
+            return [f"{prefix}{render_value(window_instance)}.{method}()"]
     return None
 
 

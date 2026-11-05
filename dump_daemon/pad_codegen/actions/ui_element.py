@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from ...pad_dsl import ActionRecord, EnumRef, UiElementRef
 from ..context import CodegenContext
-from ..render import INDENT
+from ..render import INDENT, render_value
 from ..selectors import _build_pywinauto_selector_expr, _is_start_button_element
+from ._window_state import WINDOW_STATE_TO_PYWINAUTO_METHOD, render_move_or_resize
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -74,6 +75,41 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 method = "close" if node.action_id == "UIAutomation.CloseWindow.Close" else "set_focus"
+                return [f"{prefix}{selector_expr}.{method}()"]
+    if node.action_id == "UIAutomation.MoveWindow.Move":
+        # design/dsl_format_findings.md 知見119(decompile+実機確認済み): `MoveWindow`/
+        # `ResizeWindow`/`SetWindowState`も`GetWindow`/`CloseWindow`/`FocusWindow`と
+        # 全く同じ3セレクタ構造(`Control`/`WindowInstance`/`Title`+`Class`)を持つ——
+        # `Control`ベースの兄弟セレクタ。`render_move_or_resize()`(`win32gui.MoveWindow`
+        # 経由、pywinautoの`move_window()`は存在しないため)で実際に動くコードを生成する。
+        element = node.params.get("Control")
+        x = node.params.get("X")
+        y = node.params.get("Y")
+        if isinstance(element, UiElementRef) and isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                return render_move_or_resize(prefix, selector_expr, x=render_value(x), y=render_value(y))
+    if node.action_id == "UIAutomation.ResizeWindow.Resize":
+        element = node.params.get("Control")
+        width = node.params.get("Width")
+        height = node.params.get("Height")
+        if isinstance(element, UiElementRef) and isinstance(width, (int, float)) and isinstance(height, (int, float)):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                return render_move_or_resize(
+                    prefix, selector_expr, width=render_value(width), height=render_value(height)
+                )
+    if node.action_id == "UIAutomation.SetWindowState.SetState":
+        element = node.params.get("Control")
+        state = node.params.get("State")
+        if (
+            isinstance(element, UiElementRef)
+            and isinstance(state, EnumRef)
+            and state.value in WINDOW_STATE_TO_PYWINAUTO_METHOD
+        ):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                method = WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
                 return [f"{prefix}{selector_expr}.{method}()"]
     if node.action_id == "UIAutomation.GetWindow.GetForegroundWindow":
         # design/dsl_format_findings.md 知見117(decompile+実機確認済み):

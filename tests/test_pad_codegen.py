@@ -540,24 +540,29 @@ RESIZE_WINDOW_DSL = (
 )
 
 
-def test_generate_python_maps_move_window_to_pywinauto_move_window() -> None:
+def test_generate_python_maps_move_window_to_win32gui_move_window() -> None:
+    # design/dsl_format_findings.md 知見119(実機確認済み): pywinautoの
+    # `WindowSpecification`には`move_window()`メソッド自体が無い(UIAバックエンドで
+    # `AttributeError`になることをVM上の実venvでNotepadを使い確認した)。
+    # `win32gui.MoveWindow(hwnd, x, y, width, height, repaint)`に差し替えた
+    # (Width/Heightは未指定のためその場の`GetWindowRect()`の値を保持する)。
     tree = build_block_tree(parse_dsl(MOVE_WINDOW_DSL))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "from pywinauto import Desktop" in code
-    assert (
-        "Desktop(backend='uia').window(title='Power Automate | g1g2_test').move_window(x=100, y=50)" in code
-    )
+    assert "import win32gui" in code
+    assert "_hwnd = Desktop(backend='uia').window(title='Power Automate | g1g2_test').wrapper_object().handle" in code
+    assert "_rect = win32gui.GetWindowRect(_hwnd)" in code
+    assert "win32gui.MoveWindow(_hwnd, 100, 50, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
 
 
-def test_generate_python_maps_resize_window_to_pywinauto_move_window() -> None:
+def test_generate_python_maps_resize_window_to_win32gui_move_window() -> None:
+    # design/dsl_format_findings.md 知見119: X/Yは未指定のためその場の`GetWindowRect()`の
+    # 値を保持する。
     tree = build_block_tree(parse_dsl(RESIZE_WINDOW_DSL))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert (
-        "Desktop(backend='uia').window(title='Power Automate | g1g2_test')"
-        ".move_window(width=1024, height=768)" in code
-    )
+    assert "win32gui.MoveWindow(_hwnd, _rect[0], _rect[1], 1024, 768, True)" in code
 
 
 def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None:
@@ -1309,6 +1314,75 @@ def test_generate_python_from_focus_window_by_instance_or_handle_converts() -> N
     compile(code, "<generated>", "exec")
     assert "AutomationWindow2.set_focus()" in code
     assert "# TODO" not in code
+
+
+def test_generate_python_from_move_window_by_instance_or_handle_converts() -> None:
+    # design/dsl_format_findings.md 知見119(decompile+実機確認済み)。
+    dsl = "UIAutomation.MoveWindow.MoveByInstanceOrHandle WindowInstance: AutomationWindow2 X: 10 Y: 20"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "_hwnd = AutomationWindow2.wrapper_object().handle" in code
+    assert "win32gui.MoveWindow(_hwnd, 10, 20, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_resize_window_by_instance_or_handle_converts() -> None:
+    dsl = "UIAutomation.ResizeWindow.ResizeByInstanceOrHandle WindowInstance: AutomationWindow2 Width: 640 Height: 480"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "win32gui.MoveWindow(_hwnd, _rect[0], _rect[1], 640, 480, True)" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_set_window_state_by_instance_or_handle_converts() -> None:
+    dsl = (
+        "UIAutomation.SetWindowState.SetStateByInstanceOrHandle WindowInstance: AutomationWindow2 "
+        "State: UIAutomation.WindowState.Maximized"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "AutomationWindow2.maximize()" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_move_window_control_based_converts() -> None:
+    # design/dsl_format_findings.md 知見119: `Control`ベースの兄弟セレクタ(`.Move`)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.MoveWindow.Move Control: appmask['Window \\'Untitled - Notepad\\''] X: 10 Y: 20",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "_hwnd = Desktop(backend=\"uia\").window(title='Untitled - Notepad').wrapper_object().handle" in code
+    assert "win32gui.MoveWindow(_hwnd, 10, 20, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
+    assert "# TODO: map PAD action: UIAutomation.MoveWindow.Move" not in code
+
+
+def test_generate_python_from_set_window_state_control_based_converts() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.SetWindowState.SetState Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "State: UIAutomation.WindowState.Minimized",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').minimize()" in code
+    assert "# TODO: map PAD action: UIAutomation.SetWindowState.SetState" not in code
 
 
 def test_generate_python_omits_selector_hint_when_repository_not_given() -> None:
