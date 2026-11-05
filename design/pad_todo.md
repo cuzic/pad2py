@@ -233,6 +233,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   唯一の見つかった改善点: `excel_actions.py`の`_range_to_datatable()`で`FirstLineIsHeader=false`
   時のヘッダー名(列名A/B/C...)が実機未確認の近似であることを示すコメントが無かったので追加
   (commit この後)——PDF側の無ヘッダー時命名("Column1"等)と一致する保証が無いことも明記。
+  🔍 **追記**: この`excel_actions.py`/`word_actions.py`/`powerpoint_actions.py`の「実機未確認の
+  近似」コメント群(空行除去・ヘッダー無し列名・次の空き行/列の判定等)は、知見112・115・129〜132
+  等で使った「VM上でPAD自身のアクションクラスを直接インスタンス化・`Execute()`を呼び出す」
+  手法では解決できないと確認した——`pad2py-pad-host`VMには**Word/Excel/PowerPointのいずれも
+  COM登録されていない**(`New-Object -ComObject Excel.Application`等が
+  `REGDB_E_CLASSNOTREG`で失敗、Officeがインストールされていないため)。Tier3のこの種の
+  疑問は、RDPアクセスの有無とは独立に、**Officeがインストールされた別環境**(または
+  ユーザー自身の実機)での確認が前提になる。
   残る障壁は`pad_action_lib`側の実装ではなく、action_id文字列・パラメータ直列化形式の実機確認
   (🖥️)のみ——結線作業自体は知見73と同じパターンで機械的に進められる見込み。
   🚫 **ペースト技法は使えないと判明**: 知見75のペースト技法(`IfFunctionRecord`向け)をTier3の
