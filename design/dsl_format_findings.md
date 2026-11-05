@@ -1855,3 +1855,28 @@ B節に残っていた、PAD独自の汎用比較エンジン(`ComparisonCalcula
 **確認できた事実**: PADの`+`演算子は、両辺が数値または数値を表す文字列として解釈できる場合は**数値加算**を行い、どちらかが数値として解釈できない文字列の場合にのみ**文字列結合**にフォールバックする。結果が整数値になる場合は小数点無しの整数表記で書き出される(`"3"`、`"3.0"`ではない)。これはVB.NETの`+`演算子オーバーロード規則(文字列専用の連結には別の`&`演算子がある)と整合し、知見85で確認した`ComparisonCalculator.Compare`の「数値文字列と数値は型をまたいで等価」という緩い型変換の傾向とも一致する。
 
 **修正内容**: `dump_daemon/pad_action_lib/expr_runtime.py`を新設し、`pad_add(a, b)`(両辺を`int()`→`float()`の順でパースできれば数値加算、できなければ`str(a) + str(b)`で文字列結合)を実装した。`pad_codegen/render.py`の`_render_expr_as_python()`で`+`演算子を`expr_runtime.pad_add(left, right)`呼び出しへ変更し(`-`/`*`/`/`はPythonの演算子のまま変更なし)、`generate_python()`のimport検出リストに`expr_runtime`を追加した。これでA節の「型混在の`+`のディスパッチルール」が解決し、`pad_expr`の演算子は優先順位(知見81)・値の意味論(知見82・83・86)が全て実機確認済みになった。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 87. 【B節】`ON ERROR`構文のクリップボードペースト作成は原則不可能——読み取り専用の構文であることが確定(知見82のTier3ダイアログ限界と同種の構造的制約)
+
+ユーザー指示「VMが空いたら残りのTier3実機確認を進めて」を受けて、`codegen_coverage.py`のerror_handlingバケット(8/16)を埋めるため、`pad_action_lib`で結線済みのタグ(`CopyFileError`)を使う`ON ERROR <TagName>`の実機キャプチャを試みた。知見75のペースト技法(新規フローのActionsリストに直接DSLテキストをクリップボード経由で貼り付ける)を使い、`File.Copy`(存在しないソースファイルを指定)に`ON ERROR CopyFileError`/`ON ERROR`(無名キャッチオール)/`END`を続けた2アーム構成を貼り付けたところ、キャンバスには`File.Copy`の1アクションのみが追加され(`"Error handling enabled, Has error"`と表示)、`ON ERROR`ブロック全体(両アームとも)が**サイレントに消えた**。
+
+**原因の特定(3段階の切り分け実験)**:
+
+| 試行 | 構成 | 結果 |
+| --- | --- | --- |
+| 1 | `File.Copy` + `ON ERROR CopyFileError`(名前付き) + `File.WriteText` + `ON ERROR`(無名) + `File.WriteText` + `END` | 失敗(`ON ERROR`ブロック全体が消える) |
+| 2 | `File.Copy` + `ON ERROR CopyFileError`(名前付き、単一アームのみ) + `File.WriteText` + `END` | 同じ失敗(複数アーム/キャッチオールの有無は無関係と判明) |
+| 3 | `File.Copy` + `ON ERROR`(**無名**、タグ名無し) + `File.WriteText` + `END` | 同じ失敗(タグ名の有無・正当性も無関係と判明) |
+| 4 | **`Scripting.RunPythonScript`**(知見36で実際にこの構文がダイアログ経由で確認された既知良好アクション) + `ON ERROR RunPythonScriptError` + `File.WriteText` + `END`、新規フローへの**フレッシュペースト** | **同じ失敗**(`"Run Python script, Error handling enabled, Has error"`のみ残り、`ON ERROR`ブロックは消える) |
+
+試行4が決定的だった——知見36で実機確認した**全く同じ構文**(`Scripting.RunPythonScript` + `ON ERROR RunPythonScriptError`)が、ゼロから貼り付けて再生成しようとすると失敗する。つまり`File.Copy`固有の問題ではなく、**どのアクション・どのタグ名であっても、ペースト経由で`ON ERROR`構造を「新規作成」することはできない**という一般的な制約だと確定した。
+
+Errorsタブの実際のメッセージは`"The statement isn't allowed inside exception handling."`(Line 1 = 残存した単一アクション)——PADのペースト用パーサー自身は`ON ERROR`トークン列を構文として受理するが(構文エラーにはならず、エラーとして報告されるのはペースト後の**生き残った本体アクション**の方)、インポート後の検証ロジックが「このアクションに対する例外処理の関連付け」を拒否する、という挙動だと推測される。
+
+**知見38・知見75との整合性**: 知見75は「DSLペーストは制御フロー/条件文法を含め広く機能する」ことを示したが、本知見はその**例外**を1件確定させたことになる。知見36・37・40・41で確認した全ての`ON ERROR`/`ON BLOCK ERROR`関連構文(`REPEAT ACTION`/`NEXT ACTION`/`THROW ERROR`含む)は、いずれも**既にダイアログのUI操作(「Error handling」有効化+「Exception handling mode」選択)で実際に構成された状態をコピー(読み取り)した**ものであり、ペーストで「ゼロから書く」ことは一度も実証されていなかった——本知見によって、この非対称性(読み取りは可能、新規作成はペーストでは不可)が確定した。
+
+**知見82との構造的な類似性**: 知見82で確認した「キーボードで新規追加したTier3アクションの設定ダイアログへの値設定はRDPが必要」という制約と、本知見の「`ON ERROR`の新規構成にはダイアログのUI操作(Error handling有効化)が必要」という制約は、**同じ根本原因のバリエーション**だと考えられる——PADデザイナーの一部の構成操作(新規ダイアログへの値入力、例外処理の有効化)は、クリップボードペーストという「DSLテキストの構文受理」の経路では到達できず、実際のダイアログ操作(現状RDPが必要)を要求する。
+
+**結論・今後の対応**: `codegen_coverage.py`のerror_handlingバケット(8/16)のうち、すでにpad_dsl_parser/pad_codegenが対応済みの構文(`ON ERROR`/`ON BLOCK ERROR`の基本構造、`REPEAT ACTION`/`NEXT ACTION`/`THROW ERROR`)に加えて**新しい結線済みタグを使う実例**を増やすには、RDPでダイアログを直接操作する以外の経路が無いと判断し、この項目はpad_todo.mdでTier3ダイアログ限界(知見82)と同じ「🖥️ RDP必要」カテゴリに分類し直す。
+
+**副産物: 「未保存の変更」確認ダイアログはトップレベルウィンドウではなく、デザイナー自身のウィンドウ内に描画される埋め込みオーバーレイだと判明**。`designer.descendants()`で`control_type="Window"`の子要素として`'You have unsaved changes'`(+ `Save`/`Don't save`ボタン)がそのまま見つかり、その`Button "Don't save"`に対して(知見81で確立した)`.invoke()`(UIAの`InvokePattern`、クリックではない)を呼ぶだけで、アクティブデスクトップ/RDP無しに確実にフローを閉じられることを確認した。従来メモに残っていた「`{TAB}{ENTER}`で閉じる」という盲打ちのキーボード操作は、本来はこの`.invoke()`方式に置き換えるべき、より確実な手段だと分かった(`designer.close()`やAlt+F4では、このオーバーレイ自体は表示されるが閉じる動作には繋がらなかった——原因は未調査のまま)。テスト用フロー`onerror_tag_check`・4つの切り分け試行はこの方式で保存せずに閉じ、出力ファイルも作成していないため、追加のクリーンアップは不要。
