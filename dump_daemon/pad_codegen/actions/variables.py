@@ -31,6 +31,8 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText: False`
 (数値らしき文字列を実際の数値型に変換する)は知見92で実機確認済みのため`True`/`False`
 両方を結線した(`datatable_from_csv_text()`の`read_fields_as_text`引数に委譲)。
+`TrimFields`(各フィールドの前後の空白除去)も知見93で実機確認済みのため`True`/`False`
+両方を結線した(`trim_fields`引数に委譲)。
 
 `Variables.ConvertDataTableToCSV.*`/`Variables.GenerateDataTableFromCSV.*`の
 ヘッダー無しケース(`IncludeColumnNames`/`FirstLineContainsColumnNames: False`)は
@@ -319,18 +321,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         separator = enum_last(p.get("ColumnsSeparator"))
         first_line = safe_render(p.get("FirstLineContainsColumnNames"))
         read_as_text = p.get("ReadFieldsAsText")
+        trim_fields = p.get("TrimFields")
         if (
             text is None
             or first_line is None
             or separator != "SystemDefault"
             or not isinstance(read_as_text, bool)
+            or not isinstance(trim_fields, bool)
             or not node.output_var
         ):
             return None
         return [
             f"{prefix}{node.output_var} = variables_actions.datatable_from_csv_text("
             f"{text}, first_line_contains_column_names={first_line}, "
-            f"read_fields_as_text={read_as_text!r})"
+            f"read_fields_as_text={read_as_text!r}, trim_fields={trim_fields!r})"
         ]
 
     return None

@@ -306,6 +306,7 @@ def read_from_csv_file(
     delimiter: str = ",",
     encoding: str = "UTF8",
     first_line_contains_column_names: bool = True,
+    trim_fields: bool = True,
 ) -> DataTable:
     from .datatable import datatable_from_csv_text
 
@@ -314,7 +315,10 @@ def read_from_csv_file(
     except _OS_FILE_NOT_FOUND_ERROR as exc:
         raise FileNotFoundError(str(exc)) from exc
     return datatable_from_csv_text(
-        text, delimiter=delimiter, first_line_contains_column_names=first_line_contains_column_names
+        text,
+        delimiter=delimiter,
+        first_line_contains_column_names=first_line_contains_column_names,
+        trim_fields=trim_fields,
     )
 
 

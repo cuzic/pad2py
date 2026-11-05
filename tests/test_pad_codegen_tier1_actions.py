@@ -111,10 +111,11 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
         "JoinedDataTable = variables_actions.join_datatable('sample', 'sample', [], "
         "join_operation='Inner')" in code
     )
-    # ReadFieldsAsText: Falseの数値変換挙動を実機確認(knowledge 92)したため結線される。
+    # ReadFieldsAsText: False(knowledge 92)・TrimFields(knowledge 93)の挙動を実機確認したため結線される。
     assert (
         "CSVTable = variables_actions.datatable_from_csv_text('sample', "
-        "first_line_contains_column_names=False, read_fields_as_text=False)" in code
+        "first_line_contains_column_names=False, read_fields_as_text=False, "
+        "trim_fields=True)" in code
     )
 
 
@@ -176,7 +177,7 @@ def test_file_batch6_converts_all_actions_including_csv_header_less_case() -> No
     assert "import os" in code
     assert (
         "CSVTable = file_actions.read_from_csv_file('sample', encoding='UTF8', "
-        "first_line_contains_column_names=False)" in code
+        "first_line_contains_column_names=False, trim_fields=True)" in code
     )
     assert (
         "file_actions.write_to_csv_file('sample', 'sample', if_file_exists='Overwrite', "

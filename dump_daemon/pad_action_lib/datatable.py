@@ -48,6 +48,7 @@ def datatable_from_csv_text(
     delimiter: str = ",",
     first_line_contains_column_names: bool = True,
     read_fields_as_text: bool = True,
+    trim_fields: bool = True,
 ) -> DataTable:
     """標準/カスタム区切りCSVテキストを`DataTable`に変換する。
 
@@ -59,11 +60,18 @@ def datatable_from_csv_text(
     フィールド(`"007"`等)は実際に数値型へ変換される(`int`→`float`の順でパースを試みる、
     先頭ゼロは失われる——`"007"`は`7`になる)。数値として解釈できないフィールドは文字列
     のまま変化しない。既定の`True`では常に文字列のまま保持する(従来通り)。
+
+    知見93(実機確認済み): `trim_fields=True`(実機の既定値)の場合、各フィールドの
+    前後の空白が除去される(`" 7 , abc "`→`"7"`/`"abc"`)。`False`では空白を保持する
+    (`" 7 "`/`" abc "`のまま)。トリム処理は数値変換より先に適用する(`int()`/`float()`
+    自体も前後の空白を無視するため実害は無いが、文字列のまま保持する場合に影響する)。
     """
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     rows = list(reader)
     if not rows:
         return []
+    if trim_fields:
+        rows = [[cell.strip() for cell in row] for row in rows]
     if first_line_contains_column_names:
         header, *data = rows
     else:

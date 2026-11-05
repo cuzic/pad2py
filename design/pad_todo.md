@@ -27,8 +27,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   知見81の手法を使い、`"007"`が`"7"`に変化(先頭ゼロ消失)することを確認——数値として
   解釈できるフィールドは実際に数値型へ変換されると確定した。`datatable_from_csv_text()`
   に`read_fields_as_text`引数を追加し`True`/`False`両方を結線した
-  (`codegen_coverage.py`: 179/202→180/202)。`TrimFields`の正確な意味論は別の
-  未解決課題として残る(低優先度)。
+  (`codegen_coverage.py`: 179/202→180/202)。
+  ✅ **`TrimFields`も実機確認・結線完了(知見93)**: VMが空いたタイミングで知見81の
+  手法を使い、`" 7 , abc "`→`TrimFields: True`で`"7,abc"`・`False`で`" 7 , abc "`
+  のまま、と確認——単純な`.strip()`相当だと確定した。`datatable_from_csv_text()`/
+  `file_actions.read_from_csv_file()`に`trim_fields`引数を追加し、
+  `Variables.GenerateDataTableFromCSV`/`File.ReadFromCSVFile.ReadCSV`の両方で
+  実際に値を読み取って結線するよう修正した(従来は値を読み取らず常に無視していた
+  潜在的な不整合だった)。
 - [x] 💻🖥️ `Variables.FilterDataTable`の条件(`FilterParameters`)スキーマを特定・結線。
   ✅ **decompile+実機確認・結線完了(知見90)**: RDP不要——`ilspycmd`でVM上の
   `Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`を再デコンパイルし、

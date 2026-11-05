@@ -13,9 +13,8 @@ tier1_file_batch6.txt`・知見70の`tier1_crypto_database_batch7.txt`から確�
 `File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`のヘッダー無しケース
 (`FirstLineContainsColumnNames`/`IncludeColumnNames: False`)は知見84で実機確認済み
 (列名は`"Column#1"`/`"Column#2"`...が割り当てられる)。`TrimFields`(各フィールドの
-前後の空白除去と推測されるが、`pad_action_lib`側は未実装のまま値を無視する——
-でっち上げた実装を書かず、既知の近似の限界として明記するのみ)は値を問わず
-受け取るだけで結線する。
+前後の空白除去)は知見93で実機確認済みのため`True`/`False`両方を結線した
+(`file_actions.read_from_csv_file()`の`trim_fields`引数に委譲)。
 """
 from __future__ import annotations
 
@@ -162,17 +161,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         encoding = enum_last(p.get("Encoding"))
         separator = enum_last(p.get("ColumnsSeparator"))
         first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        trim_fields = p.get("TrimFields")
         if (
             path is None
             or encoding is None
             or first_line is None
             or separator != "SystemDefault"
+            or not isinstance(trim_fields, bool)
             or not node.output_var
         ):
             return None
         return [
             f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, encoding={encoding!r}, "
-            f"first_line_contains_column_names={first_line})"
+            f"first_line_contains_column_names={first_line}, trim_fields={trim_fields!r})"
         ]
 
     if action_id == "File.WriteToCSVFile.WriteCSV":

@@ -1969,3 +1969,20 @@ A節に長く残っていた「`ReadFieldsAsText: False`の数値コレーショ
 **修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`に`read_fields_as_text: bool = True`引数を追加し、`False`の場合は各セルに`_csv_as_number()`(`int()`→`float()`の順でパース、失敗時は元の文字列のまま)を適用するようにした。`pad_codegen/actions/variables.py`の`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の結線条件を「`ReadFieldsAsText`が`True`のときのみ」から「`True`/`False`どちらでも結線」に緩和した。これでA節に残っていたDataTable/CSV関連の実機未確認事項は全て解決し、A節の未解決分岐点は23/202→22/202(89%→89%、小数点以下では変化なし、整数部では180/202)になった。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
 
 **留保事項**: 浮動小数点数(小数点を含むフィールド、例: `"3.14"`)が実際に`float`へ変換されるか、負数・指数表記等の扱いは未検証のまま(整数ケースのみ実機確認)。`TrimFields`パラメータ(今回は`True`のまま固定)の効果も`pad_codegen`側では依然未結線(別の低優先度の未解決項目として残る)。
+
+## 93. 低優先度の持ち越し項目`TrimFields`を実機確認——単純な前後空白除去(`.strip()`)と確定
+
+A節に「低優先度」として残っていた`TrimFields`(CSV各フィールドの前後空白除去と推測されていたが未確認)を、知見81の「Run実行+ファイル書き出し」手法で解決した。`SET CSV TO $''' 7 , abc '''`(各フィールドの前後に空白を含むCSVテキスト)を`Variables.GenerateDataTableFromCSV`で`TrimFields: True`/`False`の両方で読み込み、`Variables.ConvertDataTableToCSV`で戻した結果を角括弧で囲んで書き出した(新規テストフロー`trimfields_check`、保存せず破棄)。
+
+**実機確認結果**:
+
+| `TrimFields` | 結果 | 解釈 |
+| --- | --- | --- |
+| `True` | `[7,abc]` | 各フィールドの前後空白が除去される |
+| `False` | `[ 7 , abc ]` | 空白がそのまま保持される |
+
+推測通り単純な`.strip()`相当の挙動であり、特別な意味論(タブ/改行のみ除去する等)は無いと確定した。
+
+**修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`に`trim_fields: bool = True`引数を追加し、`True`の場合はCSV各セル(ヘッダー行含む)に`.strip()`を適用してから列名割り当て/数値変換(知見92)を行うようにした。`pad_action_lib/file_actions.py`の`read_from_csv_file()`にも同じ引数を追加して委譲した。`pad_codegen/actions/variables.py`の`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`・`pad_codegen/actions/file.py`の`File.ReadFromCSVFile.ReadCSV`の両方で`TrimFields`を読み取って結線するよう更新した(従来は値を読み取らず常に無視していた——もし実機で`TrimFields: False`な非トリムCSVが来た場合に誤った結果を生成しうる、知らぬ間の挙動不一致だった)。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+**留保事項**: ヘッダー行自体(`FirstLineContainsColumnNames: True`時の列名)もトリム対象になるかは直接確認しておらず(今回のテストは`FirstLineContainsColumnNames: False`で実施)、実装では一貫性のため同じ`.strip()`をヘッダー行にも適用しているが、これは推測の範囲内にとどまる。

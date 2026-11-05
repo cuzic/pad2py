@@ -318,6 +318,21 @@ def test_csv_read_fields_as_text_true_keeps_strings() -> None:
     assert table == [{"Column#1": "007", "Column#2": "abc"}]
 
 
+def test_csv_trim_fields_true_strips_whitespace() -> None:
+    # design/dsl_format_findings.md 知見93(実機確認済み): " 7 , abc " -> "7"/"abc"。
+    text = " 7 , abc \r\n"
+    table = va.datatable_from_csv_text(text, first_line_contains_column_names=False)
+    assert table == [{"Column#1": "7", "Column#2": "abc"}]
+
+
+def test_csv_trim_fields_false_keeps_whitespace() -> None:
+    text = " 7 , abc \r\n"
+    table = va.datatable_from_csv_text(
+        text, first_line_contains_column_names=False, trim_fields=False
+    )
+    assert table == [{"Column#1": " 7 ", "Column#2": " abc "}]
+
+
 def test_json_custom_object_round_trip() -> None:
     obj = {"a": 1, "b": [1, 2, 3]}
     text = va.custom_object_to_json(obj)
