@@ -1633,3 +1633,29 @@ val.NewSelectorId = ModuleName + "." + action.Id
 - 貼り付けインポートの判定経路(`Unknown action`になる条件)自体が、ここで調べた`Robin.Engine.dll`のエクスポート/マッピング用コードと同じロジックを使っているかどうかも未確認——別の判定ロジックを経由している可能性がある。
 
 **価値**: PDFモジュール自体の特定には至らなかったが、**action_id構築の一般式が実機データ(`Text.Trim`)で検証できたこと自体が、今後Tier1/2の他モジュールのaction_id予測精度を上げる再利用可能な知見**(知見66の帰納的推測を裏付ける一次ソースが見つかった)。次回この経路を続けるなら、`Robin.Core.dll`/`Robin.Language.dll`の取得・デコンパイルから始めるとよい。
+
+## 77. 【同tick続き】`Robin.Core.dll`/`Robin.Language.dll`を追加デコンパイルし式を完全裏付け——かつPADデザイナーのUI自身から実際のaction_idを直接確認、それでもペースト取り込みが拒否するという矛盾を発見
+
+知見76の「`Robin.Core.dll`/`Robin.Language.dll`の取得から始めるとよい」を同じtick内でそのまま実行した。
+
+**`Robin.Core.dll`(11,739,448バイト、WinRM経由のBase64転送は`clipwire logs`(ジョブ完了後の取得)経由だと数秒で完結——ライブストリーミングの`exec`だと大きすぎて打ち切られることがあったため、`--detach`気味に投げてから`clipwire logs <job-id>`で取り直す方が安全)から、知見76で未確認だった`ActionInfoBase`/`ActionInfo`/`VirtualModuleInfo`の実装を発見**:
+
+```csharp
+// ActionInfo(module, categories, virtualModules, groupAttributes, attribute, ...)のコンストラクタ
+Name = attribute?.Name ?? actionTypeName;
+base.Id = attribute?.Id ?? Name;  // [Action]属性のId(無ければ非推奨Name、さらに無ければクラス名)がそのままIdになる
+// Category属性が無ければCategoryはnull(カテゴリ由来の追加セグメントは無い)
+// VirtualModuleは[VirtualModule(...)]属性が明示的に付いている場合のみ設定される(PDF.Actionsには無い)
+```
+
+これにより、`ExtractTextFromPDFAction`(`[Action(Id="ExtractTextFromPDF")]`、`VirtualModule`属性無し)について、知見76の式`{AssemblyTitle}.{Id}` = `"Pdf.ExtractTextFromPDF"`が**ソースコードレベルで完全に裏付けられた**(Category起因の追加セグメントも無いことも確認済み)。
+
+**さらに、PADデザイナーのUIから直接確認**: 「Extract text from PDF」検索結果の`TreeItem`のUIA `AutomationId`プロパティを読むと、**`'Pdf.ExtractTextFromPDF'`そのものが得られた**——ソースコードからの計算と完全一致。これは実機(稼働中のPADプロセス自身)が持つ値であり、知見76の式の正しさを実機データとして追加で裏付けるものである。
+
+**それでも知見75のペースト技法で貼り付けると`"Unknown action, Has error"`になる**(`Pdf.ExtractTextFromPDF PDFFile: $'''C:\test.pdf''' ExtractedText=> ExtractedText`を同じtickで再度貼り付けて再確認済み)。つまり:
+- action_idの値自体(`"Pdf.ExtractTextFromPDF"`)は2つの独立した経路(ソースコードの計算式・実機UIのAutomationId)で確認でき、ほぼ確実に正しい。
+- それでもクリップボードのペースト取り込みだけがこれを拒否する、という矛盾が残っている。
+
+**矛盾の仮説(未検証)**: `Robin.Language.ActionMapping.ActionMapper`(`Microsoft.Flow.RPA.Desktop.Robin.Language.dll`)というクラスが、`GetActionByActionName(string oldSelectorId)`というメソッドを持ち、JSON化された`serializedActionMapping`(`ActionMapperExport.CreateJsonFile()`が書き出す`ActionMapping.json`と同じ形)から`SelectorId`→`Action`の辞書を構築して**「古いselector idから現在のアクションへの」後方互換マッピング**を行っている。クリップボードからの貼り付けインポートが(新規フローのビルドではなく)このような**静的・事前生成された後方互換マッピングテーブル経由で解決**されているなら、PDFのような新しいアクションがそのテーブルに未収録のまま(インストーラに同梱されたテーブル自体が古い)という状況が起こり得る——UIの検索ツリーは実行時のリフレクション(ライブのモジュール登録情報)から構築される一方、ペースト取り込みだけが別の静的テーブルを経由している可能性がある。この仮説は**未検証**(`ActionMapper`の実際の呼び出し元・使われ方はまだ追えていない)。
+
+**今回のtickでの結論**: `Pdf.ExtractTextFromPDF`が実機で正しいaction_id文字列であることは(ソース計算+UI自身のAutomationIdという2つの独立した根拠により)非常に高い確度で確定したが、知見75のペースト往復による「PAD自身の解釈結果」という形での確証は得られなかった。`pad_codegen`への結線は、この矛盾(ペースト取り込みの別経路説)が解消するか、従来のUI検索+ドラッグ(RDP必須)による実機DSLキャプチャが取れるまで持ち越す——確度は高いが、プロジェクトの「架空の値を実機確認済みとして記録しない」という方針上、まだ「確定」の知見としては扱わない。

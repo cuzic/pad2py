@@ -72,11 +72,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   🔍 **ユーザー提案(dll/exeのリバース解析)で前進、ただし未決着(知見76)**: `ilspycmd`で
   `Robin.Engine.dll`等を再デコンパイルし、action_id構築の一般式
   (`{AssemblyTitle}.{[Action]属性のId}[.{セレクタ名}]`)を`ActionMapperExport`のソースから
-  発見・`Text.Trim`で実証した。ただしPDFモジュールにこの式を当てても`"Pdf.ExtractTextFromPDF"`
-  (AssemblyTitleは`"Pdf"`、大文字PDFではない)は依然`"Unknown action"`——`VirtualModuleInfo`
-  という別経路が`Robin.Core.dll`/`Robin.Language.dll`(未取得)にある可能性が高く、続きはそこから。
-  Tier3のaction_id確定には、この式の検証継続(🖥️+デコンパイル)または従来のUI検索+ドラッグ
-  (RDP必須)が必要(memory `pad2py_clipboard_paste_technique`に詳細を記録)。
+  発見・`Text.Trim`で実証した。
+  🔍 同tickで`Robin.Core.dll`/`Robin.Language.dll`も追加取得・デコンパイルし式を完全裏付け、
+  かつPADデザイナー自身のUI要素(検索結果TreeItemのUIA AutomationId)から`'Pdf.ExtractTextFromPDF'`
+  という同じ文字列を直接確認(知見77)——2つの独立した根拠が一致し、action_idの値自体は
+  ほぼ確実と言える。**それでもクリップボードのペースト取り込みは依然この文字列を
+  `"Unknown action"`として拒否する**という矛盾が残る。仮説: ペースト取り込みは
+  `Robin.Language.ActionMapping.ActionMapper`経由の静的・事前生成された後方互換マッピング
+  テーブルを使っており、新しいアクションがそこに未収録なだけかもしれない(未検証)。
+  プロジェクトの方針上、高確度だが実機DSL往復での確証が無いためまだ結線しない
+  (memory `pad2py_clipboard_paste_technique`に次の一手を記録)。
 
 ## C. 構造的・運用上の課題
 
