@@ -1665,13 +1665,26 @@ Object Repositoryの実機確認は、別の解決手段(例: 旧2021.4.4を完�
 インストールしてから新規インストールし直す、またはユーザーが対話的に
 修復する)が取れるまで保留とする。
 
-## 36. VB.NET式の残り未検証項目(IsNot/Nothing/三項If/CInt/CDbl/CBool/IsNothing/文字列補間)を実機コンパイル確認——クリップボード貼り付けがIntelliSense干渉を回避する確実な入力手段だと判明
+## 36. VB.NET式の残り未検証項目(IsNot/Nothing/三項If/CInt/CDbl/CBool/IsNothing/文字列補間/String.IsNullOrEmpty/クォートエスケープ)を実機コンパイル確認——クリップボード貼り付けがIntelliSense干渉を回避する確実な入力手段だと判明
 
 新Studio側の調査が知見35で一旦行き詰まったため、旧Studio(2021.4.4、サイド
 バイサイドインストールの影響を受けていない)で`xaml_probe`を使い、知見32の
 時点で「公開VB.NET仕様に基づく机上整理」のまま残っていた項目——`IsNot`・
 `Nothing`・三項演算子`If(cond, t, f)`・`CInt`/`CDbl`/`CBool`・`IsNothing`・
-文字列補間`$"...{expr}..."`——を実機コンパイル確認した。
+文字列補間`$"...{expr}..."`・`String.IsNullOrEmpty`・文字列リテラル内の
+ダブルクォートエスケープ`""`——を実機コンパイル確認した
+(`design/uipath_vb_expression_mapping.md`の「未確認」項目が実質ゼロになった)。
+
+3つ目のAssignとして`CStr(String.IsNullOrEmpty("")) & "He said ""hi"" today"`
+も追加し、Error List「No errors found」とXAMLの両方で確認:
+```xml
+<InArgument x:TypeArguments="x:Object">[CStr(String.IsNullOrEmpty("")) &amp; "He said ""hi"" today"]</InArgument>
+```
+`String.IsNullOrEmpty`は静的メソッド呼び出し構文のままVB式として問題なく
+受理され、VB文字列リテラル内の`""`(ダブルクォート1個を表すエスケープ)も
+XMLエスケープ(`&quot;`)と無関係にそのまま埋め込まれる——どちらも特別な
+直列化処理を持たず、知見2以来の「`[...]`内は生のVB式テキストがそのまま
+入る」という原則の延長で説明できる。
 
 **確認方法**: 知見32と同じ「Assignの値欄に複合式を組んで保存→Error Listで
 検証」の手法。1つ目のAssignで`CStr(If(result IsNot Nothing, "notnothing",
