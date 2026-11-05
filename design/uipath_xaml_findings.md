@@ -2292,6 +2292,19 @@ G書式とは独立に`Double.ToString()`が特別扱いする固定文字列を
 実害が無い)。`tests/test_uipath_codegen.py`に
 `test_append_line_text_uses_vb_cstr_not_python_str`を追加。
 
+同じ監査で`SetToClipboard`の`Text`(`Append Line`と同じ
+`InArgument<String>`)も単純な`str()`のままだった箇所
+(`_generate_set_to_clipboard`)を発見・同様に修正した。`pyperclip.copy()`
+自体は非文字列を渡しても内部でPythonの`str()`に救済されるため実行時
+エラーにはならない(`pyperclip`パッケージの全バックエンド実装
+(`copy_windows`含む)のソースで確認済み)が、それだとVBのG書式と
+食い違う文字列がクリップボードに載る。`tests/test_uipath_codegen.py`に
+`test_set_to_clipboard_text_uses_vb_cstr_not_python_str`を追加(この
+Linuxサンドボックスにはクリップボード機構が無く`exec()`できないため、
+生成コード文字列の直接確認に留めた)。`_generate_append_line`/
+`_generate_set_to_clipboard`以外に`str(`を素のまま使っている箇所は
+`uipath_codegen/`全体を`grep`して確認済みで、もう残っていない。
+
 ## 今後の調査候補(未着手)
 
 - **`CDbl(x)`の2点が公式ドキュメントだけでは確定できず未解決(2026-11-05、

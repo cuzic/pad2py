@@ -468,10 +468,15 @@ def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:
+    """`Text`は`Append Line`と同じ`InArgument<String>`型——同じ理由
+    (知見46、`_generate_append_line`参照)で`_vb_cstr()`を使う。`pyperclip`
+    自体は非文字列を渡されても内部でPythonの`str()`を呼んで落ちはしない
+    (`pyperclip/__init__.py`の各バックエンド実装で確認済み)が、それだと
+    VBのG書式と食い違う文字列がクリップボードに載ってしまう。"""
     prefix = INDENT * indent
     todo: list[str] = []
     text = _render_value_or_todo(node.text, prefix, todo)
-    return [*todo, f"{prefix}pyperclip.copy({text})"]
+    return [*todo, f"{prefix}pyperclip.copy({VB_CSTR_HELPER_NAME}({text}))"]
 
 
 def _generate_click(node: ClickNode, indent: int) -> list[str]:

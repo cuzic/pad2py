@@ -42,6 +42,7 @@ from dump_daemon.uipath_dsl import (
     MessageBoxNode,
     ParallelNode,
     SequenceNode,
+    SetToClipboardNode,
     SwitchArm,
     SwitchNode,
     TryCatchNode,
@@ -264,7 +265,7 @@ def test_main_xaml_pipeline_smoke():
     code = generate_python(wf)
     assert "def Main():" in code
     assert "for item in ['a', 'b', 'c']:" in code
-    assert "pyperclip.copy('cliptext')" in code
+    assert "pyperclip.copy(_vb_cstr('cliptext'))" in code
     assert "try:" in code and "except Exception as exception:" in code
     assert "# TODO: unknown activity" in code  # Library呼び出し(p:NewActivity)
 
@@ -487,6 +488,19 @@ def test_append_line_text_uses_vb_cstr_not_python_str(tmp_path) -> None:
     exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
     namespace["Test"]()
     assert out_file.read_text(encoding="utf-8") == "4\n"
+
+
+def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:
+    """`SetToClipboard`の`Text`も`Append Line`と同じ`InArgument<String>`
+    (知見46追補)——`pyperclip.copy()`自体は非文字列でも`str()`で救済して
+    落ちはしないが(`pyperclip`のソースで確認済み)、それだとVBのG書式と
+    食い違う。`exec()`はしない(このLinuxサンドボックスにはクリップボード
+    機構が無くpyperclipが例外を出すため)——生成コードの文字列を直接確認する。
+    """
+    wf = _wrap([SetToClipboardNode(text=VbExpr(text="4.0"))])
+    code = generate_python(wf)
+    _compiles(code)
+    assert "pyperclip.copy(_vb_cstr(4.0))" in code
 
 
 @pytest.mark.parametrize(
