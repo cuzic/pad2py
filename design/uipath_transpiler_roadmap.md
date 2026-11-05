@@ -30,12 +30,16 @@ PAD側との比較で言うと、UiPathは**IR取得の入口は易しいが、�
 
 VM(UiPath Studio実機)に依存するものと依存しないものを分けて進める。
 
-- **VM不要、今すぐ着手可**:
-  - `And`/`Or`非短絡評価の安全なPython変換アルゴリズム設計(構文の受理は
-    知見32で確認済みだが、評価順序・副作用を保つ変換パターン自体は未設計)
-  - **セレクタ(`ui:Click`等の`Selector`属性、`<wnd app='...' cls='...'/>
-    <ctrl name='...' role='...'/>`形式)の意味論調査** ← 知見1〜36のどこにも
-    触れられていない、実は一番大きい抜け。後述Phase 4参照
+- **(完了)** `And`/`Or`非短絡評価の安全なPython変換アルゴリズム設計。
+  `&`/`|`ビット演算子への変換、両オペランド括弧必須、をPython実挙動で
+  検証し確定(design/uipath_vb_expression_mapping.md参照)
+- **(完了、一部未解決点あり)** セレクタの意味論調査(知見37)。
+  Classic Selector(WND/CTRL/WEBCTRL)の属性語彙・Dynamic Selector
+  (`{{Value}}`)・Anchor Baseは公式ドキュメントで把握。**ただしModern
+  活動の`Fuzzy selector`/`Strict selector`の実XAML直列化形は公式
+  ドキュメントに記載が無く未確認のまま残った**——旧Studio
+  (2021.4.4)でModern活動を1つ置けば新Studio問題を待たずに確認できる
+  可能性があり、次の候補タスクとして記録
 - **VM依存、新Studio問題(知見33〜35)の解消待ち**:
   - Coded Workflows(P2 #11)の実際のC#記法とXAMLとの連携方法
   - Object Repository(P2 #12)の`.objects/`構造とModern selectorのXAML表現
@@ -161,16 +165,16 @@ PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る。
 
 ## 次にやること
 
-1. **(次の一手として選択済み)セレクタ意味論の調査**: `ui:Click`等の
-   `Selector`属性(`<wnd app='...' cls='...'/><ctrl name='...'
-   role='...'/>`形式)の構文・属性語彙・fuzzy matching/Computer Vision
-   フォールバックの挙動を調査し、pywinautoの検索条件へのマッピング方針
-   (Phase 4の選択肢(a)素朴マッピング or (b)独自パーサー実装)を決める。
-   VM非依存で着手できる部分(公式ドキュメントでの属性語彙確認)と、
-   実機確認が要る部分(fuzzy matchingの実際の挙動)を分けて進める
-2. Phase 0の`And`/`Or`変換アルゴリズム設計(VM非依存、セレクタ調査と並行
-   可能)
-3. Phase 2〜3着手: `dump_daemon`に`uipath_dsl`(仮称)パッケージを新設し、
-   最小のXAMLツリーウォーカー(`Sequence`+`Assign`+`MessageBox`程度)を
-   `xaml_probe/Main.xaml`で試作するところから始めるのが、PAD側の最初の
-   一歩(`pad_dsl`の最小実装)と同じ進め方になる
+Phase 0のVM非依存タスク(`And`/`Or`変換アルゴリズム・セレクタ意味論の
+公式ドキュメント調査)は完了(知見37、design/uipath_vb_expression_mapping.md)。
+残る候補:
+
+1. **Phase 2〜3着手(最有力)**: `dump_daemon`に`uipath_dsl`(仮称)
+   パッケージを新設し、最小のXAMLツリーウォーカー(`Sequence`+`Assign`+
+   `MessageBox`程度)を`xaml_probe/Main.xaml`で試作する。PAD側の最初の
+   一歩(`pad_dsl`の最小実装)と同じ進め方
+2. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
+   問題とは独立): 旧Studio(2021.4.4)でModern UI Automation活動
+   (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
+   解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
+   のため、使用タイミングの調整が必要

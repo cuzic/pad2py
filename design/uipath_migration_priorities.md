@@ -16,7 +16,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 | # | 項目 | 状況 |
 |---|---|---|
 | 1 | 制御フロー一式のXAML確認(If/Switch/While/DoWhile/ForEach/TryCatch/Parallel/Break) | **完了**: If・ForEach・TryCatch+Catch・Switch(知見5・6・9・11、caseへのアクティビティ追加時の実XAML形=`x:Key`はアクティビティ要素自身の属性になる、を知見21で確定)・While/DoWhile(知見14、実体は`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`)・Break(知見18、属性なしの自己終了タグ)・Parallel(知見19、`ui:`プレフィックスを持たない素のWFアクティビティ、知見20でブランチ構造も確定=直接の子`Activity`要素)。ドロップゾーンへのドラッグ&ドロップ自動化も知見20で解決(`drag_activity_from_panel()`)。**残課題**: Parallelの複数ブランチの並び、1ブランチ/case内に複数ステップを入れる場合のSequenceラップ(今後の調査候補参照) |
-| 2 | VB.NET式 → Python式の変換ルール | **ほぼ完了**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に変換表を整理。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。主要演算子9種(知見32)・`IsNot`/`Nothing`/三項`If`/`CInt`/`CDbl`/`CBool`/`IsNothing`/文字列補間`$"..."`/`String.IsNullOrEmpty`/クォートエスケープ`""`(知見36)を実機コンパイル確認済み。残るは`And`/`Or`非短絡評価の安全な変換アルゴリズム設計(構文確認だけでは解決しない別課題)のみ |
+| 2 | VB.NET式 → Python式の変換ルール | **完了**: [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)に変換表を整理。`<Literal>`要素/生テキスト/`[...]`角括弧式の使い分けは知見13で実機確定(`x:TypeArguments`が`x:Object`かどうかが本質)。主要演算子9種(知見32)・`IsNot`/`Nothing`/三項`If`/`CInt`/`CDbl`/`CBool`/`IsNothing`/文字列補間`$"..."`/`String.IsNullOrEmpty`/クォートエスケープ`""`(知見36)を実機コンパイル確認済み。`And`/`Or`非短絡評価の安全な変換アルゴリズムも2026-11-05に設計・Python実挙動で検証し確定(`&`/`\|`ビット演算子への変換、両オペランドを必ず括弧で囲む)。残る個別API挙動差(`String.IsNullOrWhiteSpace`との区別等)はコード化時に都度確認で足りる |
 | 3 | Variables/Argumentsの正式宣言のXAML形 | **完了**: Variablesは知見8(`<Container.Variables>`配下、`Variable.Default`は`<Literal>`要素)、Argumentsは知見12(ファイル先頭の`<x:Members><x:Property Name="..." Type="InArgument(x:String)" /></x:Members>`) |
 | 4 | project.jsonの全体スキーマ(Process/Library/Test、`targetFramework`) | **Process/Library完了**(知見1・知見25)。LibraryはProcessと4点の構造差分(`main`の既定ファイル名、`dependencies`バージョン記法の角括弧有無、`designOptions.outputType`、`entryPoints`キーの有無)を確定。`targetFramework`は**知見30でPortable側の実例を確認完了**(`"Legacy"`=知見28/`.NETFramework4.6.1`、`"Portable"`=知見30/UI表記「Cross-platform」、`System.Private.CoreLib`名前空間を使用)。Studio UI自体に切替箇所が無いのは変わらず(REFrameworkテンプレート等、テンプレート側が指定する形でのみ実例を確認できた)。Testプロジェクトのみ未着手 |
 | 5 | 捕獲用ツールの内製化(pywinauto操作のスクリプト化) | **着手**: 繰り返し使った操作パターンを[dump_daemon/uipath_ui_helpers.py](../dump_daemon/uipath_ui_helpers.py)に関数として切り出した(`pad_ui_helpers.py`のUiPath版)。`pad_dsl_parser.py`/`codegen_coverage.py`に相当する本格的なキャプチャ自動化ツール(アクティビティ名を渡すだけで単独ワークフロー生成→XAML差分取得)はまだ無い |
@@ -57,17 +57,17 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 (対象: Sequence/Flowchartのみ・Processプロジェクトのみ・知見で確認済みの
 活動一式をTier1とする)。現時点の優先順位:
 
-0. **(次の一手として選択済み)セレクタ意味論の調査**——`ui:Click`等の
-   `Selector`属性(`<wnd app='...' cls='...'/><ctrl name='...'
-   role='...'/>`形式)の構文・属性語彙・fuzzy matching/Computer Vision
-   フォールバックの挙動を調査し、pywinautoへのマッピング方針を決める
-   (ロードマップのPhase 4参照)。知見1〜36のどこにも触れられていない
-   最大の未調査領域
-1. **P0 `And`/`Or`変換アルゴリズム設計**——構文の受理は知見32で確認済み
-   だが、評価順序・副作用を保つPython変換パターン自体は未設計。VM非依存、
-   #0と並行して進められる
+0. **(完了)** セレクタ意味論の公式ドキュメント調査(知見37)。Classic
+   Selector(WND/CTRL/WEBCTRL)の属性語彙・Dynamic Selector(`{{Value}}`)・
+   Anchor Baseは把握できたが、Modern活動の`Fuzzy selector`/`Strict
+   selector`が実際にどうXAML直列化されるかは公式ドキュメントに記載が無く
+   実機確認が必要と判明(新Studio問題の解消待ちではなく、旧Studioでも
+   Modern活動を1つ置けば確認できる可能性がある)
+1. **(完了)** `And`/`Or`変換アルゴリズム設計。`&`/`|`ビット演算子への
+   変換、両オペランド括弧必須、をPython実挙動で検証し確定
+   (design/uipath_vb_expression_mapping.md参照)
 2. Phase 2〜3着手(`dump_daemon`への`uipath_dsl`パッケージ新設、最小XAML
-   ツリーウォーカーの試作)——#0・#1がある程度固まってから
+   ツリーウォーカーの試作)——次の一手の最有力候補
 
 以下は(長期ブロック・保留中の)新Studio側の調査で、再開には別途対応が必要:
 

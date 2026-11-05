@@ -1731,6 +1731,79 @@ CStr(IsNothing(Nothing))`、2つ目のAssignで`$"value={result}-end"`を入力�
 いるらしく、一方の強制終了がもう一方のサインイン状態に影響しうる点は
 今後の作業で注意が必要。
 
+## 37. セレクタ(Selector)の意味論を公式ドキュメントで調査——Classic/Dynamic/Anchor Baseは把握できたが、ModernのFuzzy/Strict selectorの実XAML形は未確認と判明
+
+[design/uipath_transpiler_roadmap.md](uipath_transpiler_roadmap.md)で
+「知見1〜36のどこにも調査が無い最大の未解決問題」と特定したセレクタの
+意味論を、UiPath公式ドキュメント(docs.uipath.com)経由で調査した
+(VM不使用、Web検索のみ)。
+
+**基本構造**: セレクタは`<node_1/><node_2/>...<node_N/>`というXMLフラグメント
+の連鎖で、**最後のノードがターゲット要素、それ以前は親**(先頭が「ルート」=
+アプリのトップウィンドウ)。タグ名(`WND`/`CTRL`/`UIA`/`HTML`等)がUIシステム
+種別を表す。`RDP`はWNDと同じ属性セットを持つリモート自動化用の別タグ。
+ただし**各タグの「役割」自体(ウィンドウ階層とどう対応するか)は公式
+ドキュメントに説明文が無く、属性表が個別に列挙されているのみ**。
+
+**属性語彙(マッチ可否込み)**:
+- `WND`: マッチ可能—`app`/`cls`/`title`/`aaname`/`ctrlname`(WinForms)/
+  `ctrlid`(WinForms)/`aastate`/`curlApplet`。マッチ不可—`idx`/`tid`/
+  `pid`/`isremoteapp`。SAP専用属性多数(`sapClient`等)
+- `CTRL`: マッチ可能—`role`/`name`/`automationid`/`labeledby`/`aastate`/
+  `virtualname`/`text`/`rowName`。マッチ不可—`idx`
+- `WEBCTRL`: `tag`/`idx`/`aaname`/`name`/`id`/`parentid`/`class`/
+  `css-selector`/`innertext`/`title`(新しいバージョンは
+  `visibleinnertext`/`isleaf`も追加)
+
+**ワイルドカード/fuzzy matching**: 構文自体は公式ドキュメントに明記が薄く、
+2021.10版に`?`(1文字置換)と`*?`(1文字以上一致)の言及があるのみ。素の
+`*`(0文字以上)は非公式(フォーラム)情報にしか出てこない。`idx`はワイルド
+カード非対応と明記されているが、フォーラムには`idx='*'`が動く/動かないの
+矛盾する報告があり、バージョン依存の可能性——実機検証が必要。
+
+**Dynamic Selector**: 構文は`{{Value}}`(**`[変数]`角括弧式ではない**、
+VB式の文字列補間`$"..."`とも別構文)。例:
+`<ctrl name='{{MenuOption}}' role='menu item' />`。Studio上ではプロパティ
+値を右クリック→変数化、という手順で特定属性値を変数に置き換える。
+
+**Computer Vision (CV) フォールバック**: `CV Screen Scope`配下のCV
+アクティビティは**セレクタ無しでも**ボタン/テキスト入力/チェックボックス
+等をニューラルネット検出で特定できる——つまりCVはセレクタ構文の拡張では
+なく、セレクタが効かない場合の完全な別経路。`Target.Selector`自体は通常の
+XML形式だが、CVスコープという別枠の中で動く。
+
+**Modern活動のFuzzy/Strict selector——未解決**: Modern UI Automation
+アクティビティ(`Set Selected Item`等)の`Target`プロパティは単純な
+`Selector`文字列ではなく、`Fuzzy selector`(マッチングパラメータ)・
+`SearchSteps`(識別手法選択)・`Strict selector`(indicateした要素から
+生成されたセレクタ)という複合プロパティになっている。これはCVとも別系統の
+「Fuzzy vs Strict」という二段構えの仕組みで、**Classicの`Selector`属性
+1本とはXAML上の直列化形が構造的に異なる可能性が高いが、実際の要素名・
+属性名は公式ドキュメントに出てこず未確認**。知見31で有効化条件を確認した
+Object Repository/Modern Design Experienceと合わせて、**旧Studio
+(2021.4.4)でもModern活動を1つ置いてXAMLを見れば確認できる可能性がある**
+——新Studio問題(知見33〜35)の解消を待たずに着手できるかもしれない。
+
+**Anchor Base**: 近傍要素を基準にターゲットを特定するコンテナ型アクティビ
+ティ。`idx`に頼れない/信頼できるセレクタが無い場合の推奨手段。
+`AnchorPosition`は`Auto`(左/右/下を探索、同率なら右→左→下の順)/
+`Left`/`Top`/`Right`/`Bottom`/`OnTop`。「Relative Element」との使い分けは
+未調査(ページ未取得)。
+
+**pywinautoマッピングへの示唆(確定ではなく方向性)**:
+- `CTRL`の`automationid`→pywinautoの`auto_id`、`name`→`title`、
+  `role`→`control_type`に素直に対応できそう
+- `WND`の`cls`→`class_name`、`title`→`title`に対応できそう
+- `idx`(マッチ不可=識別専用の順序番号)は`found_index`相当だが、挙動が
+  不安定な可能性があるため変換時は警告付きTODOが安全
+- `{{Value}}`動的セレクタは「属性値がf-string的に変数展開される」パターン
+  として扱えばよさそう
+- **CV・Anchor Base・ModernのFuzzy/Strict selectorの3つは、いずれも
+  「単純なSelector属性1本」では表現できない別物**——ロードマップPhase 4の
+  選択肢(a)「素朴マッピング」で素直に扱えるのはClassic Selectorのみで、
+  残り3つはv1スコープでは「検出して`# TODO`」止まりにするのが現実的、
+  という方向性を支持する材料になった
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
