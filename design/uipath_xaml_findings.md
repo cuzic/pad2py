@@ -3662,6 +3662,35 @@ try/except変換はしない、知見71の`ClickType`と同じ方針)。
 「既に安全側に倒れているが、その理由と限界を明文化する価値がある」
 種類の発見も重要だと再確認した。
 
+## 75. 知見70で発見した5つの未対応アクティビティの`# TODO`コメントに捕捉済みフィールドを追記——人間が手動でポートする際の手がかりを増やす(VM不使用、でっち上げ無しの改善)
+
+知見70のカバレッジツールが`# TODO: unsupported in v1 codegen:
+ExcelApplicationScopeNode`のように型名しか出力しないことに気づいた
+——これは安全だが、人間が後でこのTODOを手動実装する際、元の`.xaml`に
+戻って`WorkbookPath`やメール送信先等を確認し直す必要があった。
+`uipath_dsl`のパーサーは既にこれらのフィールド(`InvokeCodeNode.code`・
+`ExcelApplicationScopeNode.workbook_path`・`ExcelWriteCellNode.cell`/
+`sheet_name`・`SendOutlookMailNode.to`/`subject`・`HttpClientNode.
+endpoint`/`method`)を素通しで捕捉済みなので、これをコメントに追記する
+だけで実装の難易度を上げずに手がかりを増やせる。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`):
+`_generate_unresolved_activity`に`# TODO: unsupported in v1 codegen:
+InvokeCodeNode (Code='content=content.ToUpper()')`のような詳細を追記。
+`Expr`型(`VbExpr`/`Literal`/`None`)フィールドの説明には新規
+`_describe_expr_for_comment()`を使う——既存の`render_expr()`(実行可能
+Pythonコードへの変換を試み、失敗時に`NotImplementedError`を送出する)
+とは別に、常に例外を出さない`repr()`ベースの素朴な表現に留める(既に
+`# TODO`に倒れている活動の説明文生成でさらに別の`# TODO`を誘発しない
+ため)。コード生成の判断自体は変えない、純粋にコメントの情報量を増やす
+だけの変更。
+
+`tests/test_uipath_codegen.py`に
+`test_unresolved_activity_todo_includes_captured_fields`
+(5種類すべてをパラメトライズ)を追加。UiPath関連テスト全245件通過、
+リポジトリ全体で全870件通過。知見70のカバレッジツール自体の出力も
+より具体的になった(副次的な改善)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

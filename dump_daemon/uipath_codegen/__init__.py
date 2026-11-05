@@ -46,6 +46,7 @@ from ..uipath_dsl.types import (
     BreakNode,
     ClickNode,
     DoWhileNode,
+    Expr,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
     ForEachNode,
@@ -65,6 +66,7 @@ from ..uipath_dsl.types import (
     TryCatchNode,
     UnknownActivityNode,
     VariableDecl,
+    VbExpr,
     WhileNode,
     WorkflowFile,
 )
@@ -639,14 +641,52 @@ def _generate_invoke_workflow_file(
     return [*todo, f"{prefix}{func_name}({', '.join(kwargs)})"]
 
 
+def _describe_expr_for_comment(expr: Expr) -> str:
+    """`# TODO`コメントに埋め込むための人間向け簡易説明(知見75)。
+    `render.py`の`render_expr()`のような実行可能Pythonコードへの変換は
+    試みない——既に`# TODO`に倒れている活動の説明文字列生成でさらに
+    別の`NotImplementedError`/ネストした`# TODO`を誘発しないよう、
+    常に例外を出さない`repr()`ベースの素朴な表現に留める。"""
+    if expr is None:
+        return "(not set)"
+    if isinstance(expr, Literal):
+        return repr(expr.value)
+    if isinstance(expr, VbExpr):
+        return f"[{expr.text}]"
+    return repr(expr)
+
+
 def _generate_unresolved_activity(node, indent: int) -> list[str]:
     """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
     (インラインコード・ライブExcel/Outlook連携・`HttpClient`のHeaders等
     プロパティ要素未パース)——架空の変換をでっち上げず`# TODO`に倒す。
     `Invoke Workflow File`自体は`_generate_invoke_workflow_file`が担当する
-    (`generate_project_python()`経由であれば実関数呼び出しへ解決される)。"""
+    (`generate_project_python()`経由であれば実関数呼び出しへ解決される)。
+
+    知見75: 捕捉済みの主要フィールドをコメントへ追記する——`# TODO`へ
+    倒れた後に人間が手動でポートする際、生成コードだけを見て元のXAMLを
+    探しに戻らなくて済むようにする(どのメールを送る予定だったか・どの
+    インラインコードが埋め込まれていたか等)。でっち上げた実装では
+    なく、既に捕捉済みのデータをそのまま見やすくするだけ。"""
     prefix = INDENT * indent
-    return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}"]
+    detail = ""
+    if isinstance(node, InvokeCodeNode):
+        detail = f" (Code={node.code!r})"
+    elif isinstance(node, ExcelApplicationScopeNode):
+        detail = f" (WorkbookPath={node.workbook_path!r})"
+    elif isinstance(node, ExcelWriteCellNode):
+        detail = f" (Cell={node.cell!r}, SheetName={node.sheet_name!r})"
+    elif isinstance(node, SendOutlookMailNode):
+        detail = (
+            f" (To={_describe_expr_for_comment(node.to)}, "
+            f"Subject={_describe_expr_for_comment(node.subject)})"
+        )
+    elif isinstance(node, HttpClientNode):
+        detail = (
+            f" (EndPoint={_describe_expr_for_comment(node.endpoint)}, "
+            f"Method={node.method!r})"
+        )
+    return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
 
 
 def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:

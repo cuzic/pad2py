@@ -738,3 +738,13 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     `design/uipath_xaml_findings.md`知見74に記録したが、実機での需要が
     無いため今回は実装を見送った。UiPath関連テスト全240件通過、リポジトリ
     全体で全864件通過。
+36. **(完了、2026-11-05)** 知見70で発見した5つの未対応アクティビティの
+    `# TODO`コメントに捕捉済みフィールドを追記(VM不使用、知見75——でっち
+    上げ無しの改善、人間が手動実装する際に元の`.xaml`へ戻らなくて済む
+    手がかりを増やす): `InvokeCodeNode.code`/`ExcelApplicationScopeNode.
+    workbook_path`/`ExcelWriteCellNode.cell`・`sheet_name`/
+    `SendOutlookMailNode.to`・`subject`/`HttpClientNode.endpoint`・
+    `method`を`# TODO`コメントへ追記。コード生成の判断自体は変えず、
+    既に捕捉済みのデータを見やすくするだけ。知見70のカバレッジツールの
+    出力も副次的に具体的になった。回帰テスト追加、UiPath関連テスト全245件
+    通過、リポジトリ全体で全870件通過。

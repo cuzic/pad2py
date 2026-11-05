@@ -36,12 +36,17 @@ from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
     ClickNode,
+    ExcelApplicationScopeNode,
+    ExcelWriteCellNode,
     ForEachNode,
+    HttpClientNode,
     IfNode,
+    InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
     MessageBoxNode,
     ParallelNode,
+    SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
     SwitchArm,
@@ -447,6 +452,37 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: Click with non-default CursorPosition" in code
     assert ".click_input()" not in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("node", "expected_detail"),
+    [
+        # 知見75: 知見70で発見した5つの未対応アクティビティそれぞれが、
+        # でっち上げず捕捉済みのフィールドをそのまま`# TODO`コメントへ
+        # 追記することの回帰テスト(人間が手動でポートする際の手がかり)。
+        (InvokeCodeNode(code="content=content.ToUpper()"), "(Code='content=content.ToUpper()')"),
+        (ExcelApplicationScopeNode(workbook_path="book.xlsx"), "(WorkbookPath='book.xlsx')"),
+        (
+            ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi")),
+            "(Cell='A1', SheetName='Sheet1')",
+        ),
+        (
+            SendOutlookMailNode(
+                to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x")
+            ),
+            "(To='a@b.com', Subject='Hi')",
+        ),
+        (
+            HttpClientNode(endpoint=VbExpr(text="url"), method="POST"),
+            "(EndPoint=[url], Method='POST')",
+        ),
+    ],
+)
+def test_unresolved_activity_todo_includes_captured_fields(node, expected_detail: str) -> None:
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert f"# TODO: unsupported in v1 codegen: {type(node).__name__} {expected_detail}" in code
     _compiles(code)
 
 
