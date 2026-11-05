@@ -123,6 +123,12 @@ def test_add_delete_modify_row() -> None:
     assert table == [{"a": 3, "b": 4}]
 
 
+def test_modify_datatable_item_rejects_numeric_column_index() -> None:
+    table: va.DataTable = [{"a": 1, "b": 2}]
+    with pytest.raises(ValueError, match="numeric ColumnNameOrIndex"):
+        va.modify_datatable_item(table, 0, "1", 99)
+
+
 def test_add_row_to_datatable_with_list_zips_positionally_against_existing_columns() -> None:
     # design/dsl_format_findings.md 知見124(decompile確認済み): PADの実際の
     # AddRowToDataTable.RowToAddはList<object>(DataRow.ItemArray = RowToAdd.ToArray()、

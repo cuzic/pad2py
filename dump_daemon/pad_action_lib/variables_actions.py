@@ -182,6 +182,17 @@ def delete_row_from_datatable(table: DataTable, index: int) -> None:
 
 
 def modify_datatable_item(table: DataTable, row_index: int, column: str, value: object) -> None:
+    """ColumnNameOrIndexは実機では列名/列インデックス(int.TryParse判定)の両方を受け付けるが、
+    ここでは列名のみに対応する。数値文字列は`FindItemInDataTableByColumnIndex`(知見123)と同じ理由
+    ——実機の0始まり/1始まり設定`_listIndexService.IsZeroBased`が未確認のため、でっち上げた
+    インデックス解釈で誤った列を書き換えるより明示的なエラーを優先する(知見126)。
+    """
+    if column.lstrip("-").isdigit():
+        raise ValueError(
+            f"modify_datatable_item() does not support numeric ColumnNameOrIndex ({column!r}); "
+            "only column-name lookup is supported (index-based lookup depends on PAD's unconfirmed "
+            "zero-based/one-based IsZeroBased setting)"
+        )
     table[row_index][column] = value
 
 

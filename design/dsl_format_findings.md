@@ -2279,3 +2279,13 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 `AddRowToDataTable`経由でテーブルを組み立てる方法は(知見124の通り)空テーブルへの最初の行追加ができないため使えないが、`Variables.GenerateDataTableFromCSV`でCSVテキストから直接テーブルを種付けする経路(`AddColumnToDataTable`を経由しない、これ自体は以前から正しく結線済み)を使えば回避できる。この経路で、知見90の確認済み例(`Age Equal 30`で`Carol`のみ残る)・知見91の確認済み例(`Name`列で`Inner`結合、重複列名に`" (2)"`付与)をそのままDSL化し、`generate_python()`→実際の`exec()`まで通して確認するテストを2件追加した。
 
 **結果**: 両方とも一発で正しく動いた——`filter_datatable()`/`join_datatable()`自体のロジック、`safe_render()`による`FilterParameters`/`JoinParameters`VarRef渡し、`GenerateDataTableFromCSV`の`CSVTable`出力との組み合わせは、知見124で見つかった`AddRowToDataTable`固有の問題とは独立して正しく機能することが確認できた。これにより「`FilterDataTable`/`JoinDataTable`自体の実装は健全、穴は`AddRowToDataTable`での組み立て経路のみ」という、知見124の切り分けを裏付けることができた。
+
+## 126. 知見124の横展開——`ModifyDataTableItem`も実機では`ColumnNameOrIndex`が列名/列インデックスの両対応だが、`pad_action_lib`側に知見123と同種の未対応ガードが無かったサイレントなバグの芽を発見・修正(VM不要)
+
+知見124・125で「DataTable操作系はPAD実機の実引用型とpad2py側の想定がずれていないか」を疑って横展開した結果、`Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`の`ModifyDataTableItem.Execute()`を再確認したところ、`ColumnNameOrIndex`は`FindOrReplaceInDataTable`(知見123)と全く同じパターン——`string`型で受け取り、`int.TryParse(ColumnNameOrIndex, out result)`が成功すれば`_listIndexService.ConvertInput(result)`で列インデックスとして解釈し`DataTable.Rows[num2][num.Value]`(位置アクセス)、失敗すれば列名として`DataTable.Columns[ColumnNameOrIndex]`相当の名前アクセスを行う、という二重解釈をしていると確認した。
+
+知見123では`FindItemInDataTableByColumnIndex`について「実機の0始まり/1始まり設定`_listIndexService.IsZeroBased`が未確認のため数値は非対応のまま」と明示的に判断・docstringに記録していたが、`pad_action_lib.modify_datatable_item(table, row_index, column, value)`(`table[row_index][column] = value`という辞書キー直接代入)には**この種のガードが一切無かった**——数値文字列の`ColumnNameOrIndex`(例: `"1"`)が渡された場合、本来は列インデックスとして解釈すべきところを、単にキー名`"1"`の列への代入として処理してしまう(たまたまそういう名前の列があれば意図通りに見えてしまうが、実際には別の意味論)。これは知見124の「生成コードが実際に実行されたことのないパスには想定外の型ギャップが隠れている」という教訓が、別のDataTable系アクションにも当てはまる具体例だった。
+
+**修正**: `modify_datatable_item()`の先頭に、`column`が(符号付きの)数字のみで構成される場合に`ValueError`を投げるガードを追加した。知見123の判断(IsZeroBasedが未確認である限り、でっち上げた解釈をするより明示的なエラーを優先する)をそのまま再利用し、新規のVM検証は不要だった。`tests/test_pad_action_lib_variables.py`に`test_modify_datatable_item_rejects_numeric_column_index`を追加して回帰を防止した。
+
+**教訓**: 「同じDLL内の同種パラメータ(`ColumnNameOrIndex`という名前そのもの)が複数のアクションで再利用されている場合、1つのアクションで発見したサイレントな型ギャップは、同じDLL内の他のアクションにも横展開して確認する価値がある」——`pad_todo.md`の個別アクション単位のTODO潰しだけでなく、こうした「パラメータ名の再利用パターン」を軸にした横断チェックも、まだ見つかっていないギャップを拾える有効な手法として記録する。
