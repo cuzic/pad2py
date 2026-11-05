@@ -5,14 +5,16 @@ dsl_format_findings.md 知見66で実機キャプチャした`tests/fixtures/
 tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`・
 `tier1_text_variables_batch4.txt`から確認済み。
 
+`Variables.CreateNewDatatable`の`InputTable: { }`は知見74でパーサーが空の`{ }`配列
+リテラルを正しく空リスト`[]`として解釈するようになったため結線できる(実機キャプチャ
+では2次元配列を編集しなかったため常に空。非空の配列リテラルの表現は実機未確認のため
+依然対応しない)。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
 - `Variables.SubtractLists`/`Variables.FindCommonListItems`/
   `Variables.FilterDataTable`/`Variables.JoinDataTable`: `pad_action_lib`側が
   常に`NotImplementedError`を投げる(PAD独自の比較エンジン・フィルタ/結合条件の
   DataTableスキーマが未確認)——コードを生成すると実行時に必ず壊れる。
-- `Variables.CreateNewDatatable`: `InputTable: { }`が知見72の`{ }`配列リテラル
-  未対応構文(`VarRef(name="{")`)で実機キャプチャされており、`safe_render()`で
-  自動的にフォールバックする。
 - `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`: 実機の
   出力契約(`DataTableMatches`への一致結果)が、`pad_action_lib`の
   `find_or_replace_in_datatable()`(置換件数の`int`を返す、`replace_value`必須)
@@ -53,6 +55,12 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         func = "increase_variable" if action_id == "Variables.IncreaseVariable" else "decrease_variable"
         return [f"{prefix}{value.name} = variables_actions.{func}({value.name}, {amount})"]
+
+    if action_id == "Variables.CreateNewDatatable":
+        input_table = safe_render(p.get("InputTable"))
+        if input_table is None or not node.output_var:
+            return None
+        return [f"{prefix}{node.output_var} = variables_actions.create_new_datatable({input_table})"]
 
     if action_id == "Variables.CreateNewList":
         if not node.output_var:

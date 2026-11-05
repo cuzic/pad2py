@@ -61,6 +61,15 @@ _FUNC_COND_RE = re.compile(r"^(IF|ELSE IF) ([A-Za-z_][A-Za-z0-9_]*)\((.*)\) THEN
 # `WAIT (UIAutomation.WaitForWindow.ToOpen Window: appmask['...'] FocusWindow: False) FOR 5`
 # `FOR <秒数>`句は「Fail with timeout error」トグルが有効な場合のみ付与され、無効な場合は
 # `WAIT (...)`のみで終わる(知見50の追記で実機確認済み)——そのため`FOR`句全体を省略可能にしている。
+# design/dsl_format_findings.md 知見66・67・70・71(実機検証済み、空の場合のみ)——
+# バックティック1組``はPADの「中身を一度も編集せず保存した」空文字列の第3の直列化
+# 構文(Text.CreateHTMLContentのHtmlEditor・Database.ExecuteSqlStatement.Executeの
+# Statement・XML.WriteXmlToFile.WriteToFileFormattedのXml等、リッチテキスト/SQL/XML
+# エディタ系の値で確認)。非空のバックティック文字列(中身がある場合の表現・
+# エスケープ規則)は実機未確認のため、この空の形だけを認識する——`token == "``"`の
+# 完全一致のみ扱い、それ以外のバックティックを含むトークンはVarRefへのフォールバックを
+# 維持する(でっち上げない)。
+_EMPTY_BACKTICK_STRING = "``"
 _WAIT_ACTION_RE = re.compile(r"^WAIT \((.+)\)(?: FOR (.+))?$")
 # design/dsl_format_findings.md 知見54(実機検証済み)——`[ConditionAction]`カテゴリ
 # (`If window`/`If window contains element`/`If image`等)は、知見50の`WAIT (...)`と全く同じ丸括弧パターンを
@@ -121,6 +130,8 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
         value = placeholders[token]
         assert isinstance(value, str)
         return _unescape(value)
+    if token == _EMPTY_BACKTICK_STRING:
+        return ""
     if token == "True":
         return True
     if token == "False":
@@ -132,6 +143,24 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
     if _ENUM_REF_RE.fullmatch(token):
         return EnumRef(token)
     return VarRef(token)
+
+
+def _resolve_param_token(
+    tokens: list[str], i: int, placeholders: dict[str, str | tuple[str, ...]]
+) -> tuple[Any, int]:
+    """パラメータ値1個を`tokens[i]`から読み、`(値, 消費後の次のインデックス)`を返す。
+
+    design/dsl_format_findings.md 知見66(実機検証済み、空の場合のみ)——`{ }`(中に
+    空白1個を挟んだ`{`/`}`のペア)は空の2次元配列リテラルの直列化で、空白区切りの
+    `line.split()`では2トークンに分かれる。`_resolve_value()`は1トークンしか見ないため、
+    ここで2トークン先読みして`{`直後が`}`の場合だけ空リストとして消費する——非空の
+    配列リテラル(要素の区切り方・エスケープ規則)は実機未確認のため、この空の形だけを
+    認識し、それ以外は通常の`_resolve_value()`(未知の`{`は従来通りVarRefへフォールバック)
+    に委ねる。
+    """
+    if tokens[i] == "{" and i + 1 < len(tokens) and tokens[i + 1] == "}":
+        return [], i + 2
+    return _resolve_value(tokens[i], placeholders), i + 1
 
 
 def _stringify_resolved_expr_token(value: Any) -> str:
@@ -184,8 +213,7 @@ def _parse_action_call_body(
             name = tok[:-1]
             if i + 1 >= len(inner_tokens):
                 break
-            params[name] = _resolve_value(inner_tokens[i + 1], placeholders)
-            i += 2
+            params[name], i = _resolve_param_token(inner_tokens, i + 1, placeholders)
             continue
         i += 1
     return action_id, params
@@ -375,8 +403,7 @@ def _parse_line(line: str, placeholders: dict[str, str | tuple[str, ...]], inden
             name = tok[:-1]
             if i + 1 >= len(tokens):
                 break
-            record.params[name] = _resolve_value(tokens[i + 1], placeholders)
-            i += 2
+            record.params[name], i = _resolve_param_token(tokens, i + 1, placeholders)
             continue
         # 未知のトークン形式。パラメータ値が空白を含む等、今回の文法理解を超えるケース。
         i += 1

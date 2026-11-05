@@ -71,6 +71,13 @@ def render_value(value: object) -> str:
         return repr(value)
     if isinstance(value, str):
         return render_text_template(value)
+    if isinstance(value, list):
+        # design/dsl_format_findings.md 知見66・74(実機検証済み、空の場合のみ)——
+        # `{ }`空の2次元配列リテラルは`pad_dsl.line_parser._resolve_param_token()`で
+        # 空のPythonリスト`[]`に変換される。要素を再帰的にrender_value()へ通すのは
+        # 将来非空の配列リテラルが実機確認された場合に備えた一般化で、現状は空リストの
+        # みが実際に生成される。
+        return "[" + ", ".join(render_value(item) for item in value) + "]"
     raise TypeError(f"Unsupported value type for codegen: {type(value)!r}")
 
 

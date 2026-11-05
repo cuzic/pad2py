@@ -4,13 +4,14 @@
 design/dsl_format_findings.md 知見66-67で実機キャプチャした`tests/fixtures/
 tier1_text_variables_batch1.txt`・`tier1_text_variables_batch4.txt`から確認済み。
 
+`Text.CreateHTMLContent`の`HtmlEditor`は知見74でパーサーが空のバックティック文字列
+``を正しく空文字列として解釈するようになったため結線できる(実機キャプチャでは
+リッチテキストエディタの内容を編集しなかったため常に空文字列)。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
 - `Text.RecognizeEntitiesInText`: `pad_action_lib`側が常に`NotImplementedError`
   (外部NLPライブラリ未導入)を投げる——呼び出しコードを生成すると「生成できたように
   見えて実行時に必ず壊れる」という、TODOコメントより悪い結果になる。
-- `Text.CreateHTMLContent`: `HtmlEditor`パラメータが知見72のバックティック空文字列
-  未対応構文(`VarRef(name="``")`)で実機キャプチャされており、`safe_render()`で
-  自動的にフォールバックする。
 
 `Text.ConvertDateTimeToText.FromDateTime`の`StandardFormat`は、実機で確認できた
 `ShortDate`の1値だけを.NETの標準書式指定子`"d"`(`ShortDatePattern`、パブリックに
@@ -110,6 +111,12 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if found_var:
             lines.append(f"{prefix}{found_var} = {tmp}.is_flag_found")
         return lines
+
+    if action_id == "Text.CreateHTMLContent":
+        html_editor = safe_render(p.get("HtmlEditor"))
+        if html_editor is None or not node.output_var:
+            return None
+        return [f"{prefix}{node.output_var} = text_actions.create_html_content({html_editor})"]
 
     if action_id == "Text.EscapeForRegularExpression":
         text = safe_render(p.get("Text"))

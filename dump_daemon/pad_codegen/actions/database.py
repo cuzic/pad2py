@@ -2,12 +2,9 @@
 
 パラメータ名は design/dsl_format_findings.md 知見70/知見71で実機キャプチャした
 `tests/fixtures/tier1_crypto_database_batch7.txt`・`tier1_web_xml_batch8.txt`から
-確認済み。
-
-`Database.ExecuteSqlStatement.Execute`は意図的に未対応のままフォールバックに委ねる:
-実機キャプチャで`Statement`が知見72のバックティック空文字列未対応構文
-(`VarRef(name="``")`)として現れており、`_support.safe_render()`で自動的に
-フォールバックする。
+確認済み。`Database.ExecuteSqlStatement.Execute`の`Statement`は知見74でパーサーが
+空のバックティック文字列``を正しく空文字列として解釈するようになったため結線できる
+(実機キャプチャではSQL文を編集しなかったため常に空文字列)。
 """
 from __future__ import annotations
 
@@ -35,5 +32,16 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if connection is None:
             return None
         return [f"{prefix}database_actions.close_connection({connection})"]
+
+    if action_id == "Database.ExecuteSqlStatement.Execute":
+        connection = safe_render(p.get("Connection"))
+        statement = safe_render(p.get("Statement"))
+        timeout = safe_render(p.get("Timeout"))
+        if connection is None or statement is None or timeout is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = database_actions.execute_sql_statement("
+            f"{connection}, {statement}, timeout={timeout})"
+        ]
 
     return None

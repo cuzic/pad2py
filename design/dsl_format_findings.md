@@ -1548,3 +1548,18 @@ Cmd.Close Session: CmdSession
 **`File.WaitForFile.Created`(wait_action)・`File.IfFile.Exists`/`Folder.IfFolderExists.Exists`(condition_action_call)**: いずれもUI要素セレクタを一切使わない単純な存在チェックで、`pad_action_lib.file_actions.if_file_exists()`/`folder_actions.if_folder_exists()`への素直な変換が可能だったため、既存の`actions/wait.py`・`actions/conditions.py`(`UIAutomation.IfWindow.*`用の既存の仕組み)にそれぞれ分岐を追加した。`WaitForFile`はタイムアウト指定なし(知見50と同じ無期限ポーリング)の場合のみ対応する。
 
 **検証**: `tests/test_pad_codegen_tier1_actions.py`(フィクスチャ9件それぞれについて、結線したアクションが`# TODO`に倒れず正しい呼び出しになること・意図的に未対応としたアクションが正直に`# TODO`のまま残ることの両方を確認)、および全フィクスチャの生成コードが`ast.parse`/`compile()`で構文的に正しいことを確認する回帰チェックを実施した。さらに`tests/test_codegen_coverage.py`で全体カバレッジ80%以上をロックする回帰テストを追加した。
+
+## 74. 知見72で発見した3つのパーサー未対応構文のうち2つ(空のバックティック文字列``・空の`{ }`配列リテラル)をパーサーに実装し、カバレッジを80%→82%へ引き上げた(VM実機操作無しで完結)
+
+知見73の時点で`pad_codegen.py`のカバレッジは80%(149/186)だったが、残るTODOを精査した結果、全て「でっち上げを避けるための正直な未対応」(PAD独自の比較エンジン依存・DataTableスキーマ未確認・外部NLPライブラリ未導入・DPAPI復号不可能等、知見73に詳述済み)であり、それ自体を結線する余地は無いと確認した。唯一の例外が、知見65・67・70-72で発見した3つの「パーサー未対応だがクラッシュもデータ欠落もしない構文」のうち、`P'<base64>'`(DPAPI、そもそも暗号化環境でなければ復号不可能なため恒久的に非対応——知見65の結論通り)を除く2つ:
+
+- **空のバックティック文字列` `` `**: `Text.CreateHTMLContent`の`HtmlEditor`・`Database.ExecuteSqlStatement.Execute`の`Statement`・`XML.WriteXmlToFile.WriteToFileFormatted`の`Xml`で、いずれも「中身を一度も編集せず保存した」場合の値として実機確認済み(知見66・67・70・71)。これまでに観測された全ての実例が空文字列のみで、非空の場合の表現・エスケープ規則は実機未確認。
+- **空の`{ }`配列リテラル**: `Variables.CreateNewDatatable`の`InputTable`で、2次元配列を一度も編集せず保存した場合の値として実機確認済み(知見66)。非空の場合の表現は実機未確認。
+
+いずれも「空の場合」という限定的だが実機確認済みの範囲でのみパーサーを拡張した(非空の場合への一般化は行わない——架空の文法を推測しない方針を維持)。`pad_dsl/line_parser.py`の`_resolve_value()`に`token == "``"`の完全一致チェックを追加し、`_resolve_param_token()`という新しい2トークン先読みヘルパー(`{`の直後が`}`の場合のみ空リストとして消費)を導入して、`ActionRecord`のパラメータ解析・`WAIT (...)`/`IF (...)`の丸括弧内解析の両方の呼び出し元で使うようにした。`pad_codegen/render.py`の`render_value()`にも`list`型の描画(要素ごとに再帰的に`render_value()`、現状は空リストのみ生成される)を追加した。
+
+この結果、`_support.safe_render()`がもはや`VarRef`へのフォールバックとして検出しなくなった4アクション(`Text.CreateHTMLContent`・`Database.ExecuteSqlStatement.Execute`・`XML.WriteXmlToFile.WriteToFileFormatted`・`Variables.CreateNewDatatable`)を、それぞれ対応する`pad_action_lib`の既存関数(`text_actions.create_html_content()`・`database_actions.execute_sql_statement()`・`xml_actions.write_xml_to_file()`・`variables_actions.create_new_datatable()`——いずれも知見62-73の時点で既に実装済みだったが、パーサー側の制約で結線できていなかった)へ結線した。
+
+**この知見は実機PAD(GCP VM `pad2py-pad-host`)の操作を一切伴わない**——既に知見62-72で実機キャプチャ済みのフィクスチャ(`tests/fixtures/tier1_*.txt`)だけを根拠にしたパーサー/codegenのみの変更。
+
+**検証**: `tests/test_pad_dsl_parser.py`の該当する回帰テスト4件(`VarRef(name="``")`/`VarRef(name="{")`を期待する古いアサーションを、`""`/`[]`を期待する新しいアサーションへ更新)、`tests/test_pad_codegen_tier1_actions.py`の該当する回帰テスト4件(`# TODO`を期待するアサーションを、実際の変換後コードを期待するアサーションへ更新)、および`tests/test_codegen_coverage.py`の閾値ロックを80%→82%へ更新した。全537件(既存529件+変更分)がパスし、スキップ25件(Windows専用)は変化無し。

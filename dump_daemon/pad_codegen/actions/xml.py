@@ -9,10 +9,9 @@
 ——そのため生成コードは戻り値を`Document`に渡したのと同じ変数名へ再代入する
 (`Document`パラメータが`VarRef`である場合のみ、安全にLHSの変数名として使える)。
 
-`XML.WriteXmlToFile.WriteToFileFormatted`は意図的に未対応のままフォールバックに
-委ねる: 実機キャプチャで`Xml`が知見72のバックティック空文字列未対応構文
-(`VarRef(name="``")`)として現れており、`_support.safe_render()`で自動的に
-フォールバックする。
+`XML.WriteXmlToFile.WriteToFileFormatted`の`Xml`は知見74でパーサーが空のバック
+ティック文字列``を正しく空文字列として解釈するようになったため結線できる(実機
+キャプチャではXMLを編集しなかったため常に空文字列)。
 """
 from __future__ import annotations
 
@@ -37,6 +36,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if encoding != "DefaultEncoding":
             return None
         return [f"{prefix}{node.output_var} = xml_actions.read_xml_from_file({path})"]
+
+    if action_id == "XML.WriteXmlToFile.WriteToFileFormatted":
+        path = safe_render(p.get("File"))
+        xml = safe_render(p.get("Xml"))
+        encoding = enum_last(p.get("Encoding"))
+        indentation = safe_render(p.get("Indentation"))
+        if path is None or xml is None or encoding is None or indentation is None:
+            return None
+        if encoding != "DefaultEncoding":
+            return None
+        return [
+            f"{prefix}xml_actions.write_xml_to_file({path}, {xml}, format_xml=True, "
+            f"indentation={indentation})"
+        ]
 
     if action_id == "XML.GetXmlElementValue.GetElementValue":
         doc = safe_render(p.get("Document"))

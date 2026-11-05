@@ -1714,10 +1714,9 @@ def test_tier1_variables_list_datatable_batch3_parses_as_generic_action_records(
     merge_lists = records[5]
     assert merge_lists.output_var == "OutputList"  # type: ignore[union-attr]
     create_new_datatable = records[10]
-    # design/dsl_format_findings.md 知見66: 空の2次元配列は`{ }`と直列化されるが、
-    # `{`/`}`という配列リテラル構文は現状のパーサーが未対応で、`{`がVarRef名として
-    # フォールバックする(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
-    assert create_new_datatable.params["InputTable"] == VarRef(name="{")  # type: ignore[union-attr]
+    # design/dsl_format_findings.md 知見66・74: 空の2次元配列は`{ }`と直列化され、
+    # パーサーは(空の場合のみ)空のPythonリスト`[]`として解釈する。
+    assert create_new_datatable.params["InputTable"] == []  # type: ignore[union-attr]
     assert create_new_datatable.output_var == "DataTable"  # type: ignore[union-attr]
     delete_row = records[26]
     # DeleteRowFromDataTableもDataTableがMutableなため=>束縛を持たない。
@@ -1747,10 +1746,9 @@ def test_tier1_text_variables_batch4_parses_as_generic_action_records() -> None:
         "Variables.ConvertCustomObjectToJson",
     ]
     create_html = records[3]
-    # design/dsl_format_findings.md 知見67: 空のバックティック文字列``は知見66の
-    # FilterParameters同様、現状のパーサーが未対応で`` `` ``全体がVarRef名として
-    # フォールバックする(クラッシュもデータ欠落も起きないことのみ確認する回帰テスト)。
-    assert create_html.params["HtmlEditor"] == VarRef(name="``")  # type: ignore[union-attr]
+    # design/dsl_format_findings.md 知見67・74: 空のバックティック文字列``は
+    # (空の場合のみ)パーサーが空文字列として解釈する。
+    assert create_html.params["HtmlEditor"] == ""  # type: ignore[union-attr]
     increase_var = records[7]
     # IncreaseVariable/DecreaseVariableはValueがMutableなため=>束縛を持たない。
     assert increase_var.output_var is None  # type: ignore[union-attr]
@@ -1880,8 +1878,8 @@ def test_tier1_crypto_database_batch7_parses_as_generic_action_records() -> None
     execute_sql = records[11]
     # design/dsl_format_findings.md 知見66のFilterParameters/知見67のHtmlEditorと
     # 同じ空のバックティック文字列``構文がExecuteSqlStatementのStatementにも
-    # 使われている。
-    assert execute_sql.params["Statement"] == VarRef(name="``")  # type: ignore[union-attr]
+    # 使われている(知見74でパーサーが(空の場合のみ)空文字列として解釈するようになった)。
+    assert execute_sql.params["Statement"] == ""  # type: ignore[union-attr]
 
 
 def test_tier1_web_xml_batch8_parses_as_generic_action_records() -> None:
@@ -1918,8 +1916,9 @@ def test_tier1_web_xml_batch8_parses_as_generic_action_records() -> None:
     assert get_element_value.params["Document"] == VarRef(name="XmlDocument")  # type: ignore[union-attr]
     write_xml = records[6]
     # design/dsl_format_findings.md 知見66・67・70と同じ空のバックティック文字列``
-    # 構文がXML.WriteXmlToFileのXmlにも使われている。
-    assert write_xml.params["Xml"] == VarRef(name="``")  # type: ignore[union-attr]
+    # 構文がXML.WriteXmlToFileのXmlにも使われている(知見74でパーサーが(空の場合のみ)
+    # 空文字列として解釈するようになった)。
+    assert write_xml.params["Xml"] == ""  # type: ignore[union-attr]
 
 
 def test_tier1_cmd_batch9_parses_as_generic_action_records() -> None:

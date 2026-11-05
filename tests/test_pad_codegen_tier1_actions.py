@@ -90,12 +90,12 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     assert "variables_actions.merge_datatables('sample', 'sample')" in code
     assert "ColumnAsList = variables_actions.retrieve_datatable_column_into_list('sample', 'sample')" in code
     assert "variables_actions.delete_row_from_datatable('sample', 'sample')" in code
-    # Deliberately unconverted: PAD's ComparisonCalculator-dependent / unverified-schema actions,
-    # plus the `InputTable: { }` parser gap (empty array literal -> unparseable identifier).
+    # `InputTable: { }` now parses as an empty list, so this is wired (knowledge 74).
+    assert "DataTable = variables_actions.create_new_datatable([])" in code
+    # Deliberately unconverted: PAD's ComparisonCalculator-dependent / unverified-schema actions.
     for action_id in (
         "Variables.SubtractLists",
         "Variables.FindCommonListItems",
-        "Variables.CreateNewDatatable",
         "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
         "Variables.FilterDataTable",
         "Variables.JoinDataTable",
@@ -117,8 +117,8 @@ def test_text_variables_batch4_converts_except_unverified_ones() -> None:
     assert "CustomObjectAsJson = variables_actions.custom_object_to_json('sample')" in code
     # RecognizeEntitiesInText always raises NotImplementedError in pad_action_lib -> never wired.
     assert _todo("Text.RecognizeEntitiesInText") in code
-    # HtmlEditor is captured as the backtick-empty-string parser gap -> unparseable identifier.
-    assert _todo("Text.CreateHTMLContent") in code
+    # HtmlEditor: `` now parses as an empty string, so this is wired (knowledge 74).
+    assert "HtmlContent = text_actions.create_html_content('')" in code
     # Value is captured as a literal placeholder string (not a variable) in this fixture,
     # so there is no variable to reassign the increased/decreased value back into.
     assert _todo("Variables.IncreaseVariable") in code
@@ -180,11 +180,11 @@ def test_crypto_database_batch7_converts_only_keyless_functions() -> None:
         "Cryptography.HashFromFileWithKey",
     ):
         assert _todo(action_id) in code
-    # Statement is captured as the backtick-empty-string parser gap.
-    assert _todo("Database.ExecuteSqlStatement.Execute") in code
+    # Statement: `` now parses as an empty string, so this is wired (knowledge 74).
+    assert "QueryResult = database_actions.execute_sql_statement(SQLConnection, '', timeout=30)" in code
 
 
-def test_web_xml_batch8_converts_except_dpapi_password_and_backtick_xml() -> None:
+def test_web_xml_batch8_converts_except_dpapi_password() -> None:
     code = _generate("tier1_web_xml_batch8.txt")
     assert "database_actions.close_connection(SQLConnection)" in code
     assert "WebPageText = web_actions.download_from_web('sample', connection_timeout=30, " in code
@@ -205,7 +205,8 @@ def test_web_xml_batch8_converts_except_dpapi_password_and_backtick_xml() -> Non
     assert "XmlDocument = xml_actions.remove_xml_element(XmlDocument, 'sample')" in code
     assert "XPathResults = xml_actions.execute_xpath_query('sample', 'sample')" in code
     assert _todo("Compression.UnzipFiles") in code
-    assert _todo("XML.WriteXmlToFile.WriteToFileFormatted") in code
+    # Xml: `` now parses as an empty string, so this is wired (knowledge 74).
+    assert "xml_actions.write_xml_to_file('sample', '', format_xml=True, indentation=2)" in code
 
 
 def test_cmd_batch9_converts_all_actions_as_session_method_calls() -> None:
