@@ -15,9 +15,14 @@ from ._support import safe_render
 # `Folder.IfFolderExists.Exists`はUI要素セレクタを一切使わない単純な存在チェックで、
 # `pad_action_lib`の対応する関数呼び出し1つに素直に変換できる(`IfImage`/
 # `IfWindowContains`のような複数の設定可能なサブモードが無い)。
-_EXISTENCE_CHECKS: dict[str, tuple[str, str]] = {
-    "File.IfFile.Exists": ("File", "file_actions.if_file_exists"),
-    "Folder.IfFolderExists.Exists": ("Path", "folder_actions.if_folder_exists"),
+# `File.IfFile.DoesNotExist`は知見136(`ActionSelectorBase`一括列挙の監査で発見)で
+# 追加した兄弟セレクタ——`Exists`の単純な否定(`FileExistsSelector`/
+# `FileDoesNotExistSelector`はいずれも`IfFileAction`の`CheckMode`を切り替えるだけの
+# 同一構造とVM上で確認済み)。
+_EXISTENCE_CHECKS: dict[str, tuple[str, str, bool]] = {
+    "File.IfFile.Exists": ("File", "file_actions.if_file_exists", False),
+    "File.IfFile.DoesNotExist": ("File", "file_actions.if_file_exists", True),
+    "Folder.IfFolderExists.Exists": ("Path", "folder_actions.if_folder_exists", False),
 }
 
 
@@ -37,9 +42,12 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
     """
     existence_check = _EXISTENCE_CHECKS.get(header.action_id)
     if existence_check is not None:
-        param_name, func_expr = existence_check
+        param_name, func_expr, negate = existence_check
         rendered = safe_render(header.params.get(param_name))
-        return f"{func_expr}({rendered})" if rendered is not None else None
+        if rendered is None:
+            return None
+        call = f"{func_expr}({rendered})"
+        return f"not {call}" if negate else call
 
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None

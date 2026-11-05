@@ -66,9 +66,12 @@ def test_rename_make_sequential_uses_shared_numberer_state() -> None:
 
 
 def test_rename_schemes() -> None:
+    # design/dsl_format_findings.md 知見136(VM上で`RenameFilesAction`を直接呼び出して確認済み):
+    # `TextPosition`の実機の列挙値は`BeforeName`/`AfterName`(以前のテストは実在しない
+    # `"Prefix"`/`"Suffix"`という名前を仮定していた、潜在バグ)。
     assert fa.rename_set_new_name("old.txt", "new") == "new.txt"
-    assert fa.rename_add_text("file.txt", "_v2", position="Suffix") == "file_v2.txt"
-    assert fa.rename_add_text("file.txt", "v2_", position="Prefix") == "v2_file.txt"
+    assert fa.rename_add_text("file.txt", "_v2", position="AfterName") == "file_v2.txt"
+    assert fa.rename_add_text("file.txt", "v2_", position="BeforeName") == "v2_file.txt"
     assert fa.rename_remove_text("file_old.txt", "_old") == "file.txt"
     assert fa.rename_replace_text("file_old.txt", "old", "new") == "file_new.txt"
     assert fa.rename_change_extension("file.txt", "csv") == "file.csv"

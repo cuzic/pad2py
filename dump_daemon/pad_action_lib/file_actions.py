@@ -160,9 +160,12 @@ def rename_set_new_name(original_name: str, new_name: str, keep_extension: bool 
     return new_name
 
 
-def rename_add_text(original_name: str, text: str, position: str = "Suffix") -> str:
+def rename_add_text(original_name: str, text: str, position: str = "AfterName") -> str:
+    """`position`の実機の列挙値は`BeforeName`/`AfterName`(知見136でVM上の`RenameFilesAction`を
+    直接呼び出して確認済み、`"Prefix"`/`"Suffix"`という名前ではない)。
+    """
     stem, ext = os.path.splitext(original_name)
-    return (text + stem + ext) if position == "Prefix" else (stem + text + ext)
+    return (text + stem + ext) if position == "BeforeName" else (stem + text + ext)
 
 
 def rename_remove_text(original_name: str, text: str) -> str:

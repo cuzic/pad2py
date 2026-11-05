@@ -2408,3 +2408,18 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 7. 残りのCSV系3セレクタ(`ReadPredefinedSeparator`/`ReadCustomSeparator`/`ReadFixedColumnWidths`)・`SortWithColumnName`/`SortWithColumnIndex`/`SortList`/`SortListByProperty`は知見127・128・132・133・134で既に解決済みと再確認した。
 
 **手法として確立**: 個別のアクションを調査する過程で偶然見つけるのではなく、「`ActionSelectorBase`を継承する全ての型を一括列挙し、`ActionName`で既存コードと機械的に突き合わせる」という手順自体が、未結線セレクタを体系的・網羅的に発見できる低コストな監査手法として確立した(decompile不要、リフレクションのみ、1つのPowerShellスクリプトで完結)。他のモジュール(`File.Actions.dll`等)にも同じ手法を適用する価値がある(次の調査対象として`pad_todo.md`に記録)。
+
+## 136. 知見135の監査手法を`File.Actions.dll`にも適用し、6件の未結線セレクタを新規結線——その過程で、既存の`rename_add_text()`が実在しない列挙値名を仮定していた潜在バグ(まだcodegenに結線されていなかったため未出荷)も発見・修正
+
+知見135末尾の次の調査対象を実行し、`File.Actions.dll`の全`ActionSelector`サブクラスを同じ手法で一括列挙した。既存codegenとの突き合わせで以下を発見・結線した:
+
+1. **`File.ReadTextFromFile.ReadTextAsList`**(`ReadText`の兄弟セレクタ、出力変数名が`Content`ではなく`Contents`): `file_actions.read_text_from_file()`自体は既に`store_content_as="List"`モードを実装済みで未結線だっただけ。VM上で`ReadTextFromFileAction.Execute()`を直接呼び出し、`splitlines()`と同じ挙動(末尾の空行を生まない)だと確認して結線した。
+2. **`File.IfFile.DoesNotExist`**(`Exists`条件の兄弟セレクタ): `FileExistsSelector`/`FileDoesNotExistSelector`がいずれも`IfFileAction`の`CheckMode`を切り替えるだけの同一構造だとVM上で確認し、既存の`_EXISTENCE_CHECKS`マップに`negate`フラグを追加して対応した。
+3. **`File.WaitForFile.Deleted`**(`Created`の兄弟セレクタ): 同様に`WaitForFileAction`の`WaitFor`を切り替えるだけの構造だと確認し、既存の無期限ポーリングパターンの単純な否定で結線した。
+4. **`File.RenameFiles`の4つの文字列操作系兄弟セレクタ**(`RenameAddText`/`RenameRemoveText`/`RenameReplaceText`/`RenameChangeExtension`): `rename_add_text()`/`rename_remove_text()`/`rename_replace_text()`/`rename_change_extension()`は全て既に実装済みだったが、codegen側の分岐が`Rename`(`SetNewName`、知見66で結線済み)の1つしか無かった。
+
+**この過程で発見した潜在バグ**: `RenameFilesAction`の`TextPosition`プロパティの実機の列挙値をVM上のリフレクションで確認したところ、`BeforeName`/`AfterName`だった——しかし既存の`rename_add_text(original_name, text, position: str = "Suffix")`は`position == "Prefix"`判定で実在しない`"Prefix"`/`"Suffix"`という名前を仮定していた(既存の単体テストもこの誤った名前のまま書かれ、グリーンのまま誰にも気づかれていなかった)。幸い、このセレクタ自体がまだcodegenに結線されていなかったため、実際に出荷された生成コードに影響した訳ではない——「結線前に発見できた」珍しいケース。VM上で`RenameFilesAction`を直接呼び出し(`TextToAdd: "NEW"`、`TextPosition: BeforeName`→`"NEWreport.txt"`、`AfterName`→`"reportNEW.txt"`)、`BeforeName`=先頭追加・`AfterName`=末尾追加と確定させ、関数の既定値・判定・既存テストを実機の列挙値名に修正した。`RemoveText`/`ReplaceText`は全ての一致箇所を置換する(Pythonの`str.replace()`既定動作と一致)ことも実機確認し、既存実装が正しいと確定した。
+
+**今回も見送った項目**: `RenameAddDateOrTime`/`RenameAddCustomDateTime`/`RenameAddSequentialSuffix`(日時書式・連番の開始値/増分/パディング等、パラメータが多く個々の書式仕様が未検証)、`OverwriteWithSequentialSuffix`(別アクションのIfFileExists系の3つ目の選択肢と見られるが未調査)は、今回のtickでは時間の都合により見送り、`pad_todo.md`に次の調査対象として記録する。
+
+テストは`tests/test_pad_action_lib_file.py`の`test_rename_schemes`を正しい列挙値名に修正、`tests/test_pad_codegen.py`に6件(`ReadTextAsList`・`IfFile.DoesNotExist`・`WaitForFile.Deleted`・`RenameAddText`/`RenameRemoveText`/`RenameReplaceText`/`RenameChangeExtension`)のend-to-endテスト(実ファイルを作成し、実際に`exec()`してリネーム結果のファイルが存在することまで検証)を追加した。

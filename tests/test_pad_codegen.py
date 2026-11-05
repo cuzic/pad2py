@@ -2781,3 +2781,131 @@ def test_generate_python_from_find_item_in_datatable_with_regex_by_column_index_
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["M"] == [(0, 0)]
+
+
+def test_generate_python_from_if_file_does_not_exist_converts() -> None:
+    # design/dsl_format_findings.md 知見136: `File.IfFile.Exists`の兄弟セレクタ
+    # `File.IfFile.DoesNotExist`(単純な否定、`ActionSelectorBase`一括列挙の監査で発見)。
+    with tempfile.TemporaryDirectory() as tmp:
+        missing_path = Path(tmp) / "missing.txt"
+        dsl = f"IF (File.IfFile.DoesNotExist File: $'''{missing_path}''') THEN\nSET X TO 1\nEND"
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["X"] == 1
+
+
+def test_generate_python_from_wait_for_file_deleted_converts() -> None:
+    # design/dsl_format_findings.md 知見136: `File.WaitForFile.Created`の兄弟セレクタ
+    # `File.WaitForFile.Deleted`(存在チェックを無期限ポーリングするだけの単純な否定)。
+    with tempfile.TemporaryDirectory() as tmp:
+        missing_path = Path(tmp) / "already_gone.txt"
+        dsl = f"WAIT (File.WaitForFile.Deleted File: $'''{missing_path}''')"
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)  # ファイルが既に存在しないため即座に完了するはず
+
+
+def test_generate_python_from_read_text_from_file_as_list_converts() -> None:
+    # design/dsl_format_findings.md 知見136: `File.ReadTextFromFile`の兄弟セレクタ
+    # `ReadTextAsList`(出力変数名は`Content`ではなく`Contents`)。
+    with tempfile.TemporaryDirectory() as tmp:
+        text_path = Path(tmp) / "lines.txt"
+        text_path.write_text("a\nb\nc", encoding="utf-8")
+
+        dsl = (
+            f"File.ReadTextFromFile.ReadTextAsList File: $'''{text_path}''' "
+            "Encoding: File.TextFileEncoding.UTF8 Contents=> L"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["L"] == ["a", "b", "c"]
+
+
+def test_generate_python_from_rename_files_add_text_converts() -> None:
+    # design/dsl_format_findings.md 知見136: `File.RenameFiles`の兄弟セレクタ`RenameAddText`
+    # (`TextPosition`の実機の列挙値は`BeforeName`/`AfterName`、VM上で確認済み)。
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "report.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.RenameAddText Files: $'''{src}''' TextToAdd: $'''_v2''' "
+            "TextPosition: File.TextPosition.AfterName "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "report_v2.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
+def test_generate_python_from_rename_files_remove_text_converts() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "file_old.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.RenameRemoveText Files: $'''{src}''' TextToRemove: $'''_old''' "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "file.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
+def test_generate_python_from_rename_files_replace_text_converts() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "file_old.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.RenameReplaceText Files: $'''{src}''' TextToReplace: $'''old''' "
+            "ReplaceWith: $'''new''' IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "file_new.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
+def test_generate_python_from_rename_files_change_extension_converts() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "report.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.RenameChangeExtension Files: $'''{src}''' NewExtension: $'''csv''' "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "report.csv"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()

@@ -379,9 +379,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   EndOfDataTable`/`PositionToAddColumn: LastColumn`)で正しく、潜在バグではなかったことも
   確認した。`Replace*`系4セレクタは知見123の既知のギャップ(早期停止無し等)のため今回も
   意図的に見送った。
-  - [ ] 💻🖥️ **残課題(次の調査対象)**: 今回確立した「`ActionSelectorBase`を継承する
-    全ての型を一括列挙し`ActionName`で既存コードと機械的に突き合わせる」監査手法を、
-    他のモジュール(`File.Actions.dll`等)にも適用する価値がある。
+  - [x] 💻🖥️ `File.Actions.dll`にも同じ監査手法を適用。
+    ✅ **決着(知見136)**: `ReadTextAsList`/`IfFile.DoesNotExist`/`WaitForFile.Deleted`/
+    `RenameAddText`/`RenameRemoveText`/`RenameReplaceText`/`RenameChangeExtension`の6件を
+    新規結線。副産物として、`rename_add_text()`が実在しない列挙値名(`Prefix`/`Suffix`、
+    実機は`BeforeName`/`AfterName`)を仮定していた潜在バグも発見・修正した(幸いまだ
+    codegenに結線されていなかったため出荷前に発見できた)。
+    - [ ] 💻🖥️ **残課題(次の調査対象)**: `RenameAddDateOrTime`/`RenameAddCustomDateTime`/
+      `RenameAddSequentialSuffix`(日時書式・連番のパラメータが多く個々の仕様が未検証)、
+      `OverwriteWithSequentialSuffix`(未調査)は見送ったまま。また今回確立した監査手法は
+      `Variables.Actions.dll`/`File.Actions.dll`以外の他のモジュール(`Folder.Actions.dll`/
+      `Compression.Actions.dll`等)にも適用する価値がある。
 
 ## C. 構造的・運用上の課題
 

@@ -38,6 +38,47 @@ def _as_list_expr(rendered: str) -> str:
     return f"({rendered} if isinstance({rendered}, list) else [{rendered}])"
 
 
+def _rename_add_text_transform(p: dict) -> str | None:
+    text = safe_render(p.get("TextToAdd"))
+    position = enum_last(p.get("TextPosition"))
+    if text is None or position is None:
+        return None
+    return f"file_actions.rename_add_text(_rename_base, {text}, position={position!r})"
+
+
+def _rename_remove_text_transform(p: dict) -> str | None:
+    text = safe_render(p.get("TextToRemove"))
+    if text is None:
+        return None
+    return f"file_actions.rename_remove_text(_rename_base, {text})"
+
+
+def _rename_replace_text_transform(p: dict) -> str | None:
+    find = safe_render(p.get("TextToReplace"))
+    replace = safe_render(p.get("ReplaceWith"))
+    if find is None or replace is None:
+        return None
+    return f"file_actions.rename_replace_text(_rename_base, {find}, {replace})"
+
+
+def _rename_change_extension_transform(p: dict) -> str | None:
+    new_extension = safe_render(p.get("NewExtension"))
+    if new_extension is None:
+        return None
+    return f"file_actions.rename_change_extension(_rename_base, {new_extension})"
+
+
+# design/dsl_format_findings.md 知見136: `RenameFilesAction`のVM上のリフレクションで
+# 確認済みの`RenameScheme`列挙値(`AddText`/`RemoveText`/`ReplaceText`/`ChangeExtension`)
+# それぞれに対応するaction_idセレクタ名(`ActionSelectorBase.ActionName`で確認済み)。
+_RENAME_SCHEME_TRANSFORMS = {
+    "File.RenameFiles.RenameAddText": _rename_add_text_transform,
+    "File.RenameFiles.RenameRemoveText": _rename_remove_text_transform,
+    "File.RenameFiles.RenameReplaceText": _rename_replace_text_transform,
+    "File.RenameFiles.RenameChangeExtension": _rename_change_extension_transform,
+}
+
+
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
     action_id = node.action_id
     if not action_id.startswith("File."):
@@ -90,6 +131,32 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{inner}_rename_dir, _rename_base = os.path.split(_rename_src)",
             f"{inner}_rename_new_base = file_actions.rename_set_new_name(_rename_base, {new_name}, "
             f"keep_extension={keep_ext})",
+            f"{inner}{node.output_var}.append(str(file_actions.apply_rename("
+            f"_rename_dir, _rename_base, _rename_new_base, if_file_exists={if_exists!r})))",
+        ]
+
+    _rename_transform = _RENAME_SCHEME_TRANSFORMS.get(action_id)
+    if _rename_transform is not None:
+        # design/dsl_format_findings.md 知見136: `RenameFiles`の兄弟セレクタ群
+        # (`ActionSelectorBase`一括列挙の監査で発見、実機の`RenameScheme`列挙値は
+        # `AddText`/`RemoveText`/`ReplaceText`/`ChangeExtension`/`AddDateTime`/
+        # `MakeSequential`——`SetNewName`が上記の`File.RenameFiles.Rename`)。
+        # `AddDateTime`/`MakeSequential`(日時・連番の書式オプションが多く未検証)は
+        # 今回は見送り、単純な文字列操作の4件のみ結線した。
+        transform_expr = _rename_transform(p)
+        if transform_expr is None:
+            return None
+        files = safe_render(p.get("Files"))
+        if_exists = enum_last(p.get("IfFileExists"))
+        if files is None or if_exists is None or not node.output_var:
+            return None
+        inner = INDENT * (indent + 1)
+        return [
+            f"{prefix}_rename_targets = {_as_list_expr(files)}",
+            f"{prefix}{node.output_var} = []",
+            f"{prefix}for _rename_src in _rename_targets:",
+            f"{inner}_rename_dir, _rename_base = os.path.split(_rename_src)",
+            f"{inner}_rename_new_base = {transform_expr}",
             f"{inner}{node.output_var}.append(str(file_actions.apply_rename("
             f"_rename_dir, _rename_base, _rename_new_base, if_file_exists={if_exists!r})))",
         ]
@@ -165,6 +232,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if path is None or encoding is None or not node.output_var:
             return None
         return [f"{prefix}{node.output_var} = file_actions.read_text_from_file({path}, encoding={encoding!r})"]
+
+    if action_id == "File.ReadTextFromFile.ReadTextAsList":
+        # design/dsl_format_findings.md 知見136: 兄弟セレクタ(出力変数名は`Content`ではなく
+        # `Contents`——`ActionSelectorBase.ActionName`一括列挙の監査で発見)。
+        # `read_text_from_file()`自体は既に`store_content_as="List"`を実装済みで、
+        # VM上で`splitlines()`と同じ挙動(末尾の空行を生まない)だと確認済み。
+        path = safe_render(p.get("File"))
+        encoding = enum_last(p.get("Encoding"))
+        if path is None or encoding is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = file_actions.read_text_from_file("
+            f"{path}, encoding={encoding!r}, store_content_as='List')"
+        ]
 
     if action_id == "File.ReadFromCSVFile.ReadCSV":
         path = safe_render(p.get("CSVFile"))
