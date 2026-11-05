@@ -119,13 +119,31 @@ Get Text等のUI自動化アクティビティを扱う以上避けて通れな�
   - 現実的には(a)から始めて実データで不足を確認しながら広げるのが
     PAD側の既存方針(段階的カバレッジ拡大)と一貫する
 
-## Phase 5: Variables/Arguments/スコープのコード生成
+## Phase 5: Variables/Arguments/スコープのコード生成【完了、2026-11-05】
 
-構造は知見8・12で確定済み。VBのコンテナ単位スコープ
-(`<Container.Variables>`配下)→Pythonのレキシカルスコープ(クロージャ)
-への変換を実装する。知見17で確認した「Sequenceスコープの変数をクロージャ
-越しに参照できずコンパイルエラーになる」意味論の逆(VB側の制約がPython
-生成時にどう影響するか)も踏まえる必要がある。
+構造は知見8・12で確定済み。`Sequence`/`TryCatch`の`<Container.Variables>`
+配下に宣言された変数(`VariableDecl`)を、そのスコープ先頭で初期化する文へ
+変換するよう`uipath_codegen`を拡張した——VB.NETの変数は明示代入前でも
+「その型の既定値」で読めるため(Pythonのローカル変数は未代入参照が
+`NameError`になり挙動が異なる)、これを再現する必要がある。`Default`属性
+(知見7の属性形直列化)があればその値、無ければ`.NET`の`default(T)`相当
+(数値型→`0`/`0.0`、真偽値型→`False`、それ以外(参照型・未知の型)→
+`None`)を使う。`TryCatch.Variables`は`try:`より前(コンストラクト全体の
+スコープ)で初期化する。`tests/test_uipath_codegen.py`に3件追加、全606件
+通過。
+
+**既知の制約として引き続き残るもの**:
+- `Variable.Default`の別の直列化形(知見7で公式ドキュメント上は確認された
+  `<Variable.Default><Literal>...</Literal></Variable.Default>`という子要素形)
+  は`xaml_tree.py`の`_parse_variables`が未対応——本fixtureの実例は常に
+  属性形(`Default="init"`)だったため、属性形のみに対応した
+- ワークフロー引数(`<x:Members>`)は従来通りPython関数の仮引数に
+  そのまま対応させるのみで、クロージャによる「Python的レキシカルスコープ」
+  への変換は行っていない(関数境界=Sequence境界という単純対応のままで
+  十分機能するため、知見17の「クロージャ越し参照不可」というVB側の制約を
+  Python側で再現する積極的な理由が無いと判断——再現しないことで生成
+  コードがより自由にスコープを跨げてしまう側に倒れるが、これはPythonの
+  通常の関数スコープが単にVBより緩いだけで、誤動作は起きない)
 
 ## Phase 6: プロジェクト組み立て(project.json→複数ファイル統合)
 

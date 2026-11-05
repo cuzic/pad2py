@@ -38,6 +38,7 @@ from dump_daemon.uipath_dsl import (
     SwitchNode,
     TryCatchNode,
     CatchArm,
+    VariableDecl,
     VbExpr,
     WhileNode,
     WorkflowFile,
@@ -382,6 +383,68 @@ def test_generate_project_python_actually_calls_sub_workflow(tmp_path):
     with contextlib.redirect_stdout(stdout):
         namespace["Entry"]()
     assert stdout.getvalue().strip() == "world!"
+
+
+def test_sequence_variable_with_default_is_initialized():
+    """`Variable.Default`(知見7、属性形)があれば、スコープ先頭でその値に
+    初期化する——UiPathの変数は明示代入前でも既定値で読める(Pythonの
+    ローカル変数は未代入参照が`NameError`になり挙動が異なる)ため必要。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            variables=[VariableDecl(name="myVar", type_arguments="x:String", default="init")],
+            body=[MessageBoxNode(text=VbExpr(text="myVar"))],
+        ),
+    )
+    code = generate_python(wf)
+    assert "myVar = 'init'" in code
+    assert code.index("myVar = 'init'") < code.index("print(myVar)")
+    _compiles(code)
+
+
+def test_sequence_variable_without_default_uses_net_type_default():
+    """明示的な`Default`が無い場合は`.NET`の`default(T)`相当を使う——
+    文字列/オブジェクト型は`None`(Nothing相当)、数値型は`0`、真偽値型は
+    `False`。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            variables=[
+                VariableDecl(name="s", type_arguments="x:String"),
+                VariableDecl(name="n", type_arguments="x:Int32"),
+                VariableDecl(name="d", type_arguments="x:Double"),
+                VariableDecl(name="b", type_arguments="x:Boolean"),
+            ],
+            body=[AssignNode(target=VbExpr(text="s"), value=Literal(value="ignored"))],
+        ),
+    )
+    code = generate_python(wf)
+    assert "s = None" in code
+    assert "n = 0" in code
+    assert "d = 0.0" in code
+    assert "b = False" in code
+    _compiles(code)
+
+
+def test_try_catch_variables_initialized_before_try_block():
+    """`TryCatch.Variables`(知見8)もスコープ先頭——`try:`より前——で初期化
+    する(try本体の最初の文が例外を投げても`except`/`finally`から見える
+    ように)。"""
+    wf = _wrap(
+        [
+            TryCatchNode(
+                try_body=[AssignNode(target=VbExpr(text="x"), value=Literal(value="a"))],
+                variables=[
+                    VariableDecl(name="myVar", type_arguments="x:String", default="init")
+                ],
+                catches=[CatchArm(exception_type="s:Exception", var_name="ex", body=[])],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "myVar = 'init'" in code
+    assert code.index("myVar = 'init'") < code.index("try:")
+    _compiles(code)
 
 
 def test_generate_project_python_missing_reference_falls_back_to_todo(tmp_path):

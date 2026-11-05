@@ -24,6 +24,16 @@ API呼び出しをでっち上げず`# TODO`コメントに倒す)を踏襲す�
 常に`# TODO`へ倒れる、後方互換のデフォルト動作)。参照先ファイルが存在しない
 場合もでっち上げず`# TODO`に倒す——相対パス解決自体の間違いである可能性を
 含めて、黒箱化しない。
+
+**変数の既定値(design/uipath_transpiler_roadmap.md Phase 5)**: `Sequence`/
+`TryCatch`の`<Container.Variables>`配下に宣言された変数(`VariableDecl`)は、
+そのスコープの先頭で明示的に初期化文を生成する——VB.NETの変数は明示的な
+代入前でも「その型の既定値」で読めるため(Pythonのローカル変数は未代入の
+参照が`NameError`になり挙動が異なる)、これを再現するために必要。
+`Default`属性があればその値、無ければ`.NET`の`default(T)`相当(数値型→`0`
+/`0.0`、真偽値型→`False`、それ以外(参照型・未知の型)→`None`)を使う。
+数値/真偽値の型判定は`Switch`の`x:Key`数値判定(`_SWITCH_NUMERIC_TYPES`)と
+同じ既知の型タグ集合のみを信頼し、未知の型は安全側の`None`に倒す。
 """
 from __future__ import annotations
 
@@ -52,6 +62,7 @@ from ..uipath_dsl.types import (
     SwitchNode,
     TryCatchNode,
     UnknownActivityNode,
+    VariableDecl,
     WhileNode,
     WorkflowFile,
 )
@@ -96,7 +107,7 @@ def generate_python(
     params = list(workflow.arguments.keys())
     name = func_name or _safe_func_name(workflow.class_name)
     header = f"def {name}({', '.join(params)}):"
-    body = _generate_body(workflow.root.body, indent=1, invoke_resolver=invoke_resolver)
+    body = _generate_node(workflow.root, indent=1, invoke_resolver=invoke_resolver)
     body = _ensure_nonempty_suite(body, indent=1)
     imports = _collect_imports(body)
     lines = [*imports, ""] if imports else []
@@ -157,7 +168,10 @@ def _generate_node(
 ) -> list[str]:
     prefix = INDENT * indent
     if isinstance(node, SequenceNode):
-        return _generate_body(node.body, indent, invoke_resolver)
+        return [
+            *_generate_variable_inits(node.variables, indent),
+            *_generate_body(node.body, indent, invoke_resolver),
+        ]
     if isinstance(node, AssignNode):
         return _generate_assign(node, indent)
     if isinstance(node, MessageBoxNode):
@@ -285,7 +299,8 @@ def _generate_try_catch(
     node: TryCatchNode, indent: int, invoke_resolver: dict[str, str] | None = None
 ) -> list[str]:
     prefix = INDENT * indent
-    lines = [f"{prefix}try:"]
+    lines = _generate_variable_inits(node.variables, indent)
+    lines.append(f"{prefix}try:")
     try_body = _ensure_nonempty_suite(
         _generate_body(node.try_body, indent + 1, invoke_resolver), indent + 1
     )
@@ -321,6 +336,44 @@ def _render_switch_key(key: str, type_arguments: str) -> str:
     if type_arguments.lower() in _SWITCH_NUMERIC_TYPES:
         return key
     return repr(key)
+
+
+_BOOLEAN_TYPES = {"x:boolean"}
+
+
+def _default_value_literal(type_arguments: str) -> str:
+    """`Default`が明示されていない変数宣言の初期値——.NETの`default(T)`相当。
+    数値型は`0`/`0.0`、真偽値型は`False`、それ以外(参照型・未知の型)は
+    `Nothing`相当の`None`に倒す(型の語彙は`_SWITCH_NUMERIC_TYPES`と同じ
+    既知集合のみ信頼し、未知の型を誤って数値/真偽値扱いしない)。"""
+    type_tag = type_arguments.lower()
+    if type_tag in _SWITCH_NUMERIC_TYPES:
+        return "0.0" if type_tag in {"x:double", "x:single", "x:decimal"} else "0"
+    if type_tag in _BOOLEAN_TYPES:
+        return "False"
+    return "None"
+
+
+def _render_variable_init(decl: VariableDecl) -> str:
+    if decl.default is None:
+        value = _default_value_literal(decl.type_arguments)
+    else:
+        type_tag = decl.type_arguments.lower()
+        if type_tag in _SWITCH_NUMERIC_TYPES:
+            value = decl.default
+        elif type_tag in _BOOLEAN_TYPES:
+            value = "True" if decl.default.strip().lower() == "true" else "False"
+        else:
+            value = repr(decl.default)
+    return f"{decl.name} = {value}"
+
+
+def _generate_variable_inits(variables: list[VariableDecl], indent: int) -> list[str]:
+    """`Sequence`/`TryCatch`の`<Container.Variables>`配下の変数を、その
+    スコープの先頭で初期化する文に変換する(モジュールdocstring「変数の
+    既定値」節参照)。"""
+    prefix = INDENT * indent
+    return [f"{prefix}{_render_variable_init(v)}" for v in variables]
 
 
 def _generate_switch(
