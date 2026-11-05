@@ -1038,12 +1038,14 @@ def test_generate_python_converts_xor_in_set_variable_expression_to_bool_inequal
 
 
 def test_generate_python_converts_arithmetic_precedence_in_set_variable_expression() -> None:
-    # 知見81: `1 + 2 * 3`が実機で`*`優先(7)と確認済み。
+    # 知見81: `1 + 2 * 3`が実機で`*`優先(7)と確認済み。知見86で`+`は
+    # expr_runtime.pad_add()に委譲するよう結線されたため、`*`の結果が
+    # pad_add()の第2引数になる。
     dsl = "SET Result TO 1 + 2 * 3"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "Result = 1 + 2 * 3" in code
+    assert "Result = expr_runtime.pad_add(1, 2 * 3)" in code
     assert "# TODO" not in code
 
     namespace: dict[str, object] = {}
@@ -1083,6 +1085,39 @@ def test_generate_python_converts_mod_to_math_fmod() -> None:
     exec(code, namespace)
     assert namespace["Result1"] == -1
     assert namespace["Result2"] == 1
+
+
+def test_generate_python_converts_plus_to_pad_add_for_numeric_string_coercion() -> None:
+    # design/dsl_format_findings.md 知見86(実機確認済み): `+`は両辺が数値(または数値を
+    # 表す文字列)として解釈できる場合は数値加算を行う(`1 + "2" = 3`・`"2" + 1 = 3`、
+    # Pythonの素直な`+`なら前者はTypeError、後者は`"21"`になり食い違う)。
+    dsl = "SET Result1 TO 1 + $'''2'''\nSET Result2 TO $'''2''' + 1"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import expr_runtime" in code
+    assert "Result1 = expr_runtime.pad_add(1, '2')" in code
+    assert "Result2 = expr_runtime.pad_add('2', 1)" in code
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result1"] == 3
+    assert namespace["Result2"] == 3
+
+
+def test_generate_python_converts_plus_to_string_concat_when_not_numeric() -> None:
+    # design/dsl_format_findings.md 知見86(実機確認済み): どちらかが数値として解釈
+    # できない文字列の場合は文字列結合にフォールバックする(`"a" + "b" = "ab"`)。
+    dsl = "SET Result TO $'''a''' + $'''b'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result"] == "ab"
 
 
 def test_generate_python_from_real_knowledge53_compound_arithmetic_expression_converts() -> None:
@@ -1715,7 +1750,7 @@ def test_generate_python_from_real_pad_expr_precedence_run_compiles() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "# TODO" not in code
-    assert "Result1 = 1 + 2 * 3" in code
+    assert "Result1 = expr_runtime.pad_add(1, 2 * 3)" in code
     assert "Result2 = True or True and False" in code
     assert "Result3 = bool(True) != bool(True and False)" in code
     assert "Result4 = True or bool(False) != bool(True)" in code

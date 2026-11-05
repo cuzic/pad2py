@@ -98,7 +98,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
   ブランチ0/4→4/4、全体カバレッジ82%→83%)。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
-- [ ] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
+- [x] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
+  ✅ **実機確認・結線完了(知見86)**: VMが空いたタイミングで知見81の手法を使い、
+  `1 + $'''2'''` = `3`・`$'''2''' + 1` = `3`・`$'''a''' + $'''b'''` = `"ab"`を
+  実機で検証。両辺が数値(または数値文字列)なら加算、そうでなければ文字列結合
+  にフォールバックすると確定した。`dump_daemon/pad_action_lib/expr_runtime.py`に
+  `pad_add()`を実装し、`render_expr_as_python()`の`+`演算子をこれに委譲するよう
+  更新した。これで`pad_expr`の演算子優先順位(知見81)・値の意味論
+  (知見82・83・86)は全て解決した。
 - [x] 🖥️ Tier3(Excel/Word/PowerPoint/PDF)アクションの実機DSLキャプチャ・codegen結線 —
   `pad_action_lib`には純粋関数実装(openpyxl/python-docx/python-pptx/pdfium)が既にあるが、
   action_id/パラメータ名の実機確認・codegenへの結線は未着手。

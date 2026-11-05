@@ -147,7 +147,12 @@ def _render_expr_as_python(node: ExprNode) -> str:
             # 常に比較式/真偽値リテラルだったため、論理XORとして解釈する——数値への
             # ビット単位XORの可能性は未検証のまま残る。
             return f"bool({left}) != bool({right})"
-        if node.op in ("+", "-", "*", "/"):
+        if node.op == "+":
+            # design/dsl_format_findings.md 知見86: 両辺が数値(または数値を表す文字列)
+            # として解釈できる場合は数値加算、そうでない場合は文字列結合になる——
+            # Pythonの素直な`+`では再現できないため専用ヘルパーに委ねる。
+            return f"expr_runtime.pad_add({left}, {right})"
+        if node.op in ("-", "*", "/"):
             return f"{left} {node.op} {right}"
         if node.op == "mod":
             # design/dsl_format_findings.md 知見82: 符号は被除数と一致する
