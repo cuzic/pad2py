@@ -2191,7 +2191,7 @@ def test_generate_python_from_find_item_in_datatable_with_regex_everywhere_conve
 
 def test_generate_python_from_find_item_in_datatable_by_column_index_converts() -> None:
     # design/dsl_format_findings.md 知見123の追記: 兄弟セレクタ
-    # `FindItemInDataTableByColumnIndex`(この層では列名のみ対応)。
+    # `FindItemInDataTableByColumnIndex`(列名でも指定できる)。
     dsl = (
         "SET CSV TO $'''A,B\nx,x\ny,x'''\n"
         "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
@@ -2209,6 +2209,48 @@ def test_generate_python_from_find_item_in_datatable_by_column_index_converts() 
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["M"] == [(0, 1), (1, 1)]
+
+
+def test_generate_python_from_find_item_in_datatable_by_numeric_column_index_converts() -> None:
+    # design/dsl_format_findings.md 知見133(実機確認済み): `ColumnNameOrIndex`は数値文字列
+    # (0始まり)でも列インデックスとして解決できる——知見123で「IsZeroBased未確認」として
+    # 列名のみに限定していた制限を解消した。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,x\ny,x'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableByColumnIndex "
+        "DataTable: T ValueToFind: $'''x''' AllMatches: True MatchCase: True "
+        "MatchEntireCellContents: False ColumnNameOrIndex: $'''1''' DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 1), (1, 1)]
+
+
+def test_generate_python_from_sort_datatable_with_column_index_converts() -> None:
+    # design/dsl_format_findings.md 知見133: `SortDataTable`の兄弟セレクタ
+    # `SortWithColumnIndex`(VM上でActionSelectorBase.ActionNameを直接読み取って確認済み)。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,2\ny,1'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.SortDataTable.SortWithColumnIndex DataTable: T ColumnIndex: 1 "
+        "Order: Variables.SortDirection.Ascending"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["T"] == [{"A": "y", "B": "1"}, {"A": "x", "B": "2"}]
 
 
 def test_generate_python_from_filter_datatable_end_to_end_via_csv_seeded_tables() -> None:

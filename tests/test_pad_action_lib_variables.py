@@ -123,10 +123,17 @@ def test_add_delete_modify_row() -> None:
     assert table == [{"a": 3, "b": 4}]
 
 
-def test_modify_datatable_item_rejects_numeric_column_index() -> None:
+def test_modify_datatable_item_accepts_numeric_column_index() -> None:
+    # design/dsl_format_findings.md 知見133(実機確認済み): 列インデックスは0始まり。
     table: va.DataTable = [{"a": 1, "b": 2}]
-    with pytest.raises(ValueError, match="numeric ColumnNameOrIndex"):
-        va.modify_datatable_item(table, 0, "1", 99)
+    va.modify_datatable_item(table, 0, "1", 99)
+    assert table == [{"a": 1, "b": 99}]
+
+
+def test_modify_datatable_item_numeric_column_index_out_of_range_raises() -> None:
+    table: va.DataTable = [{"a": 1, "b": 2}]
+    with pytest.raises(ValueError, match="out of range"):
+        va.modify_datatable_item(table, 0, "5", 99)
 
 
 def test_add_row_to_datatable_with_list_zips_positionally_against_existing_columns() -> None:
@@ -218,6 +225,14 @@ def test_sort_datatable() -> None:
     table = [{"a": 2}, {"a": 1}]
     va.sort_datatable(table, "a")
     assert [r["a"] for r in table] == [1, 2]
+
+
+def test_sort_datatable_by_column_index() -> None:
+    # design/dsl_format_findings.md 知見133: `SortDataTable`の兄弟セレクタ
+    # `SortWithColumnIndex`向け、列インデックスは0始まり。
+    table = [{"a": "x", "b": 2}, {"a": "y", "b": 1}]
+    va.sort_datatable(table, 1)
+    assert [r["b"] for r in table] == [1, 2]
 
 
 def test_merge_datatables() -> None:
@@ -359,6 +374,12 @@ def test_filter_datatable_match_case_false_ignores_case() -> None:
 def test_retrieve_column_into_list() -> None:
     table = [{"a": 1}, {"a": 2}]
     assert va.retrieve_datatable_column_into_list(table, "a") == [1, 2]
+
+
+def test_retrieve_column_into_list_by_numeric_index() -> None:
+    # design/dsl_format_findings.md 知見133: 列インデックスは0始まり。
+    table = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    assert va.retrieve_datatable_column_into_list(table, "1") == ["x", "y"]
 
 
 def test_csv_round_trip() -> None:

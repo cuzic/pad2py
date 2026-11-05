@@ -182,19 +182,36 @@ def delete_row_from_datatable(table: DataTable, index: int) -> None:
     del table[index]
 
 
-def modify_datatable_item(table: DataTable, row_index: int, column: str, value: object) -> None:
-    """ColumnNameOrIndexは実機では列名/列インデックス(int.TryParse判定)の両方を受け付けるが、
-    ここでは列名のみに対応する。数値文字列は`FindItemInDataTableByColumnIndex`(知見123)と同じ理由
-    ——実機の0始まり/1始まり設定`_listIndexService.IsZeroBased`が未確認のため、でっち上げた
-    インデックス解釈で誤った列を書き換えるより明示的なエラーを優先する(知見126)。
+def _resolve_column_name(table: DataTable, column: str) -> str:
+    """`ColumnNameOrIndex`文字列(列名、または数値文字列なら列インデックス)を実際の
+    列名へ解決する。
+
+    design/dsl_format_findings.md 知見133(VM上で実機の`IListIndexService`実装
+    `Robin.Core.Execution.ListIndexService`を直接インスタンス化・確認済み): 本プロジェクトが
+    対象とするクリップボードDSL(`ScriptType.Robin`)では`IsZeroBased=True`で
+    `ConvertInput()`は恒等写像(入力をそのまま返す)——つまり列インデックスは常に
+    **0始まり**(Pythonのリスト添字と同じ)。1始まりになるのは`ScriptType.PowerFx`
+    (`ConvertInput(n) = n - 1`)という別のスクリプト種別のみで、本プロジェクトが変換対象とする
+    クリップボードDSLには現れない。知見123・126で「IsZeroBasedが未確認」としていた数値
+    インデックス対応は、この確認によりでっち上げではなく解決した。
     """
     if column.lstrip("-").isdigit():
-        raise ValueError(
-            f"modify_datatable_item() does not support numeric ColumnNameOrIndex ({column!r}); "
-            "only column-name lookup is supported (index-based lookup depends on PAD's unconfirmed "
-            "zero-based/one-based IsZeroBased setting)"
-        )
-    table[row_index][column] = value
+        columns = columns_of(table)
+        index = int(column)
+        try:
+            return columns[index]
+        except IndexError:
+            raise ValueError(
+                f"column index {index} out of range (table has {len(columns)} columns)"
+            ) from None
+    return column
+
+
+def modify_datatable_item(table: DataTable, row_index: int, column: str, value: object) -> None:
+    """`ColumnNameOrIndex`は実機では列名/列インデックス(`int.TryParse`判定)の両方を
+    受け付ける(知見133で0始まりと確認済み、`_resolve_column_name()`参照)。
+    """
+    table[row_index][_resolve_column_name(table, column)] = value
 
 
 def _cell_matches(cell: object, find_value: str, is_regex: bool, ignore_case: bool, entire_cell: bool) -> bool:
@@ -262,19 +279,18 @@ def find_item_in_datatable_everywhere(
     リストと要素数2のリスト`"0, 0\\n1, 0"`で同じ"行, 列"形式が繰り返されるのみで、
     型が変わる兆候は無かった)。
 
-    design/dsl_format_findings.md 知見123(decompile確認済み、実機未確認):
-    `use_regex`/`column`は`FindOrReplaceInDataTable`の兄弟セレクタ
-    (`FindItemInDataTableWithRegexEverywhere`/`FindItemInDataTableByColumnIndex`)の
+    design/dsl_format_findings.md 知見123: `use_regex`/`column`は`FindOrReplaceInDataTable`の
+    兄弟セレクタ(`FindItemInDataTableWithRegexEverywhere`/`FindItemInDataTableByColumnIndex`)の
     decompile結果から追加した。`column`は実機のPAD自体が`ColumnNameOrIndex`という
     文字列/数値どちらも受け付けるパラメータを使う(`int.TryParse`成功時は列インデックス、
-    失敗時は列名として解釈)が、この層では**列名のみ**に対応する(列インデックスとしての
-    数値文字列は実機のゼロ始まり/1始まり設定`_listIndexService.IsZeroBased`に依存し
-    未確認のため、安全側に倒して対応しない——列名を渡した場合のみ機能する)。
+    失敗時は列名として解釈)——知見133で0始まりと確認済みのため`_resolve_column_name()`で
+    数値文字列も列名へ解決する。
     """
+    resolved_column = _resolve_column_name(table, column) if column is not None else None
     matches: list[tuple[int, int]] = []
     for row_idx, row in enumerate(table):
         for col_idx, (col_name, cell) in enumerate(row.items()):
-            if column is not None and col_name != column:
+            if resolved_column is not None and col_name != resolved_column:
                 continue
             if _cell_matches(cell, value_to_find, use_regex, not match_case, match_entire_cell_contents):
                 matches.append((row_idx, col_idx))
@@ -308,8 +324,12 @@ def delete_column_from_datatable(table: DataTable, column: str) -> None:
         row.pop(column, None)
 
 
-def sort_datatable(table: DataTable, column: str, descending: bool = False) -> None:
-    table.sort(key=lambda row: row.get(column), reverse=descending)
+def sort_datatable(table: DataTable, column: str | int, descending: bool = False) -> None:
+    """`Variables.SortDataTable`の兄弟セレクタ`SortWithColumnName`/`SortWithColumnIndex`両方に
+    対応する。`column`が`int`の場合は列インデックス(0始まり、知見133参照)として解決する。
+    """
+    resolved = _resolve_column_name(table, str(column)) if isinstance(column, int) else column
+    table.sort(key=lambda row: row.get(resolved), reverse=descending)
 
 
 def merge_datatables(target: DataTable, other: DataTable) -> None:
@@ -490,7 +510,9 @@ def join_datatable(
 
 
 def retrieve_datatable_column_into_list(table: DataTable, column: str) -> list:
-    return [row.get(column) for row in table]
+    """`ColumnNameOrIndex`は列名/列インデックスの両方を受け付ける(知見133参照)。"""
+    resolved = _resolve_column_name(table, column)
+    return [row.get(resolved) for row in table]
 
 
 # CSV<->DataTable変換は`.datatable`の実装をそのまま再公開する(File.Actionsの

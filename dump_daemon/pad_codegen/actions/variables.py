@@ -228,8 +228,9 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         ]
 
     if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableByColumnIndex":
-        # design/dsl_format_findings.md 知見123の追記: `column`は列名のみ対応
-        # (列インデックスとしての数値文字列はゼロ始まり設定が未確認のため非対応)。
+        # design/dsl_format_findings.md 知見133: `column`は列名/列インデックス(0始まり、
+        # 知見133でIsZeroBased=Trueと確認済み)の両方を`find_item_in_datatable_everywhere()`
+        # 内の`_resolve_column_name()`が解決する。
         table = safe_render(p.get("DataTable"))
         value = safe_render(p.get("ValueToFind"))
         all_matches = safe_render(p.get("AllMatches"))
@@ -334,6 +335,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [
             f"{prefix}variables_actions.sort_datatable({table}, {column}, descending={order == 'Descending'})"
+        ]
+
+    if action_id == "Variables.SortDataTable.SortWithColumnIndex":
+        # design/dsl_format_findings.md 知見133: `SortDataTable`の兄弟セレクタ
+        # (`ActionSelectorBase.ActionName`の直接読み取りで接尾辞を確認済み)。
+        # `ColumnIndex`は0始まり(知見133でIsZeroBased=Trueと確認済み)。
+        table = safe_render(p.get("DataTable"))
+        column_index = safe_render(p.get("ColumnIndex"))
+        order = enum_last(p.get("Order"))
+        if table is None or column_index is None or order is None:
+            return None
+        return [
+            f"{prefix}variables_actions.sort_datatable({table}, {column_index}, "
+            f"descending={order == 'Descending'})"
         ]
 
     if action_id == "Variables.RetrieveDataTableColumnIntoList":

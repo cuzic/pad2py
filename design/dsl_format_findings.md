@@ -2363,3 +2363,22 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **実装**: `pad_action_lib/datatable.py`に`_parse_fixed_column_widths()`(上記構文の実装)・`_split_fixed_width_line()`(短い行は`ValueError`、長い行は無視)・`datatable_from_fixed_width_csv()`を新設し、`variables_actions`経由で公開。`file_actions.py`にも同じロジックを使う`read_from_csv_file_fixed_width()`を追加(`File.ReadFromCSVFile`には`ReadFieldsAsText`パラメータ自体が無いため、その引数は持たない——知見127・128確認時に判明済みの構造と整合)。`pad_codegen/actions/variables.py`/`file.py`に両方のaction_idブランチを新規追加し、`tests/test_pad_action_lib_variables.py`に単体テスト5件、`tests/test_pad_codegen.py`に実際に`exec()`する end-to-endテスト2件(Variables側はDSL文字列内に埋め込んだ実改行文字で複数行CSVTextを構成、知見125の教訓通り`\n`エスケープ文字列ではなく実改行を使う、File側は実ファイルへの書き込み→読み込み)を追加した。
 
 これで知見122で発見した`GenerateDataTableFromCSVAction`の3セレクタ・`File.ReadFromCSVFile`/`WriteToCSVFile`の全セレクタ(Write側にはFixedColumnWidths相当の選択肢が無いことは知見128で確認済み)が完全に結線され、CSV読み込み系の未結線セレクタは無くなった。
+
+## 133. 【本セッション最大の決着】知見123・126で「実機のゼロ始まり/1始まり設定(`IsZeroBased`)が未確認」としていた数値列インデックスを、`IListIndexService`の実装クラスをVM上で直接確認して恒久的に解決——Robin DSL(本プロジェクトの対象)は常に0始まりと確定
+
+`Variables.SortDataTable`の未結線セレクタを探索中、`SortDataTableAction`の構築に`IListIndexService`という依存が必要だと判明した。知見123(`FindItemInDataTableByColumnIndex`)・知見126(`ModifyDataTableItem`)で繰り返し「実機の0始まり/1始まり設定`_listIndexService.IsZeroBased`が未確認」という理由で数値列インデックス対応を見送っていたのが、まさにこの同じサービスだった——ならばVM上でこのサービス自体を直接確認すればよいと気づき、実行した。
+
+**確認方法(decompile不要、リフレクションのみ)**: `Microsoft.Flow.RPA.Desktop.Robin.Core.dll`から実装クラス`Robin.Core.Execution.ListIndexService`(パラメータ無しコンストラクタを持つ)を発見し、直接インスタンス化した。`Initialize(ScriptType)`を呼ぶ前の既定状態で`IsZeroBased`プロパティを読むと`True`、`ConvertInput(int)`は恒等写像(入力をそのまま返す)だった。さらに`Initialize()`に`ScriptType`列挙の両値を渡して確認したところ: `ScriptType.Robin`→`IsZeroBased=True`・`ConvertInput()`恒等写像(0始まり)、`ScriptType.PowerFx`→`IsZeroBased=False`・`ConvertInput(n) = n - 1`(1始まり、PowerFx自身の1始まり慣習を内部の0始まり表現へ変換)。
+
+**この確認が持つ決定的な意味**: 本プロジェクトが変換対象とする「クリップボードDSL」は`Microsoft.Flow.RPA.Desktop.Robin.*`名前空間(プロジェクト全体で繰り返し出現する接頭辞)が示す通り、常に`ScriptType.Robin`であり、PowerFxベースの別の記述方式は対象外。したがって**本プロジェクトが扱う範囲では列インデックス・リストインデックスは常に0始まり(Pythonのリスト添字と完全に一致)**と確定した——知見123・126時点では「安全側に倒して非対応のまま」という慎重な判断が正しかったが、今回の確認でその慎重さがもはや不要になった。
+
+**修正・新規結線**: `pad_action_lib/variables_actions.py`に共有ヘルパー`_resolve_column_name(table, column)`(数値文字列なら`columns_of(table)`への0始まりインデックスとして解決、範囲外なら明示的`ValueError`)を新設し、以下3箇所に適用した:
+- `modify_datatable_item()`: 知見126の`ValueError`ガードを撤廃し、数値`ColumnNameOrIndex`を正しく解決するよう変更。
+- `find_item_in_datatable_everywhere()`: 知見123で「列名のみ対応」としていた制限を撤廃(`Variables.FindOrReplaceInDataTable.FindItemInDataTableByColumnIndex`で数値インデックスが使えるようになった)。
+- `retrieve_datatable_column_into_list()`: 同種のサイレントな未対応(数値を単純な辞書キーとして扱ってしまう潜在バグ)を同様に解消。
+
+さらに`sort_datatable()`に`column: str | int`を追加(`int`の場合は`_resolve_column_name()`で解決)し、`Variables.SortDataTable`の完全未結線だった兄弟セレクタ`SortWithColumnIndex`(`ActionSelectorBase.ActionName`の直接読み取りで接尾辞を確認済み)を新規結線した。
+
+**副産物の発見**: `Variables.SortList`にも`SortListByProperty`という未結線セレクタがあり、`SortListBase`の実プロパティ(`Property1/2/3`+`SortDirection1/2/3`、最大3キーで各キーが独立したAscending/Descending方向を持てる)が判明した。これは既存の`sort_list(items, descending: bool, keys: list[str] | None)`(単一の`descending`が全キー共通)の設計では表現できない——各キーごとに独立した方向を持つ多キーソートへの対応は、`sort_list()`自体のシグネチャ変更が必要なより大きな変更になるため、今回は見送り、`pad_todo.md`に次の調査対象として記録する。
+
+テストは`tests/test_pad_action_lib_variables.py`に6件(数値インデックス対応3関数×各1〜2件)、`tests/test_pad_codegen.py`に2件(数値インデックスでの`FindItemInDataTableByColumnIndex`・`SortWithColumnIndex`、両方実際に`exec()`して結果を検証)を追加した。知見126で追加した「数値インデックス拒否」テストは不要になったため「数値インデックス受理」テストに置き換えた。

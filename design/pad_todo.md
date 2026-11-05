@@ -352,6 +352,20 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   ✅ **決着(知見129)**: VM上で`ZipFiles`クラスを直接インスタンス化・`Execute()`呼び出しし、
   `ZipFile`出力が`ArchivePath`と同じパスのechoだと確認、`zip_files()`に`return archive_path`
   を追加した。
+- [x] 💻🖥️ 知見123・126で「実機の0始まり/1始まり設定`IsZeroBased`が未確認」として見送っていた
+  `ModifyDataTableItem`/`FindItemInDataTableByColumnIndex`/`RetrieveDataTableColumnIntoList`の
+  数値列インデックス対応、および`Variables.SortDataTable`の未結線セレクタ`SortWithColumnIndex`。
+  ✅ **決着(知見133、本セッション最大の決着)**: `IListIndexService`の実装クラス
+  (`Robin.Core.Execution.ListIndexService`)をVM上で直接インスタンス化して確認したところ、
+  本プロジェクトが対象とする`ScriptType.Robin`では`IsZeroBased=True`で`ConvertInput()`は
+  恒等写像——つまり列インデックスは常に0始まりと確定した(1始まりになるのは対象外の
+  `ScriptType.PowerFx`のみ)。共有ヘルパー`_resolve_column_name()`を新設し、3関数の数値
+  インデックス対応を解消、`SortWithColumnIndex`も新規結線した。
+  - [ ] 💻🖥️ **副産物の残課題(次の調査対象)**: `Variables.SortList`にも未結線セレクタ
+    `SortListByProperty`があり、`SortListBase`の実プロパティ(`Property1/2/3`+
+    `SortDirection1/2/3`、最大3キーで各キーが独立したAscending/Descending方向)が判明した。
+    既存の`sort_list(items, descending: bool, keys: list[str] | None)`(単一`descending`が
+    全キー共通)では表現できないため、シグネチャ変更を伴うより大きな変更として見送った。
 
 ## C. 構造的・運用上の課題
 
