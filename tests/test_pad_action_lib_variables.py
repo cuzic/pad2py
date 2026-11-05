@@ -352,6 +352,17 @@ def test_csv_read_fields_as_text_false_handles_decimals_negatives_and_exponents(
     )
 
 
+def test_csv_read_fields_as_text_false_handles_thousands_separator() -> None:
+    # design/dsl_format_findings.md 知見103(実機確認済み): "1,000"(CSVのクォート構文
+    # `"1,000"`で単一フィールドとして保護)は数値`1000`として変換される——知見102の
+    # +/=演算子と同じコンマ許容の挙動がこのCSV読み込みサブシステムにもあると確認した。
+    text = '"1,000"\r\n'
+    table = va.datatable_from_csv_text(
+        text, first_line_contains_column_names=False, read_fields_as_text=False
+    )
+    assert table == [{"Column#1": 1000}]
+
+
 def test_csv_read_fields_as_text_true_keeps_strings() -> None:
     text = "007,abc\r\n"
     table = va.datatable_from_csv_text(text, first_line_contains_column_names=False)

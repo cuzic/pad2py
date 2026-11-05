@@ -32,12 +32,16 @@ def rows_of(table: DataTable, columns: list[str] | None = None) -> list[list[obj
 
 
 def _csv_as_number(value: str) -> int | float | str:
+    # 知見103(実機確認済み): 桁区切りコンマ(`"1,000"`)もこのCSV読み込みサブシステムでは
+    # 数値(`1000`)として認識される(知見102の`+`/`=`演算子と同じ挙動)ため、`int()`/
+    # `float()`に渡す前にコンマを取り除く(元の値にコンマが無ければ影響しない)。
+    cleaned = value.replace(",", "")
     try:
-        return int(value)
+        return int(cleaned)
     except ValueError:
         pass
     try:
-        parsed = float(value)
+        parsed = float(cleaned)
     except ValueError:
         return value
     # 知見100(実機確認済み): 指数表記等(`"1e2"`)は`int()`でパースできず`float()`経由に
