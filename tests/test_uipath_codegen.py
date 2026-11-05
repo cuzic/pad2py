@@ -439,14 +439,45 @@ def test_cbool_string_literal_matches_vb_semantics_not_python_truthiness(
     assert stdout.getvalue().strip() == str(expected)
 
 
-def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
-    """文字列リテラル以外(変数参照等)は実行時の型が不明なため`bool(x)`の
-    ままにする、既知の限界(render.pyのdocstring参照)——この場合でも
-    でっち上げた型チェックコードは挿入せず、素直な`bool(x)`を生成する。"""
+def test_cbool_non_literal_uses_vb_bool_not_python_truthiness():
+    """知見62: 文字列リテラル以外(変数参照等)は実行時の型がコード生成時に
+    不明なため、`_vb_bool()`(知見60・61の`AndAlso`/`If`と同じヘルパー)を
+    使う——以前は素の`bool(x)`を使っており、`someVar`が`"False"`/`"0"`を
+    保持する文字列の場合に食い違う既知の限界として記録していたが、
+    `_vb_bool()`導入によりこの限界は解消された。"""
     wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CBool(someVar)"))])
     code = generate_python(wf)
-    assert "bool(someVar)" in code
+    assert "_vb_bool(someVar)" in code
     _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 知見62: `CBool`の非リテラル(変数参照等)経由の文字列判定も、
+        # `_vb_bool()`によりVBの`CBool`規則(`_vb_cbool_of_string_literal`
+        # と同じ)に従うようになった——`bool("False")`は`True`だが
+        # `CBool("False")`(変数経由)は`False`になる。
+        ("CBool(someVar)", "False"),
+    ],
+)
+def test_cbool_non_literal_string_value_matches_vb_not_python_truthiness(
+    vb_text: str, expected: str
+) -> None:
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="someVar"), value=Literal(value="False")),
+            MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})")),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
 
 
 @pytest.mark.parametrize(

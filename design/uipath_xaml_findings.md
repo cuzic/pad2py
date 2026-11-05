@@ -3092,6 +3092,39 @@ Booleanへ変換可能な型なら受理し、評価前にBooleanへ変換する
 にも波及していないか確認する」という、知見60で得た教訓をさらに一段
 深掘りした形になる。
 
+## 62. `CBool`の非リテラル経由フォールバックも`_vb_bool()`に統一——知見43で記録していた既知の限界をついに解消(VM不使用)
+
+知見60・61で`_vb_bool()`ヘルパーを導入したことで、知見43(`CBool`の
+文字列判定修正時)から「既知の限界」として記録し続けていた別の課題も
+解消できると気づいた。
+
+**経緯**: `CBool(x)`の変換(`_render_func_call`)は、`x`がコード生成時に
+判明する文字列リテラル(例: `CBool("True")`)の場合のみ
+`_vb_cbool_of_string_literal()`で正しく判定していたが、`x`が変数参照
+などの非リテラル(例: `CBool(someVar)`)の場合は実行時の型が不明なため、
+素のPython`bool(x)`にフォールバックしていた——これは`someVar`が
+文字列`"False"`/`"0"`を保持している場合に`bool("False")`=`True`
+(VBでは`False`になるべき)という食い違いを生む既知の限界だった。
+
+**解決**: `_vb_bool()`はまさにこの「実行時の値の型を見て適切に変換する」
+ために設計されたヘルパー(`_vb_cbool_of_string_literal`と同じ文字列
+判定ロジックを実行時版にしたもの)なので、`CBool`の非リテラル
+フォールバックをこちらに切り替えるだけで解決した——新規ロジックの
+追加は不要、既存ヘルパーの再利用のみ。
+
+`tests/test_uipath_codegen.py`の
+`test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation`
+を`test_cbool_non_literal_uses_vb_bool_not_python_truthiness`へ更新
+(生成コードが`_vb_bool(someVar)`になることを確認)、実際の値が正しく
+`False`になることを確認する
+`test_cbool_non_literal_string_value_matches_vb_not_python_truthiness`
+を追加。UiPath関連テスト全197件通過。
+
+**この知見で確定したこと**: 知見60・61で導入した`_vb_bool()`が、知見43
+で未解決のまま残していた別の既知の限界も波及的に解消した——1つの
+ヘルパー追加が複数の既知の限界を同時に解消する好例になった。知見43・
+44〜62の系統点検は、現時点で既知の課題を全て解消した状態になった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

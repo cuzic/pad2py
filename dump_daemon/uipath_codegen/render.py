@@ -490,12 +490,15 @@ def _render_func_call(node: FuncCall) -> str:
         if isinstance(arg_node, StringLiteral):
             return repr(_vb_cbool_of_string_literal(arg_node.value))
         # リテラル文字列以外(変数参照・関数呼び出し等)は実行時の型が
-        # コード生成時には分からない——文字列型であれば`bool(x)`は
-        # `_vb_cbool_of_string_literal`と同じ理由で誤りうる既知の限界
-        # (design/uipath_vb_expression_mapping.md参照)。数値/真偽値型なら
-        # `bool(x)`はVBのCBoolと一致するため、でっち上げた型チェックを
-        # 挿入するより素直な`bool(x)`のままにする。
-        return f"bool({args[0]})"
+        # コード生成時には分からない——以前は`bool(x)`(Python素の真偽値
+        # 判定)を使っており、文字列型なら`_vb_cbool_of_string_literal`と
+        # 同じ理由で誤りうる既知の限界として記録していた(例:
+        # `CBool(someVar)`で`someVar`が`"False"`/`"0"`を保持する場合、
+        # `bool("False")`は`True`になり食い違う)。知見60・61で導入した
+        # `_vb_bool()`(`_vb_cbool_of_string_literal`と同じ文字列判定
+        # ロジックをランタイム版にしたもの、`Nothing`/桁区切りも対応)
+        # がこの限界を解消するため、知見62でこちらに切り替えた。
+        return f"{VB_BOOL_HELPER_NAME}({args[0]})"
     if key == "cdbl":
         if len(args) != 1:
             raise NotImplementedError("CDbl expects exactly 1 argument")
