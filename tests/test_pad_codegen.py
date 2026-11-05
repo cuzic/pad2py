@@ -1348,6 +1348,58 @@ def test_generate_python_from_set_window_state_by_instance_or_handle_converts() 
     assert "# TODO" not in code
 
 
+def test_generate_python_from_set_window_visibility_by_instance_or_handle_converts() -> None:
+    # design/dsl_format_findings.md 知見120(decompile+実機確認済み): `UIAutomation.
+    # Actions.dll`に完全に未結線だった`SetWindowVisibility`アクション(3セレクタ構造)を
+    # 発見・結線した。`win32gui.ShowWindow(hwnd, SW_HIDE)`がVM上の実venvで実際に
+    # ウィンドウを非表示にすることを確認した(`win32gui.IsWindowVisible()`で確認)。
+    dsl = (
+        "UIAutomation.SetWindowVisibility.SetVisibilityByInstanceOrHandle "
+        "WindowInstance: AutomationWindow2 Visibility: UIAutomation.Visibility.Hidden"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "win32gui.ShowWindow(AutomationWindow2.wrapper_object().handle, win32con.SW_HIDE)" in code
+    assert "import win32con" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_set_window_visibility_by_title_class_converts() -> None:
+    dsl = (
+        "UIAutomation.SetWindowVisibility.SetVisibilityByTitleClass Title: $'''Notepad''' Class: $'''''' "
+        "Visibility: UIAutomation.Visibility.Visible"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "win32gui.ShowWindow(Desktop(backend='uia').window(title='Notepad').wrapper_object().handle, "
+        "win32con.SW_SHOW)" in code
+    )
+
+
+def test_generate_python_from_set_window_visibility_control_based_converts() -> None:
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.SetWindowVisibility.SetVisibility Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "Visibility: UIAutomation.Visibility.Hidden",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        "win32gui.ShowWindow(Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".wrapper_object().handle, win32con.SW_HIDE)" in code
+    )
+    assert "# TODO: map PAD action: UIAutomation.SetWindowVisibility.SetVisibility" not in code
+
+
 def test_generate_python_from_move_window_control_based_converts() -> None:
     # design/dsl_format_findings.md 知見119: `Control`ベースの兄弟セレクタ(`.Move`)。
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(

@@ -5,7 +5,12 @@ from ...pad_dsl import ActionRecord, EnumRef, UiElementRef
 from ..context import CodegenContext
 from ..render import INDENT, render_value
 from ..selectors import _build_pywinauto_selector_expr, _is_start_button_element
-from ._window_state import WINDOW_STATE_TO_PYWINAUTO_METHOD, render_move_or_resize
+from ._window_state import (
+    VISIBILITY_VALUE_TO_BOOL,
+    WINDOW_STATE_TO_PYWINAUTO_METHOD,
+    render_move_or_resize,
+    render_set_visibility,
+)
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -111,6 +116,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             if selector_expr is not None:
                 method = WINDOW_STATE_TO_PYWINAUTO_METHOD[state.value]
                 return [f"{prefix}{selector_expr}.{method}()"]
+    if node.action_id == "UIAutomation.SetWindowVisibility.SetVisibility":
+        # design/dsl_format_findings.md 知見120(decompile+実機確認済み): `Control`
+        # ベースの兄弟セレクタ。
+        element = node.params.get("Control")
+        visibility = node.params.get("Visibility")
+        if (
+            isinstance(element, UiElementRef)
+            and isinstance(visibility, EnumRef)
+            and visibility.value in VISIBILITY_VALUE_TO_BOOL
+        ):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                return render_set_visibility(prefix, selector_expr, visible=VISIBILITY_VALUE_TO_BOOL[visibility.value])
     if node.action_id == "UIAutomation.GetWindow.GetForegroundWindow":
         # design/dsl_format_findings.md 知見117(decompile+実機確認済み):
         # `UIAutomation.Actions.dll`を逆コンパイルし、`GetWindow`アクションには

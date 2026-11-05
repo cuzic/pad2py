@@ -9,8 +9,9 @@ from __future__ import annotations
 from ...pad_dsl import ActionRecord, EnumRef, VarRef
 from ..context import CodegenContext
 from ..render import INDENT, render_value
+from ._window_state import VISIBILITY_VALUE_TO_BOOL as _VISIBILITY_VALUE_TO_BOOL
 from ._window_state import WINDOW_STATE_TO_PYWINAUTO_METHOD as _WINDOW_STATE_TO_PYWINAUTO_METHOD
-from ._window_state import render_move_or_resize
+from ._window_state import render_move_or_resize, render_set_visibility
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -90,6 +91,26 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         ):
             return render_move_or_resize(
                 prefix, render_value(window_instance), width=render_value(width), height=render_value(height)
+            )
+    if node.action_id == "UIAutomation.SetWindowVisibility.SetVisibilityByTitleClass":
+        # design/dsl_format_findings.md 知見120(decompile+実機確認済み): `UIAutomation.
+        # Actions.dll`に完全に未結線だった`SetWindowVisibility`アクション(`Control`/
+        # `WindowInstance`/`Title`+`Class`の3セレクタ構造、知見117〜119と同種)を発見した。
+        # `win32gui.ShowWindow(hwnd, SW_SHOW/SW_HIDE)`で実機確認済み。
+        window_expr = _window_lookup_expr(node)
+        visibility = node.params.get("Visibility")
+        if window_expr and isinstance(visibility, EnumRef) and visibility.value in _VISIBILITY_VALUE_TO_BOOL:
+            return render_set_visibility(prefix, window_expr, visible=_VISIBILITY_VALUE_TO_BOOL[visibility.value])
+    if node.action_id == "UIAutomation.SetWindowVisibility.SetVisibilityByInstanceOrHandle":
+        window_instance = node.params.get("WindowInstance")
+        visibility = node.params.get("Visibility")
+        if (
+            isinstance(window_instance, VarRef)
+            and isinstance(visibility, EnumRef)
+            and visibility.value in _VISIBILITY_VALUE_TO_BOOL
+        ):
+            return render_set_visibility(
+                prefix, render_value(window_instance), visible=_VISIBILITY_VALUE_TO_BOOL[visibility.value]
             )
     if node.action_id == "UIAutomation.SetWindowState.SetStateByInstanceOrHandle":
         window_instance = node.params.get("WindowInstance")

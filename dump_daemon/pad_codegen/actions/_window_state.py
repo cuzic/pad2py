@@ -14,6 +14,13 @@ WINDOW_STATE_TO_PYWINAUTO_METHOD = {
     "UIAutomation.WindowState.Restored": "restore",
 }
 
+# UIAutomation.Visibility.* の列挙値 → 表示/非表示の真偽値(知見120、decompile確認済み:
+# `SetWindowVisibility`の実行ロジックは`Visibility == Visibility.Visible`で判定する)。
+VISIBILITY_VALUE_TO_BOOL = {
+    "UIAutomation.Visibility.Visible": True,
+    "UIAutomation.Visibility.Hidden": False,
+}
+
 
 def render_move_or_resize(
     prefix: str,
@@ -44,3 +51,18 @@ def render_move_or_resize(
     height_expr = height if height is not None else "_rect[3] - _rect[1]"
     lines.append(f"{prefix}win32gui.MoveWindow(_hwnd, {x_expr}, {y_expr}, {width_expr}, {height_expr}, True)")
     return lines
+
+
+def render_set_visibility(prefix: str, window_expr: str, *, visible: bool) -> list[str]:
+    """ウィンドウの表示/非表示切り替え(`UIAutomation.SetWindowVisibility`、知見120)。
+
+    pywinautoの`WindowSpecification`に`hide()`/`show()`に相当するメソッドは無い
+    (VM上の実venvで`dir(w.wrapper_object())`に`hide`/`show`/`visib`を含む名前が
+    `get_show_state`/`is_visible`/`verify_visible`しか無いことを確認した)。
+    `win32gui.ShowWindow(hwnd, SW_SHOW/SW_HIDE)`(既存の依存関係pywin32)が実機で
+    正しく動くことを確認した。
+    """
+    flag = "win32con.SW_SHOW" if visible else "win32con.SW_HIDE"
+    return [
+        f"{prefix}win32gui.ShowWindow({window_expr}.wrapper_object().handle, {flag})",
+    ]
