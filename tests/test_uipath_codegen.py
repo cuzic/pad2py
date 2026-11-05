@@ -304,6 +304,43 @@ def test_realistic_workflow_actually_executes_correctly():
     assert stdout.getvalue().strip() == "matched"
 
 
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # VBのMod: 符号は被除数に従う(Microsoft Learn「Mod Operator」の
+        # 公式例-10 Mod 3 = -1と同じ形)。単純にPythonの`%`へ変換すると
+        # `-7 % 3 == 2`になり符号が逆転する(floor除算の余りは除数の符号に
+        # 従うため)——この回帰テストはその誤変換を防ぐ。
+        ("-7 Mod 3", -1),
+        ("7 Mod 3", 1),
+        # VBの`\`(整数除算): ゼロ方向への切り捨て。Microsoft Learn
+        # 「\ Operator」の公式例(67 \ -3 = -22)そのもの。単純にPythonの
+        # `//`へ変換すると`67 // -3 == -23`になり値がずれる(floor除算のため)。
+        ("67 \\ -3", -22),
+        ("-7 \\ 3", -2),
+    ],
+)
+def test_mod_and_intdiv_match_vb_sign_semantics_not_python_floor_semantics(
+    vb_text: str, expected: int
+) -> None:
+    """VBの`Mod`/`\\`(整数除算)は、オペランドの符号が異なる場合に
+    Pythonの`%`/`//`(floor除算)とは異なる値を返す——VBは共にゼロ方向への
+    切り捨て(`Fix`)に基づく(Microsoft Learn「Mod Operator」「\\ Operator」、
+    公式の変換式・公式例そのもので確認)。構文の優先順位とは別の、
+    **実行時の値そのものが変わる**より重大な誤変換リスクだったため、
+    実際に生成Pythonコードを`exec()`して正しい値になることまで確認する。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
 def test_invoke_workflow_file_without_resolver_falls_back_to_todo():
     """単体の`generate_python()`呼び出し(`invoke_resolver`省略)では、
     呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""

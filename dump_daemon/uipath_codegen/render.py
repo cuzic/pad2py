@@ -135,9 +135,20 @@ def _render_bin_op(node: BinOp) -> str:
     if op == "-":
         return f"({left}) - ({right})"
     if op == "mod":
-        return f"({left}) % ({right})"
+        # VBの`Mod`は余りの符号が**被除数**の符号に従う(Microsoft Learn「Mod
+        # Operator」、公式の変換式`a - (b * Fix(a / b))`どおり——例:
+        # `-7 Mod 3`は`-1`)。Pythonの`%`は符号が**除数**に従う床除算の余り
+        # (`-7 % 3`は`2`)で、両オペランドの符号が異なる場合に値が食い違う
+        # ため単純な`%`への変換は不可——VBの公式変換式をそのまま再現する
+        # (`int()`はPythonのtruncate-toward-zeroで、VBの`Fix()`と一致)。
+        return f"({left}) - (({right}) * int(({left}) / ({right})))"
     if op == "\\":
-        return f"({left}) // ({right})"
+        # VBの`\`(整数除算)はゼロ方向への切り捨て(truncation、Microsoft
+        # Learn「\ Operator」——例: `67 \ -3`は`-22`)。Pythonの`//`は
+        # 負方向への床除算(floor、`67 // -3`は`-23`)で、両オペランドの
+        # 符号が異なる場合に値が食い違うため単純な`//`への変換は不可。
+        # `int()`はtruncate-toward-zeroなので`int(a / b)`で正しく再現できる。
+        return f"int(({left}) / ({right}))"
     if op == "*":
         return f"({left}) * ({right})"
     if op == "/":

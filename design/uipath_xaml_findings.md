@@ -2047,6 +2047,47 @@ design/uipath_transpiler_roadmap.mdの「既知の簡略化」に残っていた
 (知見31の方針通り、diffで無害化を確認済み)。
 `tests/test_uipath_dsl.py`に合成XMLでの検証を1件追加、全611件通過。
 
+## 41. `And`/`Or`/`Xor`の相対優先順位が公式VB.NET仕様と逆だった`uipath_expr`の文法バグを発見・修正(VM不使用、公式ドキュメントで確定)
+
+`dump_daemon/uipath_expr/`のLark文法は、`or_expr`(最も外側=緩い)が
+`xor_expr`を内包する構造になっていたが、Microsoft Learn「Operator
+Precedence - Visual Basic」(現行版)のLogical and Bitwise Operators節は
+高い順に`Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`(`Xor`が最も緩い)と
+明記しており、実装は`Or`と`Xor`の相対順が逆だった。モジュールdocstring
+自体は正しい意図(`And` > `Or` > `Xor`)を記していたのに、文法のネスト構造が
+それと矛盾していた——`And`/`Or`/`Xor`を括弧無しで混在させる実機データが
+知見32・36のいずれにも無かったため長らく未検出だった。`xor_expr`を最も
+外側に、`or_expr`をその内側に、`and_expr`を一番内側にネストし直して修正、
+`tests/test_uipath_expr.py`に`a And b Or c Xor d`が公式仕様通り
+`((a And b) Or c) Xor d`になることを確認する回帰テストを追加した。
+
+## 42. `Mod`/`\`(整数除算)を単純にPythonの`%`/`//`へ変換すると符号が異なるオペランドで値そのものが食い違うと確定(VM不使用、公式ドキュメントで確定)
+
+知見41の調査の延長で、`Mod`/`\`の変換式自体(`uipath_vb_expression_mapping.md`
+が「同上(確認済み)」として`%`/`//`への単純変換を記載していた箇所)を
+Microsoft Learn「Mod Operator」「\ Operator」の公式ドキュメントと照合した
+ところ、より重大な問題が見つかった——構文の優先順位ではなく**実行時に
+返す値そのものが食い違う**ケースがあると判明した:
+
+- VBの`\`(整数除算)は**ゼロ方向への切り捨て**(truncation)。公式例
+  `67 \ -3`は`-22`。Pythonの`//`は**負方向への床除算**(floor)で、
+  同じ`67 // -3`は`-23`——オペランドの符号が異なる場合に異なる値になる。
+- VBの`Mod`は公式の変換式`a - (b * Fix(a / b))`どおり**余りの符号が被除数に
+  従う**。公式例`-10 Mod 3`は`-1`。Pythonの`%`は**余りの符号が除数に従う**
+  床除算の余りで、同じ`-7 % 3`は`2`——同じく符号が異なる場合に食い違う。
+
+両者ともオペランドが同符号の場合は`%`/`//`と一致するため、知見32・36の
+実機確認(いずれも正の数同士、`1 Mod 3`・`5 \ 2`)ではこの食い違いが
+顕在化せず見過ごされていた。`dump_daemon/uipath_codegen/render.py`を
+修正し、`\`→`int(a / b)`、`Mod`→`a - (b * int(a / b))`
+(Pythonの`int()`もゼロ方向への切り捨てで、VBの`Fix()`と一致)という
+VBの公式変換式をそのまま再現する形に変更した。
+`tests/test_uipath_codegen.py`の
+`test_mod_and_intdiv_match_vb_sign_semantics_not_python_floor_semantics`
+で、両演算子の公式ドキュメント記載例をそのまま生成Pythonコードへ変換し
+`exec()`して実際の値が一致することまで確認した(静的なXAML確認やASTの
+形だけでなく、実行時の値そのものを検証した初めてのケース)。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
