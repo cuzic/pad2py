@@ -91,6 +91,10 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   コピー読み戻しは依然RDP無しでは失敗する(メニュー系操作が`COMError`になる、新規ポップアップが
   RDP無しで安定しない既知の問題と同根)ため、残りのPDFアクション・Excel/Word/PowerPointの結線は
   この技法を使いつつ1件ずつ地道に確認する必要がある(🖥️のまま)。
+  ✅ `extract_text_from_pdf`の`pad_codegen`結線はcommit fc5e7b7で完了(合成DSLテキストでの
+  テスト2件+フォールバック1件、`uv run pytest`全件green)。次は同じ技法で
+  `ExtractImagesFromPDF`/`ExtractTablesFromPDF`/`ExtractPagesToNewPDF`/`MergeFiles`
+  (いずれもPDF)、続けてExcel/Word/PowerPointのTier3アクションを1件ずつ確認する(🖥️)。
 
 ## C. 構造的・運用上の課題
 
