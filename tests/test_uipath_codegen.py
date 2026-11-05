@@ -30,7 +30,7 @@ from dump_daemon.uipath_codegen import (
     generate_python,
     render_expr,
 )
-from dump_daemon.uipath_codegen.render import VB_NUM_HELPER_SOURCE
+from dump_daemon.uipath_codegen.render import VB_CMP_HELPER_NAME, VB_NUM_HELPER_SOURCE
 from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
@@ -368,7 +368,9 @@ def test_switch_with_int_typed_keys():
         ]
     )
     code = generate_python(wf)
-    assert "if n == 1:" in code  # クォート無しの整数リテラル
+    # 知見77: `_vb_cmp()`経由の比較(`=`演算子と同じ規則)に統一した
+    # ——キー自体は従来通りクォート無しの整数リテラル`1`のまま。
+    assert f"{VB_CMP_HELPER_NAME}(n, 1)" in code
     assert "else:" in code
     _compiles(code)
 
@@ -388,8 +390,41 @@ def test_switch_with_string_typed_keys():
         ]
     )
     code = generate_python(wf)
-    assert "if n == 'a':" in code
+    assert f"{VB_CMP_HELPER_NAME}(n, 'a')" in code
     _compiles(code)
+
+
+def test_switch_comparison_matches_vb_select_case_semantics_not_python_bare_equality():
+    """知見77: Microsoft Learn「Select...Case Statement」のRemarksが
+    `Case expression`は`testexpression = expression`として評価されると
+    明記——`=`演算子と同じ型変換規則(知見47)に従うはずなので、`Switch`の
+    `Expression`が実行時に文字列型の値を保持していても(`type_arguments`の
+    宣言上はInt32)、数値キーと正しく一致することを確認する(修正前は
+    素の`==`で`"1" == 1`が`False`になり対応するアームが実行されなかった)。
+    """
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="result"), value=Literal(value="1")),
+            SwitchNode(
+                expression=VbExpr(text="result"),
+                type_arguments="x:Int32",
+                arms=[
+                    SwitchArm(
+                        key="1",
+                        body=[MessageBoxNode(text=Literal(value="matched"))],
+                    )
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "matched"
 
 
 def test_click_with_known_selector_generates_pywinauto_chain():

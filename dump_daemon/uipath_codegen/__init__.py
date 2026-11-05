@@ -479,6 +479,18 @@ def _generate_variable_inits(variables: list[VariableDecl], indent: int) -> list
 def _generate_switch(
     node: SwitchNode, indent: int, invoke_resolver: dict[str, str] | None = None
 ) -> list[str]:
+    """知見77: Microsoft Learn「Select...Case Statement」のRemarksが
+    「`Case expression`は`testexpression = expression`の特殊形として
+    評価される」と明記している——つまり各`Case`の比較は`=`演算子と全く
+    同じ規則(知見47の`_vb_cmp`、数値/文字列混在オペランドの型変換)に
+    従うはずだが、以前の実装は素の`==`を使っており、`Switch`の
+    `Expression`が実行時に(`type_arguments`の宣言とは異なり)文字列型の
+    値を実際に保持している場合に、本来VBでは一致するはずの比較が
+    `# TODO`無しでサイレントに不一致になるという食い違いがあった
+    (実際に`exec()`して`"1" == 1`が`False`になり対応する`Case`アームが
+    実行されないことを確認済み)。`=`演算子と同じ`_vb_cmp()`経由の比較に
+    統一して解消する——`key_literal`自体のレンダリング(`_render_switch_key`、
+    数値型は裸のリテラル・それ以外は文字列リテラル)は変更しない。"""
     prefix = INDENT * indent
     expr = render_expr(node.expression)
     lines: list[str] = []
@@ -492,7 +504,10 @@ def _generate_switch(
     for i, arm in enumerate(value_arms):
         keyword = "if" if i == 0 else "elif"
         key_literal = _render_switch_key(arm.key, node.type_arguments)
-        lines.append(f"{prefix}{keyword} {expr} == {key_literal}:")
+        lines.append(
+            f"{prefix}{keyword} (lambda _t: _t[0] == _t[1])"
+            f"({VB_CMP_HELPER_NAME}({expr}, {key_literal})):"
+        )
         body = _ensure_nonempty_suite(
             _generate_body(arm.body, indent + 1, invoke_resolver), indent + 1
         )
