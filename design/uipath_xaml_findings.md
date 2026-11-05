@@ -2984,6 +2984,65 @@ def _vb_and(a, b):
 (算術・比較・論理・文字列結合・単項)の`Nothing`絡みエッジケースは、
 これで全て確認・対応済みになった。
 
+## 60. `AndAlso`/`OrElse`が常にBoolean型の結果を返さないバグを発見・修正——知見59の直後、今度は公式ドキュメント(VM不使用)から
+
+知見59で`And`/`Or`/`Xor`(非短絡評価)の`Nothing`絡みを解決した流れで、
+対になる`AndAlso`/`OrElse`(短絡評価)も同じ観点で見直したところ、
+`Nothing`の有無に関わらない、より根本的なバグが見つかった——今回は
+`Operators.vb`ではなく公式ドキュメント(Microsoft Learn「AndAlso
+Operator」)で確定した。
+
+**確定した内容**: 「Visual Basic converts each operand as necessary to
+Boolean before evaluating the expression」(両オペランドを評価前に
+Booleanへ変換する)と明記されている——`AndAlso`/`OrElse`の結果は
+**常にBoolean型**になる。従来の実装は`(left) and (right)`/`(left) or
+(right)`という単純なPython変換だったが、Pythonの`and`/`or`はBoolean
+変換をせず**生のオペランド値をそのまま返す**(例: `0 and True`は
+`Boolean`の`False`ではなく`int`の`0`を返す)。これにより`0 AndAlso
+True`はVBでは`False`になるはずが、修正前は`CStr(0 and True)`=`"0"`
+(`Boolean`の`"False"`ではない)になっていた——`Nothing`を一切介さない、
+通常の数値オペランドだけでも発生する食い違いだった。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_bool(x)`
+ヘルパー(`CBool`の文字列判定ロジック(`_vb_cbool_of_string_literal`)と
+`ParseDouble`の桁区切り受理規則(知見52)をランタイム版にしたもの)を
+追加し、`AndAlso`/`OrElse`の両オペランドをこのヘルパー経由でBooleanへ
+変換してから、短絡評価自体はPythonネイティブの`and`/`or`に委ねる
+(`_vb_bool(...)`という関数呼び出し式を`and`/`or`で結ぶため、右辺の
+評価自体はPythonの通常の短絡評価規則で正しくスキップされる——副作用の
+ある式を二重評価・過剰評価しない)。
+
+```python
+def _vb_bool(x):
+    if isinstance(x, bool):
+        return x
+    if x is None:
+        return False
+    if isinstance(x, str):
+        normalized = x.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+        return float(normalized.replace(",", "")) != 0
+    return x != 0
+```
+
+`tests/test_uipath_codegen.py`に
+`test_andalso_orelse_coerce_operands_to_boolean_not_raw_python_and_or`
+(`0 AndAlso True`→`"False"`等8件)と
+`test_andalso_short_circuits_without_evaluating_right_side_effect`
+(生成コードが`_vb_bool(b)`という単一の式のままで、短絡評価による
+右辺のスキップが引き続き機能することを生成コード自体で確認)を追加。
+UiPath関連テスト全189件通過。
+
+**この知見で確定したこと**: 知見55〜60で6回連続、クロスチェックから
+実在するバグが見つかった——今回は`Operators.vb`ではなく通常の公式
+ドキュメントの再読で見つかったことから、「ランタイムソースだけでなく、
+対になる演算子(`And`↔`AndAlso`等)を見直す」ことそのものが有効な
+手法だと分かる。知見44〜60の系統点検はこれで(現時点で既知の課題は)
+完全に完了した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

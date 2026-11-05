@@ -324,6 +324,39 @@ def _vb_xor(a, b):
     return a ^ b
 """
 
+# `AndAlso`/`OrElse`はVBの公式ドキュメント(Microsoft Learn「AndAlso
+# Operator」)が「Visual Basic converts each operand as necessary to
+# Boolean before evaluating the expression」と明記している通り、**両
+# オペランドを評価前にBooleanへ変換し、結果も常にBoolean**になる
+# (VM不使用、公式ドキュメントで確定、知見60参照)。単純な`(left) and
+# (right)`/`(left) or (right)`への変換は、Pythonの`and`/`or`がBoolean
+# 変換をせず**生のオペランド値をそのまま返す**ため食い違う(例:
+# `0 AndAlso True`はVBでは`False`(Boolean)になるが、Pythonの
+# `0 and True`は`0`(int)を返す——`CStr`で文字列化すると`"False"`対
+# `"0"`という明確な違いになる)。`_vb_bool(x)`(`CBool`の文字列判定
+# (`_vb_cbool_of_string_literal`)/`ParseDouble`の`NumberStyles.
+# AllowThousands`(知見52)と同じ規則をランタイム版にしたもの)で各
+# オペランドを明示的にBooleanへ変換してから、短絡評価自体はPython
+# ネイティブの`and`/`or`に委ねる(`_vb_bool(...)`という関数呼び出し式を
+# `and`/`or`で結ぶため、右辺の評価自体はPythonの通常の短絡評価規則で
+# 正しくスキップされる——副作用のある式の二重評価/過剰評価は発生しない)。
+VB_BOOL_HELPER_NAME = "_vb_bool"
+VB_BOOL_HELPER_SOURCE = """\
+def _vb_bool(x):
+    if isinstance(x, bool):
+        return x
+    if x is None:
+        return False
+    if isinstance(x, str):
+        normalized = x.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+        return float(normalized.replace(",", "")) != 0
+    return x != 0
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは両オペランドが実際に値を持つ場合は
 # Pythonのビット演算子(&/|/^)への1対1変換で正しい(Pythonのboolがintの
@@ -569,7 +602,9 @@ def _render_bin_op(node: BinOp) -> str:
     if op in _BITWISE_OPS:
         return f"{_BITWISE_OPS[op]}({left}, {right})"
     if op in _SHORT_CIRCUIT_OPS:
-        return f"({left}) {_SHORT_CIRCUIT_OPS[op]} ({right})"
+        a = f"{VB_BOOL_HELPER_NAME}({left})"
+        b = f"{VB_BOOL_HELPER_NAME}({right})"
+        return f"({a}) {_SHORT_CIRCUIT_OPS[op]} ({b})"
     raise NotImplementedError(f"unsupported binary operator: {node.op!r}")
 
 

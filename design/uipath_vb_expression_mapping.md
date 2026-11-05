@@ -31,7 +31,7 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | 整数除算 `\` | 同上 | `int(round(_vb_num(a)) / round(_vb_num(b)))`(2026-11-05修正、知見49・54参照——単純な`//`では不可、除算前にオペランドを銀行丸めでLongへ変換、下記「注意点」参照) |
 | 累乗 `^` | 同上 | `float('nan') if (_vb_num(a)<0 and _vb_num(b)!=int(_vb_num(b))) else (_vb_num(a)**_vb_num(b))`(2026-11-05修正、知見45・57参照——負の底+非整数の指数のみ`NaN`に分岐、文字列/`Nothing`オペランドも`_vb_num()`で数値強制) |
 | `And` / `Or`(非短絡評価) | 同上(構文としての受理は知見32)。変換ルールは2026-11-05にPython実挙動で検証し確定(下記「注意点」参照) | `_vb_and(a, b)` / `_vb_or(a, b)`(2026-11-05修正、知見59参照——両方値がある場合は内部で`&`/`\|`を使うため従来通り、`Nothing`絡みの変換規則も含む) |
-| `AndAlso` / `OrElse`(短絡評価) | 同上 | `and`/`or` |
+| `AndAlso` / `OrElse`(短絡評価) | 同上 | `_vb_bool(a) and/or _vb_bool(b)`(2026-11-05修正、知見60参照——結果は常にBoolean型、単純な`and`/`or`はPythonが生のオペランド値を返すため食い違う。下記「注意点」参照) |
 | `Not` | 同上(Integerオペランドは知見45で実機確認) | `(lambda _x: (not _x) if isinstance(_x, bool) else ~(0 if _x is None else _x))(x)`(2026-11-05修正、知見45・58参照——Booleanは論理否定、Integerはビット反転、`Nothing`は整数`0`扱い) |
 | 単項`-`/`+` | 構文としての受理は知見32 | `(lambda _x: OP(0 if _x is None else _x))(x)`(2026-11-05修正、知見58参照——`Nothing`は整数`0`扱い、`Operators.vb`の`NegateObject`/`PlusObject`で確定) |
 | `Xor` | 同上 | `_vb_xor(a, b)`(2026-11-05修正、知見59参照——内部では`And`/`Or`の`&`/`\|`と同じ理由で`^`を使う、`Nothing`絡みの変換規則も含む) |
@@ -171,8 +171,16 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
   - **既知の限界**(v1では対応不要、記録のみ): VB側でカスタム型に
     `And`/`Or`演算子オーバーロードが定義されている場合(稀)、Python側で
     そのクラスに`__and__`/`__or__`を実装しない限り動かない。優先度低。
-  - `AndAlso`/`OrElse`(短絡評価)はPythonの`and`/`or`と意味論が完全一致
-    するため、引き続きそのまま変換してよい(変更なし)。
+  - **(訂正、2026-11-05、知見60)** `AndAlso`/`OrElse`は当初「Pythonの
+    `and`/`or`と意味論が完全一致する」としていたが誤りだった——VBの
+    `AndAlso`/`OrElse`は公式ドキュメント(Microsoft Learn「AndAlso
+    Operator」)により「両オペランドを評価前にBooleanへ変換し、結果も
+    常にBoolean」と明記されている。Pythonの`and`/`or`はBoolean変換を
+    せず生のオペランド値をそのまま返すため、`0 AndAlso True`のような
+    非Boolean値が混ざるケースで食い違う(VBは`False`、Pythonの
+    `0 and True`は`0`)。`_vb_bool()`ヘルパーで両オペランドを明示的に
+    Booleanへ変換してから`and`/`or`(短絡評価自体はそのまま活用)を
+    適用するよう修正した。
 - **`Xor`(2026-11-05、`And`/`Or`の検証過程で判明)**: 当初「ブール同士なら
   `!=`、整数同士なら`^`」と型依存の変換が必要だと考えていたが、`And`/`Or`
   の`&`/`|`統一変換と全く同じ理由(Pythonの`bool`は`int`のサブクラスで、

@@ -1016,6 +1016,55 @@ def test_and_or_xor_coerce_nothing_operand_not_raising_typeerror(
     assert stdout.getvalue().strip() == expected
 
 
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 公式ドキュメント(Microsoft Learn「AndAlso Operator」)が
+        # 「両オペランドを評価前にBooleanへ変換し、結果も常にBoolean」と
+        # 明記(知見60)——単純な`and`/`or`への変換はPythonが生のオペランド
+        # 値をそのまま返すため食い違う(`0 AndAlso True`はVBで`False`だが
+        # `0 and True`は`0`を返す)。
+        ("0 AndAlso True", "False"),
+        ("5 AndAlso True", "True"),
+        ("0 OrElse 5", "True"),
+        ("Nothing AndAlso True", "False"),
+        ("True AndAlso Nothing", "False"),
+        ("Nothing OrElse True", "True"),
+        # 両方Booleanの既存ケースは従来通り(回帰確認)。
+        ("True AndAlso False", "False"),
+        ("True OrElse False", "True"),
+    ],
+)
+def test_andalso_orelse_coerce_operands_to_boolean_not_raw_python_and_or(
+    vb_text: str, expected: str
+) -> None:
+    """知見60: `AndAlso`/`OrElse`が常にBoolean型の結果を返すよう
+    オペランドを`_vb_bool()`で変換することの回帰テスト。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+def test_andalso_short_circuits_without_evaluating_right_side_effect() -> None:
+    """知見60: `_vb_bool()`経由に変更しても、右辺の副作用はPythonの
+    `and`/`or`自体の短絡評価によって左辺が確定した時点でスキップされる
+    (`AndAlso`/`OrElse`はVBでも短絡評価、右辺を二重評価・過剰評価しない
+    ことの確認)。右辺に`InvokeCode`相当の副作用を直接埋め込めないため、
+    生成コード文字列が`_vb_bool(right)`という単一の関数呼び出し式のまま
+    (`and`/`or`の右オペランドとして1回だけ出現する)ことを確認する。
+    """
+    code = render_expr(VbExpr(text="a AndAlso b"))
+    assert code == "(_vb_bool(a)) and (_vb_bool(b))"
+    assert code.count("_vb_bool(b)") == 1
+
+
 def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():
     """知見32の実機確認式(9演算子複合式)をそのまま生成Pythonコードへ変換し
     `exec()`して、VB.NET側の実際の結果と一致することまで確認する統合

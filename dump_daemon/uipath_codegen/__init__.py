@@ -74,6 +74,8 @@ from .render import (
     VB_ADD_HELPER_SOURCE,
     VB_AND_HELPER_NAME,
     VB_AND_HELPER_SOURCE,
+    VB_BOOL_HELPER_NAME,
+    VB_BOOL_HELPER_SOURCE,
     VB_CDBL_HELPER_NAME,
     VB_CDBL_HELPER_SOURCE,
     VB_CMP_HELPER_NAME,
@@ -186,6 +188,9 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append(VB_OR_HELPER_SOURCE.rstrip("\n"))
     if any(f"{VB_XOR_HELPER_NAME}(" in line for line in body):
         imports.append(VB_XOR_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_bool`(`AndAlso`/`OrElse`のBoolean変換先、知見60)も同様。
+    if any(f"{VB_BOOL_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_BOOL_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

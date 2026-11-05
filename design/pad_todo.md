@@ -51,6 +51,10 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   リネーム・null埋めまで含めて全て一致。`join_datatable()`を実装・結線した
   (`codegen_coverage.py`: 178/202→179/202)。これでA節の「FilterDataTable/JoinDataTable
   のスキーマ未確認」ブロッカーは両方解消。
+  🐛 **自己発見バグを修正(知見97)**: 留保事項だった順序比較演算子(`GreaterThan`等)を
+  実機確認したところ、`JoinDataTable`では数値変換せず文字列の辞書順で比較する
+  (`"9" GreaterThan "10"`が真)と判明——知見91で実装した数値変換ロジックは誤りだった
+  ため削除した(`FilterDataTable`側は元々数値変換ロジックが無く偶然正しかった)。
 - [x] 🖥️ `Variables.SubtractLists`/`FindCommonListItems`が使うPAD独自比較エンジン
   (`ComparisonCalculator.Compare`)の挙動確認(大文字小文字・型変換ルール)。
   ✅ **実機確認・結線完了(知見85)**: VMが空いたタイミングで知見81の「Run実行+

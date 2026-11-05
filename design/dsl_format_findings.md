@@ -2022,3 +2022,17 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **修正内容**: `dump_daemon/pad_action_lib/web_actions.py`の`invoke_web_service()`に`encode_request_body: bool = False`引数を追加し、`urllib.parse.quote_plus()`→(`trim_request_body`なら)`.strip()`の順で適用するようにした(`InvokeSoapService`には`EncodeRequestBody`自体のパラメータが無い——SOAPボディは常にXMLのため不要)。`pad_codegen/actions/web.py`の`Web.InvokeWebService.InvokeWebService`を結線した。
 
 **`ClearCookies`は依然未対応のまま意図的に保留**: 意味論自体はdecompileで確定したが、再現するには`pad_action_lib`側に「呼び出し毎に新規`httpx.Client`を作る」という現在の設計を変更し、フロー実行全体(1つの生成されたPythonスクリプトの実行全体)で共有される永続的なCookie状態(`httpx.Client`インスタンス自体の共有、または`CodegenContext`経由のセッション状態注入)を新設する必要がある——これは個別のパラメータ結線ではなく、codegenのアーキテクチャに踏み込む決定であり、かつ実機フィクスチャでは常に`ClearCookies: False`(かつ1フィクスチャにつきWeb系アクションは1個のみ)しか確認できておらず、複数のWeb呼び出しを跨ぐCookie永続化が実際に必要になる実例も無いため、今回は見送った。
+
+## 97. 【自己発見バグ】`JoinDataTable`の順序比較演算子(GreaterThan等)が実機では数値変換せず文字列の辞書順で比較すると判明——知見91で実装した数値変換は誤りだったため削除
+
+知見90・91で結線した`FilterDataTable`/`JoinDataTable`の演算子のうち、実機で直接検証したのは`Equal`・`Contains`・2条件ANDのみで、順序比較演算子(`GreaterThan`等)は「decompileしたソースに忠実な実装だが個別の実機検証はしていない」という留保事項として明記していた。VMが空いたタイミングで、この留保事項を追加検証する目的で`FilterDataTable`と`JoinDataTable`それぞれの`GreaterThan`を実機確認したところ、**知見91で実装した数値変換ロジックが実機の挙動と食い違っている**ことが判明した。
+
+**`FilterDataTable`での確認(数値変換なしの実装のまま偶然正しかった)**: 列`Value`(文字列`"9"`/`"10"`/`"2"`)に対し`Value GreaterThan "5"`でフィルタしたところ、結果は`"9"`のみ(`"10"`・`"2"`は除外)——これは数値比較(`9>5`真・`10>5`真・`2>5`偽、2件該当のはず)とは食い違い、**文字列の辞書順比較**(`"9">"5"`真・`"10">"5"`偽(`'1'<'5'`)・`"2">"5"`偽)と完全に一致する。`filter_datatable()`の実装は元々`cell > value`(Pythonの文字列比較)をそのまま使っており、数値変換ロジックを追加していなかったため、**偶然ではあるが既に正しい実装**だった。
+
+**`JoinDataTable`での確認(知見91のバグを発見)**: `Table1`(`Value="9"`の1行)と`Table2`(`Value="5"`/`"10"`/`"2"`の3行)を`Value GreaterThan Value`で結合したところ、結果は**全3行とも一致**(`9,5`・`9,10`・`9,2`)——数値比較なら`9>10`が偽になり2件のみのはずだが、文字列比較なら`"9">"5"`・`"9">"10"`(`'9'>'1'`)・`"9">"2"`が全て真になり3件マッチする。実機は3件だったため、**こちらも文字列の辞書順比較**だと確定した。ところが`join_datatable()`の`_join_condition_matches()`は`Equal`/`NotEqual`以外の演算子に対して`_join_as_number()`で数値変換を試みてから比較する実装になっており、これは実機の挙動と食い違う**誤りだった**。
+
+**意義**: `FilterDataTable`(`DataView.RowFilter`という.NET標準の式評価エンジン)と`JoinDataTable`(`ComparisonCalculator.Compare`というPAD独自の比較エンジン、知見85/88の`=`/`<>`と同じエンジン)は、**`Equal`/`NotEqual`では後者がクロス型の数値文字列同値判定をする(知見85/88)が、順序比較演算子ではどちらのエンジンも数値変換をしない**(常に文字列として比較する)という点で一致することが確認できた。クロス型の緩い変換は`Equal`/`NotEqual`限定の挙動であり、順序比較には適用されない。
+
+**修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`の`_join_condition_matches()`から`_join_as_number()`による数値変換ロジックを削除し、`GreaterThan`等を`a > b`(Pythonの素直な比較、文字列なら辞書順)のまま使うようにした(`_join_as_number()`自体も未使用になったため削除)。`filter_datatable()`側は元々数値変換ロジックを持っていなかったため変更不要だった。回帰テスト(`test_join_datatable_greater_than_compares_as_strings_not_numbers`)を追加した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+**教訓**: 「decompileしたソースコードを忠実に実装する」だけでは不十分で、decompileされた呼び出しチェーンの先(この場合`ComparisonCalculator.Compare`自体の内部実装)まで読み切らないと、呼び出し元の型変換前処理を誤って真の比較ロジックだと錯覚しうる——実機のRun実行による裏取りが無ければ見逃していたバグだった。

@@ -223,6 +223,22 @@ def test_join_datatable_no_conditions_is_cartesian_product() -> None:
     ]
 
 
+def test_join_datatable_greater_than_compares_as_strings_not_numbers() -> None:
+    # design/dsl_format_findings.md 知見97(実機確認済み): 順序比較演算子は数値文字列を
+    # 数値に変換せず、そのまま辞書順で比較する——"9" GreaterThan "10"/"5"/"2"は全て真
+    # になる("9">"1..."/"9">"5"/"9">"2"は辞書順でも真だが、"9">"10"は数値なら偽になる
+    # はずなのに実機では真だったことから、数値変換していないと確定した)。
+    t1 = [{"Value": "9"}]
+    t2 = [{"Value": "5"}, {"Value": "10"}, {"Value": "2"}]
+    params = [{"COLUMN 1": "Value", "OPERATOR": "GreaterThan", "COLUMN 2": "Value"}]
+    result = va.join_datatable(t1, t2, params, join_operation="Inner")
+    assert result == [
+        {"Value": "9", "Value (2)": "5"},
+        {"Value": "9", "Value (2)": "10"},
+        {"Value": "9", "Value (2)": "2"},
+    ]
+
+
 def test_filter_datatable_no_conditions_returns_copy() -> None:
     # design/dsl_format_findings.md 知見90(実機確認済み): FilterParametersが空なら
     # FilterDataTableAction.Execute()自身がDataTable.Copy()を返す。

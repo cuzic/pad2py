@@ -357,21 +357,6 @@ def filter_datatable(table: DataTable, conditions: DataTable, match_case: bool =
     return [dict(row) for row in table if row_matches(row)]
 
 
-def _join_as_number(value: object) -> int | float | None:
-    if isinstance(value, (int, float)):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            pass
-        try:
-            return float(value)
-        except ValueError:
-            pass
-    return None
-
-
 def _join_condition_matches(row1: Row, row2: Row, condition: Row) -> bool:
     column1 = str(condition.get("COLUMN 1"))
     column2 = str(condition.get("COLUMN 2"))
@@ -381,9 +366,10 @@ def _join_condition_matches(row1: Row, row2: Row, condition: Row) -> bool:
         return _pad_compare_equal(a, b)
     if operator == "NotEqual":
         return not _pad_compare_equal(a, b)
-    na, nb = _join_as_number(a), _join_as_number(b)
-    if na is not None and nb is not None:
-        a, b = na, nb
+    # design/dsl_format_findings.md 知見97(実機確認済み): 順序比較演算子(GreaterThan等)は
+    # `Equal`/`NotEqual`と違いクロス型の数値文字列同値判定をしない——`"9" GreaterThan "10"`
+    # が真になる(文字列としての辞書順比較、数値なら偽になるはず)ことを実機で確認した。
+    # 以前は数値変換を試みていたが、これは実機の挙動と食い違う誤りだったため削除した。
     if operator == "GreaterThan":
         return a > b  # type: ignore[operator]
     if operator == "GreaterThanOrEqual":
