@@ -53,6 +53,7 @@ from ..uipath_dsl.types import (
     IfNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
+    Literal,
     MessageBoxNode,
     Node,
     ParallelNode,
@@ -589,6 +590,16 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
     return lines
 
 
+# `ContinueOnError`(知見72、実機XAMLで確認した`ui:InvokeWorkflowFile`の
+# 属性)が`True`相当の場合、VBは呼び出し先が例外を出しても継続する——
+# 現在の生成コード(単純な関数呼び出し)は例外をそのまま伝播させるため、
+# 食い違う。実機で`ContinueOnError="True"`の実例・正確な継続後の挙動
+# (戻り値をどう扱うか等)を未確認のため、でっち上げたtry/except変換は
+# せず`# TODO`に倒す——未設定(`None`)/明示的な`"False"`は現在の挙動
+# (伝播)と一致するため確認済みの安全な値として扱う。
+_CONTINUE_ON_ERROR_SAFE_VALUES = (None, Literal(value="False"))
+
+
 def _generate_invoke_workflow_file(
     node: InvokeWorkflowFileNode, indent: int, invoke_resolver: dict[str, str] | None
 ) -> list[str]:
@@ -596,8 +607,16 @@ def _generate_invoke_workflow_file(
     `workflow_file`文字列→Python関数名の対応表)に解決先が見つかった場合のみ
     実際の関数呼び出しへ変換する。単体の`generate_python()`呼び出し
     (`invoke_resolver=None`)や、参照先が解決できなかった場合は、
-    呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""
+    呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。
+    `ContinueOnError`(知見72)が確認済みの安全な値から外れている場合も
+    同様に`# TODO`へ倒す。"""
     prefix = INDENT * indent
+    if node.continue_on_error not in _CONTINUE_ON_ERROR_SAFE_VALUES:
+        return [
+            f"{prefix}# TODO: Invoke Workflow File with non-default ContinueOnError "
+            f"({node.continue_on_error!r}) — error-continuation semantics not "
+            "confirmed via real capture, refusing to guess"
+        ]
     func_name = (invoke_resolver or {}).get(node.workflow_file)
     if func_name is None:
         return [f"{prefix}# TODO: unresolved Invoke Workflow File: {node.workflow_file}"]

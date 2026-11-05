@@ -229,10 +229,20 @@ class ClickNode:
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
-    `InArgument`/`OutArgument`を`{引数名: 式}`に展開したもの。"""
+    `InArgument`/`OutArgument`を`{引数名: 式}`に展開したもの。
+
+    `continue_on_error`は実機XAML(`Main.xaml`、知見72)で確認した
+    `ContinueOnError`属性(`{x:Null}`=未設定が確認済みの唯一の値)を
+    そのまま保持する——`None`(未設定)以外の値(`"True"`等)を検出した
+    場合、`_generate_invoke_workflow_file`は現在の「例外をそのまま
+    伝播させる」コード生成がVBの「エラーを無視して継続する」挙動と
+    食い違うことを認識し、でっち上げたtry/except変換はせず`# TODO`へ
+    倒す(実機で`ContinueOnError="True"`の実例が無いため、どう継続する
+    べきかの正確な挙動を未確認のまま)。"""
 
     workflow_file: str
     arguments: dict[str, Expr] = field(default_factory=dict)
+    continue_on_error: Expr = None
 
 
 @dataclass

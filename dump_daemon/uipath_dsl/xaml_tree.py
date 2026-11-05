@@ -382,7 +382,9 @@ def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
             if key:
                 args[key] = _parse_expr(arg.text)
     return InvokeWorkflowFileNode(
-        workflow_file=_attr(elem, "WorkflowFileName") or "", arguments=args
+        workflow_file=_attr(elem, "WorkflowFileName") or "",
+        arguments=args,
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
     )
 
 

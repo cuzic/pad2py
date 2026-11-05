@@ -212,6 +212,9 @@ def test_invoke_workflow_file(main_wf):
     assert isinstance(invoke, InvokeWorkflowFileNode)
     assert invoke.workflow_file == "Sub1.xaml"
     assert invoke.arguments["in_text"] == Literal(value="hello")
+    # 知見72: `ContinueOnError="{x:Null}"`(実機の確認済み実例)は未設定
+    # (`None`)として捕捉される。
+    assert invoke.continue_on_error is None
 
 
 def test_while_and_do_while(main_wf):

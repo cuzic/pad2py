@@ -1502,6 +1502,44 @@ def test_invoke_workflow_file_with_resolver_becomes_function_call():
     _compiles(code)
 
 
+@pytest.mark.parametrize("continue_on_error", [None, Literal(value="False")])
+def test_invoke_workflow_file_with_confirmed_safe_continue_on_error_becomes_call(
+    continue_on_error: Literal | None,
+) -> None:
+    """知見72: `ContinueOnError`が未設定(`None`)または明示的な`"False"`
+    (いずれも現在の「例外を伝播させる」挙動と一致する確認済みの安全な値)
+    の場合は従来通り実関数呼び出しを生成する。"""
+    wf = _wrap(
+        [
+            InvokeWorkflowFileNode(
+                workflow_file="Sub1.xaml", arguments={}, continue_on_error=continue_on_error
+            )
+        ]
+    )
+    code = generate_python(wf, invoke_resolver={"Sub1.xaml": "Sub1"})
+    assert "# TODO" not in code
+    assert "Sub1()" in code
+    _compiles(code)
+
+
+def test_invoke_workflow_file_with_continue_on_error_true_is_todo_not_guessed():
+    """知見72: `ContinueOnError="True"`の実機確認済み実例・正確な継続後の
+    挙動が未確認のため、でっち上げたtry/except変換はせず`# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            InvokeWorkflowFileNode(
+                workflow_file="Sub1.xaml",
+                arguments={},
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf, invoke_resolver={"Sub1.xaml": "Sub1"})
+    assert "# TODO: Invoke Workflow File with non-default ContinueOnError" in code
+    assert "Sub1()" not in code
+    _compiles(code)
+
+
 def test_generate_project_python_links_main_and_sub1():
     """design/evidence/uipath_xaml_probe/Main.xamlが参照する
     Sub1.xamlを実際に解決し、1モジュールへ結線する結合テスト。

@@ -3537,6 +3537,49 @@ refusing to guess`へ倒す——`uipath_selector`の`role`属性と同じ「無
 「カバレッジ100%」を最終目標にせず、実機属性の再読み込みによる
 サイレントギャップの発見を継続する価値があると確認した。
 
+## 72. `ui:InvokeWorkflowFile`の`ContinueOnError`属性が無視され、`True`設定時に意図しない例外伝播を起こすギャップを発見・安全側に倒して解決(VM不使用、知見71と同じ「実機属性の再読み込み」で発見)
+
+知見71でClick属性の再確認を行った際と同じ手法(実機XAMLの全属性を
+grepで再確認)を他のサポート済みアクティビティにも適用したところ、
+`ui:InvokeWorkflowFile`/`ui:HttpClient`/`ui:InvokeCode`の3要素のみが
+`ContinueOnError`属性を持つと判明した(`MessageBox`/`Click`/`AppendLine`
+等には存在しない、全アクティビティ共通ではなく一部のみの属性)。
+`HttpClient`/`InvokeCode`は知見70で確認済みの通りそもそも全体が
+`# TODO`に倒れる(影響無し)が、**実際にコード生成される
+`InvokeWorkflowFileNode`だけ**は`ContinueOnError`を一切キャプチャせず、
+常に単純な関数呼び出し(例外はそのまま伝播)を生成していた——
+`ContinueOnError="True"`の実例が存在すれば、VBでは例外を無視して継続
+するはずのフローが、生成Pythonコードでは例外でクラッシュするという
+サイレントな食い違いになる。
+
+**確認できたこと**(実機XAML、`Main.xaml`203行目): `ContinueOnError=
+"{x:Null}"`(未設定)の1例のみ。`True`設定時に「継続する」とは具体的に
+何を意味するか(呼び出し先のOut引数はどうなるか等)は実機でも公式
+ドキュメントでも確認していない。
+
+**修正内容**: `InvokeWorkflowFileNode`に`continue_on_error: Expr`
+(知見13と同じ`_attr_expr`経由、`{x:Null}`→`None`)を追加。
+`_generate_invoke_workflow_file`は、この値が確認済みの安全な値
+(`None`=未設定、または明示的な`Literal("False")`——いずれも現在の
+「伝播させる」挙動と一致)の場合のみ従来通り関数呼び出しを生成し、
+それ以外(`"True"`等)を検出した場合は`# TODO`へ倒す(でっち上げた
+try/except変換はしない、知見71の`ClickType`と同じ方針)。
+
+`tests/test_uipath_dsl.py`の`test_invoke_workflow_file`に`None`判定の
+確認を追加、`tests/test_uipath_codegen.py`に確認済み安全値(`None`/
+`"False"`)で関数呼び出しが生成されるテストと`"True"`で`# TODO`へ倒れる
+テストを追加。UiPath関連テスト全236件通過、リポジトリ全体で全857件通過
+(知見70のカバレッジは72%のまま、実機フィクスチャの実例が確認済みの
+安全値そのものだったため変化無し)。
+
+**この知見で確定したこと**: 知見71の「実機属性を再読み込みして見つけた
+サイレントギャップ」という発見パターンが単発ではなく再現可能な手法だと
+確認した——`ContinueOnError`のように一部のアクティビティにしか付かない
+属性もあるため、1つの属性名の存在確認だけで「全アクティビティ共通の
+属性」と決めつけず、実際に`grep`で各要素ごとの出現有無を確認する必要が
+あった(今回は3要素のみ、かつそのうち実際にコード生成されるのは
+`InvokeWorkflowFileNode`1件のみという、想定より狭い影響範囲だった)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
