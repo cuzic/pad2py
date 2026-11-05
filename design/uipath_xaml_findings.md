@@ -3159,6 +3159,36 @@ Booleanへ変換可能な型なら受理し、評価前にBooleanへ変換する
 コード生成時専用ロジックも同じ規則になっているか確認する」という、
 今回新たに得られた教訓。
 
+## 64. `Append Line`/`Read Text File`の既定エンコーディング(UTF-8決め打ち)はUiPath公式ドキュメントで正当性を確認——`Encoding`/`UseDefaultEncoding`属性は意図的に未パースのまま記録(VM不使用)
+
+VB.NET演算子の系統点検が一区切りついたため、別のカテゴリ(アクティビティ
+プロパティの忠実度)を確認した——`_generate_append_line`/
+`_generate_read_text_file`が`encoding="utf-8"`を決め打ちしている点が
+正しいかどうか、UiPath公式ドキュメントで確認した。
+
+**確認した内容**(UiPath公式ドキュメント「Append Line」「Read Text
+File」アクティビティページ): 「Use default encoding is off by
+default. When it's off, UTF-8 encoding is used.」——`UseDefaultEncoding`
+は既定で`False`、かつ`False`のときはUTF-8が使われる。実機で捕捉した
+実例(design/evidence/uipath_xaml_probe/Main.xaml)の
+`<ui:AppendLine ... UseDefaultEncoding="False" />`は、まさにこの
+既定状態のまま保存されたものと確認できた(`Encoding`属性自体は
+現れていない——値を明示的に変更していない場合は省略されると判明)。
+したがって現状の`encoding="utf-8"`決め打ちは、少なくとも**既定設定の
+場合**は正しい。
+
+**既知の限界(意図的に未対応のまま記録)**: `AppendLineNode`/
+`ReadTextFileNode`(`dump_daemon/uipath_dsl/types.py`)は`Encoding`/
+`UseDefaultEncoding`属性自体をXAMLパース時に一切キャプチャしていない
+——ユーザーが明示的に`UseDefaultEncoding="True"`(OSのANSIコードページ
+依存)や特定の`Encoding`(例: `"Unicode"`=UTF-16、`"ASCII"`等)へ変更
+した場合、その情報は完全に失われ、常にUTF-8として生成される。実機で
+この非既定設定を使った実例がまだ見つかっていないため(知見15・16の
+実例はいずれも既定設定のまま)、どの文字列値がUiPathのどのエンコーディング
+名に対応するかの網羅的なマッピング表をでっち上げるのは避け、未対応の
+まま記録するに留める——実際の自動化データで非既定エンコーディングの
+実例が見つかった時点で改めて着手する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
