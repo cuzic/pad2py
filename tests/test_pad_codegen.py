@@ -2211,6 +2211,65 @@ def test_generate_python_from_find_item_in_datatable_by_column_index_converts() 
     assert namespace["M"] == [(0, 1), (1, 1)]
 
 
+def test_generate_python_from_filter_datatable_end_to_end_via_csv_seeded_tables() -> None:
+    # design/dsl_format_findings.md 知見124の追記: 知見124で発見したように、
+    # `Variables.FilterDataTable`/`JoinDataTable`はこれまで(知見90・91等)
+    # decompileとPAD実機でのみ検証されており、`pad_codegen`が生成したPythonを
+    # 実際にexec()するテストが一度も無かった(`AddRowToDataTable`経由でテーブルを
+    # 組み立てる方法は空テーブルへの最初の行追加ができないため使えない——
+    # `GenerateDataTableFromCSV`で種データを用意する安全な回避経路を使う)。
+    # 知見90の確認済み例(`Age Equal 30`)をそのままend-to-endで実行し、
+    # codegen→pad_action_lib全体のパイプラインが正しく動くことを確認する。
+    dsl = (
+        "SET CSV TO $'''Name,Age\nCarol,30\nAlice,25'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "SET ParamsCSV TO $'''COLUMN,OPERATOR,VALUE,RULE\nAge,Equal,30,And'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: ParamsCSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> FP\n"
+        "Variables.FilterDataTable DataTable: T FilterParameters: FP MatchCase: True "
+        "FilteredDataTable=> Filtered"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Filtered"] == [{"Name": "Carol", "Age": "30"}]
+
+
+def test_generate_python_from_join_datatable_end_to_end_via_csv_seeded_tables() -> None:
+    # design/dsl_format_findings.md 知見124の追記: 知見91の確認済み例(Innerで`Name`列を
+    # 結合)をend-to-endで実行する。重複列名への" (2)"付与(知見91実機確認済み)も含めて
+    # pad_codegen→pad_action_lib全体のパイプラインが正しく動くことを確認する。
+    dsl = (
+        "SET CSV1 TO $'''Name,Age\nCarol,30\nAlice,25'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV1 TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T1\n"
+        "SET CSV2 TO $'''Name,City\nCarol,Tokyo\nBob,Osaka'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV2 TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T2\n"
+        "SET ParamsCSV TO $'''COLUMN 1,OPERATOR,COLUMN 2\nName,Equal,Name'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: ParamsCSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> JP\n"
+        "Variables.JoinDataTable FirstDataTable: T1 SecondDataTable: T2 JoinParameters: JP "
+        "JoinOperation: Variables.JoinOperation.Inner JoinedDataTable=> Joined"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Joined"] == [{"Name": "Carol", "Age": "30", "Name (2)": "Carol", "City": "Tokyo"}]
+
+
 def test_generate_python_from_compression_zip_unzip_without_password_converts() -> None:
     # 実機キャプチャ(tier1_datetime_folder_clipboard_batch2.txt/tier1_web_xml_batch8.txt)
     # はPasswordが常にWindows DPAPI保護値(`P'<base64>'`)で現れ、知見72の通りVarRef

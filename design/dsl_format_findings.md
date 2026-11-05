@@ -2271,3 +2271,11 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **今回の修正(部分的)**: `add_row_to_datatable()`を、`row`が`list`の場合は`columns_of(table)`(既存の行から推測した列順序)と位置で対応付けて辞書に変換するよう修正した。**ただしこの`DataTable`表現(列順序を各行の辞書のキー順序で保持する、`datatable.py`モジュールdocstring参照)には列だけを独立して追跡する仕組みが無いため、行が1件も無い状態(`AddColumnToDataTable`だけ呼ばれた直後)で`list`形式の`RowToAdd`を渡すと列名が全く分からず解決不能**——この場合はでっち上げた列名を使わず明示的な`ValueError`にするよう変更した(以前の`dict()`の分かりにくいクラッシュより改善したが、根本的には未解決)。
 
 **残る構造的課題(design/pad_todo.mdに記録)**: 「空のDataTableに`AddColumnToDataTable`で列を追加した直後に`AddRowToDataTable`で最初の行を`List`で追加する」という、知見90・91のVM検証で繰り返し使ったパターン自体は、**現在のDataTable表現では原理的に解決不能**——真に解決するには`DataTable`を「行のリスト」ではなく「列名リスト+行のリスト」を持つ型に再設計する必要があり、`datatable.py`・`variables_actions.py`の広範囲に影響する大きな変更になる。今回は影響範囲の大きさから見送り、明示的なエラーメッセージへの改善のみ行った。
+
+## 125. 知見124の穴を塞ぐ——`FilterDataTable`/`JoinDataTable`の`pad_codegen`→`pad_action_lib`end-to-end実行テストを初めて追加、パイプライン全体が正しく動くことを確認(VM不要)
+
+知見124で「`FilterDataTable`/`JoinDataTable`の入力スキーマ自体(知見90・91)はPAD実機で確認済みだが、そのスキーマをPython側のcodegenから実際に組み立てて実行するテストが一度も無かった」と判明したため、この穴を実際に塞いだ。
+
+`AddRowToDataTable`経由でテーブルを組み立てる方法は(知見124の通り)空テーブルへの最初の行追加ができないため使えないが、`Variables.GenerateDataTableFromCSV`でCSVテキストから直接テーブルを種付けする経路(`AddColumnToDataTable`を経由しない、これ自体は以前から正しく結線済み)を使えば回避できる。この経路で、知見90の確認済み例(`Age Equal 30`で`Carol`のみ残る)・知見91の確認済み例(`Name`列で`Inner`結合、重複列名に`" (2)"`付与)をそのままDSL化し、`generate_python()`→実際の`exec()`まで通して確認するテストを2件追加した。
+
+**結果**: 両方とも一発で正しく動いた——`filter_datatable()`/`join_datatable()`自体のロジック、`safe_render()`による`FilterParameters`/`JoinParameters`VarRef渡し、`GenerateDataTableFromCSV`の`CSVTable`出力との組み合わせは、知見124で見つかった`AddRowToDataTable`固有の問題とは独立して正しく機能することが確認できた。これにより「`FilterDataTable`/`JoinDataTable`自体の実装は健全、穴は`AddRowToDataTable`での組み立て経路のみ」という、知見124の切り分けを裏付けることができた。
