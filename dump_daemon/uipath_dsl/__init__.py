@@ -1,0 +1,80 @@
+"""UiPath `.xaml`パーサーの公開API。
+
+```python
+from dump_daemon.uipath_dsl import parse_workflow_file
+
+wf = parse_workflow_file("xaml_probe/Main.xaml")
+```
+
+設計方針・スコープは`dump_daemon.uipath_dsl.types`のモジュールdocstring、
+および[design/uipath_transpiler_roadmap.md](../../design/uipath_transpiler_roadmap.md)
+Phase 1〜3を参照。
+"""
+from .types import (
+    AppendLineNode,
+    AssignNode,
+    BreakNode,
+    CatchArm,
+    ClickNode,
+    DoWhileNode,
+    Expr,
+    ExcelApplicationScopeNode,
+    ExcelWriteCellNode,
+    ForEachNode,
+    HttpClientNode,
+    IfNode,
+    InvokeCodeNode,
+    InvokeWorkflowFileNode,
+    Literal,
+    MessageBoxNode,
+    Node,
+    ParallelNode,
+    ReadTextFileNode,
+    SendOutlookMailNode,
+    SequenceNode,
+    SetToClipboardNode,
+    SwitchArm,
+    SwitchNode,
+    TryCatchNode,
+    UnknownActivityNode,
+    VariableDecl,
+    VbExpr,
+    WhileNode,
+    WorkflowFile,
+)
+from .xaml_tree import parse_activity, parse_workflow_file
+
+__all__ = [
+    "AppendLineNode",
+    "AssignNode",
+    "BreakNode",
+    "CatchArm",
+    "ClickNode",
+    "DoWhileNode",
+    "Expr",
+    "ExcelApplicationScopeNode",
+    "ExcelWriteCellNode",
+    "ForEachNode",
+    "HttpClientNode",
+    "IfNode",
+    "InvokeCodeNode",
+    "InvokeWorkflowFileNode",
+    "Literal",
+    "MessageBoxNode",
+    "Node",
+    "ParallelNode",
+    "ReadTextFileNode",
+    "SendOutlookMailNode",
+    "SequenceNode",
+    "SetToClipboardNode",
+    "SwitchArm",
+    "SwitchNode",
+    "TryCatchNode",
+    "UnknownActivityNode",
+    "VariableDecl",
+    "VbExpr",
+    "WhileNode",
+    "WorkflowFile",
+    "parse_activity",
+    "parse_workflow_file",
+]

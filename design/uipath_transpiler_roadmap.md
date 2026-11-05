@@ -163,18 +163,46 @@ PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る。
 - **外部Library依存の完全解決**: `.nupkg`に元ソースが無い以上、
   .NETデコンパイル(ILSpy等)以外に道が無い。技術的に別トラック
 
+## Phase 2〜3: XAMLツリーウォーカー実装【着手完了、2026-11-05】
+
+`dump_daemon/uipath_dsl/`パッケージを新設し、Phase 1で確定したTier1
+アクティビティ一式(Assign/If/ForEach/TryCatch/Switch/While/DoWhile/
+Break/Parallel/MessageBox/HttpClient/Excel Application Scope+Write Cell/
+Send Outlook Mail/Click/Invoke Workflow File/Append Line/Read Text File/
+Invoke Code/Set To Clipboard)に対応するXAMLツリーウォーカーを実装した。
+`pad_dsl`と違いXAMLはただのXMLなので、トークン列→ブロック木という
+2段階パースは不要——`lxml`で直接XML木を`types.py`のIRノード型へ変換する
+1段階構成(`xaml_tree.py`)。design/evidence/uipath_xaml_probe/の実機
+フィクスチャ(`Main.xaml`・`Sub1.xaml`)で19件のテスト(`tests/test_uipath_dsl.py`)
+を全て通過。詳細はREADME.md「構成」節および`dump_daemon/uipath_dsl/`の
+docstringを参照。未対応アクティビティ(Library呼び出し含む)は
+`UnknownActivityNode`へ正直に素通しし、架空の変換はでっち上げない。
+
+実装中に見つかった、XAMLの構造上の既知の簡略化(将来の拡張点):
+- `ForEach.Body`/`While.Body`/`DoWhile.Body`/`ExcelApplicationScope.Body`は
+  ステップ数によらず**常に**`<Sequence DisplayName="Body"/"Do">`でラップ
+  される(`If.Then`/`If.Else`が複数ステップの時だけラップされる可変長
+  パターンとは異なる、別の固定パターン)——このラップ用`Sequence`自身が
+  ローカル変数を宣言するケースは未対応(実機未確認、文法上は可能)
+- `Switch`のdefaultアームの実XAML形は未確認(知見9の実例は単一アーム
+  `x:Key="1"`のみ)
+- Modern活動のFuzzy/Strict selector(知見37)は未対応(そもそもXAML形が
+  未確認)
+
 ## 次にやること
 
-Phase 0のVM非依存タスク(`And`/`Or`変換アルゴリズム・セレクタ意味論の
-公式ドキュメント調査)は完了(知見37、design/uipath_vb_expression_mapping.md)。
-残る候補:
-
-1. **Phase 2〜3着手(最有力)**: `dump_daemon`に`uipath_dsl`(仮称)
-   パッケージを新設し、最小のXAMLツリーウォーカー(`Sequence`+`Assign`+
-   `MessageBox`程度)を`xaml_probe/Main.xaml`で試作する。PAD側の最初の
-   一歩(`pad_dsl`の最小実装)と同じ進め方
-2. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
+1. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
    問題とは独立): 旧Studio(2021.4.4)でModern UI Automation活動
    (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
    解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
    のため、使用タイミングの調整が必要
+2. **VB.NET式パーサーの実装**(Phase 3の残り): `uipath_dsl`は現状
+   `VbExpr`に生テキストを保持するだけで構文解析していない。知見32・36で
+   構文が出尽くした範囲(リテラル・変数参照・9演算子・型変換関数・
+   `IsNot`/`Nothing`/`IsNothing`・三項`If`・文字列補間・`And`/`Or`の
+   `&`/`|`変換)をカバーするLark文法を新規に書く(`pad_expr`と同じ位置
+   づけの新規モジュール、`uipath_expr`等)
+3. **Phase 4着手**: `uipath_dsl`のIRからPythonコードを生成する
+   `uipath_codegen`(仮称)の実装。`pad_codegen`の設計
+   (`generate_python()`単一エントリポイント、`actions/`でのディスパッチ分割)
+   を参考にする

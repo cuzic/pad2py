@@ -20,6 +20,7 @@ Power Automate Desktop (PAD) のフローを pywinauto / pyautogui ベースの 
   - `pad2py_cli.py` — `parse_dsl()`→`build_block_tree()`→`generate_python()`を1コマンドで結ぶCLIエントリポイント(下記「CLIの使い方」参照)
   - `pad_ui_helpers.py` — PAD UI自動化のための pywinauto ヘルパー(G1/G2検証で実証済み)
   - `uipath_ui_helpers.py` — UiPath Studio UI自動化のための pywinauto ヘルパー(design/uipath_xaml_findings.md知見1〜12の調査で実証済み、将来のUiPath本格調査用)
+  - `uipath_dsl/` — UiPath `.xaml`(WFアクティビティ木のXML)を構造化IRへ変換するパーサー core。`.xaml`はただのXMLなので`pad_dsl`のような2段階パース(トークン列→ブロック木)は不要で、`lxml`で直接XML木を`parse_workflow_file()`一発でIRへ変換する1段階構成(`types.py`=IRノード型定義、`xaml_tree.py`=ウォーカー本体)。design/uipath_transpiler_roadmap.md Phase 1で確定したv1スコープ(Sequence/Flowchartのみ・Processプロジェクトのみ)のTier1アクティビティ一式(Assign/If/ForEach/TryCatch/Switch/While/DoWhile/Break/Parallel/MessageBox/HttpClient/Excel Application Scope+Write Cell/Send Outlook Mail/Click/Invoke Workflow File/Append Line/Read Text File/Invoke Code/Set To Clipboard)に対応、未対応アクティビティ(Library呼び出し含む)は`UnknownActivityNode`へ架空の変換をでっち上げず素通しする(`pad_codegen`の`# TODO`方針を踏襲)。design/evidence/uipath_xaml_probe/の実機XAMLフィクスチャで検証済み(`tests/test_uipath_dsl.py`)
 - `tests/` — GitHub Actions (windows-latest) 上で技術的な裏付けを検証するpytestスイート
 
 ## CLIの使い方

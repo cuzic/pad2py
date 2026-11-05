@@ -1,0 +1,520 @@
+"""UiPath `.xaml`(WFアクティビティ木のXML)を`uipath_dsl.types`のIRへ変換する
+ツリーウォーカー。
+
+`pad_dsl`のような「テキスト→トークン列→indentベースでブロック木」という
+2段階パースは不要——XMLなので`lxml`で直接パースし、XML要素の親子関係を
+そのままIRの親子関係に写す1段階変換になっている
+(`dump_daemon/uipath_dsl/types.py`のモジュールdocstring参照)。
+
+対話的セッション内の実行は前提にしない——ローカルの`.xaml`ファイルを直接
+読むだけで完結する(PAD側の`clipwire`越しの実機操作が不要という、
+design/uipath_xaml_findings.md 知見1の利点をそのまま活かす設計)。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from lxml import etree
+
+from .types import (
+    AppendLineNode,
+    AssignNode,
+    BreakNode,
+    CatchArm,
+    ClickNode,
+    DoWhileNode,
+    Expr,
+    ExcelApplicationScopeNode,
+    ExcelWriteCellNode,
+    ForEachNode,
+    HttpClientNode,
+    IfNode,
+    InvokeCodeNode,
+    InvokeWorkflowFileNode,
+    Literal,
+    MessageBoxNode,
+    Node,
+    ParallelNode,
+    ReadTextFileNode,
+    SendOutlookMailNode,
+    SequenceNode,
+    SetToClipboardNode,
+    SwitchArm,
+    SwitchNode,
+    TryCatchNode,
+    UnknownActivityNode,
+    VariableDecl,
+    VbExpr,
+    WhileNode,
+    WorkflowFile,
+)
+
+# 知見1〜36で確認済みの主要XML名前空間URI。
+WF_NS = "http://schemas.microsoft.com/netfx/2009/xaml/activities"
+UI_NS = "http://schemas.uipath.com/workflow/activities"
+X_NS = "http://schemas.microsoft.com/winfx/2006/xaml"
+SAP_NS = "http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+
+
+def _split_tag(tag: str) -> tuple[str | None, str]:
+    """lxmlの`{namespace-uri}localname`形式を`(namespace_uri, localname)`に分解する。
+    無名前空間タグ(通常は無い)は`(None, tag)`。"""
+    if tag.startswith("{"):
+        ns, _, local = tag[1:].partition("}")
+        return ns, local
+    return None, tag
+
+
+def _is_property_element(local_name: str) -> bool:
+    """`<Assign.To>`/`<Sequence.Variables>`のようなプロパティ要素構文
+    (ドット区切り)かどうか。実際の子アクティビティとの判別に使う——
+    ドットを含む要素はプロパティ値であって子アクティビティではない。"""
+    return "." in local_name
+
+
+def _parse_expr(raw: str | None) -> Expr:
+    """属性値/テキストノードをIRの`Expr`に変換する(知見13: `[...]`角括弧なら
+    VB式、それ以外は生リテラル、`{x:Null}`/`None`は未設定)。"""
+    if raw is None:
+        return None
+    if raw == "{x:Null}":
+        return None
+    stripped = raw.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return VbExpr(text=stripped[1:-1])
+    return Literal(value=raw)
+
+
+def _attr(elem: etree._Element, name: str, ns: str | None = None) -> str | None:
+    """名前空間付き/無し属性を取得する簡易ヘルパー。"""
+    key = f"{{{ns}}}{name}" if ns else name
+    return elem.get(key)
+
+
+def _attr_expr(elem: etree._Element, name: str) -> Expr:
+    return _parse_expr(_attr(elem, name))
+
+
+def _direct_children(elem: etree._Element) -> list[etree._Element]:
+    """コメント/処理命令を除いた直接の子要素。"""
+    return [c for c in elem if isinstance(c.tag, str)]
+
+
+def _find_property_element(
+    elem: etree._Element, local_property_name: str
+) -> etree._Element | None:
+    """`<ParentTag.PropertyName>`形式の直接の子を探す(タグ名の一致は
+    ローカル名のサフィックスで判定——親タグ名自体は名前空間プレフィックス
+    込みで変わりうるため、`.PropertyName`で終わるかで見る)。"""
+    for child in _direct_children(elem):
+        _, local = _split_tag(child.tag)
+        if local == local_property_name or local.endswith(f".{local_property_name}"):
+            return child
+    return None
+
+
+def _activity_children(elem: etree._Element) -> list[etree._Element]:
+    """プロパティ要素(ドット区切り)を除いた、実際の子アクティビティ要素。"""
+    result = []
+    for child in _direct_children(elem):
+        _, local = _split_tag(child.tag)
+        if _is_property_element(local):
+            continue
+        result.append(child)
+    return result
+
+
+def _parse_body(elem: etree._Element) -> list[Node]:
+    """直接の子アクティビティ列をパースする(`Sequence`/`If.Then`等の中身)。"""
+    return [parse_activity(child) for child in _activity_children(elem)]
+
+
+def _single_body(elem: etree._Element | None) -> list[Node]:
+    """`If.Then`/`If.Else`のように0〜1個の子を持ちうるプロパティ要素の中身を
+    ノード列として返す(知見5: 複数ステップなら`Sequence`で自動ラップされる
+    ので、ここではラップを解かずそのまま1要素のリストにする——呼び出し側が
+    `SequenceNode`かどうかで複数ステップかを判断できる)。"""
+    if elem is None:
+        return []
+    return _parse_body(elem)
+
+
+def _parse_variables(elem: etree._Element) -> list[VariableDecl]:
+    """`Sequence.Variables`/`TryCatch.Variables`配下の`<Variable>`列。"""
+    container = _find_property_element(elem, "Variables")
+    if container is None:
+        return []
+    decls = []
+    for var_elem in _direct_children(container):
+        _, local = _split_tag(var_elem.tag)
+        if local != "Variable":
+            continue
+        decls.append(
+            VariableDecl(
+                name=_attr(var_elem, "Name") or "",
+                type_arguments=_attr(var_elem, "TypeArguments", X_NS)
+                or _attr(var_elem, "TypeArguments")
+                or "x:Object",
+                default=_attr(var_elem, "Default"),
+            )
+        )
+    return decls
+
+
+def _parse_sequence(elem: etree._Element) -> SequenceNode:
+    return SequenceNode(
+        variables=_parse_variables(elem),
+        body=_parse_body(elem),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _find_sequence_child(elem: etree._Element) -> etree._Element | None:
+    for child in _activity_children(elem):
+        ns, local = _split_tag(child.tag)
+        if (ns, local) == (WF_NS, "Sequence"):
+            return child
+    return None
+
+
+def _unwrap_body_sequence(body_prop_elem: etree._Element | None) -> list[Node]:
+    """`ForEach.Body`/`While.Body`/`DoWhile.Body`/`ExcelApplicationScope.Body`
+    のように、本体が**常に**(ステップ数によらず、0個でも)`<Sequence
+    DisplayName="Body"/"Do">`でラップされるコンテナ(知見22: `ForEach`と
+    `ExcelApplicationScope`は`ActivityAction`+`DelegateInArgument`を共用する
+    同型構造)向けのヘルパー。`If.Then`/`If.Else`(複数ステップの時だけ
+    `Sequence`でラップされる可変長コンテナ、知見5)とは異なる挙動のため
+    `_single_body`とは別関数にしている。
+
+    ラップ用`Sequence`自身がローカル変数を宣言している場合(実機未確認だが
+    文法上は可能)、その変数は現状の最小実装では読み捨てる——既知の簡略化。
+    """
+    if body_prop_elem is None:
+        return []
+    seq = _find_sequence_child(body_prop_elem)
+    if seq is None:
+        return _parse_body(body_prop_elem)
+    return _parse_body(seq)
+
+
+def _argument_text(prop_elem: etree._Element | None) -> str | None:
+    """`<Assign.To><OutArgument ...>[result]</OutArgument></Assign.To>`の
+    ように、プロパティ要素(`Assign.To`)自身ではなく**その子の`OutArgument`/
+    `InArgument`要素**がテキストを持つ(プロパティ要素自身の`.text`は
+    タグ間の空白のみ)。この子要素を見つけてその`.text`を返す。"""
+    if prop_elem is None:
+        return None
+    children = _direct_children(prop_elem)
+    if not children:
+        return None
+    return children[0].text
+
+
+def _parse_assign(elem: etree._Element) -> AssignNode:
+    to_elem = _find_property_element(elem, "To")
+    value_elem = _find_property_element(elem, "Value")
+    target = _parse_expr(_argument_text(to_elem))
+    value = _parse_expr(_argument_text(value_elem))
+    return AssignNode(target=target, value=value)
+
+
+def _parse_message_box(elem: etree._Element) -> MessageBoxNode:
+    return MessageBoxNode(
+        text=_attr_expr(elem, "Text"),
+        caption=_attr_expr(elem, "Caption"),
+    )
+
+
+def _parse_if(elem: etree._Element) -> IfNode:
+    then_elem = _find_property_element(elem, "Then")
+    else_elem = _find_property_element(elem, "Else")
+    return IfNode(
+        condition=_attr_expr(elem, "Condition"),
+        then_body=_single_body(then_elem),
+        else_body=_single_body(else_elem),
+    )
+
+
+def _find_activity_action(elem: etree._Element) -> etree._Element | None:
+    for child in _direct_children(elem):
+        _, local = _split_tag(child.tag)
+        if local == "ActivityAction":
+            return child
+    return None
+
+
+def _parse_for_each(elem: etree._Element) -> ForEachNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    item_var = ""
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                item_var = _attr(d, "Name") or ""
+        body = _unwrap_body_sequence(action)
+    return ForEachNode(
+        item_var=item_var,
+        values=_attr_expr(elem, "Values"),
+        body=body,
+        type_arguments=_attr(elem, "TypeArguments", X_NS) or "x:Object",
+    )
+
+
+def _parse_try_catch(elem: etree._Element) -> TryCatchNode:
+    catches_elem = _find_property_element(elem, "Catches")
+    catches: list[CatchArm] = []
+    if catches_elem is not None:
+        for catch_elem in _direct_children(catches_elem):
+            _, local = _split_tag(catch_elem.tag)
+            if local != "Catch":
+                continue
+            exc_type = _attr(catch_elem, "TypeArguments", X_NS) or _attr(
+                catch_elem, "TypeArguments"
+            ) or ""
+            action = _find_activity_action(catch_elem)
+            var_name = None
+            body: list[Node] = []
+            if action is not None:
+                arg_elem = _find_property_element(action, "Argument")
+                if arg_elem is not None:
+                    for d in _direct_children(arg_elem):
+                        var_name = _attr(d, "Name")
+                handler = _find_property_element(action, "Handler")
+                body = _single_body(handler)
+            catches.append(CatchArm(exception_type=exc_type, var_name=var_name, body=body))
+    finally_elem = _find_property_element(elem, "Finally")
+    return TryCatchNode(
+        try_body=_single_body(_find_property_element(elem, "Try")),
+        variables=_parse_variables(elem),
+        catches=catches,
+        finally_body=_single_body(finally_elem),
+    )
+
+
+def _parse_switch(elem: etree._Element) -> SwitchNode:
+    arms: list[SwitchArm] = []
+    for child in _activity_children(elem):
+        key = _attr(child, "Key", X_NS) or _attr(child, "Key")
+        arms.append(SwitchArm(key=key, body=[parse_activity(child)]))
+    return SwitchNode(
+        expression=_attr_expr(elem, "Expression"),
+        type_arguments=_attr(elem, "TypeArguments", X_NS) or _attr(elem, "TypeArguments") or "",
+        arms=arms,
+    )
+
+
+def _parse_while(elem: etree._Element) -> WhileNode:
+    body_elem = _find_property_element(elem, "Body")
+    return WhileNode(condition=_attr_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem))
+
+
+def _parse_do_while(elem: etree._Element) -> DoWhileNode:
+    body_elem = _find_property_element(elem, "Body")
+    return DoWhileNode(
+        condition=_attr_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem)
+    )
+
+
+def _parse_parallel(elem: etree._Element) -> ParallelNode:
+    return ParallelNode(branches=[parse_activity(c) for c in _activity_children(elem)])
+
+
+def _parse_click(elem: etree._Element) -> ClickNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return ClickNode(selector=selector, display_name=_attr(elem, "DisplayName"))
+
+
+def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
+    args: dict[str, Expr] = {}
+    args_elem = _find_property_element(elem, "Arguments")
+    if args_elem is not None:
+        for arg in _direct_children(args_elem):
+            key = _attr(arg, "Key", X_NS) or _attr(arg, "Key")
+            if key:
+                args[key] = _parse_expr(arg.text)
+    return InvokeWorkflowFileNode(
+        workflow_file=_attr(elem, "WorkflowFileName") or "", arguments=args
+    )
+
+
+def _parse_append_line(elem: etree._Element) -> AppendLineNode:
+    return AppendLineNode(file_name=_attr_expr(elem, "FileName"), text=_attr_expr(elem, "Text"))
+
+
+def _parse_read_text_file(elem: etree._Element) -> ReadTextFileNode:
+    return ReadTextFileNode(
+        file_name=_attr_expr(elem, "FileName"), content=_attr_expr(elem, "Content")
+    )
+
+
+def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
+    args: dict[str, Expr] = {}
+    args_elem = _find_property_element(elem, "Arguments")
+    if args_elem is not None:
+        for arg in _direct_children(args_elem):
+            key = _attr(arg, "Key", X_NS) or _attr(arg, "Key")
+            if key:
+                args[key] = _parse_expr(arg.text)
+    return InvokeCodeNode(code=_attr(elem, "Code") or "", arguments=args)
+
+
+def _parse_set_to_clipboard(elem: etree._Element) -> SetToClipboardNode:
+    return SetToClipboardNode(text=_attr_expr(elem, "Text"))
+
+
+def _parse_excel_write_cell(elem: etree._Element) -> ExcelWriteCellNode:
+    return ExcelWriteCellNode(
+        cell=_attr(elem, "Cell") or "",
+        sheet_name=_attr(elem, "SheetName") or "",
+        text=_attr_expr(elem, "Text"),
+    )
+
+
+def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScopeNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    scope_var = "ExcelWorkbookScope"
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                scope_var = _attr(d, "Name") or scope_var
+        body = _unwrap_body_sequence(action)
+    return ExcelApplicationScopeNode(
+        workbook_path=_attr(elem, "WorkbookPath") or "", scope_var=scope_var, body=body
+    )
+
+
+def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
+    return SendOutlookMailNode(
+        to=_attr_expr(elem, "To"),
+        subject=_attr_expr(elem, "Subject"),
+        body=_attr_expr(elem, "Body"),
+    )
+
+
+def _parse_http_client(elem: etree._Element) -> HttpClientNode:
+    known = {"EndPoint", "Method"}
+    extra = {k: v for k, v in elem.attrib.items() if _split_tag(k)[1] not in known}
+    return HttpClientNode(
+        endpoint=_attr_expr(elem, "EndPoint"),
+        method=_attr(elem, "Method") or "GET",
+        extra_attrs=extra,
+    )
+
+
+# (namespace_uri, local_name) -> パース関数。知見1〜36で実機確認済みの
+# Tier1アクティビティ(design/uipath_transpiler_roadmap.md Phase 1決定)のみ
+# 登録する。それ以外は`UnknownActivityNode`へフォールバックする。
+_DISPATCH = {
+    (WF_NS, "Sequence"): _parse_sequence,
+    (WF_NS, "Assign"): _parse_assign,
+    (WF_NS, "If"): _parse_if,
+    (WF_NS, "TryCatch"): _parse_try_catch,
+    (WF_NS, "Switch"): _parse_switch,
+    (WF_NS, "Parallel"): _parse_parallel,
+    (UI_NS, "MessageBox"): _parse_message_box,
+    (UI_NS, "ForEach"): _parse_for_each,
+    (UI_NS, "InterruptibleWhile"): _parse_while,
+    (UI_NS, "InterruptibleDoWhile"): _parse_do_while,
+    (UI_NS, "Break"): lambda elem: BreakNode(),
+    (UI_NS, "Click"): _parse_click,
+    (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
+    (UI_NS, "AppendLine"): _parse_append_line,
+    (UI_NS, "ReadTextFile"): _parse_read_text_file,
+    (UI_NS, "InvokeCode"): _parse_invoke_code,
+    (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
+    (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
+    (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
+    (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
+    (UI_NS, "HttpClient"): _parse_http_client,
+}
+
+
+def parse_activity(elem: etree._Element) -> Node:
+    """1つのアクティビティ要素を`uipath_dsl.types.Node`へ変換する。
+
+    注意: `sap2010:WorkflowViewState.IdRef`属性の値(例: `"ForEach`1_1"`,
+    `"Switch`1_1"`)にはWF標準のジェネリック型引数個数を表す`` `1``が付くが、
+    これは**IdRef文字列内の命名規則であって、実際のXML要素タグ名には
+    付かない**(`<ui:ForEach ...>`/`<Switch ...>`がそのままのタグ名)。
+    """
+    ns, local = _split_tag(elem.tag)
+    handler = _DISPATCH.get((ns, local))
+    if handler is not None:
+        return handler(elem)
+    return UnknownActivityNode(
+        tag=f"{{{ns}}}{local}" if ns else local,
+        display_name=_attr(elem, "DisplayName"),
+        attrs=dict(elem.attrib),
+    )
+
+
+def _find_members(root: etree._Element) -> dict[str, str]:
+    """`<x:Members><x:Property Name="..." Type="..." /></x:Members>`
+    (知見12、ワークフロー引数宣言)。"""
+    members_elem = None
+    for child in _direct_children(root):
+        _, local = _split_tag(child.tag)
+        if local == "Members":
+            members_elem = child
+            break
+    if members_elem is None:
+        return {}
+    args = {}
+    for prop in _direct_children(members_elem):
+        _, local = _split_tag(prop.tag)
+        if local != "Property":
+            continue
+        name = _attr(prop, "Name")
+        type_ = _attr(prop, "Type")
+        if name:
+            args[name] = type_ or ""
+    return args
+
+
+def parse_workflow_file(path: str | Path) -> WorkflowFile:
+    """`.xaml`ファイル1つをパースして`WorkflowFile`を返す公開エントリポイント。
+
+    対象はProcessプロジェクトの通常ワークフロー(`x:Class`付き、`Sequence`が
+    ルート)のみ——Libraryの`ActivityBuilder`形(知見26)・Flowchart・
+    State Machineは design/uipath_transpiler_roadmap.md Phase 1の決定により
+    v1スコープ外で、このパーサーも未対応(遭遇すると`ValueError`)。
+    """
+    tree = etree.parse(str(path))
+    root = tree.getroot()
+    ns, local = _split_tag(root.tag)
+    if local != "Activity":
+        raise ValueError(f"unsupported root element: {root.tag!r} (expected Activity)")
+
+    class_name = _attr(root, "Class", X_NS) or _attr(root, "Class") or ""
+    arguments = _find_members(root)
+    variables = _parse_variables(root)
+
+    seq_elem = None
+    for child in _activity_children(root):
+        c_ns, c_local = _split_tag(child.tag)
+        if (c_ns, c_local) == (WF_NS, "Sequence"):
+            seq_elem = child
+            break
+    if seq_elem is None:
+        raise ValueError(
+            "no top-level <Sequence> found — Flowchart/State Machine roots are "
+            "out of v1 scope (design/uipath_transpiler_roadmap.md Phase 1)"
+        )
+
+    return WorkflowFile(
+        class_name=class_name,
+        root=_parse_sequence(seq_elem),
+        arguments=arguments,
+        variables=variables,
+    )

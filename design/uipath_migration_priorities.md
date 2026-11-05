@@ -55,7 +55,7 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 研究フェーズ(P0〜P3)は主要部分が完了し、[design/uipath_transpiler_roadmap.md](uipath_transpiler_roadmap.md)
 で実装フェーズへのロードマップを整理・Phase 1のスコープを確定した
 (対象: Sequence/Flowchartのみ・Processプロジェクトのみ・知見で確認済みの
-活動一式をTier1とする)。現時点の優先順位:
+活動一式をTier1とする)。実装フェーズも着手済み。現時点の優先順位:
 
 0. **(完了)** セレクタ意味論の公式ドキュメント調査(知見37)。Classic
    Selector(WND/CTRL/WEBCTRL)の属性語彙・Dynamic Selector(`{{Value}}`)・
@@ -66,12 +66,16 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
 1. **(完了)** `And`/`Or`変換アルゴリズム設計。`&`/`|`ビット演算子への
    変換、両オペランド括弧必須、をPython実挙動で検証し確定
    (design/uipath_vb_expression_mapping.md参照)
-2. Phase 2〜3着手(`dump_daemon`への`uipath_dsl`パッケージ新設、最小XAML
-   ツリーウォーカーの試作)——次の一手の最有力候補
+2. **(着手完了)** Phase 2〜3: `dump_daemon/uipath_dsl/`パッケージを新設し、
+   Tier1アクティビティ一式に対応するXAMLツリーウォーカーを実装
+   (`tests/test_uipath_dsl.py`、19件全通過)。詳細は
+   design/uipath_transpiler_roadmap.mdの「Phase 2〜3」節参照
+3. **次点**: VB.NET式パーサー(`VbExpr`は現状生テキスト保持のみ)、
+   Phase 4のcodegen(`uipath_codegen`仮称)着手
 
 以下は(長期ブロック・保留中の)新Studio側の調査で、再開には別途対応が必要:
 
-3. **(長期ブロック・保留)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
+4. **(長期ブロック・保留)** より新しいStudio(26.0.204-cloud)をサイドバイサイドで
    インストール済み(知見33)——起動時に「Studio/Robotバージョン不整合、
    マシン再起動が必要」エラー。2回の`gcloud compute instances reset`(いずれも
    ユーザー承認済み)を実施し、2回目ではファイル配置・サービス登録パスとも
@@ -81,10 +85,10 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
    特定・解消できないと判断し、この経路の自動調査は一旦終了。再開するには
    ユーザーによる対話的な調査(RDP接続して画面を直接確認、または旧2021.4.4を
    完全アンインストールしてからの再インストール)が必要
-4. **P2 #11**(Coded Workflows)——v1スコープ外(ロードマップPhase 8)と
+5. **P2 #11**(Coded Workflows)——v1スコープ外(ロードマップPhase 8)と
    確定。再調査するとしても優先度は下がった
-5. **P2 #12の続き**(Object Repository)・**P3 #18**(C#式言語)——同じく
-   v1スコープ外、#3解消後に再検討
-6. **P2 #13**(Orchestratorアセット/キュー連携)——v1スコープ外
+6. **P2 #12の続き**(Object Repository)・**P3 #18**(C#式言語)——同じく
+   v1スコープ外、#4解消後に再検討
+7. **P2 #13**(Orchestratorアセット/キュー連携)——v1スコープ外
    (ロードマップPhase 8、ランタイム統合の別イニシアチブ)
-7. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
+8. **P1 #7の残り**(Word/PDF/Database)——優先度低、必要なら着手
