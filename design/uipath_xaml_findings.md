@@ -2280,6 +2280,18 @@ G書式とは独立に`Double.ToString()`が特別扱いする固定文字列を
 (UiPath Robot/StudioはこのユーザーのVM環境では常にen-USロケールと
 考えられ、実害が出る具体例が見つかるまでは優先度低と判断)。
 
+**(2026-11-05追補)** `_vb_cstr()`導入直後にコードベース全体を
+`grep`で確認したところ、`Append Line`(知見15)の`Text`
+(`InArgument<String>`)書き込みが単純な`str()`のままで、`_vb_cstr()`に
+統一されていない箇所(`uipath_codegen/__init__.py`の
+`_generate_append_line`)が1件残っていたと判明——`CStr`/`&`と同じ
+「非文字列式をString型の引数に束縛する」場面なので同じ変換規則を
+適用し、`_vb_cstr()`を使うよう修正した(VM不使用、コードベース内の
+一貫性修正——実機でこの暗黙変換自体の実例はまだ無いが、`_vb_cstr`は
+文字列への再適用に対して冪等なので、既にCStr済みの実例に対しても
+実害が無い)。`tests/test_uipath_codegen.py`に
+`test_append_line_text_uses_vb_cstr_not_python_str`を追加。
+
 ## 今後の調査候補(未着手)
 
 - **`CDbl(x)`の2点が公式ドキュメントだけでは確定できず未解決(2026-11-05、

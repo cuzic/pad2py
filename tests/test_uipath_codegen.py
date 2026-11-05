@@ -31,6 +31,7 @@ from dump_daemon.uipath_codegen import (
     render_expr,
 )
 from dump_daemon.uipath_dsl import (
+    AppendLineNode,
     AssignNode,
     BreakNode,
     ClickNode,
@@ -463,6 +464,29 @@ def test_concat_uses_same_vb_cstr_conversion_as_cstr(vb_text: str, expected: str
     with contextlib.redirect_stdout(stdout):
         namespace["Test"]()
     assert stdout.getvalue().strip() == expected
+
+
+def test_append_line_text_uses_vb_cstr_not_python_str(tmp_path) -> None:
+    """`Append Line`の`Text`(`InArgument<String>`、知見15)に数値式を直接
+    渡した場合も`CStr`/`&`(知見46)と同じ`_vb_cstr`変換を使う——単純な
+    `str()`のままだと`str(4.0)`で`"4.0"`になりVBの暗黙変換と食い違う
+    (実機でこの暗黙変換の実例は未確認だが、`render.py`内の一貫性の問題
+    として修正、知見46の延長)。"""
+    out_file = tmp_path / "out.txt"
+    wf = _wrap(
+        [
+            AppendLineNode(
+                file_name=Literal(value=str(out_file)),
+                text=VbExpr(text="4.0"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    assert out_file.read_text(encoding="utf-8") == "4\n"
 
 
 @pytest.mark.parametrize(

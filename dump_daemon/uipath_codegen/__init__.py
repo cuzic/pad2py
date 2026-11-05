@@ -435,6 +435,16 @@ def _generate_parallel(
 
 
 def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
+    """`Text`は`InArgument<String>`型(知見15)——非文字列式が束縛された場合、
+    VBは`CStr`と同じ書式規則で暗黙に文字列化する(知見46参照)。実機で
+    捕捉した実例(design/evidence/uipath_xaml_probe/Main.xaml)は常に
+    リテラル文字列`Text="hello"`で、この暗黙変換が実際に発生する実例は
+    無いが、Studioが数値式を明示的な`CStr(...)`へ自動変換せずそのまま
+    保存した場合に備え、単純な`str()`ではなく`CStr`/`&`と同じ`_vb_cstr()`
+    を使う(知見46の修正と一貫性を取るための内部的な安全策——`node.text`が
+    既に`CStr(...)`を含む場合は`_vb_cstr(_vb_cstr(x))`の二重適用になるが、
+    `_vb_cstr`は冪等(文字列への再適用は`str`分岐を素通りするだけ)なので
+    実害は無い)。"""
     prefix = INDENT * indent
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
@@ -442,7 +452,7 @@ def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
     return [
         *todo,
         f'{prefix}with open({file_name}, "a", encoding="utf-8") as _f:',
-        f'{INDENT * (indent + 1)}_f.write(str({text}) + "\\n")',
+        f'{INDENT * (indent + 1)}_f.write({VB_CSTR_HELPER_NAME}({text}) + "\\n")',
     ]
 
 
