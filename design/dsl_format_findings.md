@@ -2108,3 +2108,9 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 一方で`SET R3 TO True = 1`を実行した結果は**`True`**(真)——`=`演算子は`Boolean`と数値の等価性を認める。ただしこれは`pad_equal()`の`a == b`早期判定(Pythonの`bool`/`int`比較が言語機能として`True == 1`を真にする)にそのまま捕まるだけであり、`_as_number()`経由の数値文字列変換ロジックには到達しないため、`_as_number()`から`bool`を除外しても`pad_equal()`のこの挙動には影響しない。
 
 **修正内容**: `dump_daemon/pad_action_lib/expr_runtime.py`の`_as_number()`で`isinstance(value, bool)`を`isinstance(value, (int, float))`より先に判定し、`bool`の場合は`None`(数値として扱わない)を返すようにした。これにより`pad_add(1, True)`が正しく`"1True"`(文字列結合)になる。回帰テストを追加した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。これで知見81から持ち越していた最後の未検証項目(XOR数値オペランド)が解決した。
+
+## 106. 知見93の留保事項(ヘッダー行のトリム対象可否)を実機確認——実装は既に正しかった
+
+知見93で「ヘッダー行自体(`FirstLineContainsColumnNames: True`時の列名)もトリム対象になるかは直接確認しておらず、実装では一貫性のため同じ`.strip()`をヘッダー行にも適用しているが、これは推測の範囲内にとどまる」として持ち越していた項目を実機確認した。`SET CSV TO $''' Name , Age \n Alice , 30 '''`(ヘッダー行・データ行とも前後に空白)を`FirstLineContainsColumnNames: True`・`TrimFields: True`で読み込み、`ConvertDataTableToCSV`で書き戻したところ、結果は`"Name,Age\nAlice,30"`——**ヘッダー行もデータ行と同じくトリムされる**ことが確認できた。
+
+既存の実装(`datatable_from_csv_text()`がヘッダー/データ行を区別せず、CSV全体に`.strip()`を一括適用してから先頭行をヘッダーとして切り出す処理)は、推測通りで既に正しかったため修正不要。コメント・テストのdocstringを「推測」から「知見106で実機確認済み」に更新するのみ。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。

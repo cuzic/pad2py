@@ -72,6 +72,9 @@ def datatable_from_csv_text(
     前後の空白が除去される(`" 7 , abc "`→`"7"`/`"abc"`)。`False`では空白を保持する
     (`" 7 "`/`" abc "`のまま)。トリム処理は数値変換より先に適用する(`int()`/`float()`
     自体も前後の空白を無視するため実害は無いが、文字列のまま保持する場合に影響する)。
+    知見106(実機確認済み): `first_line_contains_column_names=True`時のヘッダー行
+    自体もトリム対象になる(`" Name "`→`"Name"`)——ヘッダー行にも本体データと同じ
+    `.strip()`を適用する現在の実装が正しいと確定した。
     """
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     rows = list(reader)

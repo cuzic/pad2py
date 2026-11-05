@@ -384,6 +384,14 @@ def test_csv_trim_fields_false_keeps_whitespace() -> None:
     assert table == [{"Column#1": " 7 ", "Column#2": " abc "}]
 
 
+def test_csv_trim_fields_true_also_trims_header_row() -> None:
+    # design/dsl_format_findings.md 知見106(実機確認済み): FirstLineContainsColumnNames:
+    # True時のヘッダー行自体も" Name "->"Name"のようにトリム対象になる。
+    text = " Name , Age \r\n Alice , 30 \r\n"
+    table = va.datatable_from_csv_text(text, first_line_contains_column_names=True)
+    assert table == [{"Name": "Alice", "Age": "30"}]
+
+
 def test_json_custom_object_round_trip() -> None:
     obj = {"a": 1, "b": [1, 2, 3]}
     text = va.custom_object_to_json(obj)
