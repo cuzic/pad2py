@@ -379,6 +379,40 @@ def test_cint_matches_vb_banker_rounding_not_python_truncation(
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # .NETランタイム本体のソース(Conversions.vbのToInteger、知見52の
+        # CDbl確認時に発見した同じファイル、知見53)で確定: CIntの文字列/
+        # オブジェクト両オーバーロードも先頭でNothing→0を処理し、文字列
+        # 引数はCDblと同じParseDouble(桁区切り受理)経由でDoubleへ変換
+        # してから丸める。単純なfloat(x)ではNothingでTypeError、桁区切り
+        # 文字列でValueErrorになり食い違う。
+        ("CInt(Nothing)", 0),
+        ('CInt("1,234.5")', 1234),
+        # 知見51で確定したBoolean→-1規則もCIntに適用される
+        # (ToInteger(Object)のCase TypeCode.Boolean相当)。
+        ("CInt(True)", -1),
+        ("CInt(False)", 0),
+    ],
+)
+def test_cint_matches_dotnet_runtime_source_for_nothing_and_thousands(
+    vb_text: str, expected: int
+) -> None:
+    """知見53: `CInt`の`Nothing`/桁区切り文字列/Boolean変換を、`CDbl`と
+    同じ`_vb_cdbl()`ヘルパー経由にしたことの回帰テスト。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # VBのCBool(文字列)は"True"/"False"(大文字小文字区別無し)か数値
         # 文字列として評価する——Pythonのbool(文字列)は空文字列以外は常に
         # Trueになり食い違う(例: bool("False")はTrue、bool("0")もTrue)。

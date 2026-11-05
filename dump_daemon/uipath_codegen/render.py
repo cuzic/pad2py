@@ -323,10 +323,17 @@ def _render_func_call(node: FuncCall) -> str:
         # round-half-to-evenなので、公式ドキュメント記載例(0.5→0、1.5→2、
         # 2.5→2)とPythonの`round()`の挙動が一致することを確認済み
         # (単純な`int()`は切り捨てで食い違う、例: `int(1.5)`は`1`)。
-        # 文字列引数も`float()`を経由すれば数値と同じ経路で丸められる。
+        # `.NETランタイム本体のソース(`Conversions.vb`のToInteger、知見52の
+        # CDbl確認時に同じファイルで発見、知見53参照)によれば`CInt`の
+        # 文字列/オブジェクト両オーバーロードも先頭で`Nothing`→`0`を処理し、
+        # 文字列引数は`CDbl`と全く同じ`ParseDouble`(桁区切り受理)経由で
+        # Doubleへ変換してから丸める——単純な`float(x)`では`Nothing`で
+        # `TypeError`、桁区切り文字列で`ValueError`になり食い違うため、
+        # 既に`Nothing`/桁区切り/Boolean(`True→-1`)を正しく扱う`_vb_cdbl()`
+        # (知見52)を経由させる。
         if len(args) != 1:
             raise NotImplementedError("CInt expects exactly 1 argument")
-        return f"round(float({args[0]}))"
+        return f"round({VB_CDBL_HELPER_NAME}({args[0]}))"
     if key == "cbool":
         if len(args) != 1:
             raise NotImplementedError("CBool expects exactly 1 argument")

@@ -2664,6 +2664,46 @@ def _vb_cdbl(x):
 解決できた——これにより知見44〜52の「VB.NET演算子・型変換関数の値の
 食い違い」系統点検で、現実的に対応可能な範囲の課題は全て解消した。
 
+## 53. `CInt`も`CDbl`と同じ`Nothing`/桁区切り文字列の食い違いがあると確定——.NETランタイム本体のソースを`CInt`についても確認(VM不使用)
+
+知見52で`CDbl`用に`Conversions.vb`(.NETランタイム本体のソース)を確認した
+ついでに、同じファイル内の`ToInteger`(`CInt`の実体)も確認したところ、
+`CDbl`と全く同じ系統の食い違いが`CInt`にも存在すると判明した。
+
+**確定した内容**: `ToInteger(String)`/`ToInteger(Object)`いずれも
+先頭で`If Value Is Nothing Then Return 0`——`CDbl`と同じく`Nothing`は
+例外にならず`0`を返す。文字列引数は`IsHexOrOctValue`(`&H`/`&O`リテラル、
+今回も対象外のまま)でなければ`CDbl`と全く同じ`ParseDouble`(内部で
+`NumberStyles.AllowThousands`を含むフラグを使う、知見52)を経由して
+`Double`へ変換してから丸めるため、桁区切り文字列(`"1,234.5"`)も受理
+される。`ToInteger(Object)`の`TypeCode`別分岐には`Double`/`Decimal`等の
+扱いがあり、知見51で確定した「Booleanの数値変換は`True`→`-1`」の一般
+規則もここに波及する。
+
+修正前の`render.py`は`CInt(x)`を`round(float(x))`としていたため、
+`CInt(Nothing)`は`TypeError`、`CInt("1,234.5")`は`ValueError`になり
+VBの挙動と食い違っていた(知見52作業時には`CInt`まで手が回っていなかった
+——`CDbl`の修正だけで満足せず、同じファイル内の類似関数を追い打ちで
+確認したことで発見)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `CInt`の実装を
+`round(float(x))`から`round(_vb_cdbl(x))`(知見52の`_vb_cdbl()`ヘルパーを
+再利用)へ変更——`Nothing`/桁区切り文字列/Boolean全てを`CDbl`と同じ
+ロジックで正しく処理してから`round()`で銀行丸めする、新規ヘルパー追加
+無しの最小限の修正。
+
+`tests/test_uipath_codegen.py`に
+`test_cint_matches_dotnet_runtime_source_for_nothing_and_thousands`を
+追加(`CInt(Nothing)`→`0`、`CInt("1,234.5")`→`1234`、`CInt(True)`→`-1`
+等)。UiPath関連テスト全154件通過、回帰無し。
+
+**この知見で確定したこと**: `CDbl`の実装を直した際に見つけた「確度の
+高いソース」を同じファイル内の他の関数にも追い打ちで適用する価値が
+あると実証された——`CStr`/`CBool`についても同じ手法でクロスチェック
+済み(前のtickで実施、`CBool`は既存実装が正しいことを確認済み、
+`&H`/`&O`16進・8進リテラル文字列の非対応のみ軽微な既知の限界として
+残る)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
