@@ -3439,6 +3439,53 @@ renders_correctly`(`exec()`で`"outer inner 5"`になることまで確認)を
 記録してしまうところだった(知見65・66の「でっち上げない」方針は、
 未対応の主張についても同じ厳密さを要求する)。
 
+## 70. `uipath_codegen`のカバレッジ測定ツールを新規作成——`design/uipath_transpiler_roadmap.md` Phase 4が明記していたが未着手だった`codegen_coverage.py`相当の整備を実施、現状72%(21/29)を実測(VM不使用)
+
+`design/uipath_transpiler_roadmap.md`のPhase 4は「PAD側の`codegen_coverage.py`
+のようなカバレッジ測定ツールを作り、優先度順に埋めていく」と明記していたが、
+UiPath側ではこのツール自体がまだ作られていなかった(PADの`dump_daemon/
+codegen_coverage.py`は`pad_codegen`専用で、UiPath側を一切カバーしない)。
+知見42〜69の系統的な演算子/型変換関数の修正が一段落したところで、この
+明示的に積み残っていたロードマップ上の約束に着手した。
+
+**実装**(`dump_daemon/uipath_codegen_coverage.py`、新規ファイル):
+PAD版`codegen_coverage.py`と同じ設計方針——`uipath_codegen`の内部関数を
+直接呼ばず公開関数`generate_python()`だけを使う、コンテナ型ノード
+(`IfNode`/`SwitchNode`/`TryCatchNode`/`WhileNode`/`DoWhileNode`/
+`ParallelNode`/`ExcelApplicationScopeNode`)は子を空にした最小限のコピーに
+差し替えて測定する(子自身のカバレッジは再帰で別途測定済みのため、親の
+分岐点自身の分類に混ざらないようにする)。対象は実機確認済みのXAML
+フィクスチャ(`design/evidence/uipath_xaml_probe/Main.xaml`/`Sub1.xaml`、
+知見1〜36でUiPath Studio実機コンパイル確認したもの)を`parse_workflow_file()`
+で読み込み、その木構造を実際に歩く——でっち上げたテストデータではなく実機
+確認済みの構造一式に対する実測値になる。
+
+**測定結果**: 29分岐点中21件(72%)が実コードを生成できる。TODOに倒れる
+残り8件のうち、`DoWhileNode(no condition)`・`InvokeWorkflowFileNode`
+(単体`generate_python()`呼び出しでは`invoke_resolver`無しのため常にTODO、
+`generate_project_python()`経由なら解決される仕様通りの挙動)・
+`UnknownActivityNode`(Libraryの`NewActivity`、v1スコープ外と確定済み)は
+いずれも既知の仕様通り。残る5件——`ExcelApplicationScopeNode`/
+`ExcelWriteCellNode`/`HttpClientNode`/`InvokeCodeNode`/
+`SendOutlookMailNode`——は、Phase 1で「Tier1相当」と確定した活動一式に
+含まれているにもかかわらず、`_generate_unresolved_activity`
+(`uipath_codegen/__init__.py`、「インラインコード・ライブExcel/Outlook
+連携・`HttpClient`のHeaders等プロパティ要素未パース」と明記済み)へ
+ルーティングされ、常に`# TODO`に倒れる——これは今回新たに見つかったバグ
+ではなく、既存のコメントが明記していた**既知の、意図的な**先送りである
+ことを数値で確定させた(でっち上げた「対応済み」の主張を避けるための
+正確な現状把握)。
+
+`tests/test_uipath_codegen_coverage.py`に、カバレッジが72%を下回ったら
+失敗する回帰テストと、上記5件が一貫してTODO判定になることを固定する
+テストを追加。UiPath関連テスト全228件通過、リポジトリ全体で全849件通過。
+
+**この知見で確定したこと**: Phase 4の「カバレッジ測定ツール」という
+積み残しのタスクそのものに着手することで、「どの活動が実際にコード生成
+できるか」を印象ではなく数値で把握できるようになった——次にTier1活動の
+実装を進める際(Excel/Outlook連携・HttpClientのHeaders/Body対応等)は、
+このツールで進捗を定量的に追跡できる。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

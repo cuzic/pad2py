@@ -103,6 +103,19 @@ PAD側の`codegen_coverage.py`のようなカバレッジ計測ツールを作�
 埋めていく。未対応アクティビティは架空のAPI呼び出しをでっち上げず
 `# TODO`を出す(`pad_codegen`・`raw_fallback.py`と同じ正直さの方針)。
 
+**カバレッジ計測ツール: 完了(2026-11-05、知見70)**。
+`dump_daemon/uipath_codegen_coverage.py`(`uv run python3 -m
+dump_daemon.uipath_codegen_coverage`で実行)が実機確認済みXAMLフィクスチャ
+(`Main.xaml`/`Sub1.xaml`)を対象に測定し、現状**72%(21/29分岐点)**。
+残り8件のうち3件(`DoWhileNode`無条件・`InvokeWorkflowFileNode`単体呼び
+出し・Libraryの`UnknownActivityNode`)は仕様通り、残る5件
+(`ExcelApplicationScopeNode`/`ExcelWriteCellNode`/`HttpClientNode`/
+`InvokeCodeNode`/`SendOutlookMailNode`)が、Tier1確定済みにもかかわらず
+`_generate_unresolved_activity`へ常にルーティングされ未実装のまま
+(ライブExcel/Outlook連携・インラインコード実行・`HttpClient`のHeaders/
+Body未パースという既知の難所、下記参照)——次の実装対象の優先度付けに
+このツールを使う。
+
 **ここが最大の未解決問題**: **セレクタの意味論マッピング**。UiPathの
 セレクタは`<wnd app='notepad.exe' cls='Notepad' .../><ctrl name='...'
 role='editable text' />`という独自XML+fuzzy matching+Computer Vision
@@ -672,3 +685,13 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     2点の組み合わせの副作用として、追加コード無しで動いていた。
     レクサ・コード生成両方のレベルで回帰テストを追加、UiPath関連テスト
     全226件通過、リポジトリ全体で全846件通過。
+31. **(完了、2026-11-05)** `uipath_codegen`のカバレッジ測定ツールを新規
+    作成(VM不使用、知見70——Phase 4が明記していたが未着手だった
+    `codegen_coverage.py`相当の積み残しに着手): 実機確認済みXAML
+    フィクスチャ(`Main.xaml`/`Sub1.xaml`)を対象に測定し、現状72%
+    (21/29分岐点)を実測。既知の仕様通りの3件を除く残り5件
+    (`ExcelApplicationScopeNode`/`ExcelWriteCellNode`/`HttpClientNode`/
+    `InvokeCodeNode`/`SendOutlookMailNode`)が、Tier1確定済みにも
+    かかわらず未実装のままと数値で確定(新規バグではなく既存コメントが
+    明記していた既知の先送り)。回帰テスト追加、UiPath関連テスト全228件
+    通過、リポジトリ全体で全849件通過。
