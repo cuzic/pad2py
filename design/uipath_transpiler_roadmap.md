@@ -728,3 +728,13 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     残る属性(`AlterIfDisabled`/`CursorMotionType`/`DelayBefore`/`DelayMS`/
     `SendWindowMessages`/`SimulateClick`)は実データでの非既定値使用実例が
     無いため未対応のまま記録(知見46のEncodingと同じ優先度判断)。
+35. **(完了、2026-11-05)** 配列/コレクション/`DataTable`行アクセスの
+    `識別子(引数)`構文が関数呼び出しと言語レベルで曖昧であると発見・現状の
+    安全な挙動をロック(VM不使用、知見74——`uipath_expr`の実装不備ではなく
+    VB.NET自体の構文的曖昧性、静的型解決無しでは判別不可能): `myArray(0)`
+    のような式は常に`FuncCall`として解釈され、Tier1関数名以外は安全に
+    `# TODO`へ倒れる(架空の添字アクセス変換はしない)ことを確認・回帰
+    テストでロック。変数宣言を追跡して曖昧性を解消する設計の方向性は
+    `design/uipath_xaml_findings.md`知見74に記録したが、実機での需要が
+    無いため今回は実装を見送った。UiPath関連テスト全240件通過、リポジトリ
+    全体で全864件通過。

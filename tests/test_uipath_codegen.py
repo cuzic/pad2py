@@ -73,6 +73,24 @@ def test_assign_object_typed_expr():
     _compiles(code)
 
 
+def test_array_or_collection_indexing_syntax_is_ambiguous_with_func_call_falls_back_to_todo():
+    """知見74: VB.NETは配列/コレクション/DataTable行アクセスも関数呼び出しと
+    全く同じ`識別子(引数)`構文を使う(例: `myArray(0)`・`row("Col")`)——
+    静的な型情報(`myArray`が変数か関数かの区別)が無い限り、構文だけでは
+    どちらか判別できない言語レベルの曖昧性であり、`uipath_expr`の実装の
+    不備ではない。本パーサーは常に`FuncCall`として解釈するため、Tier1に
+    無い名前(`myArray`等)は`_render_func_call`が確認済みでない関数呼び出し
+    として安全に`# TODO`へ倒す——「配列インデックスだ」と推測して架空の
+    `myArray[0]`変換をでっち上げるよりも安全な現状の挙動をロックする
+    回帰テスト(変数宣言を追跡して曖昧性を解消する設計は、実機確認済みの
+    需要が無いため今回は見送った)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="myArray(0)"))])
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "x = None" in code
+    _compiles(code)
+
+
 def test_assign_interpolated_string_renders_to_vb_cstr_concatenation():
     """知見65: 文字列補間`$"..."`のプレーンな`{expr}`補間はサポート対象
     ——`_vb_cstr()`(知見46、VBのCStr/&と同じ書式規則)で変換してから
