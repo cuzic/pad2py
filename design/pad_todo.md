@@ -30,9 +30,21 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   🖥️ 残課題: `codegen_coverage.py`のerror_handlingバケット(8/16)を実際に動かすには、
   `pad_action_lib`で結線済みのタグ(`CopyFileError`等)を使う`ON ERROR <TagName>`の
   実機キャプチャが別途必要。
-- [ ] 💻🖥️ `pad_expr`(Lark式パーサー)の演算子優先順位・結合性を実機で確認し、確認できたら
+- [x] 🖥️ `pad_expr`(Lark式パーサー)の演算子優先順位・結合性を実機で確認し、確認できたら
   `pad_codegen`を`RawExpr`丸ごとTODOから実際のPython式生成へ切り替える。複合式(`AND`/`OR`/算術混在)の
   実例を複数実機コンパイルして優先順位の違いが出るケースを探す。
+  ✅ **実機確認・codegen結線完了(知見81)**: **新手法を発見**——ツールバーの`Button "Run"`を
+  `.invoke()`で呼ぶだけでRDP接続無しでも実際にフローを実行できることが分かった。新規テスト
+  フロー(`pad_expr_precedence`、保存せず破棄)で`SET <Var> TO <式>` + `File.WriteText`の組を
+  5パターン貼り付け→Run→`clipwire exec`でファイル内容を読む、という手順で、`1+2*3`=7・
+  `True OR True AND False`=True・`True XOR True AND False`=True・`True OR False XOR True`=True・
+  `NOT True AND False`=Falseの全5件が、`pad_expr`文法が最初から採用していた
+  `OR<XOR<AND<NOT<比較<算術`という仮定と一致することを確認(フラット左結合では説明できない)。
+  これにもとづき`render_expr_as_python()`(`dump_daemon/pad_codegen/render.py`)を追加し、
+  構文木が`mod`/`/`(値の意味論が別課題として未確認のまま、知見53・81)を含まない場合に
+  `SetVariableRecord`の複合式を実際のPython式へ変換するようにした(commit 512cf11)。
+  🖥️ 残課題: `mod`の負数での符号規則・`/`が常に浮動小数点除算になるかという値の意味論は
+  今回発見した「Run実行+ファイル書き出し」の手法で追って確認できる見込み(知見81に記録)。
 - [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
   「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
 
