@@ -4161,6 +4161,47 @@ indent, invoke_resolver)`で子アクティビティを通常通り再帰生成�
 リスクが大きく異なる、という教訓。1 tick前の「見送り」判断自体を
 再検証し、より安全な設計を見つけた上で実際に実装まで完了させた。
 
+## 88. 知見84が初めて意味を持たせてしまった退行——`ExcelApplicationScope`内の`Invoke Workflow File`参照が複数ファイル発見で見つけてもらえず常に未解決になるバグを発見・修正(VM不使用、知見87の検証作業中に発見)
+
+知見87(呼び出し元への`# WARNING`)の実装を多角的に検証していた際、
+`ExcelApplicationScopeNode`の子に`Invoke Workflow File`を入れた
+合成構成で`generate_project_python()`を実行したところ、実在する
+`Sub1.xaml`を参照しているにもかかわらず常に`# TODO: unresolved Invoke
+Workflow File: Sub1.xaml`に倒れてしまうと判明した。
+
+**原因**: 複数ファイルのBFS発見(`_discover_workflow_files`→
+`_iter_invoke_nodes`→`_child_node_lists`)を担う`_child_node_lists`
+関数に、`ExcelApplicationScopeNode`の分岐が無かった——
+`SequenceNode`/`IfNode`/`ForEachNode`/`TryCatchNode`/`SwitchNode`/
+`ParallelNode`は網羅されているが、`ExcelApplicationScopeNode`が
+漏れていた。
+
+**知見84が初めてこの欠落に意味を持たせた、という経緯**: 知見84より前は
+`ExcelApplicationScopeNode`の子アクティビティが丸ごと`# TODO`に潰されて
+いたため、「子の中にある`Invoke Workflow File`参照」自体がコード生成上
+無意味で、この欠落は無害だった。知見84でスコープの子アクティビティを
+実際に再帰生成するよう修正した結果、スコープ内にネストした`Invoke
+Workflow File`が初めて「実際に解決されるべき呼び出し」として意味を
+持つようになり、`_child_node_lists`の欠落が初めて実害のある退行として
+現れた——知見84自身のバグではなく、知見84が別の既存の欠落を「意味の
+あるバグ」に変えた、という間接的な経緯。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`の
+`_child_node_lists`): `ExcelApplicationScopeNode`の分岐
+(`return [node.body]`)を追加した。
+
+`tests/test_uipath_codegen.py`に
+`test_invoke_workflow_file_nested_in_excel_scope_is_still_discovered`
+(実際に`generate_project_python()`を実行し、実在するファイルが正しく
+解決されることを確認)を追加。UiPath関連テスト全267件通過、リポジトリ
+全体で全928件通過(知見70のカバレッジは72%のまま)。
+
+**この知見で確定したこと**: ある修正(知見84)が、別の既存の欠落(今回の
+`_child_node_lists`)を無害な状態から有害な状態へ変えてしまうことがある
+——修正を実装した直後に「この修正によって新たに到達可能になった
+コードパスは他に無いか」を広く確認する価値が、知見81(自分自身の修正の
+副作用確認)に続いて今回も実証された。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

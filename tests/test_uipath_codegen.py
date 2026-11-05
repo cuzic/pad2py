@@ -728,6 +728,47 @@ def test_excel_application_scope_with_unsupported_child_shows_both_todos():
     _compiles(code)
 
 
+def test_invoke_workflow_file_nested_in_excel_scope_is_still_discovered(tmp_path):
+    """知見88: 知見84より前は`ExcelApplicationScopeNode`の子が丸ごと
+    `# TODO`に潰されていたため、子の中の`Invoke Workflow File`参照先が
+    `_discover_workflow_files`(複数ファイルのBFS発見)に見つけてもらえ
+    なくても無害だった。知見84で子アクティビティが実際に生成される
+    ようになった結果、`_child_node_lists`に`ExcelApplicationScopeNode`の
+    分岐が無いことが初めて意味を持つ退行になった——実在するファイルでも
+    常に`# TODO: unresolved Invoke Workflow File`に倒れてしまっていた
+    バグを、実際に`generate_project_python()`を実行して再現した上で
+    修正した。"""
+    (tmp_path / "Sub1.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Sub1">'
+        "<Sequence><ui:MessageBox "
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" Text="&quot;hi&quot;" />'
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Main">'
+        "<Sequence>"
+        '<ui:ExcelApplicationScope WorkbookPath="wb.xlsx">'
+        "<ui:ExcelApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="x:Object">'
+        "<Sequence>"
+        '<ui:InvokeWorkflowFile WorkflowFileName="Sub1.xaml" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:ExcelApplicationScope.Body>"
+        "</ui:ExcelApplicationScope>"
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    code = generate_project_python(tmp_path / "Main.xaml")
+    _compiles(code)
+    assert "# TODO: unresolved Invoke Workflow File" not in code
+    assert "Sub1()" in code
+
+
 def test_parallel_runs_sequentially_with_note():
     wf = _wrap(
         [

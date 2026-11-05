@@ -889,6 +889,17 @@ def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:
 # `Invoke Workflow File`参照の発見(`_iter_invoke_nodes`)専用の走査であり、
 # codegen本体の`_generate_node`ディスパッチとは別の関心事(静的な呼び出し
 # グラフ解析 vs コード生成)のため意図的に分離している。
+#
+# 知見88: `ExcelApplicationScopeNode`の分岐が長らく欠けていた——知見84
+# (スコープの子アクティビティを実際に再帰生成するよう修正)より前は、
+# スコープの子が丸ごと`# TODO`に潰されていたため「子の中の`Invoke
+# Workflow File`参照」自体が意味を持たず、この欠落は無害だった。知見84で
+# 子アクティビティが実際に生成されるようになった結果、スコープ内に
+# ネストした`Invoke Workflow File`の参照先ファイルが
+# `_discover_workflow_files`(複数ファイルのBFS発見)に一切見つけて
+# もらえず、実在するファイルでも常に`# TODO: unresolved Invoke Workflow
+# File`に倒れるという、知見84が新たに意味を持たせてしまった退行を発見・
+# 修正した(実際に`generate_project_python()`を実行して再現を確認)。
 def _child_node_lists(node: Node) -> list[list[Node]]:
     if isinstance(node, SequenceNode):
         return [node.body]
@@ -908,6 +919,8 @@ def _child_node_lists(node: Node) -> list[list[Node]]:
         return [arm.body for arm in node.arms]
     if isinstance(node, ParallelNode):
         return [node.branches]
+    if isinstance(node, ExcelApplicationScopeNode):
+        return [node.body]
     return []
 
 
