@@ -364,12 +364,20 @@ def _parse_click(elem: etree._Element) -> ClickNode:
             _, local = _split_tag(child.tag)
             if local == "Target":
                 selector = _attr(child, "Selector")
+    cursor_position = None
+    cursor_position_prop = _find_property_element(elem, "CursorPosition")
+    if cursor_position_prop is not None:
+        for child in _direct_children(cursor_position_prop):
+            _, local = _split_tag(child.tag)
+            if local == "CursorPosition":
+                cursor_position = _attr(child, "Position")
     return ClickNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
         click_type=_attr(elem, "ClickType"),
         mouse_button=_attr(elem, "MouseButton"),
         key_modifiers=_attr(elem, "KeyModifiers"),
+        cursor_position=cursor_position,
     )
 
 

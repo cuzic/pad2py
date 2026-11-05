@@ -216,13 +216,22 @@ class ClickNode:
     「実機確認済みの既定値そのまま」かどうかを判定できるようにするために
     保持する——未確認の値(ダブルクリック・右クリック・修飾キー併用等)は
     `# TODO`へ倒す(`uipath_codegen/__init__.py`参照、でっち上げたマッピングで
-    クリック種別を誤らせるより安全側に倒す)。"""
+    クリック種別を誤らせるより安全側に倒す)。
+
+    `cursor_position`は`ui:Click.CursorPosition`配下の`ui:CursorPosition`
+    要素の`Position`属性(知見73、実機確認済みの値は`"Center"`のみ——
+    pywinautoの`click_input()`既定(ターゲット要素の中心座標)と一致する
+    ため現状は安全)。`OffsetX`/`OffsetY`(`Position="Custom"`時のみ意味を
+    持つと推定)は未確認のまま捕捉しない——`Position`が`"Center"`以外の
+    値だった場合は`_generate_click`が`# TODO`へ倒すため、`OffsetX`/
+    `OffsetY`を素通りで失っても実害は無い。"""
 
     selector: str | None = None
     display_name: str | None = None
     click_type: str | None = None
     mouse_button: str | None = None
     key_modifiers: str | None = None
+    cursor_position: str | None = None
 
 
 @dataclass

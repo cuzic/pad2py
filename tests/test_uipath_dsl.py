@@ -205,6 +205,8 @@ def test_click_selector(main_wf):
     assert click.click_type == "CLICK_SINGLE"
     assert click.mouse_button == "BTN_LEFT"
     assert click.key_modifiers == "None"
+    # 知見73: `ui:Click.CursorPosition`配下の`Position`属性も捕捉される。
+    assert click.cursor_position == "Center"
 
 
 def test_invoke_workflow_file(main_wf):

@@ -554,6 +554,11 @@ def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[st
 _CLICK_TYPE_CONFIRMED_DEFAULTS = (None, "CLICK_SINGLE")
 _MOUSE_BUTTON_CONFIRMED_DEFAULTS = (None, "BTN_LEFT")
 _KEY_MODIFIERS_CONFIRMED_DEFAULTS = (None, "None")
+# `ui:Click.CursorPosition`の`Position`属性(知見73)。実機確認済みの値は
+# `"Center"`のみで、これはpywinautoの`click_input()`既定(ターゲット要素の
+# 中心座標)と一致するため安全。`"TopLeft"`等の他の値や`Position="Custom"`
+# 時の`OffsetX`/`OffsetY`は未確認のため`# TODO`へ倒す。
+_CURSOR_POSITION_CONFIRMED_DEFAULTS = (None, "Center")
 
 
 def _generate_click(node: ClickNode, indent: int) -> list[str]:
@@ -578,6 +583,12 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
             f"{prefix}# TODO: Click with non-default ClickType/MouseButton/KeyModifiers "
             f"(ClickType={node.click_type!r}, MouseButton={node.mouse_button!r}, "
             f"KeyModifiers={node.key_modifiers!r}) — mapping not confirmed via real "
+            "capture, refusing to guess"
+        ]
+    if node.cursor_position not in _CURSOR_POSITION_CONFIRMED_DEFAULTS:
+        return [
+            f"{prefix}# TODO: Click with non-default CursorPosition "
+            f"({node.cursor_position!r}) — offset mapping not confirmed via real "
             "capture, refusing to guess"
         ]
     rendered = selector_text_to_pywinauto(node.selector)

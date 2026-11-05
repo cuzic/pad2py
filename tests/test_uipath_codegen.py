@@ -409,6 +409,29 @@ def test_click_with_non_default_type_is_todo_not_guessed(
     _compiles(code)
 
 
+@pytest.mark.parametrize("cursor_position", [None, "Center"])
+def test_click_with_confirmed_default_cursor_position_generates_click_input(
+    cursor_position: str | None,
+) -> None:
+    """知見73: `CursorPosition`が未設定または実機確認済みの`"Center"`
+    (pywinautoの`click_input()`既定と一致)の場合は従来通り生成する。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, cursor_position=cursor_position)])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert ".click_input()" in code
+    _compiles(code)
+
+
+def test_click_with_non_default_cursor_position_is_todo_not_guessed():
+    """知見73: `CursorPosition`が`"Center"`以外(オフセット指定のマッピング
+    未確認)の場合はでっち上げず`# TODO`に倒す。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, cursor_position="TopLeft")])
+    code = generate_python(wf)
+    assert "# TODO: Click with non-default CursorPosition" in code
+    assert ".click_input()" not in code
+    _compiles(code)
+
+
 def test_parallel_runs_sequentially_with_note():
     wf = _wrap(
         [

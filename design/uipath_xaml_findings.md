@@ -3580,6 +3580,45 @@ try/except変換はしない、知見71の`ClickType`と同じ方針)。
 あった(今回は3要素のみ、かつそのうち実際にコード生成されるのは
 `InvokeWorkflowFileNode`1件のみという、想定より狭い影響範囲だった)。
 
+## 73. `ui:Click.CursorPosition`の`Position`属性も同じ「サイレントに無視される」パターンと確認、知見71と同じ方針で解決(VM不使用)
+
+知見71で`ui:Click`の`ClickType`/`MouseButton`/`KeyModifiers`属性を扱った
+際、同じ要素の子プロパティ要素`ui:Click.CursorPosition`配下の
+`ui:CursorPosition Position="Center"`も一切キャプチャされていないことに
+気づいた(`Main.xaml`181〜191行目)。`Position`はクリック対象要素の
+どこを狙うか(中心/四隅等)を指定するプロパティで、`OffsetX`/`OffsetY`は
+`Position="Custom"`時のみ意味を持つと推定される(今回のフィクスチャでは
+両方とも値の無い空の`InArgument`)。
+
+**確認できたこと**: `Position="Center"`の1例のみ。これはpywinautoの
+`click_input()`の既定動作(座標未指定時はターゲット要素の中心、
+`win_base_wrapper.py`で確認済み——知見71参照)と一致するため、現状の
+コードは**偶然ではなく確認済みの意味で**正しい。`"TopLeft"`等の他の値や
+`Custom`時のオフセット座標への変換は未確認。
+
+**修正内容**: `ClickNode`に`cursor_position`(`Position`属性の生テキスト)
+を追加、`_generate_click`は`cursor_position`が`None`または`"Center"`の
+場合のみ従来通りコードを生成し、それ以外は`# TODO`へ倒す(知見71の
+`ClickType`等と全く同じ方針)。`OffsetX`/`OffsetY`は`Position`が
+`"Center"`以外なら`# TODO`に倒れるため素通りで失っても実害が無く、
+今回は捕捉しない(でっち上げた座標変換よりシンプルな方を選んだ)。
+
+`tests/test_uipath_dsl.py`の`test_click_selector`に捕捉確認を追加、
+`tests/test_uipath_codegen.py`に確認済み既定値(`None`/`"Center"`)と
+非既定値(`"TopLeft"`)のテストを追加。UiPath関連テスト全239件通過、
+リポジトリ全体で全863件通過(知見70のカバレッジは72%のまま、実機
+フィクスチャが確認済みの安全値そのものだったため変化無し)。
+
+**この知見で確定したこと**: 知見71・72・73は同じパターンの繰り返し
+(実機属性を再読み込み→未キャプチャの属性/子要素を発見→確認済みの
+安全な値のみ許可し、それ以外は`# TODO`)——1つの活動の属性を調べる
+作業で別の属性/子要素の存在にも自然に気づくことが多く、1回の調査で
+複数の知見が連鎖的に見つかるパターンが定着してきた。`ui:Click`自体には
+まだ`AlterIfDisabled`/`CursorMotionType`/`DelayBefore`/`DelayMS`/
+`SendWindowMessages`/`SimulateClick`という、今回のフィクスチャでは
+全て`{x:Null}`(未確認)の属性が残っている——実データでの非既定値使用
+実例が無いため、知見46のEncoding同様、優先度を下げて未対応のまま記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

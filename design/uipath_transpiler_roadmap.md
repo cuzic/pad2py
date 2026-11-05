@@ -716,3 +716,15 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     呼び出しを生成し、`"True"`等は`# TODO`へ倒す(でっち上げたtry/except
     変換はしない)。確認済み既定値のケースは挙動を一切変えない。回帰テスト
     追加、UiPath関連テスト全236件通過、リポジトリ全体で全857件通過。
+34. **(完了、2026-11-05)** `ui:Click.CursorPosition`の`Position`属性も
+    同じ「サイレントに無視される」パターンと確認、知見71と同じ方針で解決
+    (VM不使用、知見73——知見71の属性調査中に同じ要素内の別の子プロパティ
+    要素にも気づいた): 実機確認済みの値は`"Center"`のみで、pywinautoの
+    `click_input()`既定(ターゲット要素の中心)と一致するため現状のコードは
+    確認済みの意味で正しいと確定。`cursor_position`が`None`/`"Center"`の
+    場合のみ従来通りコードを生成し、それ以外(`"TopLeft"`等)は`# TODO`へ
+    倒す。確認済み既定値のケースは挙動を一切変えない。回帰テスト追加、
+    UiPath関連テスト全239件通過、リポジトリ全体で全863件通過。`ui:Click`の
+    残る属性(`AlterIfDisabled`/`CursorMotionType`/`DelayBefore`/`DelayMS`/
+    `SendWindowMessages`/`SimulateClick`)は実データでの非既定値使用実例が
+    無いため未対応のまま記録(知見46のEncodingと同じ優先度判断)。
