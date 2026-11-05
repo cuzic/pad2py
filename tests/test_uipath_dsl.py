@@ -152,6 +152,48 @@ def test_switch(main_wf):
     assert isinstance(switch.arms[0].body[0], AssignNode)
 
 
+def test_switch_default_arm_from_property_element():
+    """知見40: `Switch`の`Default`アームは`x:Key`付き辞書エントリ(知見21)とは
+    別の`<Switch.Default>`プロパティ要素として直列化される——実機
+    (pad2py-pad-host VM)で確認した実例をそのまま合成XMLで再現する。
+    修正前は`_activity_children()`がプロパティ要素を除外するため、この
+    アームが無言で読み捨てられるバグがあった。"""
+    xml = (
+        '<Switch xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'x:TypeArguments="x:Int32" DisplayName="Switch" Expression="[result]">'
+        "<Switch.Default>"
+        '<Assign DisplayName="Assign">'
+        "<Assign.To>"
+        '<OutArgument x:TypeArguments="x:String">[content]</OutArgument>'
+        "</Assign.To>"
+        "<Assign.Value>"
+        '<InArgument x:TypeArguments="x:String">defaultcase</InArgument>'
+        "</Assign.Value>"
+        "</Assign>"
+        "</Switch.Default>"
+        '<Assign x:Key="1" DisplayName="Assign">'
+        "<Assign.To>"
+        '<OutArgument x:TypeArguments="x:String">[content]</OutArgument>'
+        "</Assign.To>"
+        "<Assign.Value>"
+        '<InArgument x:TypeArguments="x:String">case1</InArgument>'
+        "</Assign.Value>"
+        "</Assign>"
+        "</Switch>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SwitchNode)
+    assert len(node.arms) == 2
+    default_arm, case_arm = node.arms
+    assert default_arm.key is None
+    assert isinstance(default_arm.body[0], AssignNode)
+    assert default_arm.body[0].value == Literal(value="defaultcase")
+    assert case_arm.key == "1"
+    assert isinstance(case_arm.body[0], AssignNode)
+    assert case_arm.body[0].value == Literal(value="case1")
+
+
 def test_click_selector(main_wf):
     click = main_wf.root.body[8]
     assert isinstance(click, ClickNode)

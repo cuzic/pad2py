@@ -316,7 +316,20 @@ def _parse_try_catch(elem: etree._Element) -> TryCatchNode:
 
 
 def _parse_switch(elem: etree._Element) -> SwitchNode:
+    """`Switch`の`case`群は`IDictionary<TKey, Activity>`(知見21、`x:Key`は
+    アクティビティ要素自身の属性)だが、`Default`は辞書のキーではなく
+    .NETの`Switch<T>.Default`という**別のプロパティ**で、`<Switch.Default>`
+    というプロパティ要素として直列化される(知見40で実機確認——当初は
+    `Default`も何らかの特別な`x:Key`を持つ辞書エントリだろうと誤って
+    仮定しており、`_activity_children()`がプロパティ要素を除外するため
+    `<Switch.Default>`配下の活動が完全に無言で読み捨てられるバグがあった)。
+    """
     arms: list[SwitchArm] = []
+    default_elem = _find_property_element(elem, "Default")
+    if default_elem is not None:
+        default_children = _direct_children(default_elem)
+        if default_children:
+            arms.append(SwitchArm(key=None, body=[parse_activity(default_children[0])]))
     for child in _activity_children(elem):
         key = _attr(child, "Key", X_NS) or _attr(child, "Key")
         arms.append(SwitchArm(key=key, body=[parse_activity(child)]))

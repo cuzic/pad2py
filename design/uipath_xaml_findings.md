@@ -2001,6 +2001,52 @@ Confirm→保存、という完全な実機操作で確認):
 Classicのみとし、本知見は「Modern対応を将来やる場合の設計の出発点」として
 記録するに留める。
 
+## 40. `Switch`のDefaultアームの実XAML形を確定——`x:Key`付き辞書エントリ(知見21)とは別の`<Switch.Default>`プロパティ要素、パーサーの無言データ消失バグを発見・修正
+
+design/uipath_transpiler_roadmap.mdの「既知の簡略化」に残っていた
+「`Switch`のdefaultアームの実XAML形は未確認」を、pad2py-pad-host VM上の
+`xaml_probe`で実際に確認した(知見21で確認済みのcase `1`のSwitchに、
+「Default」行の「Add an activity」経由で`Assign`(`content = "defaultcase"`)
+をドラッグして追加)。結果:
+
+```xml
+<Switch x:TypeArguments="x:Int32" DisplayName="Switch" Expression="[result]">
+  <Switch.Default>
+    <Assign>
+      <Assign.To>
+        <OutArgument x:TypeArguments="x:String">[content]</OutArgument>
+      </Assign.To>
+      <Assign.Value>
+        <InArgument x:TypeArguments="x:String">defaultcase</InArgument>
+      </Assign.Value>
+    </Assign>
+  </Switch.Default>
+  <Assign x:Key="1"> ... </Assign>
+</Switch>
+```
+
+**`Default`は`x:Key`付き辞書エントリ(知見21の`Cases`、
+`IDictionary<TKey, Activity>`)とは全く別の、.NETの`Switch<T>.Default`
+という独立したプロパティで、`<Switch.Default>`というプロパティ要素
+(ドット区切り、知見1で確立した命名規則通り)として直列化される**。
+実機確認前は「Defaultも何らかの特別な`x:Key`を持つ辞書エントリだろう」
+という誤った仮定で`uipath_dsl.xaml_tree._parse_switch`を書いており、
+`<Switch.Default>`は`_activity_children()`(プロパティ要素を除外する
+ヘルパー)によって**完全に無言で読み捨てられていた**——Defaultアームを
+持つ実際のワークフローを変換すると、でっち上げでも例外でもなく
+「Defaultの中身がそのまま消える」という、プロジェクトの「データを失わない」
+方針に反する静かなバグだった(Outlineパネル上は`Switch > Case: 1`と
+`Default`が兄弟ノードとして別々に表示されることでも構造の違いが伺えた)。
+
+`_parse_switch`を修正し、`<Switch.Default>`プロパティ要素を先に探して
+その直下の活動を`SwitchArm(key=None, ...)`として追加するようにした
+(IR側の`SwitchArm.key=None`=defaultという表現自体は既に正しかった——
+`uipath_codegen`側のDefault→`else:`変換ロジックも元々問題無し、バグは
+パース側のみ)。実機未確認だった`SwitchArm`のdocstringも訂正。
+実験後は`xaml_probe`から追加したDefaultアームを削除し元の状態へ復元
+(知見31の方針通り、diffで無害化を確認済み)。
+`tests/test_uipath_dsl.py`に合成XMLでの検証を1件追加、全611件通過。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

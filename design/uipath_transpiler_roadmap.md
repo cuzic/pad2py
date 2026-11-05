@@ -224,10 +224,12 @@ docstringを参照。未対応アクティビティ(Library呼び出し含む)�
   される(`If.Then`/`If.Else`が複数ステップの時だけラップされる可変長
   パターンとは異なる、別の固定パターン)——このラップ用`Sequence`自身が
   ローカル変数を宣言するケースは未対応(実機未確認、文法上は可能)
-- `Switch`のdefaultアームの実XAML形は未確認(知見9の実例は単一アーム
-  `x:Key="1"`のみ)
-- Modern活動のFuzzy/Strict selector(知見37)は未対応(そもそもXAML形が
-  未確認)
+- **(完了・バグ修正済み、2026-11-05)** `Switch`のdefaultアームの実XAML形
+  (知見40): `x:Key`付き辞書エントリ(知見21)とは別の`<Switch.Default>`
+  プロパティ要素だと確定。`_parse_switch`がこれを無言で読み捨てていた
+  実バグを発見・修正した
+- Modern活動のFuzzy/Strict selector(知見37・知見39)は実XAML形を確認済み
+  だが、v1スコープがClassicのみという方針により実装は見送り
 
 ## Phase 3: VB.NET式パーサー【完了、2026-11-05】
 

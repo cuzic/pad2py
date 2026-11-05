@@ -147,10 +147,9 @@ class TryCatchNode:
 
 @dataclass
 class SwitchArm:
-    """`<Switch>`配下の1アーム。`key=None`はdefaultアーム(実機未確認、
-    知見9には単一アーム`x:Key="1"`の実例のみ——defaultの実XAML形は
-    design/uipath_transpiler_roadmap.mdの今後の調査候補として残す)。
-    """
+    """`<Switch>`配下の1アーム。`key=None`はdefaultアーム——`x:Key`付きの
+    辞書エントリ(知見21)とは別物の`<Switch.Default>`プロパティ要素として
+    直列化される(知見40、実機確認済み)。"""
 
     key: str | None
     body: list["Node"] = field(default_factory=list)
