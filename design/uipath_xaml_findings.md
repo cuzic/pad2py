@@ -2305,6 +2305,86 @@ Linuxサンドボックスにはクリップボード機構が無く`exec()`で�
 `_generate_set_to_clipboard`以外に`str(`を素のまま使っている箇所は
 `uipath_codegen/`全体を`grep`して確認済みで、もう残っていない。
 
+## 47. 比較演算子(`=`/`<>`/`<`/`<=`/`>`/`>=`)がOption Strict Off下で数値/文字列混在オペランドを暗黙変換すると確定——Pythonの素の`==`等とは食い違う(VM不使用、公式ドキュメントで確定)
+
+知見46作業中のgrep監査で`_generate_append_line`/`_generate_set_to_clipboard`の
+不整合を見つけた直後、同じ監査精神でPAD側の並行知見(他セッションの知見88
+「IF/SETの=/<>演算子も型をまたいで等価と判定される」)を見て、UiPath側の
+`=`/`<>`等の比較演算子についても同じ観点(Object型オペランドの型をまたいだ
+暗黙変換)を確認していなかったことに気づき、公式ドキュメントで調査した。
+
+**確定した内容**(Microsoft Learn「Comparison Operators (Visual Basic)」の
+「Typeless Programming with Relational Comparison Operators」節): `Option
+Strict Off`(UiPathプロジェクトの既定、知見確認済み)かつ比較の少なくとも
+片方が`Object`型オペランドの場合、**実行時の型**によって比較方法が決まる:
+
+| オペランドの組み合わせ | 比較方法 |
+|---|---|
+| 両方`String` | 通常の文字列ソート比較 |
+| 両方数値 | 両方`Double`に変換して数値比較 |
+| 片方数値・片方`String` | `String`を`Double`に変換して数値比較(変換不可なら`InvalidCastException`) |
+| それ以外の参照型同士 | `InvalidCastException` |
+
+さらに`Nothing`は数値比較では`0`、文字列比較では空文字列として扱われる
+(同ページ「Comparing Numbers」「Comparing Strings」節で確認)。
+
+UiPathのワークフロー変数は`GenericValue`(=`Object`型のラッパー)や明示的な
+`Object`型が多用される(Excel/CSV/データテーブルから読み取った値を緩い型で
+扱う場面が典型)ため、この「数値↔文字列の暗黙変換」は現実のワークフローで
+発生しうる。Pythonの`==`はこのような型をまたいだ暗黙変換を一切しない
+(`"5" == 5`は常に`False`)ため、単純な`==`等への変換のままでは誤変換になる。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): 全比較演算子を
+実行時にオペランドの型を判定して変換する`_vb_cmp(a, b)`ヘルパー関数経由に
+変更した——`Not`の修正(知見45)と同じ「静的な型情報が無いためコード生成時
+ではなく実行時にisinstanceで分岐する」設計を踏襲(`uipath_codegen`は
+変数の宣言型を辿るシンボルテーブルを持たないため、静的型判定は不可能
+——実際の評価結果の型で判定するのが唯一の現実的な手段):
+```python
+def _vb_cmp(a, b):
+    def _vb_is_num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if a is None and _vb_is_num(b):
+        a = 0
+    elif b is None and _vb_is_num(a):
+        b = 0
+    elif a is None and isinstance(b, str):
+        a = ""
+    elif b is None and isinstance(a, str):
+        b = ""
+    if _vb_is_num(a) and isinstance(b, str):
+        b = float(b)
+    elif isinstance(a, str) and _vb_is_num(b):
+        a = float(a)
+    return (a, b)
+```
+変換不能な文字列(例: `"abc" = 5`)は`float()`が`ValueError`を送出する
+ことで失敗を伝播させる——VBの`InvalidCastException`と例外クラスは違うが、
+「静かに間違った結果(`False`)を返す」よりは「失敗を明示的に伝える」方が
+安全という既存方針(`_vb_cbool_of_string_literal`と同じ設計判断)を踏襲。
+生成コードは`(lambda _t: _t[0] == _t[1])(_vb_cmp(left, right))`という
+単一評価のラムダ式に変換し(`left`/`right`の式を二重評価しない)、
+ヘルパー関数定義自体は既存の`_collect_imports`の仕組み(使用時のみ注入)
+を拡張して対応した。
+
+**既知の限界**(VBの表の中で意図的に実装を見送った部分): 「それ以外の
+参照型同士」の組み合わせ(`InvalidCastException`になるはずのケース)は、
+`_vb_cmp`では素のPython `==`等にフォールバックする(`False`になりうる)
+——UiPathワークフローでカスタムオブジェクト同士を直接比較する実例が
+これまで一度も見つかっていないため、該当するでっち上げた例外送出コードは
+挿入しなかった。実例が見つかった時点で改めて対応する。
+
+**この知見で確定したこと**: `=`/`<>`/`<`/`<=`/`>`/`>=`全6種の比較演算子に
+ついて、公式ドキュメントで確定できる範囲(数値↔文字列↔`Nothing`の型変換
+規則)は全て実装・テスト済み。`tests/test_uipath_codegen.py`に
+`test_comparison_operators_coerce_numeric_string_like_vb_object_comparison`
+(`5 = "5"`→`True`、`Nothing = 0`→`True`等)と
+`test_comparison_of_unconvertible_string_against_number_raises_not_silently_false`
+(`"abc" = 5`が`ValueError`を送出することを確認)を追加、既存のブリトル
+(生成コード文字列の完全一致を見ていた)テスト2件
+(`test_if_then_else`・`test_while_loop`)も新しい出力形式に追従させた。
+全698件通過、回帰無し。
+
 ## 今後の調査候補(未着手)
 
 - **`CDbl(x)`の2点が公式ドキュメントだけでは確定できず未解決(2026-11-05、

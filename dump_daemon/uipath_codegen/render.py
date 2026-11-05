@@ -66,6 +66,37 @@ def _vb_cstr(x):
     return str(x)
 """
 
+# `=`/`<>`/`</`<=`/`>`/`>=`(比較演算子)がOption Strict Off下でObject型
+# オペランドに適用する型変換規則(Microsoft Learn「Comparison Operators」
+# の「Typeless Programming with Relational Comparison Operators」節、
+# VM不使用・公式ドキュメントで確定、知見47参照)。片方が数値・片方が文字列
+# なら文字列をDoubleへ変換してから数値比較し(変換不可ならVBは
+# `InvalidCastException`——Pythonの`float()`も`ValueError`を送出するため
+# 「静かに間違った結果を返さず失敗を伝播させる」方向で挙動が一致する)、
+# `Nothing`は数値比較では`0`・文字列比較では空文字列として扱う。
+# Pythonの`==`等は型をまたいだ暗黙の数値変換をしない(`"5" == 5`は
+# 常に`False`)ため、単純な`==`/`<`等への変換のままでは、UiPathで多用される
+# 緩い型(`GenericValue`/`Object`型変数)同士の比較が食い違いうる。
+VB_CMP_HELPER_NAME = "_vb_cmp"
+VB_CMP_HELPER_SOURCE = """\
+def _vb_cmp(a, b):
+    def _vb_is_num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+    if a is None and _vb_is_num(b):
+        a = 0
+    elif b is None and _vb_is_num(a):
+        b = 0
+    elif a is None and isinstance(b, str):
+        a = ""
+    elif b is None and isinstance(a, str):
+        b = ""
+    if _vb_is_num(a) and isinstance(b, str):
+        b = float(b)
+    elif isinstance(a, str) and _vb_is_num(b):
+        a = float(a)
+    return (a, b)
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
 # Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
@@ -210,7 +241,11 @@ def _render_bin_op(node: BinOp) -> str:
     left = _render_node(node.left)
     right = _render_node(node.right)
     if op in _COMPARISON_OPS:
-        return f"({left}) {_COMPARISON_OPS[op]} ({right})"
+        python_op = _COMPARISON_OPS[op]
+        return (
+            f"(lambda _t: _t[0] {python_op} _t[1])"
+            f"({VB_CMP_HELPER_NAME}({left}, {right}))"
+        )
     if op == "is":
         return f"({left}) is ({right})"
     if op == "isnot":

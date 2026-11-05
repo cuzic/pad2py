@@ -69,7 +69,13 @@ from ..uipath_dsl.types import (
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
 from ..uipath_selector import selector_text_to_pywinauto
-from .render import VB_CSTR_HELPER_NAME, VB_CSTR_HELPER_SOURCE, render_expr
+from .render import (
+    VB_CMP_HELPER_NAME,
+    VB_CMP_HELPER_SOURCE,
+    VB_CSTR_HELPER_NAME,
+    VB_CSTR_HELPER_SOURCE,
+    render_expr,
+)
 
 INDENT = "    "
 
@@ -138,6 +144,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 追加する。
     if any(f"{VB_CSTR_HELPER_NAME}(" in line for line in body):
         imports.append(VB_CSTR_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_cmp`(比較演算子の型変換先、知見47)も同じ理由で使用時のみ注入する。
+    if any(f"{VB_CMP_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_CMP_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

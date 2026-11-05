@@ -385,3 +385,15 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
    `tests/test_uipath_codegen.py`に追加、全663件通過(新規10件)。
    G書式の指数表記・カルチャ依存の小数点記号は軽微な既知の限界として
    未対応のまま記録(知見46参照)。
+8. **(完了、2026-11-05)** `Append Line`/`SetToClipboard`の不整合修正
+   (VM不使用): 知見46の`_vb_cstr()`導入直後のコードベース全体grep監査で
+   見つけた、単純な`str()`のまま`_vb_cstr()`に統一されていなかった2箇所
+   (`_generate_append_line`/`_generate_set_to_clipboard`)を修正。
+9. **(完了、2026-11-05)** 比較演算子(`=`/`<>`/`<`/`<=`/`>`/`>=`)の
+   数値/文字列混在オペランド型変換規則を実装(VM不使用、公式ドキュメントで
+   確定、知見47): `Option Strict Off`下のObject型オペランド比較では、
+   片方が数値・片方が文字列なら文字列をDoubleへ変換してから数値比較する
+   (Microsoft Learn「Comparison Operators」)。`Not`(知見45)と同じ実行時
+   isinstance分岐の`_vb_cmp()`ヘルパーを追加し、全比較演算子をこれ経由に
+   変更。回帰テストを追加、ブリトルな既存テスト2件を新形式に追従させ、
+   全698件通過。

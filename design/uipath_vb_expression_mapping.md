@@ -17,10 +17,11 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 |---|---|---|
 | 文字列リテラル `"..."` | `Text="[&quot;Hello from pad2py&quot;]"` (知見2) | `"..."`(同じ) |
 | 変数参照 `varName` | `<OutArgument ...>[result]</OutArgument>` (知見2) | `varName`(同じ) |
-| 等価比較 `=` | `Condition="[result=&quot;ok&quot;]"` (知見5) | `==` |
+| 等価比較 `=` | `Condition="[result=&quot;ok&quot;]"` (知見5) | `_vb_cmp(a, b)`経由の`==`(2026-11-05修正、知見47参照——数値/文字列混在オペランドの型変換規則) |
 | 配列/コレクションリテラル `{a, b, c}` | `Values="[{&quot;a&quot;,&quot;b&quot;,&quot;c&quot;}]"` (知見5) | `[a, b, c]` |
 | メンバ参照(裸の変数名、ループデリゲート変数含む) `item` | `Text="[item]"` (知見5) | `item`(同じ) |
-| 不等価 `<>` | `ExpressionText="result&lt;&gt;&quot;x&quot;"`(`While`の`Condition`、知見14) | `!=` |
+| 不等価 `<>` | `ExpressionText="result&lt;&gt;&quot;x&quot;"`(`While`の`Condition`、知見14) | `_vb_cmp(a, b)`経由の`!=`(同上、知見47) |
+| 大小比較 `<`/`<=`/`>`/`>=` | 構文としての受理は確認済みだが、実機個別確認は未実施——`=`/`<>`と同じ比較演算子群として公式ドキュメントに同じ型変換規則が明記されている(知見47) | `_vb_cmp(a, b)`経由の`<`/`<=`/`>`/`>=`(同上) |
 | 参照比較 `Is`(`Nothing`判定含む) | `Transition.Condition>[SystemException is Nothing]`(UiPath公式REFrameworkテンプレートの実例、知見30) | `is`(`is None`等) |
 | 文字列結合 `&` | 知見32、9演算子複合式の実機コンパイル確認 | `_vb_cstr(a) + _vb_cstr(b)`(2026-11-05修正、知見46参照——`CStr`と同じ変換規則、下記「注意点」参照) |
 | 剰余 `Mod` | 同上 | `(a) - ((b) * int((a) / (b)))`(単純な`%`では不可、下記「注意点」参照) |

@@ -100,7 +100,7 @@ def test_if_then_else():
         ]
     )
     code = generate_python(wf)
-    assert "if (x) == ('ok'):" in code
+    assert "if (lambda _t: _t[0] == _t[1])(_vb_cmp(x, 'ok')):" in code
     assert "else:" in code
     _compiles(code)
 
@@ -138,7 +138,7 @@ def test_while_loop():
         ]
     )
     code = generate_python(wf)
-    assert "while (x) != ('done'):" in code
+    assert "while (lambda _t: _t[0] != _t[1])(_vb_cmp(x, 'done')):" in code
     assert "break" in code
     _compiles(code)
 
@@ -501,6 +501,61 @@ def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:
     code = generate_python(wf)
     _compiles(code)
     assert "pyperclip.copy(_vb_cstr(4.0))" in code
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # 片方が数値・片方が文字列なら、文字列をDoubleへ変換してから数値
+        # 比較する(Microsoft Learn「Comparison Operators」の
+        # Typeless Programming節、知見47参照)。Pythonの素の`==`は
+        # `"5" == 5`のように型をまたぐと常に`False`になり食い違う。
+        ('5 = "5"', True),
+        ('5 = "5.0"', True),
+        ('"5" <> 5', False),
+        ('"3" < 10', True),
+        ('10 < "3"', False),
+        # 両方が同じ型(文字列同士・数値同士)なら従来通り。
+        ('"ok" = "ok"', True),
+        ("5 = 5.0", True),
+        # Nothingは数値比較では0、文字列比較では空文字列として扱う
+        # (同じMicrosoft Learnページで確定)。
+        ("Nothing = 0", True),
+        ('Nothing = ""', True),
+    ],
+)
+def test_comparison_operators_coerce_numeric_string_like_vb_object_comparison(
+    vb_text: str, expected: object
+) -> None:
+    """知見47: `=`/`<>`/`<`/`<=`/`>`/`>=`がOption Strict Off下でObject型
+    オペランドに適用する型変換規則を実装したことの回帰テスト
+    (`"abc" = 5`のような変換不能な文字列ケースを除く——別テストで扱う)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
+def test_comparison_of_unconvertible_string_against_number_raises_not_silently_false() -> None:
+    """VBは変換不能な文字列を数値と比較すると`InvalidCastException`を送出する
+    (知見47、Microsoft Learn「Comparison Operators」)——`_vb_cmp`は同じ
+    「静かに間違った結果(`False`)を返さず失敗を伝播させる」方向で
+    `float()`の`ValueError`をそのまま伝播させる(でっち上げた`False`
+    フォールバックは入れない)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text='"abc" = 5'))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with pytest.raises(ValueError):
+        namespace["Test"]()
 
 
 @pytest.mark.parametrize(
