@@ -2862,6 +2862,44 @@ nullを返す」という点までは完全には再現せず、「`&`での最�
 2回連続した。他の演算子(`^`/比較演算子)のディスパッチャで同様の
 `Nothing`絡みの見落としが無いか、継続して確認する価値がある。
 
+## 57. `^`演算子が文字列/`Nothing`オペランドで`TypeError`になるバグを発見・修正——知見56に続き3回目のランタイムソースクロスチェックでの発見(VM不使用)
+
+知見56で示唆した「他の演算子のディスパッチャでも同様の見落としが無いか
+継続確認する」を実行し、`Operators.vb`の`ExponentObject`(`^`演算子の
+ディスパッチャ)を確認したところ、`^`自体のコード生成に別のバグが
+見つかった。
+
+**原因**: `^`は`-`/`*`/`/`/`Mod`/`\`に対する知見49の型混在対応サイクル
+より**前**(知見45、2026-11-05の早い段階)に実装していたため、文字列/
+`Nothing`オペランドを`_vb_num()`で事前に数値へ強制する処理が
+漏れていた。`^`の生成コードは`({left}) < 0`という比較を直接含むため、
+`left`が`None`(Nothing)や`str`(数値文字列)のままだと`None < 0`/
+`str < int`でPython側が比較不能として`TypeError`を送出していた
+(`"2" ^ 2`や`Nothing ^ Nothing`のような式で発生)。
+
+**確定した内容**(`Operators.vb`の`ExponentObject`): `Empty`
+(`Nothing`)オペランドは両辺とも`0.0`(Double)に変換してから`^`演算を
+行う——`Empty ^ Empty`は`0.0 ^ 0.0`で、VBの指数演算の慣習により`1`に
+なる(他の演算子と同じ「`Nothing`→`0`」パターンがここにも適用される)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `^`の両オペランドに
+`_vb_num()`を適用してから既存のNaN分岐ロジックへ渡すよう変更。
+
+`tests/test_uipath_codegen.py`に
+`test_pow_coerces_string_and_nothing_operands_not_raising_typeerror`を
+追加(`Nothing ^ Nothing`→`"1"`、`"2" ^ 2`→`"4"`)。既存の
+`test_pow_matches_vb_nan_on_negative_base_with_fractional_exponent`は
+`render_expr()`の出力を直接`eval()`する方式のため(`generate_python()`の
+ヘルパー自動注入を経由しない)、`VB_NUM_HELPER_SOURCE`を`eval()`の
+名前空間へ明示的に注入するよう修正——`_vb_num`参照先が追加されたことで
+`NameError`になっていたのを解消。UiPath関連テスト全166件通過。
+
+**この知見で確定したこと**: 知見55・56に続き3回連続でランタイムソース
+クロスチェックから実在するバグが見つかった——このパターンが続く限り、
+残りの演算子ディスパッチャ(`AndObject`/`OrObject`/`XorObject`/
+`NotObject`の`Nothing`絡み、`NegateObject`(単項`-`)等)も確認する価値が
+ある。知見44〜57でこれまでに見つかった全ての問題は現時点で解消済み。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

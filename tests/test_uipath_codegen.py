@@ -30,6 +30,7 @@ from dump_daemon.uipath_codegen import (
     generate_python,
     render_expr,
 )
+from dump_daemon.uipath_codegen.render import VB_NUM_HELPER_SOURCE
 from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
@@ -874,15 +875,47 @@ def test_pow_matches_vb_nan_on_negative_base_with_fractional_exponent(
     値そのものを`eval()`で確認する(`CStr`/`print`経由の文字列比較は
     しない——VBの`CStr(Double)`とPythonの`str(float)`は書式が異なる
     既知の別論点(`render.py`の`^`実装コメント参照)で、この演算子自体の
-    正しさとは無関係のため混同しない)。
+    正しさとは無関係のため混同しない)。`^`は知見57で`_vb_num()`経由に
+    なったため、`eval()`の名前空間にも定義しておく必要がある。
     """
     code = render_expr(VbExpr(text=vb_text))
-    result = eval(code)  # noqa: S307 - テスト対象は信頼できる自作コード
+    namespace: dict[str, object] = {}
+    exec(VB_NUM_HELPER_SOURCE, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = eval(code, namespace)  # noqa: S307 - テスト対象は信頼できる自作コード
     if expect_nan:
         assert isinstance(result, float) and math.isnan(result)
     else:
         assert not (isinstance(result, float) and math.isnan(result))
         assert result == eval(f"({vb_text.replace('^', '**')})")  # noqa: S307
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `^`は`-`/`*`/`/`/`Mod`/`\`より前(知見45)に実装したため、文字列/
+        # `Nothing`オペランドの強制が漏れていた(知見57、`Operators.vb`の
+        # `ExponentObject`が`Empty`→`0.0`へ変換すると確認して発見)。
+        # `Nothing ^ Nothing`は`0.0 ^ 0.0`=`1`(VBの指数演算の慣習で
+        # `0の0乗は1`)。
+        ("Nothing ^ Nothing", "1"),
+        ('"2" ^ 2', "4"),
+    ],
+)
+def test_pow_coerces_string_and_nothing_operands_not_raising_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見57: `^`が文字列/`Nothing`オペランドで`TypeError`になっていた
+    バグの回帰テスト(`None < 0`/`str < int`が原因で比較不能だった)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
 
 
 @pytest.mark.parametrize(

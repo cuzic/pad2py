@@ -496,10 +496,15 @@ def _render_bin_op(node: BinOp) -> str:
         # `NaN`を確認——Pythonの`**`はこの場合複素数を返すため単純な`**`
         # 変換は不可(design/uipath_xaml_findings.md 知見45参照)。負の底
         # かつ指数が非整数の場合のみNaNに分岐する。
-        return (
-            f"(float('nan') if (({left}) < 0 and ({right}) != int({right})) "
-            f"else (({left}) ** ({right})))"
-        )
+        # `^`は知見49(`-`/`*`/`/`/`Mod`/`\`)の型混在対応サイクルより前
+        # (知見45)に実装したため、文字列/`Nothing`オペランドの強制が
+        # 漏れていた——`Nothing`/文字列を渡すと`None < 0`/`str < int`で
+        # `TypeError`になっていた(知見57、`Operators.vb`の
+        # `ExponentObject`で`Empty`→`0.0`への変換を確認して発見)。
+        # `_vb_num()`で両オペランドを事前に揃える。
+        a = f"{VB_NUM_HELPER_NAME}({left})"
+        b = f"{VB_NUM_HELPER_NAME}({right})"
+        return f"(float('nan') if (({a}) < 0 and ({b}) != int({b})) else (({a}) ** ({b})))"
     if op in _BITWISE_OPS:
         return f"({left}) {_BITWISE_OPS[op]} ({right})"
     if op in _SHORT_CIRCUIT_OPS:
