@@ -72,6 +72,8 @@ from ..uipath_selector import selector_text_to_pywinauto
 from .render import (
     VB_ADD_HELPER_NAME,
     VB_ADD_HELPER_SOURCE,
+    VB_AND_HELPER_NAME,
+    VB_AND_HELPER_SOURCE,
     VB_CDBL_HELPER_NAME,
     VB_CDBL_HELPER_SOURCE,
     VB_CMP_HELPER_NAME,
@@ -84,6 +86,10 @@ from .render import (
     VB_MOD_HELPER_SOURCE,
     VB_NUM_HELPER_NAME,
     VB_NUM_HELPER_SOURCE,
+    VB_OR_HELPER_NAME,
+    VB_OR_HELPER_SOURCE,
+    VB_XOR_HELPER_NAME,
+    VB_XOR_HELPER_SOURCE,
     render_expr,
 )
 
@@ -172,6 +178,14 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `_vb_mod`(`Mod`のゼロ除算の型依存処理先、知見54)も同様。
     if any(f"{VB_MOD_HELPER_NAME}(" in line for line in body):
         imports.append(VB_MOD_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_and`/`_vb_or`/`_vb_xor`(`And`/`Or`/`Xor`の`Nothing`処理先、
+    # 知見59)も同様。
+    if any(f"{VB_AND_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_AND_HELPER_SOURCE.rstrip("\n"))
+    if any(f"{VB_OR_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_OR_HELPER_SOURCE.rstrip("\n"))
+    if any(f"{VB_XOR_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_XOR_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

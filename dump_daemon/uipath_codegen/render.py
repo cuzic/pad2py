@@ -276,11 +276,60 @@ def _vb_mod(a, b):
     return a - (b * int(a / b))
 """
 
+# `And`/`Or`/`Xor`の`Nothing`オペランド処理(知見58の「でっち上げず
+# 未対応のまま残す」としていた残課題を、`Operators.vb`の`AndObject`/
+# `OrObject`/`XorObject`で型ごとの分岐を具体的に確認した上で解決、知見59
+# 参照、VM不使用)。既存の`&`/`|`/`^`への単純な1対1変換(Pythonの`bool`が
+# `int`のサブクラスであることを利用)は、両オペランドが実際に値を持つ
+# 場合は引き続き正しい——問題は片方(または両方)が`Nothing`の場合のみ:
+# - `And`: `Nothing`は他方がBooleanなら`False`(Boolean)、Integerなら
+#   `0`(Integer)として扱われる(`AndObject`「Empty with Boolean:
+#   Return False」「Empty with Int32: 常に0」で確認)。両方`Nothing`は
+#   `0`(Integer、他の単項演算子と同じ`Boxed_ZeroInteger`パターン)。
+# - `Or`/`Xor`: `Nothing`は常に`0`相当の単位元として働くため、結果は
+#   **他方のオペランドをそのまま返す**(型も維持される——`OrObject`
+#   「Empty with Int32: Return Right」、`XorObject`も同じパターン)。
+#   両方`Nothing`は`0`(Integer)。
+VB_AND_HELPER_NAME = "_vb_and"
+VB_AND_HELPER_SOURCE = """\
+def _vb_and(a, b):
+    if a is None and b is None:
+        return 0
+    if a is None:
+        return False if isinstance(b, bool) else 0
+    if b is None:
+        return False if isinstance(a, bool) else 0
+    return a & b
+"""
+VB_OR_HELPER_NAME = "_vb_or"
+VB_OR_HELPER_SOURCE = """\
+def _vb_or(a, b):
+    if a is None and b is None:
+        return 0
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a | b
+"""
+VB_XOR_HELPER_NAME = "_vb_xor"
+VB_XOR_HELPER_SOURCE = """\
+def _vb_xor(a, b):
+    if a is None and b is None:
+        return 0
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a ^ b
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
-# (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
-# Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
-# サブクラスであるため、ブール/整数どちらのオペランドでも意味論が一致する。
-_BITWISE_OPS = {"and": "&", "or": "|", "xor": "^"}
+# (2026-11-05確定分): And/Or/Xorは両オペランドが実際に値を持つ場合は
+# Pythonのビット演算子(&/|/^)への1対1変換で正しい(Pythonのboolがintの
+# サブクラスであるため)——`Nothing`オペランドの処理は上記`_vb_and`/
+# `_vb_or`/`_vb_xor`ヘルパー(知見59)に委ねる。
+_BITWISE_OPS = {"and": VB_AND_HELPER_NAME, "or": VB_OR_HELPER_NAME, "xor": VB_XOR_HELPER_NAME}
 _SHORT_CIRCUIT_OPS = {"andalso": "and", "orelse": "or"}
 _COMPARISON_OPS = {
     "=": "==",
@@ -518,7 +567,7 @@ def _render_bin_op(node: BinOp) -> str:
         b = f"{VB_NUM_HELPER_NAME}({right})"
         return f"(float('nan') if (({a}) < 0 and ({b}) != int({b})) else (({a}) ** ({b})))"
     if op in _BITWISE_OPS:
-        return f"({left}) {_BITWISE_OPS[op]} ({right})"
+        return f"{_BITWISE_OPS[op]}({left}, {right})"
     if op in _SHORT_CIRCUIT_OPS:
         return f"({left}) {_SHORT_CIRCUIT_OPS[op]} ({right})"
     raise NotImplementedError(f"unsupported binary operator: {node.op!r}")

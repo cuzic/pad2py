@@ -975,6 +975,47 @@ def test_unary_operators_coerce_nothing_operand_not_raising_typeerror(
     assert stdout.getvalue().strip() == expected
 
 
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `And`: `Nothing`は相手がBooleanなら`False`、Integerなら`0`
+        # として扱われる(知見59、`Operators.vb`の`AndObject`で確認)。
+        ("Nothing And True", "False"),
+        ("Nothing And 5", "0"),
+        ("Nothing And Nothing", "0"),
+        # `Or`/`Xor`: `Nothing`は単位元として働き、結果は他方の
+        # オペランドがそのまま返る(型も維持される、`OrObject`/
+        # `XorObject`で確認)。
+        ("Nothing Or 5", "5"),
+        ("Nothing Or True", "True"),
+        ("Nothing Or Nothing", "0"),
+        ("Nothing Xor 5", "5"),
+        ("Nothing Xor True", "True"),
+        ("Nothing Xor Nothing", "0"),
+        # 両方が実際に値を持つ既存のケースは従来通り(回帰確認)。
+        ("True And False", "False"),
+        ("5 And 3", "1"),
+    ],
+)
+def test_and_or_xor_coerce_nothing_operand_not_raising_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見59: `And`/`Or`/`Xor`が`Nothing`オペランドで`TypeError`に
+    なっていたバグの回帰テスト(知見58で「複雑なためでっち上げない」と
+    保留していたが、`Operators.vb`の型ごとの分岐を具体的に確認したことで
+    解決できた)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
 def test_known_op_compound_from_知見32_executes_to_the_correct_vb_result():
     """知見32の実機確認式(9演算子複合式)をそのまま生成Pythonコードへ変換し
     `exec()`して、VB.NET側の実際の結果と一致することまで確認する統合

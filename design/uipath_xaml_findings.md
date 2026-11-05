@@ -2929,18 +2929,60 @@ None else _x))({operand})`へ)。
 追加(`Not Nothing`→`"-1"`、`-Nothing`→`"0"`、`+Nothing`→`"0"`)。UiPath
 関連テスト全169件通過。
 
-**既知の残課題(未調査のまま記録)**: `And`/`Or`/`Xor`(二項、知見49で
-`_BITWISE_OPS`経由の単純な`&`/`|`/`^`に変換している)の`Nothing`絡み
-エッジケースは今回確認しなかった——`AndObject`/`OrObject`/`XorObject`の
-`Empty`絡み分岐は、Boolean相手なら論理演算結果(`Boolean`型)、Integer
-相手ならそのオペランドの型に応じた結果になるなど型依存の分岐が`+`より
-複雑で(例: `Empty Or Int32`は「右辺をそのまま返す」、`Empty Or
-Boolean`は`OrBoolean`経由)、単純な`None→0`読み替えだけでは`Nothing
-And True`が本来`Boolean`の`False`になるべきところ整数`0`になってしまう
-等、新たな型の食い違いを生みかねない。中途半端な実装をでっち上げるより
-未対応のまま明示的に記録するに留める——実際の自動化データでこの
-パターン(`And`/`Or`/`Xor`を`Nothing`絡みで使う)が見つかった時点で
-改めて着手する。
+**既知の残課題**: `And`/`Or`/`Xor`(二項)の`Nothing`絡みエッジケースは
+当初型依存で複雑と判断し未対応のまま残していたが、知見59で解決した
+(下記参照)。
+
+## 59. `And`/`Or`/`Xor`の`Nothing`絡みエッジケースも解決——知見58で「複雑なため保留」としていた残課題を型ごとの分岐を具体的に確認して解消(VM不使用、クロスチェック5件目)
+
+知見58で「`And`/`Or`/`Xor`は型依存の分岐が複雑なため、でっち上げた
+中途半端な実装を避け未対応のまま残す」としていたが、`Operators.vb`の
+`AndObject`/`OrObject`/`XorObject`の`Empty`絡み分岐を具体的に(他方の
+オペランドの型ごとに)確認したところ、実際には整理可能な単純な規則に
+落とし込めると判明した。
+
+**確定した内容**:
+- **`And`**: `Nothing`は他方が`Boolean`なら`False`(`Boolean`型)、
+  `Int32`(Integer)なら`0`(Integer型)として扱われる(`AndObject`
+  「Empty with Boolean: Return False」「Empty with Int32: 常に0」)。
+  両方`Nothing`は`0`(Integer、他の単項演算子と同じ
+  `Boxed_ZeroInteger`パターン)。
+- **`Or`/`Xor`**: `Nothing`は常に`0`相当の単位元として働くため、結果は
+  **他方のオペランドをそのまま返す**(型も維持される——`OrObject`
+  「Empty with Int32: Return Right」、`XorObject`も同じパターン)。
+  両方`Nothing`はいずれも`0`(Integer、`Boxed_ZeroInteger`、直接確認)。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_and`/
+`_vb_or`/`_vb_xor`の3ヘルパーを追加し、`And`/`Or`/`Xor`の生成コードを
+単純な`&`/`|`/`^`への直接変換から、これらのヘルパー呼び出しへ変更
+(両オペランドが実際に値を持つ場合は内部で引き続き`&`/`|`/`^`を使う
+ため、既存の正しい挙動は維持される)。
+
+```python
+def _vb_and(a, b):
+    if a is None and b is None:
+        return 0
+    if a is None:
+        return False if isinstance(b, bool) else 0
+    if b is None:
+        return False if isinstance(a, bool) else 0
+    return a & b
+```
+(`_vb_or`/`_vb_xor`は「`Nothing`なら他方を返す」という、さらに単純な形。)
+
+`tests/test_uipath_codegen.py`に
+`test_and_or_xor_coerce_nothing_operand_not_raising_typeerror`を追加
+(`Nothing And True`→`"False"`、`Nothing Or 5`→`"5"`、
+`Nothing Xor Nothing`→`"0"`等9件、既存の非`Nothing`ケースの回帰確認
+2件も含む)。UiPath関連テスト全180件通過。
+
+**この知見で確定したこと**: 知見55〜59で5回連続、ランタイムソースの
+クロスチェックから実在するバグ(または解決可能な残課題)が見つかった
+——「型依存だから複雑で対応不可」という判断を一度保留した後でも、
+具体的に分岐を書き出してみると実装可能な場合がある、という知見58自身の
+教訓を体現する結果になった。`uipath_codegen`が扱う主要な演算子
+(算術・比較・論理・文字列結合・単項)の`Nothing`絡みエッジケースは、
+これで全て確認・対応済みになった。
 
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
