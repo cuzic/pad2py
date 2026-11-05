@@ -35,9 +35,9 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | `IsNot`(参照比較の否定) | `[CStr(If(result IsNot Nothing, "notnothing", "isnothing")) & ...]`(知見36、実機コンパイル確認) | `is not` |
 | `Nothing` | 同上 | `None` |
 | 三項演算子 `If(cond, whenTrue, whenFalse)` | 同上 | `whenTrue if cond else whenFalse` |
-| `CInt(x)` | `[... & CStr(CInt("5")) & ...]`(知見36、実機コンパイル確認) | `int(x)`(ただしVBの`CInt`は四捨五入、Pythonの`int()`は切り捨て——丸め方向の違いに注意) |
+| `CInt(x)` | `[... & CStr(CInt("5")) & ...]`(知見36、実機コンパイル確認) | `round(float(x))`(2026-11-05修正、知見42参照——VBの`CInt`は銀行丸め/round-half-to-even、単純な`int()`は切り捨てで食い違う。例: `CInt(1.5)`は`2`だが`int(1.5)`は`1`。Pythonの`round()`も単一引数では既定でround-half-to-evenのため一致する) |
 | `CDbl(x)` | 同上 | `float(x)` |
-| `CBool(x)` | 同上 | `bool(x)` |
+| `CBool(x)` | 同上 | 引数が文字列リテラルならコード生成時に`"True"`/`"False"`(大文字小文字無視)か数値として確定済みの`True`/`False`を埋め込む(2026-11-05修正、知見42参照——Pythonの`bool(文字列)`は空文字列以外は常に`True`になり食い違う。例: `bool("False")`は`True`)。リテラル以外(変数参照等)は実行時の型が不明なため`bool(x)`のまま(既知の限界、文字列型なら上記と同じ理由で誤りうる) |
 | `IsNothing(x)` | 同上 | `x is None` |
 | 文字列補間 `$"...{expr}..."` | `[$"value={result}-end"]`(知見36、実機コンパイル確認——`{`/`}`含めそのまま`[...]`内に直列化される) | f-string `f"...{expr}..."` |
 | `String.IsNullOrEmpty(x)` | `[CStr(String.IsNullOrEmpty("")) & ...]`(知見36、実機コンパイル確認) | `not x`(ただし空白のみの文字列の扱いに差——`String.IsNullOrWhiteSpace`との混同に注意) |

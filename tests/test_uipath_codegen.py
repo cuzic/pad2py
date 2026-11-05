@@ -341,6 +341,74 @@ def test_mod_and_intdiv_match_vb_sign_semantics_not_python_floor_semantics(
     assert stdout.getvalue().strip() == str(expected)
 
 
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # VBのCIntは切り捨てではなく銀行丸め(round-half-to-even)。
+        # Microsoft公式ドキュメント(Type Conversion Functions)の記載例に
+        # 基づく——単純にPythonの`int()`へ変換すると切り捨てになり食い違う
+        # (`int(1.5) == 1`だが`CInt(1.5)`は`2`)。
+        ("CInt(0.5)", 0),
+        ("CInt(1.5)", 2),
+        ("CInt(2.5)", 2),
+        ("CInt(-1.5)", -2),
+    ],
+)
+def test_cint_matches_vb_banker_rounding_not_python_truncation(
+    vb_text: str, expected: int
+) -> None:
+    """知見42と同じ系統の食い違い——知見32・36の実機確認例(`CInt("5")`)は
+    整数値のみで丸めが発生しなかったため、この食い違いは見過ごされていた。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # VBのCBool(文字列)は"True"/"False"(大文字小文字区別無し)か数値
+        # 文字列として評価する——Pythonのbool(文字列)は空文字列以外は常に
+        # Trueになり食い違う(例: bool("False")はTrue、bool("0")もTrue)。
+        # 知見32・36の実機確認例はCBool("True")のみで、たまたまPythonの
+        # bool()と結果が一致してしまい見過ごされていた。
+        ('CBool("True")', True),
+        ('CBool("False")', False),
+        ('CBool("0")', False),
+        ('CBool("1")', True),
+    ],
+)
+def test_cbool_string_literal_matches_vb_semantics_not_python_truthiness(
+    vb_text: str, expected: bool
+) -> None:
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == str(expected)
+
+
+def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
+    """文字列リテラル以外(変数参照等)は実行時の型が不明なため`bool(x)`の
+    ままにする、既知の限界(render.pyのdocstring参照)——この場合でも
+    でっち上げた型チェックコードは挿入せず、素直な`bool(x)`を生成する。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CBool(someVar)"))])
+    code = generate_python(wf)
+    assert "bool(someVar)" in code
+    _compiles(code)
+
+
 def test_invoke_workflow_file_without_resolver_falls_back_to_todo():
     """単体の`generate_python()`呼び出し(`invoke_resolver`省略)では、
     呼び出し先の存在を仮定した架空のコードをでっち上げず`# TODO`に倒す。"""
