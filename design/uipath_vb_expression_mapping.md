@@ -140,6 +140,20 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
   修正済み、詳細は`dump_daemon/uipath_expr/__init__.py`のモジュール
   docstringと`tests/test_uipath_expr.py`の
   `test_and_or_xor_relative_precedence_matches_official_vb_spec`参照。
+- **全演算子の優先順位チェーン全体を公式表と再突き合わせ(2026-11-05、
+  知見46の延長で実施、VM不使用・バグ無し)**: 知見41で`And`/`Or`/`Xor`の
+  相対順バグを見つけた反省から、`uipath_expr`の文法が持つ優先順位
+  チェーン全体(`xor_expr→or_expr→and_expr→not_expr→comparison→
+  concat→add_expr→mod_expr→intdiv_expr→muldiv_expr→unary_expr→
+  power_expr→atom`、緩い順)を、Microsoft Learn「Operator Precedence -
+  Visual Basic」の完全な表(`^` > 単項`+`/`-` > `*`/`/` > `\` > `Mod` >
+  二項`+`/`-` > `&` > (ビットシフト、未実装・対象外) > 比較演算子 >
+  `Not` > `And`/`AndAlso` > `Or`/`OrElse` > `Xor`、きつい順)と1対1で
+  照合した。特に単項マイナスと`^`の相対順(`-2^2`がVBでは`-(2^2)`=`-4`
+  になる、`^`の方が単項マイナスより強く結合する公式仕様)を実際に
+  `parse_vb_expr("-2^2")`で確認し、`UnaryOp(op='-', operand=BinOp(op='^',
+  ...))`という正しい構文木になることを確認済み——全チェーンにわたり
+  食い違いは見つからなかった(新たな修正は無し、確認のみ)。
 
 ### `^`/`Not`——実機検証で確定・修正済み(2026-11-05、知見45)
 

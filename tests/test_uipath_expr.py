@@ -176,3 +176,19 @@ def test_and_or_xor_relative_precedence_matches_official_vb_spec():
         ),
         right=Ident(name="d"),
     )
+
+
+def test_unary_minus_binds_looser_than_power_matches_official_vb_spec():
+    """公式ドキュメント(Microsoft Learn「Operator Precedence - Visual
+    Basic」)の算術演算子チェーンでは`^`(累乗)が単項`+`/`-`より強く結合する
+    ——`-2 ^ 2`は`(-2) ^ 2`(=4)ではなく`-(2 ^ 2)`(=-4)になる。知見41の
+    `And`/`Or`/`Xor`バグの反省から全チェーンを公式表と照合した際
+    (design/uipath_vb_expression_mapping.md参照)に確認した回帰テスト
+    ——幸いPythonの`**`も単項マイナスより強く結合するため、この点は
+    VBとPythonで一致しており、文法のバグも見つからなかった(確認のみ)。
+    """
+    node, _ = parse_vb_expr("-2 ^ 2")
+    assert node == UnaryOp(
+        op="-",
+        operand=BinOp(op="^", left=NumberLiteral(value=2), right=NumberLiteral(value=2)),
+    )
