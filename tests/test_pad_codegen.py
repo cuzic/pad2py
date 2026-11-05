@@ -1215,14 +1215,17 @@ def test_generate_python_from_real_get_window_whole_subflow_capture_compiles() -
     assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" in code
 
 
-def test_generate_python_from_real_close_window_by_instance_handle_capture_compiles() -> None:
-    # design/dsl_format_findings.md 知見57の追記: CloseByInstanceOrHandleも未対応アクション
-    # として安全なTODOフォールバックに倒れ、架空のclose()呼び出しをでっち上げないことを確認する。
+def test_generate_python_from_real_close_window_by_instance_handle_capture_converts() -> None:
+    # design/dsl_format_findings.md 知見57・81: `WindowInstance`は裸の変数参照として
+    # 直列化されると実機確認済み(GetWindow.GetUseTimeoutの出力変数と同じ変数名を参照する
+    # 設計)。知見81の作業でwindow instanceが単なる変数参照であることに気づいたため、
+    # 同じ変数へ`.close()`を呼ぶ実コードへ格上げした。
     text = (FIXTURES_DIR / "closewindow_by_instance.txt").read_text(encoding="utf-8")
     tree = build_block_tree(parse_dsl(text))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "# TODO: map PAD action: UIAutomation.CloseWindow.CloseByInstanceOrHandle" in code
+    assert "AutomationWindow2.close()" in code
+    assert "# TODO: map PAD action: UIAutomation.CloseWindow.CloseByInstanceOrHandle" not in code
 
 
 def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles() -> None:

@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(32/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(31/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [ ] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -51,6 +51,9 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `UIAutomation.Click.Click`と同じ`UiElementRef`なので知見56のセレクタ式がそのまま使え、
   セレクタが解決でき`BringWindowToFront: True`(意味論未検証)でない場合に限り
   `{変数} = Desktop(backend="uia").window(...)`を生成するよう`ui_element.py`を更新した。
+  続けて消費側の`UIAutomation.CloseWindow.CloseByInstanceOrHandle`(知見57追記、
+  `WindowInstance`は裸のVarRef)も`{変数}.close()`へ結線し、`GetWindow`→変数→
+  `CloseWindow`という一連の流れを結線完了させた(commit予定)。
 - [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
   「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
 

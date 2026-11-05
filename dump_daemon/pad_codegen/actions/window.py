@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from ...pad_dsl import ActionRecord, EnumRef
+from ...pad_dsl import ActionRecord, EnumRef, VarRef
 from ..context import CodegenContext
 from ..render import INDENT, render_value
 
@@ -52,6 +52,17 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         window_expr = _window_lookup_expr(node)
         if window_expr:
             return [f"{prefix}{window_expr}.close()"]
+    if node.action_id == "UIAutomation.CloseWindow.CloseByInstanceOrHandle":
+        # design/dsl_format_findings.md 知見57(実機確認済み): `WindowInstance`パラメータは
+        # 引用符もUI要素参照の角括弧も付かない、完全に裸の変数参照(`VarRef`)として直列化
+        # される。この変数は`UIAutomation.GetWindow.GetUseTimeout`の結線
+        # (`ui_element.py`、知見57・81)でpywinautoの`WindowSpecification`が代入される
+        # 設計のため、同じ変数へ`.close()`を呼ぶだけで良い——knowledge75系の「window
+        # instanceは単なる変数参照」という知見をそのまま活かせる、他のInstance系アクション
+        # (Excel/Word/PowerPoint、知見79・80)と同種の結線。
+        window_instance = node.params.get("WindowInstance")
+        if isinstance(window_instance, VarRef):
+            return [f"{prefix}{render_value(window_instance)}.close()"]
     return None
 
 
