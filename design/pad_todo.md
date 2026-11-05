@@ -9,11 +9,21 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(31/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
+## A. codegenの既知TODO(28/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
-- [ ] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
+- [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
   `GenerateDataTableFromCSV`が対象。実機で列名の既定規則(`Column1`等?)を確認するまでコードは書かない。
+  ✅ **実機確認・結線完了(知見84)**: VMが空いたタイミングで知見81の「Run実行+ファイル
+  書き出し」手法を使い、`1,2,3\n4,5,6\n`というヘッダー無しCSVを実機で読み込ませ、
+  `IncludeColumnNames: True`で書き戻した結果列名は**`"Column#1"`/`"Column#2"`/
+  `"Column#3"`**(`#`付き、推測していた`"Column1"`とは異なる)だと確定した。
+  `datatable.py`に`first_line_contains_column_names`/`include_column_names`引数を
+  追加し、`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`/
+  `Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator`を結線した
+  (`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`は`ReadFieldsAsText`
+  の数値コレーション挙動が別途未確認のため`True`の場合のみ)。`TrimFields`の正確な
+  意味論は別の未解決課題として残る(低優先度)。
 - [ ] 🖥️ `Variables.FilterDataTable`/`JoinDataTable`の条件/結合キー指定方法を実機で確認(スキーマ未確認のため
   現状`NotImplementedError`)。
 - [ ] 🖥️ `Variables.SubtractLists`/`FindCommonListItems`が使うPAD独自比較エンジン

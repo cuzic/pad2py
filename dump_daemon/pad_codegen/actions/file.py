@@ -10,10 +10,12 @@ tier1_file_batch6.txt`・知見70の`tier1_crypto_database_batch7.txt`から確�
 実行時に`isinstance`で単一文字列/リストどちらでも動くよう正規化する(でっち上げた
 一方だけの型を仮定しない)。
 
-`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`は意図的に未対応のまま
-フォールバックに委ねる: 実機DSLで`FirstLineContainsColumnNames`/`IncludeColumnNames`
-が明示的に`False`だが、`pad_action_lib.datatable`のCSV変換は常にヘッダー行ありを
-仮定しており不一致。
+`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`のヘッダー無しケース
+(`FirstLineContainsColumnNames`/`IncludeColumnNames: False`)は知見84で実機確認済み
+(列名は`"Column#1"`/`"Column#2"`...が割り当てられる)。`TrimFields`(各フィールドの
+前後の空白除去と推測されるが、`pad_action_lib`側は未実装のまま値を無視する——
+でっち上げた実装を書かず、既知の近似の限界として明記するのみ)は値を問わず
+受け取るだけで結線する。
 """
 from __future__ import annotations
 
@@ -154,5 +156,44 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if path is None or encoding is None or not node.output_var:
             return None
         return [f"{prefix}{node.output_var} = file_actions.read_text_from_file({path}, encoding={encoding!r})"]
+
+    if action_id == "File.ReadFromCSVFile.ReadCSV":
+        path = safe_render(p.get("CSVFile"))
+        encoding = enum_last(p.get("Encoding"))
+        separator = enum_last(p.get("ColumnsSeparator"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        if (
+            path is None
+            or encoding is None
+            or first_line is None
+            or separator != "SystemDefault"
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, encoding={encoding!r}, "
+            f"first_line_contains_column_names={first_line})"
+        ]
+
+    if action_id == "File.WriteToCSVFile.WriteCSV":
+        table = safe_render(p.get("VariableToWrite"))
+        path = safe_render(p.get("CSVFile"))
+        encoding = enum_last(p.get("CsvFileEncoding"))
+        if_exists = enum_last(p.get("IfFileExists"))
+        separator = enum_last(p.get("ColumnsSeparator"))
+        include_names = safe_render(p.get("IncludeColumnNames"))
+        if (
+            table is None
+            or path is None
+            or encoding is None
+            or if_exists is None
+            or include_names is None
+            or separator != "SystemDefault"
+        ):
+            return None
+        return [
+            f"{prefix}file_actions.write_to_csv_file({path}, {table}, if_file_exists={if_exists!r}, "
+            f"encoding={encoding!r}, include_column_names={include_names})"
+        ]
 
     return None

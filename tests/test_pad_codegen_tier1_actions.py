@@ -92,6 +92,8 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     assert "variables_actions.delete_row_from_datatable('sample', 'sample')" in code
     # `InputTable: { }` now parses as an empty list, so this is wired (knowledge 74).
     assert "DataTable = variables_actions.create_new_datatable([])" in code
+    # ヘッダー無しCSV変換(knowledge 84): IncludeColumnNames: Falseでも結線される。
+    assert "CSVText = variables_actions.datatable_to_csv_text('sample', include_column_names=False)" in code
     # Deliberately unconverted: PAD's ComparisonCalculator-dependent / unverified-schema actions.
     for action_id in (
         "Variables.SubtractLists",
@@ -99,10 +101,10 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
         "Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere",
         "Variables.FilterDataTable",
         "Variables.JoinDataTable",
-        "Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator",
-        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator",
     ):
         assert _todo(action_id) in code
+    # ReadFieldsAsText: False(数値コレーション挙動が未確認)のため依然TODO(knowledge 84)。
+    assert _todo("Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator") in code
 
 
 def test_text_variables_batch4_converts_except_unverified_ones() -> None:
@@ -139,7 +141,9 @@ def test_folder_batch5_converts_all_actions_and_if_folder_exists_condition() -> 
     assert "if folder_actions.if_folder_exists('sample'):" in code
 
 
-def test_file_batch6_converts_except_csv_actions() -> None:
+def test_file_batch6_converts_all_actions_including_csv_header_less_case() -> None:
+    # design/dsl_format_findings.md 知見84: ヘッダー無しCSV(FirstLineContainsColumnNames/
+    # IncludeColumnNames: False)の列名規則("Column#1"等)を実機確認し結線した。
     code = _generate("tier1_file_batch6.txt")
     assert "CopiedFiles = file_actions.copy_files((" in code
     assert "MovedFiles = file_actions.move_files((" in code
@@ -159,8 +163,15 @@ def test_file_batch6_converts_except_csv_actions() -> None:
     assert "if file_actions.if_file_exists('sample'):" in code
     assert "while not file_actions.if_file_exists('sample'):" in code
     assert "import os" in code
-    assert _todo("File.ReadFromCSVFile.ReadCSV") in code
-    assert _todo("File.WriteToCSVFile.WriteCSV") in code
+    assert (
+        "CSVTable = file_actions.read_from_csv_file('sample', encoding='UTF8', "
+        "first_line_contains_column_names=False)" in code
+    )
+    assert (
+        "file_actions.write_to_csv_file('sample', 'sample', if_file_exists='Overwrite', "
+        "encoding='UTF8', include_column_names=False)" in code
+    )
+    assert "# TODO" not in code
 
 
 def test_crypto_database_batch7_converts_only_keyless_functions() -> None:

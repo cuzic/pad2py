@@ -31,22 +31,40 @@ def rows_of(table: DataTable, columns: list[str] | None = None) -> list[list[obj
     return [[row.get(col, "") for col in cols] for row in table]
 
 
-def datatable_from_csv_text(text: str, delimiter: str = ",") -> DataTable:
-    """標準/カスタム区切りCSVテキスト(1行目をヘッダーとして扱う)を`DataTable`に変換する。"""
+def datatable_from_csv_text(
+    text: str, delimiter: str = ",", first_line_contains_column_names: bool = True
+) -> DataTable:
+    """標準/カスタム区切りCSVテキストを`DataTable`に変換する。
+
+    design/dsl_format_findings.md 知見84(実機確認済み): `first_line_contains_column_names=
+    False`の場合、列名は実機と同じ`"Column#1"`/`"Column#2"`...(1始まり、`#`付き)が
+    割り当てられ、1行目もヘッダーとして切り出さず全ての行がデータ行として扱われる。
+    """
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     rows = list(reader)
     if not rows:
         return []
-    header, *data = rows
+    if first_line_contains_column_names:
+        header, *data = rows
+    else:
+        header = [f"Column#{i + 1}" for i in range(len(rows[0]))]
+        data = rows
     return [dict(zip(header, row)) for row in data]
 
 
-def datatable_to_csv_text(table: DataTable, delimiter: str = ",") -> str:
-    """`DataTable`をヘッダー行付きCSVテキストに変換する(改行はWindows固定の`\\r\\n`)。"""
+def datatable_to_csv_text(
+    table: DataTable, delimiter: str = ",", include_column_names: bool = True
+) -> str:
+    """`DataTable`をCSVテキストに変換する(改行はWindows固定の`\\r\\n`)。
+
+    `include_column_names=False`の場合はヘッダー行を省略する(design/dsl_format_findings.md
+    知見84、`IncludeColumnNames: False`の実機DSLで確認済み)。
+    """
     cols = columns_of(table)
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=delimiter, lineterminator="\r\n")
-    writer.writerow(cols)
+    if include_column_names:
+        writer.writerow(cols)
     for row in table:
         writer.writerow([row.get(col, "") for col in cols])
     return buf.getvalue()

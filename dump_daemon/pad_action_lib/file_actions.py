@@ -301,14 +301,21 @@ def write_text_to_file(
         raise WriteTextToFileError(str(exc)) from exc
 
 
-def read_from_csv_file(path: str, delimiter: str = ",", encoding: str = "UTF8") -> DataTable:
+def read_from_csv_file(
+    path: str,
+    delimiter: str = ",",
+    encoding: str = "UTF8",
+    first_line_contains_column_names: bool = True,
+) -> DataTable:
     from .datatable import datatable_from_csv_text
 
     try:
         text = Path(path).read_text(encoding=_TEXT_FILE_ENCODINGS.get(encoding, encoding))
     except _OS_FILE_NOT_FOUND_ERROR as exc:
         raise FileNotFoundError(str(exc)) from exc
-    return datatable_from_csv_text(text, delimiter=delimiter)
+    return datatable_from_csv_text(
+        text, delimiter=delimiter, first_line_contains_column_names=first_line_contains_column_names
+    )
 
 
 def write_to_csv_file(
@@ -317,15 +324,18 @@ def write_to_csv_file(
     delimiter: str = ",",
     if_file_exists: str = "Overwrite",
     encoding: str = "UTF8",
+    include_column_names: bool = True,
 ) -> None:
     from .datatable import datatable_to_csv_text
 
-    text = datatable_to_csv_text(table, delimiter=delimiter)
+    text = datatable_to_csv_text(table, delimiter=delimiter, include_column_names=include_column_names)
     mode_encoding = _TEXT_FILE_ENCODINGS.get(encoding, encoding)
     dest = Path(path)
     if if_file_exists == "Append" and dest.exists() and dest.stat().st_size > 0:
-        # 既存の空でないファイルへのAppendはヘッダー行を書き直さない。
-        text = text.split("\r\n", 1)[1] if "\r\n" in text else ""
+        # 既存の空でないファイルへのAppendはヘッダー行を書き直さない
+        # (include_column_names=Falseならそもそもヘッダー行が無いので何もしない)。
+        if include_column_names:
+            text = text.split("\r\n", 1)[1] if "\r\n" in text else ""
         with dest.open("a", encoding=mode_encoding, newline="") as fh:
             fh.write(text)
         return

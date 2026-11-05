@@ -1796,3 +1796,27 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 これで知見53から持ち越していた「算術演算子個々の値の意味論」が全て解決し、知見81で構築した`render_expr_as_python()`は`mod`・`/`を含むどんな`SET`複合式にも実際のPython式を生成できるようになった(`dump_daemon/pad_codegen/render.py`を更新、`mod`は`math.fmod(a, b)`、`/`はそのままPythonの`/`演算子)。知見53の実機キャプチャそのもの(`SET NewVar3 TO 1 + 2 * 3 - 4 / 2 mod 3`)も、実際に計算可能なPython式(`1 + 2 * 3 - math.fmod(4 / 2, 3)` = `7 - fmod(2.0, 3)` = `5.0`)へ変換されることをテストで確認した。これで`pad_expr`モジュールが実機未検証として持ち越していた項目は、関数呼び出し(`FuncCall`、`SET`式内の出現自体が実機未確認)のみを残して解消した。
 
 テスト用フロー・出力ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 84. CSVヘッダー無しケース(`FirstLineContainsColumnNames`/`IncludeColumnNames: False`)の列名規則を実機確認——`"Column#1"`形式(`#`付き)
+
+A節の既知TODOに長らく残っていた「`FirstLineContainsColumnNames: False`時の既定列名規則」を、知見81の「Run実行+ファイル書き出し」手法で確認した。VMが空いたタイミングで`clipwire exec`経由でヘッダー無しCSVファイル(`1,2,3\n4,5,6\n`)をPAD自体を経由せず直接アップロードし、新規テストフロー(`csv_header_check`、保存せず破棄)で以下を知見75のペースト技法で貼り付けた(いずれも既に実機確認・結線済みのTier1アクションなので問題無く貼り付けられる):
+
+```
+File.ReadFromCSVFile.ReadCSV CSVFile: $'''...\no_header.csv''' Encoding: File.CSVEncoding.UTF8 TrimFields: True FirstLineContainsColumnNames: False ColumnsSeparator: File.CSVColumnsSeparator.SystemDefault CSVTable=> Table1
+Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator DataTable: Table1 IncludeColumnNames: True ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVText=> CsvOut
+File.WriteText File: $'''...\csv_header_result.txt''' TextToWrite: $'''%CsvOut%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+```
+
+Run実行後、結果ファイルの内容は:
+
+```
+Column#1,Column#2,Column#3
+1,2,3
+4,5,6
+```
+
+**確認できた事実**: ヘッダー無しで読み込んだ際の既定列名は**`"Column#1"`/`"Column#2"`/`"Column#3"`**(1始まり、`#`付き)だった——これまで推測していた`"Column1"`(`#`無し)とは異なる記号が入っており、PDFモジュールの無ヘッダー時命名(知見67付近で言及、未確認の近似として`"Column1"`を使っていた)とも異なることが確定した。1行目はヘッダーとして切り出されず、全行(`1,2,3`・`4,5,6`)がデータ行として扱われることも確認した。
+
+**修正内容**: `dump_daemon/pad_action_lib/datatable.py`の`datatable_from_csv_text()`/`datatable_to_csv_text()`に`first_line_contains_column_names`/`include_column_names`引数を追加し、ヘッダー無し時は`f"Column#{i + 1}"`(1始まり)を列名として割り当てるようにした。`file_actions.read_from_csv_file()`/`write_to_csv_file()`・`variables_actions`が再公開する同名関数(`File.*`/`Variables.*`で実装を共有)に引数を伝播させ、`pad_codegen`の`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`/`Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator`を新たに結線した。`Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`は同じ列名規則が適用できるものの、実機キャプチャの`ReadFieldsAsText: False`(数値らしき文字列を実際の数値型に変換すると推測されるが`pad_action_lib`は常に文字列のまま保持する実装のため未確認のまま)が明示的`True`の場合のみ結線し、`False`の場合は依然TODOのまま安全に倒す。
+
+これでA節の「CSVヘッダー無しケースの実機確認」は完了した(`TrimFields`・`ReadFieldsAsText: False`の正確な変換規則は別の未解決課題として残る)。テスト用フロー・アップロードしたCSV・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。

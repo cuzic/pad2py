@@ -154,6 +154,30 @@ def test_csv_round_trip(tmp_path: Path) -> None:
     assert fa.read_from_csv_file(str(f), encoding="UTF8") == table
 
 
+def test_csv_no_header_uses_column_hash_n_names(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見84(実機確認済み): FirstLineContainsColumnNames=False
+    # で読んだ列名は"Column#1"/"Column#2"...(1始まり、"#"付き)——実機で
+    # 1,2,3\n4,5,6\nを読み、IncludeColumnNames=Trueで書き戻した結果
+    # "Column#1,Column#2,Column#3\r\n1,2,3\r\n4,5,6\r\n"と一致することを確認した。
+    f = tmp_path / "no_header.csv"
+    f.write_text("1,2,3\n4,5,6\n", encoding="UTF8")
+    table = fa.read_from_csv_file(str(f), encoding="UTF8", first_line_contains_column_names=False)
+    assert table == [
+        {"Column#1": "1", "Column#2": "2", "Column#3": "3"},
+        {"Column#1": "4", "Column#2": "5", "Column#3": "6"},
+    ]
+
+    out = tmp_path / "out.csv"
+    fa.write_to_csv_file(str(out), table, encoding="UTF8", include_column_names=True)
+    with out.open(encoding="UTF8", newline="") as fh:
+        assert fh.read() == "Column#1,Column#2,Column#3\r\n1,2,3\r\n4,5,6\r\n"
+
+    out_no_header = tmp_path / "out_no_header.csv"
+    fa.write_to_csv_file(str(out_no_header), table, encoding="UTF8", include_column_names=False)
+    with out_no_header.open(encoding="UTF8", newline="") as fh:
+        assert fh.read() == "1,2,3\r\n4,5,6\r\n"
+
+
 def test_get_file_path_part(tmp_path: Path) -> None:
     f = tmp_path / "a.txt"
     parts = fa.get_file_path_part(str(f))

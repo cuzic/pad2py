@@ -19,10 +19,16 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
   出力契約(`DataTableMatches`への一致結果)が、`pad_action_lib`の
   `find_or_replace_in_datatable()`(置換件数の`int`を返す、`replace_value`必須)
   と一致しない——別の「検索のみ」の関数が必要だが未実装。
-- `Variables.ConvertDataTableToCSV.*`/`Variables.GenerateDataTableFromCSV.*`:
-  実機DSLで`IncludeColumnNames`/`FirstLineContainsColumnNames`が明示的に`False`
-  だが、`pad_action_lib.datatable`のCSV変換は常にヘッダー行ありを仮定しており
-  不一致。
+- `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText:
+  False`(数値らしき文字列を実際の数値型に変換すると推測されるが未確認)の場合:
+  `pad_action_lib.datatable`は常に文字列のまま保持する(`ReadFieldsAsText: True`相当)
+  実装のため、`True`の場合のみ結線する(`False`は実機キャプチャの既定値だが、
+  その変換規則自体は未確認のためTODOのまま——`IncludeColumnNames`/
+  `FirstLineContainsColumnNames`のヘッダー無しケースは知見84で解決済み)。
+
+`Variables.ConvertDataTableToCSV.*`/`Variables.GenerateDataTableFromCSV.*`の
+ヘッダー無しケース(`IncludeColumnNames`/`FirstLineContainsColumnNames: False`)は
+知見84で実機確認済み(列名は`"Column#1"`/`"Column#2"`...が割り当てられる)。
 """
 from __future__ import annotations
 
@@ -226,5 +232,34 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if table is None or row_index is None:
             return None
         return [f"{prefix}variables_actions.delete_row_from_datatable({table}, {row_index})"]
+
+    if action_id == "Variables.ConvertDataTableToCSV.DataTableToCSVCommonSeparator":
+        table = safe_render(p.get("DataTable"))
+        separator = enum_last(p.get("ColumnsSeparator"))
+        include_names = safe_render(p.get("IncludeColumnNames"))
+        if table is None or include_names is None or separator != "SystemDefault" or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.datatable_to_csv_text("
+            f"{table}, include_column_names={include_names})"
+        ]
+
+    if action_id == "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator":
+        text = safe_render(p.get("CSVText"))
+        separator = enum_last(p.get("ColumnsSeparator"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        read_as_text = p.get("ReadFieldsAsText")
+        if (
+            text is None
+            or first_line is None
+            or separator != "SystemDefault"
+            or read_as_text is not True
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.datatable_from_csv_text("
+            f"{text}, first_line_contains_column_names={first_line})"
+        ]
 
     return None
