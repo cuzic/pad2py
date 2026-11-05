@@ -2474,3 +2474,31 @@ def test_generate_python_from_file_write_read_csv_custom_separator_round_trips()
         exec(code, namespace)
         assert out_path.read_text(encoding="utf-8-sig") == "Name|Age\nAlice|30\n"
         assert namespace["RoundTripped"] == [{"Name": "Alice", "Age": "30"}]
+
+
+def test_generate_python_from_folder_copy_nests_under_destination_and_returns_path() -> None:
+    # design/dsl_format_findings.md 知見130(VM上の直接呼び出しで実機確認済み): `Destination`は
+    # コピー先の正確なパスではなく既存の親フォルダで、結果は`Destination/<Folderの名前>`に
+    # ネストされる。`CopiedFolder`出力はこのネストされたパスを指す(知見129のZipFilesと同種の
+    # 「代入先が常にNoneになる」潜在バグが`copy_folder()`にもあったため合わせて修正)。
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "a.txt").write_text("hello", encoding="utf-8")
+        dest_parent = tmp_path / "dst"
+        dest_parent.mkdir()
+
+        dsl = (
+            f"Folder.Copy Folder: $'''{src_dir}''' Destination: $'''{dest_parent}''' "
+            "IfFolderExists: Folder.IfExists.DoNothing CopiedFolder=> CopiedFolder"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        expected = dest_parent / "src"
+        assert namespace["CopiedFolder"] == str(expected)
+        assert (expected / "a.txt").read_text(encoding="utf-8") == "hello"

@@ -41,13 +41,27 @@ class FolderNotFoundError(PadActionError):  # noqa: A001
     pass
 
 
-def copy_folder(source: str, destination: str, if_file_exists: str = "DoNothing") -> None:
+def copy_folder(source: str, destination: str, if_file_exists: str = "DoNothing") -> str:
+    """`destination`は実機では「コピー先として選ぶ既存の親フォルダ」であり、
+    コピー先の正確なパスではない——`source`と同名のフォルダとして`destination`の
+    直下にネストされる(Unixの`cp -r source dest/`と同じ挙動)。
+
+    design/dsl_format_findings.md 知見130(VM上でのリフレクション直接呼び出しで実機確認済み):
+    `CopyFolder`クラスを直接インスタンス化・`Execute()`を呼び出し、(1)`destination`自体が
+    存在しないと`ActionException`になる(親ではなく`destination`自身の存在が必須)、
+    (2)結果は`destination/<sourceのフォルダ名>`に作られる、(3)出力`CopiedFolder`は
+    このネストされたパスを指すFileObjectだと確認した。以前の実装は`destination`を
+    コピー先の正確なパスとして扱い(`dst.parent`の存在だけを確認)、戻り値も常に`None`
+    だったため、ネスト無しの誤った場所にコピーし、`CopiedFolder=>`を束縛したフローでは
+    出力変数も常に`None`になる潜在バグがあった(知見129のZipFilesと同種)。
+    """
     src = Path(source)
-    dst = Path(destination)
+    dst_parent = Path(destination)
     if not src.is_dir():
         raise InvalidSourceFolderError(str(source))
-    if not dst.parent.is_dir():
+    if not dst_parent.is_dir():
         raise InvalidDestinationFolderError(str(destination))
+    dst = dst_parent / src.name
 
     def _copy_function(s: str, d: str) -> None:
         if Path(d).exists() and if_file_exists == "DoNothing":
@@ -58,6 +72,7 @@ def copy_folder(source: str, destination: str, if_file_exists: str = "DoNothing"
         shutil.copytree(src, dst, dirs_exist_ok=True, copy_function=_copy_function)
     except OSError as exc:
         raise CopyFolderError(str(exc)) from exc
+    return str(dst)
 
 
 def create_folder(folder_path: str, folder_name: str) -> str:

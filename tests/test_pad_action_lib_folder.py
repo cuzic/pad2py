@@ -10,15 +10,31 @@ from dump_daemon.pad_action_lib import folder_actions as fo
 
 
 def test_copy_folder_recursive(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見130(実機確認済み): `destination`はコピー先の
+    # 正確なパスではなく、既存の親フォルダ——結果は`destination/<sourceの名前>`に
+    # ネストされ、戻り値はそのネストされたパス。
     src = tmp_path / "src"
     (src / "sub").mkdir(parents=True)
     (src / "a.txt").write_text("a")
     (src / "sub" / "b.txt").write_text("b")
-    dst = tmp_path / "dst"
+    dst_parent = tmp_path / "dst"
+    dst_parent.mkdir()
 
-    fo.copy_folder(str(src), str(dst))
-    assert (dst / "a.txt").read_text() == "a"
-    assert (dst / "sub" / "b.txt").read_text() == "b"
+    result = fo.copy_folder(str(src), str(dst_parent))
+    copied = dst_parent / "src"
+    assert result == str(copied)
+    assert (copied / "a.txt").read_text() == "a"
+    assert (copied / "sub" / "b.txt").read_text() == "b"
+
+
+def test_copy_folder_requires_existing_destination(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("a")
+    missing_dst = tmp_path / "does_not_exist"
+
+    with pytest.raises(fo.InvalidDestinationFolderError):
+        fo.copy_folder(str(src), str(missing_dst))
 
 
 def test_create_folder_combines_path_and_name(tmp_path: Path) -> None:

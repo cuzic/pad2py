@@ -2325,3 +2325,17 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **修正**: `zip_files()`の戻り値型を`str`に変更し、末尾に`return archive_path`(入力をそのまま返す、でっち上げた正規化処理は追加しない)を追加した。`pad_codegen`側の既存の代入文生成はそのまま正しく機能するようになる(コード変更不要)。既存の合成テストに`assert namespace["ZipFile"] == str(archive_path)`を追加し、`tests/test_pad_action_lib_compression.py`の基本往復テストにも同様のアサーションを追加した。
 
 **教訓(知見124・128と合わせて確定)**: 「生成コードを実際に`exec()`するテスト」であっても、副作用だけを検証して代入先の変数の値を見ていなければ、戻り値の型不一致(`None`化)のようなバグは検出できない——今後の同種レビューでは、出力変数を束縛するテストでは必ずその変数の値も具体的にアサートする。
+
+## 130. 知見129の横展開中に発見した、`Folder.Copy`のより重大な2段のバグ——`CopiedFolder`出力の`None`化(知見129と同種)に加え、`Destination`パラメータの意味論自体が実機と逆だった(コピー先の正確なパスではなく既存の親フォルダ)
+
+知見129のパターン(`-> None`で常に`None`を返す関数をcodegenが代入文に使っている)を機械的に横展開するため、`dump_daemon/pad_action_lib/*.py`内の全ての`-> None`なトップレベル関数を列挙し、`pad_codegen/actions/*.py`側で`{node.output_var} = module.func(...)`という代入に使われているものをスクリプトで突き合わせた(VM不要、ローカルのgrep/正規表現のみ)。該当したのは`folder_actions.copy_folder()`1件のみ。
+
+**VM上の直接呼び出しで確認した実機の挙動(2点とも事前の想定と異なっていた)**:
+1. `CopiedFolder`出力は知見129のZipFilesと同種の「結果の場所を指すecho」だが、
+2. **`Destination`パラメータの意味論自体が、既存の`pad_action_lib.copy_folder()`の想定(コピー先の正確なパス、`dst.parent`が存在すればよい)と逆だった**——実機の`CopyFolder`クラスを直接インスタンス化・`Execute(null)`を呼び出して検証したところ、(a) `Destination`自体が存在しないと`ActionException`(「Destination folder ... doesn't exist」)になる(**親ではなく`Destination`自身**の存在が必須)、(b) 実際のコピー結果は`Destination`直下に**`Folder`(コピー元)と同じ名前のフォルダとしてネストされる**(Unixの`cp -r source dest/`と同じ、`shutil.copytree(src, dest)`が想定する「destは正確な新パス」という意味論とは違う)、(c) `CopiedFolder`出力はこのネストされたパス(`Destination/<元の名前>`)を指す。`IfFolderExists`(DoNothing/Overwriteの2値)はこのネストされた結果フォルダ内でのファイル単位の上書き判定で、既存の`_copy_function`のファイル単位ロジックとは整合していた(この部分は元から正しかった)。
+
+これは知見124・128・129と並ぶ「実際に本番ロジックのパスを通るテストが一度も無かったため発覚が遅れた」系のバグだが、知見129より一段深刻——単に出力変数が`None`になるだけでなく、**コピー先のディレクトリ構造自体が実機と異なる場所になる**(1階層分フラット化されてしまう)。既存の`tests/test_pad_action_lib_folder.py`の`test_copy_folder_recursive`はこの誤った「destは正確なパス」という前提のまま書かれていたため、このバグを一度も検出できなかった。
+
+**修正**: `copy_folder()`を実機の意味論に合わせて書き直した——`destination`自体の存在を検証(`dst.parent`ではなく)、実際のコピー先を`Path(destination) / Path(source).name`に変更、戻り値として`str(dst)`(ネストされた結果パス)を追加。既存テストを新しい意味論(`dst_parent`は事前に存在させる、結果は`dst_parent / "src"`)に書き直し、`destination`自体が存在しない場合に`InvalidDestinationFolderError`になる新規テストを追加した。`pad_codegen/actions/folder.py`側の代入文生成は変更不要(元から`{output_var} = folder_actions.copy_folder(...)`で正しい形だった)。`tests/test_pad_codegen.py`に実際に`exec()`してネストされたパスとファイル内容の両方を検証するend-to-endテストを追加した。
+
+**横展開の手法として記録**: 「`-> None`で常に`None`を返す関数が、codegen側で代入文(`{var} = func(...)`)に使われていないか」という機械的な突き合わせは、decompileもVMも使わずローカルのみで完結する低コストな監査であり、知見129のような潜在バグを体系的に見つけ出せる(今回は該当1件のみだったため横展開はこれで打ち切り)。
