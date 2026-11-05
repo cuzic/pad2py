@@ -1246,18 +1246,21 @@ def test_generate_python_omits_selector_hint_when_repository_not_given() -> None
     assert "verified pywinauto selector" not in code
 
 
-def test_generate_python_omits_selector_hint_for_special_pseudo_selector() -> None:
-    # design/dsl_format_findings.md 知見56: 知見44の「Start Button」のような特殊な
-    # 擬似セレクタ(`CustomValue: ":startbutton"`、`Attributes: []`)は、使える属性が
-    # 1つも無いため、でっち上げたセレクタを提案せずヒント無しにフォールバックする。
+def test_generate_python_converts_start_button_pseudo_selector_to_win_key_press() -> None:
+    # design/dsl_format_findings.md 知見44: 「Start Button」のような特殊な擬似セレクタ
+    # (`CustomValue: ":startbutton"`、`Attributes: []`)は、使える属性が1つも無いため
+    # 通常のpywinautoセレクタ式(`_build_pywinauto_selector_expr()`)は組み立てられない。
+    # でっち上げた属性ベースのセレクタを提案する代わりに、`:startbutton`はPAD固有の
+    # 推測ではなくWindows自体の既知の仕組み(Winキー押下でスタートメニューの開閉を
+    # トグル)に対応する固定のOS要素であるため、Winキー押下へ安全に対応付ける。
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_control_repository.txt").read_text(
         encoding="utf-8"
     )
     tree = build_block_tree(parse_dsl(text))
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
-    assert "verified pywinauto selector" not in code
-    assert "Start Button" in code
+    compile(code, "<generated>", "exec")
+    assert "pyautogui.press('win')" in code
 
 
 def test_generate_python_chains_all_elements_of_a_multi_element_internal_selector() -> None:

@@ -15,6 +15,27 @@ _REPOSITORY_ATTR_TO_PYWINAUTO_KWARG = {
 }
 
 
+def _is_start_button_element(path: tuple[str, ...], ctx: CodegenContext) -> bool:
+    """`appmask['Start Button']`がPAD独自の特殊タグ`:startbutton`(知見44)を指しているか判定する。
+
+    知見44で実機確認済みの通り、Windowsタスクバーの「Start Button」はふつうのUIA属性ベースの
+    セレクタではなく、`Attributes: []`(空)・`CustomValue: ":startbutton"`という予約済みの
+    擬似セレクタで直列化される——そのため`_build_pywinauto_selector_expr()`は使える属性が
+    無く`None`を返す(でっち上げを避けるため)。だが`:startbutton`自体はPAD固有の推測ではなく
+    Windows自体の既知の仕組み(Winキー押下でスタートメニューの開閉がトグルされる)に対応する
+    固定のOS要素のため、このタグに限りpyautogui経由のWinキー押下へ安全に対応付けられる。
+    """
+    if len(path) != 1:
+        return False
+    repository = ctx.repository.get("appmask")
+    if not repository:
+        return False
+    entry = repository.get(path[0])
+    if entry is None or len(entry.selectors) != 1 or len(entry.selectors[0]) != 1:
+        return False
+    return entry.selectors[0][0].custom_value == ":startbutton"
+
+
 def _build_pywinauto_selector_expr(path: tuple[str, ...], ctx: CodegenContext) -> str | None:
     """`parse_control_repository()`(知見44)のエントリから、確証のあるpywinautoセレクタ式を
     組み立てる(知見56: `appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']`の

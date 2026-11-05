@@ -4,7 +4,7 @@ from __future__ import annotations
 from ...pad_dsl import ActionRecord, EnumRef, UiElementRef
 from ..context import CodegenContext
 from ..render import INDENT
-from ..selectors import _build_pywinauto_selector_expr
+from ..selectors import _build_pywinauto_selector_expr, _is_start_button_element
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -31,6 +31,13 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             and node.params.get("OffsetX") == 0
             and node.params.get("OffsetY") == 0
         ):
+            if _is_start_button_element(element.path, ctx):
+                # design/dsl_format_findings.md 知見44・docs-local(Robin.Engine.dll再調査、
+                # 知見59〜のVariableTrailer調査の副産物)で、この「Start Button」は
+                # Attributes空の特殊タグ`:startbutton`だと確定済み——通常のUIAセレクタが
+                # 組み立てられないため、Windows自体の既知の仕組み(Winキー押下でスタート
+                # メニューの開閉をトグル)に対応付ける。
+                return [f"{prefix}pyautogui.press('win')"]
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 return [f"{prefix}{selector_expr}.click_input()"]

@@ -2134,3 +2134,9 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 `pad_codegen/actions/compression.py`は自身のdocstringで「実機キャプチャでは`Password`が常にWindows DPAPI保護値(`P'<base64>'`、知見72)で現れ`VarRef`へフォールバックするため、本モジュールはパスワード無しの圧縮/展開フローのために結線だけ用意する」と明記していたが、その「パスワード無しの場合の結線」自体を実行して確認する合成テストが無かった(知見78のPDF`Password`省略ケースと同じパターン)。
 
 `tempfile.TemporaryDirectory()`で実ファイルを用意し、`Compression.ZipFiles`(`ArchiveComment`のみ空文字列、`Password`省略)→実際にzipファイルが生成されることを確認→続けて`Compression.UnzipFiles`(`IncludeMask: '*'`・`ExcludeMask`省略)→展開結果が元のファイル内容と一致することを確認、という往復を合成DSLで実行するテストを追加した。`pad_action_lib.compression_actions.zip_files()`/`unzip_files()`(`pyzipper`経由のAES対応実装、zip-slip対策含む)・codegen側の結線(`_as_list_expr()`によるリスト/単一文字列の吸収含む)ともに既に正しく実装されていたため、コード修正は不要だった。VM不要(ローカルの`zipfile`/`pyzipper`のみで完結)。DPAPI保護値(`P'<base64>'`)自体の復号は依然未対応のまま(低優先度、pad_todo.md参照)。
+
+## 110. `UIAutomation.Click.Click`の最後の未対応分岐——「Start Button」特殊擬似セレクタ(`:startbutton`)をWinキー押下へ結線(VM不要)
+
+知見44で実機確認済みの通り、Windowsタスクバーの「Start Button」は`Attributes: []`(空)・`CustomValue: ":startbutton"`という予約済みの擬似セレクタで直列化され、通常のUIA属性ベースのセレクタが組み立てられないため、`_build_pywinauto_selector_expr()`は`None`を返し常にTODOへ倒れていた(`codegen_coverage.py`の`UIAutomation.Click.Click`が長らく6/7のPARTIALのままだった唯一の原因)。
+
+`:startbutton`はPAD固有の推測ではなく**Windows自体の既知の仕組み**(Winキー押下でスタートメニューの開閉がトグルされる、OSの標準動作)に対応する固定の要素だと分かっているため、でっち上げたセレクタではなく確定した事実としてWinキー押下(`pyautogui.press('win')`、既存の`MouseAndKeyboard.PressReleaseKey`の`Win`→`'win'`マッピングと同じpyautoguiキー名)に対応付けられると判断した。`selectors.py`に`_is_start_button_element()`(リポジトリの該当エントリが`selectors[0]`に`custom_value == ":startbutton"`の要素1つだけを持つかを判定)を追加し、`actions/ui_element.py`の`UIAutomation.Click.Click`分岐で、既存の確証済みパラメータ組み合わせ(LeftClick/MiddleCenter/オフセット0)の判定の後、この特殊ケースを先にチェックして`pyautogui.press('win')`を生成するよう結線した。既存テスト(`test_generate_python_omits_selector_hint_for_special_pseudo_selector`)はTODOフォールバックを期待していたため、実際に結線されたコードをコンパイル・アサートする内容に更新した。`codegen_coverage.py`: 180/202→181/202(90%)。
