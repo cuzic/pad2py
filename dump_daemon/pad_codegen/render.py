@@ -83,6 +83,13 @@ def render_value(value: object) -> str:
 
 
 def render_condition(operand1: object, operator: str, operand2: object) -> str:
+    # design/dsl_format_findings.md 知見88(実機確認済み): `=`/`<>`は両辺が数値または
+    # 数値を表す文字列なら型をまたいで等価と判定される(`"1" = 1`は真)——Pythonの素直な
+    # `==`/`!=`では再現できないため専用ヘルパーに委ねる(知見86の`pad_add`と同じ理由)。
+    if operator == "=":
+        return f"expr_runtime.pad_equal({render_value(operand1)}, {render_value(operand2)})"
+    if operator == "<>":
+        return f"not expr_runtime.pad_equal({render_value(operand1)}, {render_value(operand2)})"
     try:
         py_operator = _OPERATOR_MAP[operator]
     except KeyError as exc:
@@ -158,6 +165,12 @@ def _render_expr_as_python(node: ExprNode) -> str:
             # design/dsl_format_findings.md 知見82: 符号は被除数と一致する
             # (C言語のfmod方式)——Pythonの`%`(符号は除数と一致)とは異なる。
             return f"math.fmod({left}, {right})"
+        if node.op == "=":
+            # design/dsl_format_findings.md 知見88: `render_condition()`と同じ理由で
+            # 専用ヘルパーに委ねる(数値を表す文字列と数値は型をまたいで等価)。
+            return f"expr_runtime.pad_equal({left}, {right})"
+        if node.op == "<>":
+            return f"not expr_runtime.pad_equal({left}, {right})"
         if node.op in _OPERATOR_MAP:
             return f"{left} {_OPERATOR_MAP[node.op]} {right}"
         raise ValueError(f"Unsupported binary operator: {node.op!r}")

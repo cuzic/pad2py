@@ -34,10 +34,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   **区別する**が、数値文字列と数値は**型をまたいで等価**と判定される。
   `variables_actions.py`に`_pad_compare_equal()`を実装し、`subtract_lists()`/
   `find_common_list_items()`の`NotImplementedError`を解消、`pad_codegen`も結線した。
-  🖥️ **新たな残課題**: 今回確認したのはこの比較エンジン専用で、`IF`/`SET`の
-  `=`/`<>`演算子(`_OPERATOR_MAP`、Pythonの`==`/`!=`への素直な対応のまま)が
-  同じ型変換規則に従うかは別途未確認——クロス型比較(例: `"1" = 1`)の実機DSLを
-  捕まえた際に再検討する(低優先度、実害が出た実例はまだ無い)。
+  ✅ **フォローアップも解決(知見88)**: `IF`/`SET`の`=`/`<>`演算子も同じ比較エンジンと
+  全く同じ型変換規則に従うと実機確認(`"1" = 1`は真、`"Apple" = "apple"`は偽)。
+  `expr_runtime.pad_equal()`を新設し`render_condition()`/`_render_expr_as_python()`の
+  両方で`=`→`pad_equal(a, b)`・`<>`→`not pad_equal(a, b)`に変更、`variables_actions.py`の
+  重複実装もこちらへ統一した。
 - [ ] 🖥️ UI要素系の残り2条件アクション`UIAutomation.IfImage.ExistsOnScreen`/
   `UIAutomation.IfWindowContains.WindowContainsElement`のPython変換ロジック(セレクタ/画像照合の意味論)。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、

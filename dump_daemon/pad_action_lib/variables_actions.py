@@ -9,15 +9,17 @@ PADのDataTable/List系アクションの多くは対象コレクションを`[I
 `SubtractLists`/`FindCommonListItems`が使うPAD独自の汎用比較エンジン
 (`ComparisonCalculator.Compare`)は design/dsl_format_findings.md 知見85で実機確認
 済み(文字列は大文字小文字を区別するが、数値を表す文字列と数値は型をまたいで
-等価)。**注意**: このエンジンが`IF`/`SET`の`=`/`<>`演算子と同じものかどうかは
-未確認のまま(知見85参照)——`pad_codegen`の`_OPERATOR_MAP`はPythonの`==`/`!=`への
-素直な対応のままにしている。`FilterDataTableAction`/`JoinDataTableAction`の
-フィルタ条件・結合条件のDataTableスキーマは別途未確認のため未実装のまま残す。
+等価)。知見88で`IF`/`SET`の`=`/`<>`演算子も同じ規則に従うことを実機確認済み
+(`pad_action_lib.expr_runtime.pad_equal()`に共通実装、`pad_codegen`側もこれを使うよう
+結線済み)。`FilterDataTableAction`/`JoinDataTableAction`のフィルタ条件・結合条件の
+DataTableスキーマは別途未確認のため未実装のまま残す。
 """
 from __future__ import annotations
 
 import json
 import math
+
+from .expr_runtime import pad_equal as _pad_compare_equal
 import random as _random
 
 from .datatable import DataTable, Row
@@ -96,22 +98,6 @@ def shuffle_list(items: list, *, rng: object | None = None) -> None:
 
 def merge_lists(target: list, other: list) -> None:
     target.extend(other)
-
-
-def _pad_compare_equal(a: object, b: object) -> bool:
-    """design/dsl_format_findings.md 知見85(実機確認済み)の`ComparisonCalculator.Compare`。
-
-    文字列同士は大文字小文字を区別する(`"Apple"`と`"apple"`は不一致)が、数値を表す
-    文字列と数値は型をまたいで等価と判定される(`"1"`と`1`は一致)。実機で確認したのは
-    この1組の値のみのため、両辺を`float()`でパースできる場合に限り数値として比較する
-    という、最も狭い解釈を採用する(パースできない場合は通常の`==`にフォールバック)。
-    """
-    if a == b:
-        return True
-    try:
-        return float(a) == float(b)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return False
 
 
 def subtract_lists(items: list, other: list) -> list:

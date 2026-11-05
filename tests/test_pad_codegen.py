@@ -66,8 +66,13 @@ def test_render_value_distinguishes_varref_enumref_and_literals() -> None:
 
 def test_render_condition_maps_known_operators() -> None:
     # design/dsl_format_findings.md 知見18で実機確認した6種の比較演算子すべて。
-    assert render_condition(VarRef("TestVar"), "=", "hello") == "TestVar == 'hello'"
-    assert render_condition(VarRef("X"), "<>", 1) == "X != 1"
+    # 知見88: `=`/`<>`は数値を表す文字列と数値を型をまたいで等価と判定するため
+    # 専用ヘルパー(expr_runtime.pad_equal)経由になる。
+    assert (
+        render_condition(VarRef("TestVar"), "=", "hello")
+        == "expr_runtime.pad_equal(TestVar, 'hello')"
+    )
+    assert render_condition(VarRef("X"), "<>", 1) == "not expr_runtime.pad_equal(X, 1)"
     assert render_condition(VarRef("X"), ">", 1) == "X > 1"
     assert render_condition(VarRef("X"), ">=", 1) == "X >= 1"
     assert render_condition(VarRef("LoopIndex"), "<", 10) == "LoopIndex < 10"
@@ -89,11 +94,13 @@ def test_generate_python_full_flow_compiles_as_valid_python() -> None:
 
 
 def test_generate_python_renders_if_elif_else_and_nested_if() -> None:
+    # 知見88: `=`は数値を表す文字列と数値を型をまたいで等価と判定するため
+    # 専用ヘルパー(expr_runtime.pad_equal)経由になる。
     tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
     code = generate_python(tree)
-    assert "if TestVar == 'hello':" in code
-    assert "    if InnerVar == 'nested':" in code
-    assert "elif TestVar == 'world':" in code
+    assert "if expr_runtime.pad_equal(TestVar, 'hello'):" in code
+    assert "    if expr_runtime.pad_equal(InnerVar, 'nested'):" in code
+    assert "elif expr_runtime.pad_equal(TestVar, 'world'):" in code
     assert "else:" in code
 
 
@@ -623,8 +630,8 @@ def test_generate_python_renders_switch_case_default_as_if_elif_else() -> None:
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "if TestVar == 'a':" in code
-    assert "elif TestVar == 'b':" in code
+    assert "if expr_runtime.pad_equal(TestVar, 'a'):" in code
+    assert "elif expr_runtime.pad_equal(TestVar, 'b'):" in code
     assert "else:" in code
 
     namespace: dict[str, object] = {"TestVar": "b"}
@@ -1014,7 +1021,11 @@ def test_generate_python_converts_compound_set_variable_expression_to_real_pytho
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "NewVar3 = 1 == 1 and 2 == 2 or not 3 == 4" in code
+    # 知見88: `=`は専用ヘルパー(expr_runtime.pad_equal)経由になる。
+    assert (
+        "NewVar3 = expr_runtime.pad_equal(1, 1) and expr_runtime.pad_equal(2, 2) "
+        "or not expr_runtime.pad_equal(3, 4)" in code
+    )
     assert "# TODO" not in code
 
     namespace: dict[str, object] = {}

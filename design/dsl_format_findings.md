@@ -1880,3 +1880,21 @@ Errorsタブの実際のメッセージは`"The statement isn't allowed inside e
 **結論・今後の対応**: `codegen_coverage.py`のerror_handlingバケット(8/16)のうち、すでにpad_dsl_parser/pad_codegenが対応済みの構文(`ON ERROR`/`ON BLOCK ERROR`の基本構造、`REPEAT ACTION`/`NEXT ACTION`/`THROW ERROR`)に加えて**新しい結線済みタグを使う実例**を増やすには、RDPでダイアログを直接操作する以外の経路が無いと判断し、この項目はpad_todo.mdでTier3ダイアログ限界(知見82)と同じ「🖥️ RDP必要」カテゴリに分類し直す。
 
 **副産物: 「未保存の変更」確認ダイアログはトップレベルウィンドウではなく、デザイナー自身のウィンドウ内に描画される埋め込みオーバーレイだと判明**。`designer.descendants()`で`control_type="Window"`の子要素として`'You have unsaved changes'`(+ `Save`/`Don't save`ボタン)がそのまま見つかり、その`Button "Don't save"`に対して(知見81で確立した)`.invoke()`(UIAの`InvokePattern`、クリックではない)を呼ぶだけで、アクティブデスクトップ/RDP無しに確実にフローを閉じられることを確認した。従来メモに残っていた「`{TAB}{ENTER}`で閉じる」という盲打ちのキーボード操作は、本来はこの`.invoke()`方式に置き換えるべき、より確実な手段だと分かった(`designer.close()`やAlt+F4では、このオーバーレイ自体は表示されるが閉じる動作には繋がらなかった——原因は未調査のまま)。テスト用フロー`onerror_tag_check`・4つの切り分け試行はこの方式で保存せずに閉じ、出力ファイルも作成していないため、追加のクリーンアップは不要。
+
+## 88. 【知見85の低優先度フォローアップを解決】`IF`/`SET`の`=`/`<>`演算子も`ComparisonCalculator.Compare`と同じ型変換規則に従うと実機確認——`render_condition`/`SET`複合式の両方を修正
+
+知見85で「`SubtractLists`/`FindCommonListItems`専用の比較エンジンで確認した型変換規則(数値文字列と数値は型をまたいで等価)が、`IF`/`SET`の`=`/`<>`演算子でも同じかどうかは未確認」と留保していた項目を、知見87の調査完了後、知見81の「Run実行+ファイル書き出し」手法で解決した。新規テストフロー(`eq_compare_check`、保存せず破棄)に、全て既に実機確認・結線済みのTier1アクション(`SET`+`File.WriteText`)のみで5つの比較式を知見75のペースト技法で貼り付け・Run実行した。
+
+**実機確認結果**:
+
+| 式 | 結果 | 解釈 |
+| --- | --- | --- |
+| `$'''1''' = 1`(数値文字列 vs 数値) | `True` | 型をまたいで等価と判定(知見85の`ComparisonCalculator.Compare`と同じ) |
+| `$'''Apple''' = $'''apple'''`(大文字小文字) | `False` | 大文字小文字を区別する(知見85と整合) |
+| `1 = 1`(対照) | `True` | 通常の数値比較(確認のみ) |
+| `$'''abc''' = $'''abc'''`(対照) | `True` | 通常の文字列比較(確認のみ) |
+| `$'''1''' <> 1`(`<>`での対照確認) | `False` | `=`の結果の否定と整合、`<>`側も同じ型変換規則に従う |
+
+**確認できた事実**: PADの`=`/`<>`演算子は、知見85で確認した`SubtractLists`等の内部比較エンジン(`ComparisonCalculator.Compare`)と**全く同じ型変換規則**に従う——つまりPAD内部では比較系の全機能(条件式演算子・リスト比較エンジン)が同一の比較ロジックを共有していると考えられる。これにより知見85で残していた留保事項が解消された。
+
+**修正内容**: `dump_daemon/pad_action_lib/expr_runtime.py`に`pad_equal(a, b)`(知見85の`_pad_compare_equal`と同じロジック: 直接の`==`が偽の場合のみ両辺を`float()`でパースして再比較)を追加し、`variables_actions.py`の`_pad_compare_equal`はこちらの再エクスポートに統一(ロジックの重複を解消)。`pad_codegen/render.py`の`render_condition()`(`IF`/`CASE`/`WHILE`で使用)と`_render_expr_as_python()`(`SET`複合式で使用)の両方で、`=`→`expr_runtime.pad_equal(a, b)`・`<>`→`not expr_runtime.pad_equal(a, b)`に変更した(Pythonの素直な`==`/`!=`では数値文字列と数値のクロス型比較を再現できないため、知見86の`pad_add`と同じ理由で専用ヘルパーに委ねる)。既存の`=`演算子を使うテスト4件が期待通り「良い意味で」壊れ、新しい生成結果に合わせて修正した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。

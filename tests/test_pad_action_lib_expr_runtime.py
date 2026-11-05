@@ -30,3 +30,22 @@ def test_pad_add_concatenates_non_numeric_strings() -> None:
 def test_pad_add_falls_back_to_string_concat_when_either_side_is_non_numeric() -> None:
     assert er.pad_add("a", 1) == "a1"
     assert er.pad_add(1, "a") == "1a"
+
+
+def test_pad_equal_coerces_numeric_string_and_number() -> None:
+    # design/dsl_format_findings.md 知見88で実機確認済み: `"1" = 1`は真。
+    assert er.pad_equal("1", 1) is True
+    assert er.pad_equal(1, "1") is True
+
+
+def test_pad_equal_is_case_sensitive_for_strings() -> None:
+    # 実機確認済み: `"Apple" = "apple"`は偽(知見85の比較エンジンと同じ規則)。
+    assert er.pad_equal("Apple", "apple") is False
+
+
+def test_pad_equal_matches_identical_strings() -> None:
+    assert er.pad_equal("abc", "abc") is True
+
+
+def test_pad_equal_matches_identical_numbers() -> None:
+    assert er.pad_equal(1, 1) is True
