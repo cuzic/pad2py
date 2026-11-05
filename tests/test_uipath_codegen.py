@@ -166,6 +166,36 @@ def test_interpolated_string_renders_plain_interpolations_correctly(
     assert stdout.getvalue().strip() == expected
 
 
+def test_interpolated_string_nested_inside_another_interpolated_string_renders_correctly():
+    """知見69: `{expr}`の中にさらに別の補間文字列`$"..."`が書かれた
+    (例: `$"outer {$"inner {x}"}"`)場合、`render.py`の
+    `_render_interpolated_string`が各`{expr}`セグメントを`parse_vb_expr`
+    で再帰的に解析し`_render_node`で再帰的にレンダリングする既存の設計
+    により、特別な追加対応無しで既に正しく動作することを確認する回帰
+    テスト——知見65・66の設計時点ではこのケースを明示的に検証しておらず
+    「範囲外」と見なしていたが、実際に検証したところ再帰的な構造のおかげで
+    追加の実装無しに動くと判明した(でっち上げではなく実際に`exec()`して
+    確認済み)。"""
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="x"), value=VbExpr(text="5")),
+            AssignNode(
+                target=VbExpr(text="y"),
+                value=VbExpr(text='$"outer {$"inner {x}"}"'),
+            ),
+            MessageBoxNode(text=VbExpr(text="y")),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "outer inner 5"
+
+
 def test_message_box_maps_to_print():
     wf = _wrap([MessageBoxNode(text=Literal(value="hi"))])
     code = generate_python(wf)

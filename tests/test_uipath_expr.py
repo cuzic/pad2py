@@ -115,6 +115,19 @@ def test_unterminated_interpolated_string_falls_back_safely():
     assert rendered == text
 
 
+def test_interpolated_string_nested_inside_another_interpolated_string_boundary_detected():
+    """知見69: `{expr}`内部にさらに別の補間文字列`$"..."`が書かれた場合も、
+    `_find_interp_string_span`の`{`/`}`深さ追跡が内側の`$"..."`を
+    「ネストした文字列リテラル」の開始/終了として扱い、外側の境界を
+    正しく検出することを確認する(`$`自体はこの状態機械にとって
+    特別な意味を持たない通常の文字であり、続く`"`だけがクォート状態を
+    切り替えるため、副作用として正しく動作する)。"""
+    text = '$"outer {$"inner {x}"}"'
+    node, rendered = parse_vb_expr(text)
+    assert node == InterpolatedString(raw=text)
+    assert rendered == text
+
+
 def test_interpolated_string_with_nested_quoted_literal_still_parses():
     """知見66: `{expr}`内部にネストしたVB文字列リテラル(公式ドキュメント
     「Interpolated Strings」自身の`If(age = 1, "", "s")`の例)は、知見65時点
