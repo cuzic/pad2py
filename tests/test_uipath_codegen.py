@@ -489,6 +489,17 @@ def test_click_with_known_selector_generates_pywinauto_chain():
     _compiles(code)
 
 
+def test_click_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    """知見80: `display_name`は捕捉済みだが未活用だった——`# TODO`に倒れる
+    場合も含め、どの`Click`を指しているか分かるようコメントとして先頭に
+    追記する(挙動は変えない、コメントのみの追加)。"""
+    wf = _wrap([ClickNode(selector=None, display_name="Click Submit button")])
+    code = generate_python(wf)
+    assert "# Click Submit button" in code
+    assert "# TODO: Click with no selector captured" in code
+    _compiles(code)
+
+
 def test_click_with_no_selector_is_todo():
     wf = _wrap([ClickNode(selector=None)])
     code = generate_python(wf)

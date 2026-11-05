@@ -3865,6 +3865,42 @@ UiPath関連テスト全253件通過、リポジトリ全体で全880件通過(�
 アクティビティにもまだ残っていた——「カバレッジ100%」や「TODO無し」
 だけでは「捕捉した全データを活用しているか」までは保証しないと再確認した。
 
+## 80. `ui:Click`の`display_name`が捕捉済みなのに未活用だった——`# TODO`の場合も含めてコメントとして先頭に追記(VM不使用、知見79に続く「捕捉済みデータの未活用」)
+
+知見79の`MessageBox.Caption`に続き、`display_name`フィールドの活用状況を
+洗い直したところ、`ClickNode.display_name`(`DisplayName`属性、実機
+確認済みの実例`"Click 'editable text'"`)も捕捉済みなのに生成コードで
+一度も使われていないと判明した(`UnknownActivityNode.display_name`は
+既に`_generate_unknown`で使われているが、`ClickNode`/`SequenceNode`は
+未使用のまま)。
+
+`Click`は複数個登場しうる活動で、`DisplayName`はStudio上で人間が
+「何をクリックするためのアクティビティか」を示す説明的な名前
+(セレクタの生XML文字列より遥かに読みやすい)——生成されたPython
+コードを元のXAMLと対比しながら読む人間にとって、この情報が無いのは
+地味だが実用上の不便だった。
+
+**修正内容**(`dump_daemon/uipath_codegen/__init__.py`): `_generate_click`
+を`_generate_click_body`(既存ロジックをそのまま移した内部関数)の
+ラッパーへ変更し、`node.display_name`が設定されている場合に
+`# {display_name}`というコメントを先頭に追記する——`# TODO`に倒れる
+全ての分岐を含め、どの`Click`を指しているか一目で分かるようにする。
+コメントのみの追加で、既存の判定ロジック・生成されるコード自体は
+一切変更していない。
+
+`tests/test_uipath_codegen.py`に
+`test_click_display_name_becomes_a_comment_even_when_falling_back_to_todo`
+を追加。UiPath関連テスト全254件通過、リポジトリ全体で全881件通過
+(知見70のカバレッジは72%のまま——コメント追加のみで`# TODO`判定自体は
+変えていないため)。
+
+`SequenceNode.display_name`も同様に未活用のまま残っている——`Sequence`
+は至る所にネストして出現するため(トップレベル・`ForEach`の本体・
+`TryCatch`の各分岐等)、全件にコメントを付けると多くの場合で
+`"Sequence_1"`のような非説明的な名前がノイズとして追加されるだけに
+なるリスクがあり、`Click`のような「個数が少なく名前が説明的」な
+ケースとは価値/ノイズ比が異なると判断し、今回は対象外のまま残す。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -644,7 +644,21 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
     属性が1つも無かった場合(セレクタ自体が無い場合含む)は、でっち上げる
     くらいなら`# TODO`に倒す。`ClickType`/`MouseButton`/`KeyModifiers`
     (知見71)が実機確認済みの既定値から外れている場合も同様に`# TODO`へ
-    倒す(下記`_CLICK_TYPE_CONFIRMED_DEFAULTS`等参照)。"""
+    倒す(下記`_CLICK_TYPE_CONFIRMED_DEFAULTS`等参照)。
+
+    知見80: `display_name`(`DisplayName`属性、例: `"Click 'editable
+    text'"`)は捕捉済みだがこれまで未活用だった——`# TODO`に倒れる場合も
+    含め、どの`Click`を指しているか一目で分かるようコメントとして
+    先頭に追記する(知見75・79と同系統の「捕捉済みデータを活かす」改善、
+    コメントのみなので挙動は変えない)。"""
+    prefix = INDENT * indent
+    lines = _generate_click_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     if not node.selector:
         return [f"{prefix}# TODO: Click with no selector captured"]
