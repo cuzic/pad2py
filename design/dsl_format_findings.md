@@ -2120,3 +2120,11 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 知見98で確認した「`Equal`は型不一致の場合常に偽」の鏡像(`NotEqual`は型不一致の場合常に真)を実機確認した。知見98と同じ手法(`ReadFieldsAsText: False`で列を数値型(int)に変換したテーブル)に対し、`NotEqual "30"`(文字列)でフィルタしたところ、結果は**元のテーブルがそのまま残る**(行が除外されない)——つまり型不一致時は`NotEqual`が常に真と判定されることが確認できた。
 
 既存の実装(`_filter_condition_matches()`の`"NotEqual"`分岐、`return True if type_mismatch else ...`)は decompile済みソースの`flag`判定通りで既に正しかったため修正不要。回帰テストを追加した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。
+
+## 108. `Variables.IncreaseVariable`/`DecreaseVariable`の実際の演算方向を実機確認——既にテストで仮定していた加減算の意味論が正しいと確定
+
+`codegen_coverage.py`で`Variables.IncreaseVariable`/`DecreaseVariable`が0/1(TODO)のまま残っていた理由を調査した。知見66/67で実機キャプチャした唯一の実物フィクスチャ(`tests/fixtures/tier1_text_variables_batch4.txt`)はバッチ自動化の汎用プレースホルダーで`Value: $'''sample'''`(文字列リテラル)になっており、`[Mutable]`な`Value`引数がVarRefでないため安全にTODOへ倒れる(知見66で確認済みの設計判断)。`tests/test_pad_codegen.py`の`test_generate_python_converts_increase_decrease_variable_with_real_variable_ref`は現実的なVarRef入力(`SET Counter TO 10`→`IncreaseVariable Value: Counter IncrementValue: 5`→`DecreaseVariable Value: Counter DecrementValue: 3`→期待値`12`)での合成DSLテストとして既に存在していたが、これは**仮定**(`increase_variable()`/`decrease_variable()`の実装が`value + increment`/`value - decrement`だろうという推測)の検証であり、実機Runでの確証はまだ無かった。
+
+知見81の「Run実行+ファイル書き出し」手法を使い、まさにこのテストと同じDSL(`SET Counter TO 10`/`Variables.IncreaseVariable Value: Counter IncrementValue: 5`/`Variables.DecreaseVariable Value: Counter DecrementValue: 3`/`File.WriteText`で`%Counter%`を書き出し)を実機にペーストしてRunした結果、`Counter`は**`12`**(10+5-3)になった——既存の`pad_action_lib.variables_actions.increase_variable()`/`decrease_variable()`の実装(`value + increment`/`value - decrement`)、およびcodegen側の`{var} = variables_actions.{func}({var}, {amount})`という再代入パターンが、ともに実機の挙動と一致すると確定した。
+
+修正は不要(既存実装が既に正しかった)。`test_generate_python_converts_increase_decrease_variable_with_real_variable_ref`のdocstringを「推測」から「知見108で実機確認済み」に更新した。テスト用フロー・結果ファイルは保存せず削除し、実機状態をクリーンに戻した。なお`codegen_coverage.py`のカウントは実物フィクスチャ(`tier1_text_variables_batch4.txt`)基準のため、この合成テストでの確証は0/1(TODO)の表示自体を変えない——これは文字列リテラルの`Value`に対しては書き戻し先が無いためTODOのままで正しい設計判断であり、真の未解決ではない。

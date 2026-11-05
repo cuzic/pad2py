@@ -1774,6 +1774,9 @@ def test_generate_python_converts_increase_decrease_variable_with_real_variable_
     # IncreaseVariable/DecreaseVariableは[InputArgument(Mutable=true)](その場で変数を
     # 変更する)ため実際の利用では常にValueが変数参照になる——この既に結線済みのコード
     # パスを、現実的なVarRef入力で合成DSLとして検証する。
+    # design/dsl_format_findings.md 知見108(実機確認済み): まさにこのDSL(Counter=10→
+    # +5→-3)を実機Runした結果Counterは12になり、加算/減算の方向(value+increment/
+    # value-decrement)が実装と一致すると確定した。
     dsl = "SET Counter TO 10\nVariables.IncreaseVariable Value: Counter IncrementValue: 5\nVariables.DecreaseVariable Value: Counter DecrementValue: 3"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
