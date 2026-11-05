@@ -41,6 +41,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
 - [ ] 🖥️ **`IfFunctionRecord`(Contains/Does not contain/Is empty等)の初回実機キャプチャ** — 優先度最高。
   パーサー上の型はdecompile推定のみで実機DSLキャプチャ・codegen結線がゼロ。`Robin.Engine.dll`内の
   実装クラス位置も未特定。日常的な使用頻度が高いと見込まれる。
+  🚧 **着手試行(このtick)したがブロック**: VM(`powershell-clipd-36`に確認済みで空き)に
+  `clipwire exec`(Tailscale、GCP IAPトンネルの旧方式ではない——memory
+  `pad2py_pad_signin_boundary`参照)で接続し`PAD.Console.Host.exe`を起動できたが、
+  「Sign in to Microsoft Power Automate」画面が表示され、PAD自体がサインアウト状態だった
+  (VMが数時間前に再起動されたことが原因と見られる——`LastBootUpTime`で確認、UiPathトラックの
+  `gcloud compute instances reset`の影響と推測)。サインインはUiPath同様ユーザーに委ねる
+  境界線のため、Claudeからは行わない。**ユーザーがRDPでサインインし次第、再開可能**。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
 - [ ] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
 - [ ] 🖥️ Tier3(Excel/Word/PowerPoint/PDF)アクションの実機DSLキャプチャ・codegen結線 —
