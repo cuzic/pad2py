@@ -1892,6 +1892,115 @@ Classic Selectorの中間階層として独立したノードになる」とい�
 1ケースだけでは一般化できないため、構造上の対応ルール自体は変更せず
 今後の検証課題として残す。
 
+## 39. Modern UI Automation活動の実XAML形を確定——`uix:`名前空間、`NApplicationCard`/`NClick`、`FullSelectorArgument`/`FuzzySelectorArgument`/`ScopeSelectorArgument`、`SearchSteps="Selector, FuzzySelector, Image"`で決着
+
+知見37最大の未解決点だった「ModernのFuzzy selector/Strict selectorが実際に
+どうXAML直列化されるか」を、pad2py-pad-host VM上の`xaml_probe`プロジェクトで
+Modern Design Experienceを有効化した上で、実際にModern版`Click`活動を配置し
+実機Notepadへターゲット指定して確定した(手順は本節末尾、実験後は
+`xaml_probe`から当該活動を削除して元の状態に復元済み——知見31追記の
+「検証用の変更は汚さず戻す」方針を今回は徹底した)。
+
+**最初の壁**: Modern版`Click`は単独では配置できない。Activitiesパネルから
+`Click`(`Available > UI Automation > Application`、Classic版と名前も
+アイコンも同一で区別不可)を直接キャンバスに置くと
+「The current activity must be added inside a Use Application/Browser
+activity.」という即時エラーダイアログが出る——Modern活動は必ず
+`Use Application/Browser`コンテナ配下に置く必要がある(Classic版`ui:Click`が
+単独のトップレベル活動として存在できたのとは対照的な制約)。
+
+**実際の直列化形**(`Use Application/Browser`→`Indicate application to
+automate`でNotepadを指定→内側の`Do`に`Click`を追加→
+`Indicate target on screen`で実際にNotepadのテキスト編集領域をクリック→
+Confirm→保存、という完全な実機操作で確認):
+
+```xml
+<Activity ... xmlns:uix="http://schemas.uipath.com/workflow/activities/uix" ...>
+  ...
+  <uix:NApplicationCard AttachMode="ByInstance" DisplayName="Use Application: Untitled - Notepad" Version="V1">
+    <uix:NApplicationCard.Body>
+      <ActivityAction x:TypeArguments="x:Object">
+        <ActivityAction.Argument>
+          <DelegateInArgument x:TypeArguments="x:Object" Name="WSSessionData" />
+        </ActivityAction.Argument>
+        <Sequence DisplayName="Do">
+          <uix:NClick ClickType="Single" DisplayName="Click 'editable text'" KeyModifiers="None" MouseButton="Left">
+            <uix:NClick.Target>
+              <uix:TargetAnchorable
+                ElementType="InputBox"
+                FriendlyName="'editable text'"
+                FullSelectorArgument="&lt;wnd aaname='Horizontal' cls='Edit' /&gt;&lt;ctrl name='Text Editor' role='editable text' /&gt;"
+                FuzzySelectorArgument="&lt;wnd aaname='Horizontal' cls='Edit' /&gt;&lt;ctrl name='Text Editor' role='editable text' automationid='' /&gt;"
+                ScopeSelectorArgument="&lt;wnd app='notepad.exe' cls='Notepad' title='Untitled - Notepad' /&gt;"
+                SearchSteps="Selector, FuzzySelector, Image"
+                ImageBase64="..." InformativeScreenshot="....png" DesignTimeRectangle="..." />
+            </uix:NClick.Target>
+          </uix:NClick>
+        </Sequence>
+      </ActivityAction>
+    </uix:NApplicationCard.Body>
+  </uix:NApplicationCard>
+  ...
+```
+
+**確定した知見**:
+
+1. **完全に別の名前空間・活動クラス体系**。Modern活動はClassicの`ui:`
+   (`http://schemas.uipath.com/workflow/activities`)ではなく新しい`uix:`
+   (`http://schemas.uipath.com/workflow/activities/uix`)名前空間を使う。
+   `Use Application/Browser`→`uix:NApplicationCard`、`Click`→`uix:NClick`
+   ——タグ名も全く異なり、Classic/Modernは design-time 上の見た目だけでなく
+   **実行時の型そのものが別物**だと確定した。
+2. **`Use Application/Browser`は`ForEach`/`ExcelApplicationScope`と同じ
+   `ActivityAction`+`DelegateInArgument`パターン**(知見22の構造が
+   ここでも再利用されている)。delegate引数名`WSSessionData`(恐らく
+   Window/Web Session Data)が子活動へウィンドウ/ブラウザのセッション情報を
+   暗黙に伝播する役割と推測される(detail未検証)。
+3. **セレクタが「スコープ」と「ターゲット」の2層に明確に分離される**。
+   知見9・知見37で「1本のフラットなSelector文字列」として扱っていたものが、
+   Modernでは`Use Application/Browser`側の`ScopeSelectorArgument`
+   (ウィンドウ/アプリ単位、今回の例では`<wnd app='notepad.exe' .../>`)と、
+   個々の活動の`Target`側の`FullSelectorArgument`(要素単位、ウィンドウより
+   下の階層、今回の例では`<wnd aaname='Horizontal' .../><ctrl .../>`)に
+   分割され、実行時にこの2つを連結して初めてClassicの1本セレクタと
+   等価になる構造だと判明した。
+4. **「Fuzzy selector」「Strict selector」という知見37のドキュメント上の
+   呼び名は、実XAMLでは`FuzzySelectorArgument`/`FullSelectorArgument`
+   という属性名に対応する**——「Strict」=「Full」。今回の実例では両者は
+   ほぼ同じ内容(Fuzzy側だけ`automationid=''`が1つ追加)だったが、これは
+   対象が単純なネイティブWin32コントロールで曖昧さが少なかったためと
+   推測され、一般にFuzzy側はより緩い(属性を間引く・部分一致にする等の)
+   マッチングになるはずという知見37の推測の方向性自体は否定されない。
+5. **`SearchSteps="Selector, FuzzySelector, Image"`属性が実行時のフォール
+   バック順序を文字通り宣言している**——厳密な`Selector`(=Full)が
+   一致しなければ`FuzzySelector`、それも失敗すれば埋め込み画像
+   (`ImageBase64`)によるイメージマッチングへ段階的にフォールバックする
+   設計だと、ドキュメントの推測ではなく実際のシリアライズされた属性値から
+   直接確認できた。
+6. **`ClickType`/`MouseButton`の値語彙がClassicと異なる**:
+   Classic(`ui:Click`)は`ClickType="CLICK_SINGLE"`・
+   `MouseButton="BTN_LEFT"`という列挙コード風の値を使うが、Modern
+   (`uix:NClick`)は`ClickType="Single"`・`MouseButton="Left"`という
+   そのままの英単語を使う——属性名が同じでも値の語彙は活動バージョンごとに
+   異なるため、Modern対応のcodegenを書く場合はClassic用の値対応表を
+   そのまま流用できない。
+7. **デザイン時メタデータが同じ`uix:TargetAnchorable`要素に同居する**:
+   `ElementType`(`"InputBox"`という意味論的な分類、生のUIA ControlTypeとは
+   別物)・`FriendlyName`・`DesignTimeRectangle`(キャプチャ時の画面座標)・
+   `ImageBase64`(実際の要素のスクリーンショット埋め込み)・
+   `InformativeScreenshot`(スクリーンショットファイル名参照)。
+   セレクタ文字列だけでなく、実行時フォールバックに必要な画像データまで
+   同じXAMLファイル内に直接埋め込まれる(`.screenshots/`ディレクトリ等の
+   外部ファイル参照ではなく、Base64インライン)。
+
+**v1 codegenへの示唆**(即座の実装は不要、記録のみ): `uipath_dsl`/
+`uipath_codegen`がModern活動に対応する場合、`uix:`名前空間のタグを
+別ディスパッチ系統として扱う必要があり(Classicの`ui:Click`用パーサーの
+単純な拡張では済まない)、セレクタ解決も「スコープ+ターゲットの連結」
+という新しい合成ロジックが要る。ロードマップPhase 1の決定通りv1スコープは
+Classicのみとし、本知見は「Modern対応を将来やる場合の設計の出発点」として
+記録するに留める。
+
 ## 今後の調査候補(未着手)
 
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で

@@ -96,9 +96,17 @@ Studioが吐く暗黙のデフォルト値を確認する程度)」で済む—�
    実行し、`cls`→`class_name`・`name`→`title`は正しいと確認、
    `role`→`control_type`は実機`KeyError`を起こすと判明したため削除
    (知見38)。`tests/test_uipath_selector.py`を更新、全607件通過。
-9. **次点**: Modern selector実XAML確認(VM要、他セッションとの共用
-   タイミング調整が必要)。詳細はdesign/uipath_transpiler_roadmap.mdの
-   「次にやること」参照
+9. **(完了、2026-11-05)** Modern selector実XAML確認(VM使用)。
+   pad2py-pad-host VMの`xaml_probe`でModern Design Experienceを有効化し、
+   実際にModern版`Click`をNotepadへターゲット指定して実XAMLを確認した。
+   `uix:`名前空間・`uix:NApplicationCard`/`uix:NClick`・
+   `ScopeSelectorArgument`(スコープ)+`FullSelectorArgument`/
+   `FuzzySelectorArgument`(ターゲット)の2層分離・
+   `SearchSteps="Selector, FuzzySelector, Image"`という実行時フォール
+   バック順序が確定した(知見39)。知見37最大の未解決点が解消。
+   実験用の活動は検証後に削除し`xaml_probe`を元の状態へ復元済み。
+   これでロードマップの研究フェーズ側に残る大きな未解決点は無い
+   (新Studio側の長期ブロック項目を除く)
 
 以下は(長期ブロック・保留中の)新Studio側の調査で、再開には別途対応が必要:
 

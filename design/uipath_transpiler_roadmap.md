@@ -190,8 +190,11 @@ PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る。
 
 - **Coded Workflows**: C#→Pythonという全く別のコード生成トラック。
   WF活動木→Python変換のノウハウが再利用できない
-- **Object Repository / Modern selector**: 有効化条件(知見31)は分かった
-  が、XAML表現自体が未調査。新Studio問題(知見33〜35)の解消待ち
+- **Object Repository / Modern selector**: 有効化条件(知見31)もXAML表現
+  (知見39、`uix:`名前空間・`NApplicationCard`/`NClick`・スコープ/ターゲット
+  2層分離のセレクタ構造)も判明済みだが、v1スコープはClassicのみという
+  Phase 1の決定は変えず、Modern対応自体はPhase 8のスコープ外のまま据え置く
+  (新Studio問題(知見33〜35)の解消を待たずにここまでは調査できた)
 - **State Machine**: Phase 1でスコープに含めると決めた場合のみ着手
 - **Orchestratorのキュー/アセット/トリガー連携**: 実際のOrchestrator
   接続を伴い共有状態への副作用リスクがある(`uipath_migration_priorities.md`
@@ -296,11 +299,18 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
 
 ## 次にやること
 
-1. **Modern活動のFuzzy/Strict selector実XAML確認**(VM要、ただし新Studio
-   問題とは独立): 旧Studio(2021.4.4)でModern UI Automation活動
-   (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
-   解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
-   のため、使用タイミングの調整が必要
+1. **(完了、2026-11-05)** Modern活動のFuzzy/Strict selector実XAML確認:
+   旧Studio(2021.4.4)の`xaml_probe`でModern Design Experienceを有効化し、
+   実際にModern版`Click`活動をNotepadへターゲット指定して保存、実XAMLを
+   確認した(新Studio問題の解消を待たずに着手できた)。結果は知見39
+   (design/uipath_xaml_findings.md)参照——Modern活動は全く別の`uix:`
+   名前空間・活動クラス(`uix:NApplicationCard`/`uix:NClick`)を使い、
+   セレクタは「スコープ(`ScopeSelectorArgument`)」と「ターゲット
+   (`FullSelectorArgument`/`FuzzySelectorArgument`)」の2層に分離され、
+   `SearchSteps="Selector, FuzzySelector, Image"`が実行時フォールバック
+   順序を宣言する、という構造が確定した。実験用に追加した活動は検証後
+   `xaml_probe`から削除し元の状態に復元済み(知見31の方針を徹底)。
+   v1スコープはClassicのみのため実装は見送り、知見のみ記録。
 2. **(完了、2026-11-05)** 複数ファイル結線(Phase 6):
    `generate_project_python()`を`dump_daemon/uipath_codegen/`に追加し、
    `Invoke Workflow File`で参照されるサブワークフローをBFSで実際に辿って
