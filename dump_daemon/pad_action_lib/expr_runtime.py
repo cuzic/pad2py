@@ -27,6 +27,16 @@ design/dsl_format_findings.md 知見104(実機確認済み): 前後の空白(`" 
 整数+小数部、または先頭ゼロ省略の小数」のみを数値文字列として認識するよう制限
 し(指数表記のみ除外)、実際の数値変換時はコンマを取り除いてから`int()`/
 `float()`に渡す(前後の空白は`int()`/`float()`自身が許容する)。
+
+design/dsl_format_findings.md 知見105(実機確認済み): `+`演算子は`True`/`False`
+リテラルを数値(`1`/`0`)として扱わない——`1 + True`は文字列結合になり`"1True"`
+になる(数値加算の`2`ではない)。一方`=`演算子は`True = 1`を真と判定するが、
+これはPAD側の型変換ではなく、Pythonの`bool`が`int`の部分型で`True == 1`が
+言語機能として真になることの副作用で`pad_equal()`の`a == b`早期判定に
+捕まるだけであり、`_as_number()`経由の数値文字列変換ロジックとは無関係。
+`isinstance(value, bool)`を`isinstance(value, (int, float))`より先に判定し、
+`bool`は数値として扱わないようにする(Pythonの`bool`は`int`の部分型のため、
+素朴な`isinstance(value, (int, float))`だけでは`bool`も数値扱いされてしまう)。
 """
 from __future__ import annotations
 
@@ -36,6 +46,8 @@ _NUMERIC_STRING_RE = re.compile(r"^\s*[+-]?([\d,]+\.?\d*|\.\d+)\s*$")
 
 
 def _as_number(value: object) -> int | float | None:
+    if isinstance(value, bool):
+        return None
     if isinstance(value, (int, float)):
         return value
     if isinstance(value, str) and _NUMERIC_STRING_RE.match(value):

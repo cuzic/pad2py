@@ -87,3 +87,18 @@ def test_pad_add_treats_whitespace_padded_sign_and_leading_dot_as_numeric() -> N
 
 def test_pad_equal_treats_whitespace_padded_number_as_numeric() -> None:
     assert er.pad_equal("  5  ", 5) is True
+
+
+def test_pad_add_does_not_treat_boolean_as_numeric() -> None:
+    # design/dsl_format_findings.md 知見105(実機確認済み): 1 + Trueは文字列結合に
+    # なり"1True"になる(数値加算の2ではない)——Pythonのboolはintのサブタイプのため
+    # 素朴なisinstanceチェックだけでは誤って数値扱いしてしまう落とし穴だった。
+    assert er.pad_add(1, True) == "1True"
+    assert er.pad_add(False, 1) == "False1"
+
+
+def test_pad_equal_boolean_vs_int_uses_python_native_equality() -> None:
+    # 実機確認済み: True = 1は真。ただしこれはPADの数値文字列変換ではなく
+    # Pythonのbool/int比較の言語機能的な副作用で、a == b早期判定に捕まる。
+    assert er.pad_equal(True, 1) is True
+    assert er.pad_equal(False, 0) is True
