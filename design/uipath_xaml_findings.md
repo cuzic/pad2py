@@ -4373,6 +4373,42 @@ activity`のHttpClient詳細(知見75で`EndPoint`/`Method`のみ追加)は
 及んでいた——個別の5活動(知見70)だけでなく、キャッチオール経路も
 同じ観点で確認する価値があったことが分かった。
 
+## 93. `ExcelWriteCellNode.text`/`SendOutlookMailNode.body`も知見75で見落としていた捕捉済みフィールド——知見92の直後の自己点検で同じ関数内に残っていた(VM不使用)
+
+知見92(`UnknownActivityNode.attrs`/`HttpClientNode.extra_attrs`)を
+修正した直後、同じ`_generate_unresolved_activity`関数内の他の分岐も
+「捕捉済みなのに表示していないフィールドが残っていないか」を見直した
+ところ、2件追加で見つかった。
+
+**`ExcelWriteCellNode.text`**: 知見75で`Cell`/`SheetName`をTODOコメントに
+追記した際、同じノードが持つ`text`(実際にセルへ書き込む値そのもの)を
+見落としていた。実機フィクスチャ(`Main.xaml`)で確認——
+`<ui:ExcelWriteCell Cell="A1" SheetName="Sheet1" Text="hello" />`の
+`Text="hello"`が生成コードに一切出ていなかった。
+
+**`SendOutlookMailNode.body`**: 同様に知見75で`To`/`Subject`を追記した際、
+`body`(メール本文そのもの)を見落としていた。実機フィクスチャで確認——
+`<ui:SendOutlookMail ... Body="body" ... Subject="hi" To="a@b.com">`の
+`Body="body"`が生成コードに一切出ていなかった。
+
+**修正**(`dump_daemon/uipath_codegen/__init__.py`の
+`_generate_unresolved_activity`): `ExcelWriteCellNode`分岐に
+`Text={_describe_expr_for_comment(node.text)}`を、`SendOutlookMailNode`
+分岐に`Body={_describe_expr_for_comment(node.body)}`を追記。知見75・92と
+同じ方針(既に捕捉済みの生データをそのまま表示するだけ、でっち上げた
+解釈は追加しない)。
+
+既存の`test_unresolved_activity_todo_includes_captured_fields`の期待値を
+更新、`test_main_xaml_pipeline_smoke`に`Text='hello'`/`Body='body'`が
+生成コードへ実際に出ることの確認を追加。UiPath関連テスト全274件通過、
+リポジトリ全体で全979件通過。
+
+**この知見で確定したこと**: 「捕捉済みデータの未活用」パターン(知見75/
+79/80/83/92)は、1つのバグを見つけた直後に**同じ関数の他の分岐**も
+横展開して確認する価値があると改めて分かった——知見89→90→91の演算子
+ファミリーと同種の「1件見つけたら隣接するコードも確認する」手順が、
+このパターンでも再現した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

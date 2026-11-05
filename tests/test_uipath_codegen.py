@@ -647,13 +647,13 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
         (ExcelApplicationScopeNode(workbook_path="book.xlsx"), "(WorkbookPath='book.xlsx')"),
         (
             ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi")),
-            "(Cell='A1', SheetName='Sheet1')",
+            "(Cell='A1', SheetName='Sheet1', Text='hi')",
         ),
         (
             SendOutlookMailNode(
                 to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x")
             ),
-            "(To='a@b.com', Subject='Hi')",
+            "(To='a@b.com', Subject='Hi', Body='x')",
         ),
         (
             HttpClientNode(endpoint=VbExpr(text="url"), method="POST"),
@@ -860,6 +860,10 @@ def test_main_xaml_pipeline_smoke():
     # 知見92: Library呼び出し(p:NewActivity)の引数(in_greeting)は`attrs`
     # 経由でしか見えない捕捉済みデータ——TODOコメントに実際に出ることを確認。
     assert "in_greeting" in code and "hellofromlib" in code
+    # 知見93: ExcelWriteCell.Text/SendOutlookMail.Bodyも捕捉済みなのに
+    # 従来は未表示だった——TODOコメントに実際に出ることを確認。
+    assert "Text='hello'" in code
+    assert "Body='body'" in code
 
 
 def test_realistic_workflow_actually_executes_correctly():

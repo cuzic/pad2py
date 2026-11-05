@@ -860,11 +860,20 @@ def _generate_unresolved_activity(
     elif isinstance(node, ExcelApplicationScopeNode):
         detail = f" (WorkbookPath={node.workbook_path!r})"
     elif isinstance(node, ExcelWriteCellNode):
-        detail = f" (Cell={node.cell!r}, SheetName={node.sheet_name!r})"
+        # 知見93: `node.text`(書き込む値そのもの)も知見75で`Cell`/
+        # `SheetName`だけを追記した際に見落としていた捕捉済みフィールド
+        # ——知見92と同じ「捕捉済みデータの未活用」の追加分。
+        detail = (
+            f" (Cell={node.cell!r}, SheetName={node.sheet_name!r}, "
+            f"Text={_describe_expr_for_comment(node.text)})"
+        )
     elif isinstance(node, SendOutlookMailNode):
+        # 知見93: `node.body`(メール本文そのもの)も知見75で`To`/`Subject`
+        # だけを追記した際に見落としていた捕捉済みフィールド。
         detail = (
             f" (To={_describe_expr_for_comment(node.to)}, "
-            f"Subject={_describe_expr_for_comment(node.subject)})"
+            f"Subject={_describe_expr_for_comment(node.subject)}, "
+            f"Body={_describe_expr_for_comment(node.body)})"
         )
     elif isinstance(node, HttpClientNode):
         # 知見92: `node.extra_attrs`(`xaml_tree._parse_http_client`が
