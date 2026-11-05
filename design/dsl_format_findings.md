@@ -2160,3 +2160,9 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **結論と実装**: `pad_dsl.types`に`DpapiSensitiveLiteral`型を追加し、`line_parser._resolve_value()`で`P'<base64>'`構文を(従来の`VarRef`フォールバックではなく)この型として認識するようにした。`pad_action_lib.cryptography_actions.decrypt_dpapi_sensitive_value()`(上記entropy定数+`win32crypt.CryptUnprotectData`、`win32crypt`が無い環境では`DpapiDecryptionError`を投げる)を新設し、`render_value()`がこの型を`cryptography_actions.decrypt_dpapi_sensitive_value('<base64>')`呼び出しへ変換するようにした。既存の`Cryptography.*`(知見111)/`Compression.*`(知見109)のcodegen結線は変更不要——`safe_render()`経由で自動的に実コードが生成されるようになった。`codegen_coverage.py`: 181/202→188/202(93%)、`Cryptography.*`6件・`Compression.ZipFiles`が一気にOKになった(`Compression.UnzipFiles`は別の理由——実機キャプチャに`=>`出力変数束縛が無い——で依然TODO)。
 
 **重要な限界(でっち上げではない正しい制約)**: この復号は**元の値を作成したWindowsユーザー自身が生成スクリプトを実行する場合のみ**機能する(DPAPI CurrentUserスコープの原理上)——他人のPADフローのエクスポートを無関係なマシン/ユーザーで変換する場合は`DpapiDecryptionError`になる(でっち上げた平文を返すことは無い)。これは`pad2py`が主眼とする「自分の既存フローを自分のマシンでPythonへ移行する」用途とは完全に整合する。entropy定数は今回調査したPADビルドから抽出した値であり、将来の別バージョンで変更される可能性は否定できない(その場合も復号が例外で失敗するだけで、誤った平文は返らない)。
+
+## 113. 知見57が持ち越していた`GetWindow`の他モード・`ByInstanceOrHandle`系アクションの選別子確認を試みたが、依然RDP必要と再確認(VM不要、結論は否定的)
+
+知見57で「Get windowドロップダウンの他の選択肢」「他のByInstanceOrHandle系アクション(SetWindowStateByInstanceOrHandle等)の実機DSL」が未検証のまま持ち越されていたのを、知見80で確立した「アクション検索ボックスに検索語を入力し結果TreeItemのAutomationIdを一括読み取る」手法(RDP不要)で解決できないか試した。
+
+`"Get window"`/`"window state"`/`"close window"`で検索したところ、いずれも**モジュール/アクションの基底名(`UIAutomation.GetWindow`/`UIAutomation.SetWindowState`/`UIAutomation.CloseWindow`等)しか得られず**、知見57で既に確認済みの`.GetUseTimeout`のようなセレクタ接尾辞(モード)は一切現れなかった——つまりこの検索結果は「アクション自体」の識別までしか見せず、追加する際に開く設定ダイアログ内のドロップダウンで選んだモードに応じてどのセレクタ接尾辞になるかは、ダイアログの中身を読まなければ分からない。知見82で確認済みの「新規ダイアログの内容読み取りはタイムアウトする」という制約にそのまま阻まれるため、この手法はこの種の問題には効かないと判明した。`GetWindow`の他モード・`BringWindowToFront: True`の意味論・`ByInstanceOrHandle`系の他アクションは、依然RDP必要のまま(知見80の手法はaction_idカタログ化には有効だが、同一action内の複数セレクタ変種の列挙には使えないという適用限界が明確になった)。
