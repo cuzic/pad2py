@@ -38,16 +38,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
 
 ## B. 一度も実機検証していない領域(TODOより深い穴)
 
-- [ ] 🖥️ **`IfFunctionRecord`(Contains/Does not contain/Is empty等)の初回実機キャプチャ** — 優先度最高。
-  パーサー上の型はdecompile推定のみで実機DSLキャプチャ・codegen結線がゼロ。`Robin.Engine.dll`内の
-  実装クラス位置も未特定。日常的な使用頻度が高いと見込まれる。
-  🚧 **着手試行(このtick)したがブロック**: VM(`powershell-clipd-36`に確認済みで空き)に
-  `clipwire exec`(Tailscale、GCP IAPトンネルの旧方式ではない——memory
-  `pad2py_pad_signin_boundary`参照)で接続し`PAD.Console.Host.exe`を起動できたが、
-  「Sign in to Microsoft Power Automate」画面が表示され、PAD自体がサインアウト状態だった
-  (VMが数時間前に再起動されたことが原因と見られる——`LastBootUpTime`で確認、UiPathトラックの
-  `gcloud compute instances reset`の影響と推測)。サインインはUiPath同様ユーザーに委ねる
-  境界線のため、Claudeからは行わない。**ユーザーがRDPでサインインし次第、再開可能**。
+- [x] 🖥️ **`IfFunctionRecord`(Contains/Does not contain/Is empty等)の初回実機キャプチャ** —
+  ユーザーがPADにサインインし次第、`clipwire exec`(Tailscale、RDPセッション接続不要)経由で
+  実機確認完了(知見75)。確認済み4関数: `Contains(a,b)`/`NotContains(a,b)`/`IsEmpty(a)`/
+  `IsNotEmpty(a)`。**新しい検証手法を発見**: PADデザイナーのアクションリストはクリップボード
+  からのペースト(Ctrl+V)でDSLテキストを直接取り込める(読み取り専用ではなく双方向)——
+  `pywinauto`の`control.type_keys()`(対象コントロール宛の疑似キー入力)でこれを駆動すれば、
+  ドラッグ&ドロップ・マウスクリック無しで新規アクションの追加・設定確認までRDP無しで完結する
+  (ダイアログを閲覧する`descendants()`系の読み取りはRDP無しでは機能しなかったが、ペースト→
+  結果の文字列表示を読む→全選択コピーで読み戻す、という往復だけなら十分だった)。
+  `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
+  ブランチ0/4→4/4、全体カバレッジ82%→83%)。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
 - [ ] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
 - [ ] 🖥️ Tier3(Excel/Word/PowerPoint/PDF)アクションの実機DSLキャプチャ・codegen結線 —
