@@ -990,20 +990,64 @@ def test_generate_python_renders_wait_action_as_todo_with_timeout_and_ui_element
     assert "appmask" not in code
 
 
-def test_generate_python_renders_compound_set_variable_expression_as_todo() -> None:
-    # design/dsl_format_findings.md 知見53: `SET ... TO`の右辺が複合式(AND/OR/XOR/NOT・算術式)
-    # になるケース(知見49の続き)。演算子の優先順位やmod/XORの境界値での意味論差異が
-    # PADとPythonで一致する保証がまだ無いため、でっち上げた変換式を出力せず、変数には
-    # 安全な`None`を代入した上でTODOコメントに実際のPAD式テキストを残す。
+def test_generate_python_converts_compound_set_variable_expression_to_real_python() -> None:
+    # design/dsl_format_findings.md 知見53(実機DSL表現)・知見81(演算子の優先順位を実機確認)。
+    # `SET ... TO`の右辺が複合式(AND/OR/XOR/NOT・算術式)になるケース(知見49の続き)。
+    # 優先順位が実機確認済みのため、`mod`/`/`を含まない場合は実際のPython式へ変換する。
     dsl = "SET NewVar3 TO 1 = 1 AND 2 = 2 OR NOT 3 = 4"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert (
-        "# TODO: map PAD compound expression for variable 'NewVar3': "
-        "1 = 1 AND 2 = 2 OR NOT 3 = 4" in code
-    )
-    assert "NewVar3 = None" in code
+    assert "NewVar3 = 1 == 1 and 2 == 2 or not 3 == 4" in code
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["NewVar3"] is True  # (1=1) AND (2=2) OR (NOT (3=4)) = True
+
+
+def test_generate_python_converts_xor_in_set_variable_expression_to_bool_inequality() -> None:
+    # 知見81: 実機キャプチャされたXORの被演算子は常に比較式/真偽値リテラルだったため、
+    # 論理XOR(`bool(a) != bool(b)`)として解釈する。
+    dsl = "SET Result TO True XOR True AND False"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "Result = bool(True) != bool(True and False)" in code
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result"] is True  # True XOR (True AND False) = True XOR False = True
+
+
+def test_generate_python_converts_arithmetic_precedence_in_set_variable_expression() -> None:
+    # 知見81: `1 + 2 * 3`が実機で`*`優先(7)と確認済み。
+    dsl = "SET Result TO 1 + 2 * 3"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "Result = 1 + 2 * 3" in code
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Result"] == 7
+
+
+def test_generate_python_falls_back_to_todo_for_mod_and_division_value_semantics() -> None:
+    # design/dsl_format_findings.md 知見53・81: `mod`の負数での符号規則・`/`が常に浮動小数点
+    # 除算になるかは値の意味論として実機未検証のため、優先順位が確認済みでも安全にTODOへ倒す。
+    mod_dsl = "SET Result TO 1 + 2 * 3 mod 4"
+    tree = build_block_tree(parse_dsl(mod_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD compound expression for variable 'Result': 1 + 2 * 3 mod 4" in code
+    assert "Result = None" in code
+
+    div_dsl = "SET Result TO 4 / 2"
+    tree = build_block_tree(parse_dsl(div_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD compound expression for variable 'Result': 4 / 2" in code
 
 
 def test_generate_python_from_real_wait_for_window_whole_subflow_capture_compiles() -> None:
@@ -1605,3 +1649,20 @@ def test_generate_python_from_powerpoint_full_scope_batch_converts_all_actions()
         "document_format='FromExtension', document_path=None)" in code
     )
     assert "# TODO" not in code
+
+
+def test_generate_python_from_real_pad_expr_precedence_run_compiles() -> None:
+    # design/dsl_format_findings.md 知見81: 「Run」ボタンを.invoke()で呼び実機で実際に
+    # フローを実行し、5つの式の計算結果(7/True/True/True/False)をファイル経由で確認した
+    # 実機キャプチャ。`File.WriteText`呼び出しを含むため(Windowsパス宛の実I/O)、ここでは
+    # compile()のみ行いexec()はしない(exec()ベースの数値検証は上の単体テストで実施済み)。
+    text = (FIXTURES_DIR / "pad_expr_precedence_real_run.txt").read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "Result1 = 1 + 2 * 3" in code
+    assert "Result2 = True or True and False" in code
+    assert "Result3 = bool(True) != bool(True and False)" in code
+    assert "Result4 = True or bool(False) != bool(True)" in code
+    assert "Result5 = not True and False" in code

@@ -1,0 +1,10 @@
+SET Result1 TO 1 + 2 * 3
+File.WriteText File: $'''C:\Users\tomoya_kaw\pad2py\pad_expr_check1.txt''' TextToWrite: $'''%Result1%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+SET Result2 TO True OR True AND False
+File.WriteText File: $'''C:\Users\tomoya_kaw\pad2py\pad_expr_check2.txt''' TextToWrite: $'''%Result2%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+SET Result3 TO True XOR True AND False
+File.WriteText File: $'''C:\Users\tomoya_kaw\pad2py\pad_expr_check3.txt''' TextToWrite: $'''%Result3%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+SET Result4 TO True OR False XOR True
+File.WriteText File: $'''C:\Users\tomoya_kaw\pad2py\pad_expr_check4.txt''' TextToWrite: $'''%Result4%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+SET Result5 TO NOT True AND False
+File.WriteText File: $'''C:\Users\tomoya_kaw\pad2py\pad_expr_check5.txt''' TextToWrite: $'''%Result5%''' AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8

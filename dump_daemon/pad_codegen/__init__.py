@@ -19,7 +19,7 @@ from .actions.conditions import render_if_window_condition
 from .actions.wait import generate as generate_wait_action
 from .context import CodegenContext
 from .error_tags import resolve_error_tag
-from .render import INDENT, render_condition, render_text_template, render_value
+from .render import INDENT, render_condition, render_expr_as_python, render_text_template, render_value
 from ..pad_dsl import (
     ActionRecord,
     BlockNode,
@@ -53,6 +53,7 @@ __all__ = [
     "INDENT",
     "generate_python",
     "render_condition",
+    "render_expr_as_python",
     "render_text_template",
     "render_value",
 ]
@@ -141,10 +142,14 @@ def _generate_node(node: Node, indent: int, ctx: CodegenContext) -> list[str]:
     prefix = INDENT * indent
     if isinstance(node, SetVariableRecord):
         if isinstance(node.value, RawExpr):
-            # design/dsl_format_findings.md 知見53: AND/OR/XOR/NOT・算術演算子の実機DSL
-            # 表現は確認済みだが、演算子の優先順位やmod/XORの境界値での意味論差異が
-            # PADとPythonで一致する保証がまだ無いため、でっち上げた変換式を出力せず
-            # TODOに倒す(知見50等と同じ安全側フォールバックの方針)。
+            # design/dsl_format_findings.md 知見81: 演算子の優先順位(OR<XOR<AND<NOT<比較<
+            # +/-<*//mod)は実機確認済みのため、構文木(tree)が構築できていて`mod`/`/`
+            # (値の意味論が未確認、知見53・81)を含まない場合は実際のPython式を生成する。
+            # 構文解析に失敗した(tree=None)、または`mod`/`/`を含む場合は、でっち上げた
+            # 変換式を出力せず安全にTODOへ倒す(知見50等と同じ方針)。
+            py_expr = render_expr_as_python(node.value.tree) if node.value.tree is not None else None
+            if py_expr is not None:
+                return [f"{prefix}{node.var_name} = {py_expr}"]
             return [
                 f"{prefix}# TODO: map PAD compound expression for variable "
                 f"'{node.var_name}': {node.value.text}",

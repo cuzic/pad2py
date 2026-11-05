@@ -1720,3 +1720,35 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 **この知見の結論・方針判断**: 知見77の「AutomationIdを直接読む」手法は、キーボード追加や貼り付けを一切せずに**検索語1つでモジュール全体のaction_idカタログを一括取得できる**、最も安価でリスクの低い実機確認手段だと分かった——今後Tier3の新しいモジュールを調査する際は、まずこの一括検索で候補を洗い出し、個別のcodegen結線時に必要なものだけ知見78/79のキーボード追加で追加確認する、という段取りが効率的。このコミット以降で、スコープ内が確認できた`Excel.*`の`pad_codegen`結線を進める(`Word`/`PowerPoint`は別途)。
 
 **追記(同日、後続コミット)**: `Word.*`(5関数)・`PowerPoint.*`(7関数)も`pad_codegen`に結線した。両モジュールともライブCOM専用で元から`pad_action_lib`側が非対応のモード(Wordの`ReadMode`/`WriteMode`のPage/Bookmark系、`MatchWildCards`の既知`True`リテラル)はTODOフォールバックへ委ね、`PowerPoint.MovePowerPointSlide`のクロスプレゼンテーション判定(`SourceInstance`/`DestinationInstance`の同一性)は変数参照である以上codegen時点では判定できないため、呼び出し自体を生成して実行時のNotImplementedErrorに委ねた。これでPDF/Excel/Word/PowerPointのTier3スコープ内アクション全件のaction_id確認・codegen結線が完了した。
+
+## 81. 【長年の未検証の仮定を解消】`pad_expr`の演算子優先順位を実機で確認——**「Run」ボタンはUIAの`.invoke()`だけでRDP接続無しでも実際にフローを実行できる**という新手法も発見
+
+`dump_daemon/pad_expr/__init__.py`のLark文法は、知見53以来一貫して「`OR` < `XOR` < `AND` < `NOT` < 比較 < `+`/`-` < `*`/`/`/`mod`(一般的な言語慣習)という**未検証の仮定**」と明記しており、`pad_codegen`はこの仮定を信用せず`RawExpr.text`全体を安全にTODOへ倒していた。ユーザーの指示でこの優先順位の実機検証を進めた。
+
+**鍵となる新発見**: 知見75/78で確立した「RDP接続無しでPADデザイナーを操作する」手法群に、**実際にフローを実行(Run)する**という新しい手段が加わった。ツールバーの`Button "Run"`を`pywinauto`の`.invoke()`(UIAの`InvokePattern`、`click_input()`のような実際のマウス座標クリックではない)で呼ぶだけで、PADは実際にフローの実行を開始し、完了まで走り切る——**実行に能動的なRDP接続やアクティブデスクトップは不要**だった(知見51の頃は実行結果を目視確認する前提でRDP接続が当然必要とされていたが、今回は`clipwire exec`のみで完結した)。
+
+**手順**(新規テストフロー`pad_expr_precedence`、保存せず破棄):
+
+1. 知見75のクリップボードペースト技法で、`SET <Var> TO <式>` + `File.WriteText`(`%<Var>%`テキストテンプレートで値をファイルへ書き出す)という2アクションの組を、検証したい式ごとに貼り付ける(`File.WriteText`は既にTier1で実機確認・結線済みの通常のアクションなので、知見79で判明した「ActionRecordは閉じた内部カタログへの厳密一致が必要」という制約には当たらず問題無く貼り付けられた)。
+2. `Button "Run"`を`.invoke()`で呼ぶ。
+3. 少し待って(今回は5秒で十分だった)、`clipwire exec`経由でPowerShellから出力ファイルの内容を直接読む。
+
+**実機確認結果**(5つの式、いずれも`tests/fixtures/pad_expr_precedence_real_run.txt`に実機キャプチャ・貼り付け・実行済みのDSLとして保存):
+
+| 式 | 標準優先順位での期待値 | フラット左結合での期待値 | 実機結果 |
+| --- | --- | --- | --- |
+| `1 + 2 * 3` | 7(`*`が先) | 9(左から順) | **7** |
+| `True OR True AND False` | True(`AND`が先) | False(左から順) | **True** |
+| `True XOR True AND False` | True(`AND`が`XOR`より先) | False(左から順) | **True** |
+| `True OR False XOR True` | True(`XOR`が`OR`より先) | False(左から順) | **True** |
+| `NOT True AND False` | False(`NOT`は直後の被演算子のみに作用) | True(`NOT`が`AND`全体に作用) | **False** |
+
+5件全て「標準優先順位」の期待値と一致し、「フラット左結合」の期待値とは全て異なった。すなわち、`pad_expr`文法が最初から採用していた`OR < XOR < AND < NOT < 比較 < 算術`という仮定は、**実機で正しいと確定した**。
+
+**注意: 今回確認したのはAND/OR/XOR/NOTの相互優先順位と算術`+`/`*`の相互優先順位(グルーピング)のみ**。算術層(`*`/`/`/`mod`)は文法上同じ生成規則(`term`)を共有しているため、`*`の優先順位確認は構造的に`/`/`mod`にも及ぶが、**各演算子の値の意味論**(`/`が常に浮動小数点除算になるか・`mod`が負数でPythonの`%`と同じ符号規則になるか)はまだ未検証のまま——知見53から持ち越している別の課題であり、優先順位(構文のグルーピング)とは別の問題として区別する。比較演算子と算術の優先順位は文法の構造自体が強制するため(`comparison: arith comp_op arith`、曖昧な解釈の余地が無い)、個別の実機確認は不要と判断した。
+
+**pad_codegen側の対応**: `SetVariableRecord`の`RawExpr.tree`が構築できている場合、ツリーに`mod`/`/`演算子が一切含まれていなければ実際のPython式を生成するように変更した(比較演算子は既存の`render_condition()`の`_OPERATOR_MAP`を再利用、`AND`/`OR`/`NOT`はPythonの`and`/`or`/`not`、`XOR`は`bool(a) != bool(b)`——これまでの実機キャプチャ(知見53・本knowledge)で`XOR`の被演算子が常に比較式か真偽値リテラルだったことに基づく論理XORとしての解釈、数値への**ビット単位XOR**の可能性は未検証のまま明記する)。ツリーに`mod`/`/`が含まれる場合、または`tree`が`None`(文法未対応の入力)の場合は、従来通り安全にTODOへ倒す。
+
+**後始末**: テストフロー`pad_expr_precedence`は保存せず閉じ、作成した5つの出力ファイル(`pad_expr_check1.txt`〜`pad_expr_check5.txt`)は`clipwire exec`経由で削除済み。VM解放はpad2py-57へ通知済み。
+
+**今後の課題**: `/`(除算)・`mod`の値の意味論(特に負数での`mod`の符号規則)の実機確認——今回発見した「Run実行+ファイル書き出しで実機の計算結果を読む」手法がそのまま使える(例: `SET Result TO -7 mod 3`を実行してファイルへ書き出し、Pythonの`%`演算子の結果(`2`)と一致するか`C`言語系の切り捨て除算の余り(`-1`)になるかを比較する)。
