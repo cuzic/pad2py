@@ -1,0 +1,176 @@
+# 共通RPA変換フレームワーク化ロードマップ
+
+## この文書の位置づけ
+
+本リポジトリは現在、**完全に独立した2つのトラック**として実装されている。
+
+| トラック | 対象 | 実装 |
+|---|---|---|
+| PAD | Power Automate Desktop(クリップボードDSL) | `pad_dsl`/`pad_expr`/`pad_codegen`/`pad_action_lib` |
+| UiPath | UiPath Studio(`.xaml`) | `uipath_dsl`/`uipath_expr`/`uipath_codegen`/`uipath_selector` |
+
+両者は設計思想(FCIS的なcore分割、「でっち上げない」方針、knowledge.mdへの実機確認ログ蓄積)を**独立に収束させて同じ結論に達した**——つまりこの設計思想自体はツール依存ではなく本質的に汎用であることが、2回の独立実装によって実証されている。しかし現状、この汎用性は**各トラックが同じパターンを別々に再実装している**という形でしか表れておらず、共有されたコード・共有された規約として結晶化していない。
+
+本文書は、「共通RPA変換フレームワーク」という理想の状態を具体的に定義し、現状とのギャップを棚卸しし、実行順序を提案するものである。**これは実装の指示ではなく計画書**——特にPhase 2以降はUiPathトラック(別セッションが並行して活発に開発中)のソースに触れるため、着手前にユーザー自身の判断・両トラックの調整が必要。
+
+調査根拠: `pad_dsl/types.py` ↔ `uipath_dsl/types.py`、`pad_codegen/__init__.py` ↔ `uipath_codegen/__init__.py`、各`actions/*.py`のTODO生成箇所を実際に読み比べた結果に基づく(2026-11-05時点)。
+
+---
+
+## 理想の状態(6層、具体的に)
+
+### 層1: 共通IR(中間表現)
+
+**目指す形**: ツールごとのフロントエンド(字句/XML解析)は現状維持でよいが、その出力は共有パッケージ(仮称`rpa_ir`)が定義する型にする。
+
+```python
+# rpa_ir/nodes.py (イメージ)
+@dataclass
+class ActionCallNode:
+    action_id: str                 # ツール内で一意な識別子(PAD: "File.Copy", UiPath: 活動のCLR型名等)
+    params: dict[str, "Value"]
+    output_bindings: dict[str, str]  # パラメータ名 → 変数名(複数出力対応、PAD知見58で必要性が実証済み)
+
+@dataclass
+class ConditionalNode:
+    arms: list[tuple["Value", list["Node"]]]   # N-ary(IF/ELSEIF/ELSE)。binary(if/else)は arms の長さ2の特殊形として表現できる
+    else_body: list["Node"] | None
+
+@dataclass
+class SwitchNode:
+    expression: "Value"
+    arms: list[tuple["Value", list["Node"]]]
+    default: list["Node"] | None
+
+@dataclass
+class ErrorHandlingNode:
+    body: list["Node"]
+    handlers: list[tuple["Value | None", list["Node"]]]  # None=catch-all
+    attachment: Literal["wraps_following_statement", "wraps_body"]  # 後述、ここだけは差異を型で明示する
+```
+
+- `Value`型(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は両トラックでほぼ同形なので素直に共有できる。
+- `SwitchNode`は両トラックで既に構造が一致している(最も生成コストの低い統合対象)。
+- `ActionCallNode`(文字列キー+辞書の汎用レコード)は、UiPathが現在活動ごとに専用dataclass(`MessageBoxNode`/`ClickNode`等、11種+`UnknownActivityNode`)を持っている構造からの**移行コストを伴う**——ただし移行する価値は高い。専用dataclassは活動が増えるたびに型を増やす必要があるが、汎用レコードは「新しい活動=新しいaction_idの文字列」でしかなく、PAD側で116アクションまで線形にスケールした実績がある。
+- `ErrorHandlingNode`: PADの`GuardedNode`(直前の文に遡及的に付与)とUiPathの`TryCatchNode`(先頭から囲む)は**構築方向が逆**で、これは単なる命名の違いではなく実際のツールの挙動差である。共有型に無理に1つの構築手順を強制せず、`attachment`フィールドで明示する(でっち上げない方針をIR設計自体にも適用する)。
+
+### 層2: 「でっち上げない」を型で強制する変換結果の契約
+
+**目指す形**:
+
+```python
+# rpa_codegen/result.py (イメージ)
+@dataclass
+class Converted:
+    lines: list[str]
+
+@dataclass
+class Unsupported:
+    reason: Literal[
+        "UNVERIFIED_SEMANTICS",   # 実機確認が取れていない
+        "STRUCTURAL_LIMITATION",  # 現在のIR/ライブラリの表現力を超える(例: DataTable列独立管理)
+        "ENV_CONSTRAINT",         # 検証環境側の制約(例: Office未インストール)
+        "RDP_REQUIRED",           # UI操作の実機確認にRDPが必須
+        "OUT_OF_SCOPE",           # v1スコープ外と明示的に決定済み
+    ]
+    detail: str
+
+ConversionResult = Converted | Unsupported
+```
+
+`# TODO`コメントのレンダリングは`Unsupported`からの**射影**として自動生成する(現在のように各呼び出し箇所が手書きの自由文字列を書くのではない)。これにより「未解決の内訳を理由別に自動集計する」(現在`pad_todo.md`を手作業で分類・維持している作業)がツールの出力から導出可能になる。
+
+### 層3: セレクタ/モード一括発見ツールの資産化
+
+**目指す形**: 今回の監査で使った「`ActionSelectorBase`を継承する全型をリフレクションで列挙し、既存codegenの`action_id`マッピングと突き合わせる」手順を、**コミットされたスクリプト+コマンド**にする。
+
+```
+tools/pad_selector_audit.py      # dispatch関数群をAST走査してwire済みaction_id集合を抽出
+tools/pad_selector_audit.ps1     # VM上でActionSelectorBase由来の全型を列挙(知見135-137の手法)
+```
+
+実行結果は「未結線セレクタ一覧」としてCIやレポートに出力し、`pad_todo.md`への反映を半自動化する。UiPath側には活動種別が数百〜数千あるため、この種の**体系的な差分発見ツール**が無いと手探りのまま進むことになり、むしろUiPath側こそ優先度が高い。
+
+### 層4: 実行結果まで比較する検証規約
+
+**目指す形**: テストヘルパーを規約化する。
+
+```python
+def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
+    """IR→コード生成→exec()→出力値の一致、までを1回で検証する。
+    文字列一致やcompile()成功だけのテストはこのヘルパーを使わず書けないようにする
+    (レビューで検出できるように、ヘルパー非経由のexec()呼び出しをlintで検出する)。
+    """
+```
+
+今回のセッションで繰り返し発見したバグ(`ZipFile`出力の`None`化、`Destination`意味論の逆転)は、**まさにこの規約が無かったために既存テストが長期間グリーンのまま放置されていた**事例。既存テストの「代入先の値を見ていないexec()テスト」への**遡及的な全件棚卸し**(1回やれば済む有限タスク)も必要。
+
+### 層5: ランタイムサービス層の地図
+
+**目指す形**: `design/pad_runtime_services.md`のような単一のリファレンスドキュメントを作り、個々のアクション調査の**前に**参照する。
+
+| サービス | 役割 | 発見した知見 |
+|---|---|---|
+| `IListIndexService`(`Robin.Core.Execution.ListIndexService`) | インデックスの0始まり/1始まり変換 | 知見133: `ScriptType.Robin`は常に0始まり |
+| DPAPI entropy定数 | `Sensitive`値の復号 | 知見112 |
+| `ComparisonCalculator`系 | `=`/`<>`等の型変換規則 | 知見85・98 |
+| `CSVUtilities` | CSV/固定長パースの正確な規則 | 知見127・132 |
+
+この地図は**既に発見済みの事実を1ページに集約するだけ**で済む低コストな作業であり、同時に「他にどんなサービスがありそうか」をRobin.Core.dll/Robin.Shared.Runtime.dllから`I*Service`インターフェース名でリフレクション列挙して**先回りで探す**フェーズを確立する。今回は`SortDataTable`の調査中に偶然`IListIndexService`に出会っただけで、体系的に探してはいなかった。
+
+### 層6: 知見ログ+TODOのメタ規約
+
+**目指す形**: 「このリポジトリでは知見をどう記録し、TODOをどう維持するか」を1つのメタドキュメント(`design/KNOWLEDGE_LOG_CONVENTIONS.md`のようなもの)にまとめ、両トラックがこれに従う形にする。現状、PAD側(`dsl_format_findings.md`+`pad_todo.md`)とUiPath側(`uipath_xaml_findings.md`+`uipath_transpiler_roadmap.md`/`uipath_migration_priorities.md`)は**独立したナンバリング・独立したファイル構造**で同じパターンを再発明している——内容としては優れた運用だが、「次にもう1つツール(例: Blue Prism)を調査するとき、このパターンに従ってください」と指し示せる単一のドキュメントが無い。
+
+---
+
+## 現状評価(層ごと)
+
+| 層 | 現状 | 評価 |
+|---|---|---|
+| 1. 共通IR | PAD/UiPathは独立実装。`SwitchNode`の構造は既に一致、`RawExpr`↔`VbExpr`は役割は同じだが保持する情報量が違う(PADは`tree`フィールドで構文木を同時保持、UiPathは生テキストのみ)。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass。`ConditionalNode`(N-ary)↔`IfNode`(binary)、`GuardedNode`(遡及付与)↔`TryCatchNode`(先頭包含)は**構造そのものが異なる**。 | **未着手**。類似パターンの重複実装はあるが、共有コードはゼロ |
+| 2. 型での契約強制 | 両トラックとも`return None`→汎用TODO、という同じ「規約」を持つが、PAD側は1箇所に集約されたTODOレンダラ、UiPath側は呼び出し箇所ごとに手書きの自由文字列。理由コードは両方とも無し(自由文字列のみ) | **部分的**。規約はあるが型で強制されていない、理由の構造化なし |
+| 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
+| 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
+| 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
+| 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
+
+---
+
+## ギャップ分析とTODO(フェーズ分け)
+
+リスクの低い順に並べている。Phase 0〜1は既存コードの挙動を一切変えない追加作業、Phase 2以降はソースツリーの構造を変える、かつUiPathトラックと調整が必要。
+
+### Phase 0: ドキュメント化・資産化のみ(コード変更ゼロ、両トラックへの影響ゼロ)
+
+- [ ] `design/pad_runtime_services.md`を新設し、既知のランタイムサービス(`IListIndexService`/DPAPI/比較エンジン/`CSVUtilities`等)を1ページに集約する(層5)
+- [ ] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる
+- [ ] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める
+- [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
+
+### Phase 1: 追加のみ(既存の出力形式は変えずに内部だけ型を強化)
+
+- [ ] `pad_codegen`に理由コード付き`Unsupported`型を導入し、既存の`# TODO`コメント文字列はこの型からの射影として**同じ見た目を保ったまま**生成するようにリファクタ(層2)。外部から見た生成コードは変わらないので低リスク
+- [ ] 層4の規約をlint化する(`exec(code, namespace)`の後に`namespace[...]`へのアサートが続いているかを検出する簡易チェック)。既存テストへの遡及適用は別タスクとして切り出す
+- [ ] 既存テストの遡及棚卸し(知見129より前に書かれたexec()テストで、出力値を見ていないものを列挙し、1件ずつ追記)——有限のバックログタスク
+
+### Phase 2: 共通IRの抽出(UiPathトラックと調整必須)
+
+- [ ] `rpa_ir`パッケージを新設し、`Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)と`SwitchNode`をまず移行する(両トラックで構造が一致しており最もリスクが低い統合対象)
+- [ ] UiPath側の活動ごと専用dataclass(`MessageBoxNode`等)を、汎用`ActionCallNode`へ段階的に置き換える。**この変更はUiPath側の`uipath_codegen`のdispatchロジック(現在は型ごとのisinstanceチェーン)にも影響するため、UiPathトラックの作業と正面から衝突する**——着手前に両トラックの作業状況を確認し、ユーザーに実施タイミングを確認する
+- [ ] `ConditionalNode`(N-ary)と`IfNode`(binary)の統合方針を決める(binaryをN-aryの特殊形として扱うのは技術的には容易だが、UiPath側の既存コードをすべて書き換える必要がある)
+- [ ] `ErrorHandlingNode`の`attachment`フィールドで`GuardedNode`/`TryCatchNode`の構築方向差を吸収する設計を確定する
+
+### Phase 3: 共通dispatch基盤の統合(Phase 2の成果を前提、最もリスクが高い)
+
+- [ ] PAD側の`CodegenContext`+chain-of-responsibility型`actions/`ディスパッチパターンを共通化し、UiPath側にも適用する(UiPath側は現在このパターンを持たず、1000行超のフラットなif-chainになっている——構造改善の価値自体は高いが着手コストも大きい)
+- [ ] 層2の`Unsupported`理由コードをUiPath側にも適用する
+
+---
+
+## 進め方についての所感
+
+- Phase 0は**今すぐ着手してよい**(ドキュメント・ツールの追加のみ、他セッションの作業と衝突しない)。
+- Phase 1もリスクは低いが、PAD側のコード変更を伴うため、通常の開発ティックの中で段階的に進めるのが妥当。
+- Phase 2以降は、**UiPathトラックの実装が今まさに活発に進行中**(本セッション中も`uipath_codegen/__init__.py`等が並行して更新されていた)であるため、「IRを共通化する」という変更は必然的にUiPath側のソースにも手を入れることになる。これは他セッションの作業と真正面から競合しうる変更であり、**着手前に必ずユーザーに実施タイミング・両トラックの調整方法を確認すること**。
+- Phase 2・3を経ても、PAD/UiPathの「フロントエンド(字句解析/XML解析)」は統合する価値が無い(ツールごとの事情が違いすぎる)。統合すべきは一貫して**バックエンド**(IR以降)である。

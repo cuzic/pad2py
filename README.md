@@ -67,6 +67,7 @@ PADのUI automationアクション(`Click UI element in window`等)は、DSLク�
 | [design/uipath_vb_expression_mapping.md](design/uipath_vb_expression_mapping.md) | (将来のUiPath→Python検討に向けた予備調査)VB.NET式→Python式の変換ルール整理(演算子・型変換関数・三項If・文字列補間・`String.IsNullOrEmpty`・クォートエスケープまで知見32・36で実機コンパイル確認完了、残るは`And`/`Or`非短絡評価の変換アルゴリズム設計のみ) |
 | [design/uipath_transpiler_roadmap.md](design/uipath_transpiler_roadmap.md) | (将来のUiPath→Python検討に向けた予備調査)研究フェーズ(知見1〜40)から実装フェーズへ移行するための全体ロードマップ。Phase 2〜6(XAMLツリーウォーカー・VB式パーサー・codegen・セレクタ解決・複数ファイル結線・変数既定値)まで実装完了、知見37(Modern selector)・セレクタマッピングの実機検証も完了し研究フェーズに残る大きな未解決点は無い(新Studio側の長期ブロック項目を除く) |
 | [design/schemas/](design/schemas/) | IR/UIツリーのJSON Schema |
+| [design/common_rpa_framework_roadmap.md](design/common_rpa_framework_roadmap.md) | PAD/UiPath両トラックを「共通RPA変換フレームワーク」へ発展させる場合の理想像・現状評価・フェーズ分けしたギャップ分析(計画書、未着手) |
 
 ## G1/G2検証: PAD実機での動作確認(成功)
 
