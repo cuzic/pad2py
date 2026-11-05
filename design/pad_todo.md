@@ -326,11 +326,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   実区切り文字(`SystemDefault`/`Comma`→`","`・`Semicolon`→`";"`・`Tab`→`"\t"`)を確認し、
   `pad_codegen/actions/_support.py`にマッピング辞書を追加して全4値を結線、新規2セレクタも結線した。
   `pad_action_lib.datatable`は元から`delimiter`引数を持っていたため変更不要だった。
-  - [ ] 💻🖥️ **残課題(次の調査対象)**: `ReadFixedColumnWidths`(固定長カラム読み込み、
-    `csv.reader`とは別の文字位置分割アルゴリズムが必要・`FixedColumnWidths`文字列の
-    フォーマットも未検証)は見送った。`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`
-    も同じ`ColumnsSeparator`列挙型を使っており同種のゲート漏れが残っている可能性が高いが、
-    `File.Actions.dll`を未デコンパイルのため未確認(VM不要、decompileのみで次に進められる)。
+  - [x] 💻 `File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`の同種ゲート漏れ。
+    ✅ **決着(知見128)**: VM上のリフレクションで`File.Actions.dll`の`ColumnsSeparator`が
+    `Variables.Actions.dll`と全く同じ`Text.Utilities.dll`の`CSVColumnsSeparator`型だと確認し
+    (`PropertyType.Assembly.FullName`で同一アセンブリと確定)、同じマッピング辞書を再利用して
+    解消。新規セレクタ`ReadCSVWithCustomSeparator`/`WriteCSVWithCustomSeparator`も結線した
+    (`ActionSelectorBase.ActionName`プロパティの直接読み取りでdecompile無しに接尾辞を特定)。
+  - [ ] 💻🖥️ **残課題(次の調査対象)**: `ReadFixedColumnWidths`/`ReadCSVWithFixedColumnWidths`
+    (固定長カラム読み込み、`csv.reader`とは別の文字位置分割アルゴリズムが必要・
+    `FixedColumnWidths`文字列のフォーマット——`CSVUtilities.TryParseColumnWidths`の
+    正確な解析規則——も未検証)は両モジュールとも見送ったまま。
 
 ## C. 構造的・運用上の課題
 

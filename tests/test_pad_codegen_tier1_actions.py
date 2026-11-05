@@ -182,12 +182,13 @@ def test_file_batch6_converts_all_actions_including_csv_header_less_case() -> No
     assert "if file_actions.if_file_exists('sample'):" in code
     assert "while not file_actions.if_file_exists('sample'):" in code
     assert "import os" in code
+    # knowledge 128: ColumnsSeparatorの実区切り文字(SystemDefault=",")も渡すようになった。
     assert (
-        "CSVTable = file_actions.read_from_csv_file('sample', encoding='UTF8', "
+        "CSVTable = file_actions.read_from_csv_file('sample', delimiter=',', encoding='UTF8', "
         "first_line_contains_column_names=False, trim_fields=True)" in code
     )
     assert (
-        "file_actions.write_to_csv_file('sample', 'sample', if_file_exists='Overwrite', "
+        "file_actions.write_to_csv_file('sample', 'sample', delimiter=',', if_file_exists='Overwrite', "
         "encoding='UTF8', include_column_names=False)" in code
     )
     assert "# TODO" not in code

@@ -2303,3 +2303,13 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **見送った項目**: `ReadFixedColumnWidths`(固定長カラム読み込み)は、`csv.reader`ベースの現在の`datatable_from_csv_text()`実装とは根本的に異なるアルゴリズム(文字位置による分割)が必要であり、`FixedColumnWidths`文字列のフォーマット(`CSVUtilities.TryParseColumnWidths`で解析、おそらく`"10,20,15"`のようなカンマ区切りの幅リスト)の正確な意味論を今回は検証していないため、知見123・124と同じ「不確実なアルゴリズムを実装するよりTODOのまま残す」判断で見送った。次の調査対象として`pad_todo.md`に記録する。`File.ReadFromCSVFile`/`File.WriteToCSVFile`も同じ`ColumnsSeparator`列挙型を使っており、同種のゲート漏れ(`separator != "SystemDefault"`固定)が残っている可能性が高いが、今回は`File.Actions.dll`を未デコンパイルのため確認せず、次の調査対象として記録する。
 
 テストは`tests/test_pad_codegen.py`に5件(`ReadPredefinedSeparator`のSemicolon/Tab、`ReadCustomSeparator`、`DataTableToCSVCommonSeparator`のSemicolon、`DataTableToCSVCustomSeparator`)を追加し、全て実際に`exec()`してDataTable/CSVテキストの内容を検証した。既存の`tests/test_pad_codegen_tier1_actions.py`2件(`datatable_to_csv_text`/`datatable_from_csv_text`呼び出しの期待文字列)も、新たに`delimiter=','`が追加されるようになった生成コードに合わせて更新した。
+
+## 128. 知見127の横展開——`File.ReadFromCSVFile`/`File.WriteToCSVFile`も同じ`CSVColumnsSeparator`列挙型を使っており、同種のゲート漏れと未結線の`CustomSeparator`兄弟セレクタが存在すると確認・解消(VM不要、リフレクションのみ)
+
+知見127で見送った「`File.Actions.dll`は未デコンパイルのため未確認」という次の調査対象をそのまま実施した。VM上に`File.Actions.dll`のコピーを置いて直接リフレクションで型を列挙したところ、`ReadFromCSVFileAction`/`WriteToCSVFileAction`の`ColumnsSeparator`プロパティの型が**`Variables.Actions.dll`やこのファイル自身とは無関係に、知見127で特定した`Microsoft.Flow.RPA.Desktop.Modules.Text.Utilities.dll`の`CSVColumnsSeparator`型そのもの**(`PropertyType.Assembly.FullName`で確認、同一アセンブリ)であると確認した——つまりモジュールをまたいで共有される列挙型であり、知見127で確立した`CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`マッピングをそのまま再利用できる。
+
+**セレクタのaction_id接尾辞の確認方法(新しい小技)**: これまで(知見116以降)はdecompileされたソースの`base.UseName("...")`呼び出しを目で読んで接尾辞を確認していたが、今回は`File.Actions.dll`のdecompileをまだしていなかったため、代わりに**`ActionSelectorBase.ActionName`プロパティをインスタンス化して直接読み取る**手法を使った(`[Activator]::CreateInstance($selectorType)`→`.ActionName`)。これはdecompile無しでも機能し、確認できた接尾辞は既知の`ReadCSV`/`WriteCSV`(知見66のフィクスチャと一致)に加え、新規に`ReadCSVWithCustomSeparator`/`ReadCSVWithFixedColumnWidths`/`WriteCSVWithCustomSeparator`の3つ。
+
+**修正**: `pad_codegen/actions/file.py`の`File.ReadFromCSVFile.ReadCSV`/`File.WriteToCSVFile.WriteCSV`から`separator != "SystemDefault"`ゲートを撤廃し`CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`でマッピング、新規に`File.ReadFromCSVFile.ReadCSVWithCustomSeparator`/`File.WriteToCSVFile.WriteCSVWithCustomSeparator`の2ブランチを追加した。`pad_action_lib.file_actions.read_from_csv_file()`/`write_to_csv_file()`も知見127の`datatable.py`と同じく元から`delimiter`引数を持っていたため、`pad_action_lib`側の変更は不要だった。`ReadCSVWithFixedColumnWidths`は知見127と同じ理由(固定長パース未実装)で見送った。
+
+`tests/test_pad_codegen.py`に2件(`tempfile.TemporaryDirectory()`で実ファイルへの書き込み→読み込みの往復を検証、Semicolon/CustomSeparator各1件)、`tests/test_pad_codegen_tier1_actions.py`の既存アサーション1件を更新した。

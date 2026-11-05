@@ -2413,3 +2413,61 @@ def test_generate_python_from_convert_datatable_to_csv_custom_separator() -> Non
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["Out"] == "Name|Age\r\nAlice|30\r\n"
+
+
+def test_generate_python_from_file_write_read_csv_semicolon_separator_round_trips() -> None:
+    # design/dsl_format_findings.md 知見128: 知見127と同じ`CSVColumnsSeparator`列挙型を
+    # `File.ReadFromCSVFile`/`File.WriteToCSVFile`も使っていると確認したため、同じ
+    # ゲート漏れ(SystemDefault以外で常にTODO)を解消した。
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "out.csv"
+        dsl = (
+            "SET CSV TO $'''Name,Age\nAlice,30'''\n"
+            "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+            "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+            "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+            f"File.WriteToCSVFile.WriteCSV VariableToWrite: T CSVFile: $'''{out_path}''' "
+            "CsvFileEncoding: File.CSVEncoding.UTF8 IncludeColumnNames: True "
+            "IfFileExists: File.IfFileExists.Overwrite ColumnsSeparator: File.CSVColumnsSeparator.Semicolon\n"
+            f"File.ReadFromCSVFile.ReadCSV CSVFile: $'''{out_path}''' Encoding: File.CSVEncoding.UTF8 "
+            "TrimFields: True FirstLineContainsColumnNames: True "
+            "ColumnsSeparator: File.CSVColumnsSeparator.Semicolon CSVTable=> RoundTripped"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert "delimiter=';'" in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert out_path.read_text(encoding="utf-8-sig") == "Name;Age\nAlice;30\n"
+        assert namespace["RoundTripped"] == [{"Name": "Alice", "Age": "30"}]
+
+
+def test_generate_python_from_file_write_read_csv_custom_separator_round_trips() -> None:
+    # design/dsl_format_findings.md 知見128: `ReadCSVWithCustomSeparator`/
+    # `WriteCSVWithCustomSeparator`兄弟セレクタ(`ActionName`プロパティをVM上で
+    # リフレクション直接呼び出しして確認した正確なaction_id接尾辞)。
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "out.csv"
+        dsl = (
+            "SET CSV TO $'''Name,Age\nAlice,30'''\n"
+            "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+            "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+            "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+            f"File.WriteToCSVFile.WriteCSVWithCustomSeparator VariableToWrite: T CSVFile: $'''{out_path}''' "
+            "CsvFileEncoding: File.CSVEncoding.UTF8 IncludeColumnNames: True "
+            "IfFileExists: File.IfFileExists.Overwrite CustomColumnsSeparator: $'''|'''\n"
+            f"File.ReadFromCSVFile.ReadCSVWithCustomSeparator CSVFile: $'''{out_path}''' "
+            "Encoding: File.CSVEncoding.UTF8 TrimFields: True FirstLineContainsColumnNames: True "
+            "CustomColumnsSeparator: $'''|''' CSVTable=> RoundTripped"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert "delimiter='|'" in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert out_path.read_text(encoding="utf-8-sig") == "Name|Age\nAlice|30\n"
+        assert namespace["RoundTripped"] == [{"Name": "Alice", "Age": "30"}]

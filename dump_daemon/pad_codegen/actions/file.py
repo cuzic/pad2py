@@ -15,13 +15,20 @@ tier1_file_batch6.txt`・知見70の`tier1_crypto_database_batch7.txt`から確�
 (列名は`"Column#1"`/`"Column#2"`...が割り当てられる)。`TrimFields`(各フィールドの
 前後の空白除去)は知見93で実機確認済みのため`True`/`False`両方を結線した
 (`file_actions.read_from_csv_file()`の`trim_fields`引数に委譲)。
+
+`ColumnsSeparator`がSystemDefault以外(Comma/Semicolon/Tab)の場合、および
+`ReadCSVWithCustomSeparator`/`WriteCSVWithCustomSeparator`兄弟セレクタは、
+`Variables.GenerateDataTableFromCSV`/`ConvertDataTableToCSV`と全く同じ
+`CSVColumnsSeparator`列挙型(`Text.Utilities.dll`)を使っていると知見127・128で
+確認したため`_support.CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`を再利用して結線した。
+`ReadCSVWithFixedColumnWidths`は知見127と同じ理由(固定長パース未実装)で見送った。
 """
 from __future__ import annotations
 
 from ...pad_dsl import ActionRecord
 from ..context import CodegenContext
 from ..render import INDENT
-from ._support import enum_last, safe_render
+from ._support import CSV_PREDEFINED_SEPARATOR_TO_DELIMITER, enum_last, safe_render
 
 
 def _as_list_expr(rendered: str) -> str:
@@ -162,17 +169,40 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         separator = enum_last(p.get("ColumnsSeparator"))
         first_line = safe_render(p.get("FirstLineContainsColumnNames"))
         trim_fields = p.get("TrimFields")
+        delimiter = CSV_PREDEFINED_SEPARATOR_TO_DELIMITER.get(separator) if separator else None
         if (
             path is None
             or encoding is None
             or first_line is None
-            or separator != "SystemDefault"
+            or delimiter is None
             or not isinstance(trim_fields, bool)
             or not node.output_var
         ):
             return None
         return [
-            f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, encoding={encoding!r}, "
+            f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, delimiter={delimiter!r}, "
+            f"encoding={encoding!r}, first_line_contains_column_names={first_line}, "
+            f"trim_fields={trim_fields!r})"
+        ]
+
+    if action_id == "File.ReadFromCSVFile.ReadCSVWithCustomSeparator":
+        path = safe_render(p.get("CSVFile"))
+        encoding = enum_last(p.get("Encoding"))
+        first_line = safe_render(p.get("FirstLineContainsColumnNames"))
+        trim_fields = p.get("TrimFields")
+        custom_separator = safe_render(p.get("CustomColumnsSeparator"))
+        if (
+            path is None
+            or encoding is None
+            or first_line is None
+            or custom_separator is None
+            or not isinstance(trim_fields, bool)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = file_actions.read_from_csv_file({path}, "
+            f"delimiter={custom_separator}, encoding={encoding!r}, "
             f"first_line_contains_column_names={first_line}, trim_fields={trim_fields!r})"
         ]
 
@@ -183,18 +213,40 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if_exists = enum_last(p.get("IfFileExists"))
         separator = enum_last(p.get("ColumnsSeparator"))
         include_names = safe_render(p.get("IncludeColumnNames"))
+        delimiter = CSV_PREDEFINED_SEPARATOR_TO_DELIMITER.get(separator) if separator else None
         if (
             table is None
             or path is None
             or encoding is None
             or if_exists is None
             or include_names is None
-            or separator != "SystemDefault"
+            or delimiter is None
         ):
             return None
         return [
-            f"{prefix}file_actions.write_to_csv_file({path}, {table}, if_file_exists={if_exists!r}, "
-            f"encoding={encoding!r}, include_column_names={include_names})"
+            f"{prefix}file_actions.write_to_csv_file({path}, {table}, delimiter={delimiter!r}, "
+            f"if_file_exists={if_exists!r}, encoding={encoding!r}, include_column_names={include_names})"
+        ]
+
+    if action_id == "File.WriteToCSVFile.WriteCSVWithCustomSeparator":
+        table = safe_render(p.get("VariableToWrite"))
+        path = safe_render(p.get("CSVFile"))
+        encoding = enum_last(p.get("CsvFileEncoding"))
+        if_exists = enum_last(p.get("IfFileExists"))
+        include_names = safe_render(p.get("IncludeColumnNames"))
+        custom_separator = safe_render(p.get("CustomColumnsSeparator"))
+        if (
+            table is None
+            or path is None
+            or encoding is None
+            or if_exists is None
+            or include_names is None
+            or custom_separator is None
+        ):
+            return None
+        return [
+            f"{prefix}file_actions.write_to_csv_file({path}, {table}, delimiter={custom_separator}, "
+            f"if_file_exists={if_exists!r}, encoding={encoding!r}, include_column_names={include_names})"
         ]
 
     return None
