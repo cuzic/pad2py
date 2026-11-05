@@ -2162,6 +2162,55 @@ def test_generate_python_from_list_of_random_numbers_converts() -> None:
     assert all(1 <= n <= 10 for n in nums)
 
 
+def test_generate_python_from_find_item_in_datatable_with_regex_everywhere_converts() -> None:
+    # design/dsl_format_findings.md 知見123(decompile確認済み、実機未確認):
+    # `FindOrReplaceInDataTable`の兄弟セレクタ`FindItemInDataTableWithRegexEverywhere`
+    # (`UseRegex: True`固定)。`Variables.GenerateDataTableFromCSV`でCSVから直接
+    # DataTableを作る(知見124の「空のテーブルにList経由で最初の行を追加できない」
+    # 問題を回避する、実機確認済みの経路)。
+    dsl = (
+        "SET CSV TO $'''A\norder-123\nno digits'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableWithRegexEverywhere "
+        "DataTable: T ValueToFind: $'''[0-9]+''' AllMatches: True DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "M = variables_actions.find_item_in_datatable_everywhere(T, '[0-9]+', "
+        "all_matches=True, use_regex=True)" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 0)]
+
+
+def test_generate_python_from_find_item_in_datatable_by_column_index_converts() -> None:
+    # design/dsl_format_findings.md 知見123の追記: 兄弟セレクタ
+    # `FindItemInDataTableByColumnIndex`(この層では列名のみ対応)。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,x\ny,x'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.FindItemInDataTableByColumnIndex "
+        "DataTable: T ValueToFind: $'''x''' AllMatches: True MatchCase: True "
+        "MatchEntireCellContents: False ColumnNameOrIndex: $'''B''' DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "column='B'" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 1), (1, 1)]
+
+
 def test_generate_python_from_compression_zip_unzip_without_password_converts() -> None:
     # 実機キャプチャ(tier1_datetime_folder_clipboard_batch2.txt/tier1_web_xml_batch8.txt)
     # はPasswordが常にWindows DPAPI保護値(`P'<base64>'`)で現れ、知見72の通りVarRef

@@ -330,6 +330,20 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   移行可否の判断・設計ドキュメント化。Tier1/2結線をやり直さずに済むタイミングを見極める —
   `design/runtime_architecture_decision.md`に記録。判断: 今は着手せず、A/B節の実機キャプチャ・
   結線が一巡してから再検討する(出力形状の変更は116アクション分の結線のやり直しを招くため)。
+- [ ] 💻🖥️ `DataTable`表現(列順序を各行の辞書のキー順序で保持する、`datatable.py`モジュール
+  docstring参照)が列を行と独立に追跡しないため、「空のテーブルに`AddColumnToDataTable`で
+  列を追加した直後に`AddRowToDataTable`で最初の行を`List`形式で追加する」という知見90・91の
+  VM検証で繰り返し使ったパターンが、`pad_action_lib`層(Pythonポート)経由では原理的に
+  解決不能という構造的課題が知見124で発覚した(詳細は知見124参照)。真に解決するには
+  `DataTable`を「列名リスト+行のリスト」を持つ型に再設計する必要があり、`datatable.py`・
+  `variables_actions.py`の広範囲に影響する——知見124では`add_row_to_datatable()`を
+  「`list`なら既存の列順序に位置対応で追加、列が1件も無ければでっち上げず明示的な
+  `ValueError`」に留め、再設計自体は見送った。副産物として、知見90・91・97・98・99・107・111
+  等の「Tier1アクションのみからDataTableを組み立てる」実機検証手法が、**実機のPAD自身の
+  実行エンジンでのみ検証されており、`pad_action_lib`を経由するcodegen→生成Python実行の
+  往復では一度も検証されていなかった**ことも確定した(FilterDataTable/JoinDataTableの
+  入力スキーマ自体の確証は正しいが、そのスキーマをPython側のcodegenから実際に組み立てる
+  変換のテストカバレッジには大きな穴があった)。
 - [ ] 💻 ローカル`main`とGitHub `origin/main`のコミット分岐(履歴相違)の整理 — 複数セッションが
   同じローカル作業ディレクトリに直接コミットし続けている状態の整理(force-push等の破壊的操作は
   ユーザー確認必須)。

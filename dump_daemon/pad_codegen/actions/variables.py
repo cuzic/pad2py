@@ -213,6 +213,41 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"match_entire_cell_contents={entire_cell})"
         ]
 
+    if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableWithRegexEverywhere":
+        # design/dsl_format_findings.md 知見123(decompile確認済み、実機未確認):
+        # `FindItemInDataTableEverywhere`の兄弟セレクタ(`UseRegex: True`固定、
+        # `MatchEntireCellContents`/`MatchCase`は選択できない=常に既定値False)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        all_matches = safe_render(p.get("AllMatches"))
+        if None in (table, value, all_matches) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
+            f"{table}, {value}, all_matches={all_matches}, use_regex=True)"
+        ]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.FindItemInDataTableByColumnIndex":
+        # design/dsl_format_findings.md 知見123の追記: `column`は列名のみ対応
+        # (列インデックスとしての数値文字列はゼロ始まり設定が未確認のため非対応)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        all_matches = safe_render(p.get("AllMatches"))
+        match_case = safe_render(p.get("MatchCase"))
+        entire_cell = safe_render(p.get("MatchEntireCellContents"))
+        column = p.get("ColumnNameOrIndex")
+        if (
+            None in (table, value, all_matches, match_case, entire_cell)
+            or not isinstance(column, str)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_item_in_datatable_everywhere("
+            f"{table}, {value}, all_matches={all_matches}, match_case={match_case}, "
+            f"match_entire_cell_contents={entire_cell}, column={column!r})"
+        ]
+
     if action_id == "Variables.FilterDataTable":
         table = safe_render(p.get("DataTable"))
         # 知見72の「一度も編集されていない」空バックティック文字列(`` `` ``→Pythonの`""`)は

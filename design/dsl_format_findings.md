@@ -2248,3 +2248,26 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 `pad_action_lib.variables_actions.generate_random_number()`を確認したところ、**元から`count`/`allow_duplicates`引数を持ち複数生成に完全対応済み**だった(既存の`RandomNumber`セレクタは単に`[0]`で先頭要素だけを取り出していただけ)——新規実装は一切不要で、codegenの結線を1分岐追加するだけで済んだ。合成DSLで実際に実行し、指定件数・重複無し・範囲内という3条件を満たすリストが返ることを確認するテストを追加した。
 
 同じ`Variables.Actions.dll`には他にも`FindOrReplaceInDataTable`(8セレクタ中1つのみ結線——`ByColumnIndex`/`WithRegex`系7個が未結線)・`GenerateDataTableFromCSVAction`(3セレクタ中1つのみ結線——`ReadCustomSeparator`/`ReadFixedColumnWidths`が未結線)という同種の未結線セレクタ群が見つかっており、次の調査対象として記録する(対応する`pad_action_lib`関数の有無を要確認)。
+
+## 123. `FindOrReplaceInDataTable`の未結線セレクタのうち、安全に解決できる2つ(`FindItemInDataTableWithRegexEverywhere`/`FindItemInDataTableByColumnIndex`)を結線——残り5つ(Replace系4つ+regex×列指定1つ)は意図的に見送り
+
+知見122で見つけた`FindOrReplaceInDataTable`の8セレクタ構造(`SearchMode`: Find/FindAndReplace × `SearchBy`: Everywhere/OnColumn × `UseRegex`: True/False、一部組み合わせのみ実在)をdecompileで完全に把握した。このうち**Find系(DataTableを変更しない、`DataTableMatches`出力のみ)の2つ**を解決した:
+
+- `FindItemInDataTableWithRegexEverywhere`(`UseRegex: True`固定、`MatchEntireCellContents`/`MatchCase`は選べない)。
+- `FindItemInDataTableByColumnIndex`(`SearchBy: OnColumn`固定)——`ColumnNameOrIndex`パラメータは実機のPAD自体が文字列(列名)/数値(列インデックス、`int.TryParse`で判定)の両方を受け付けるが、**この層では列名のみに対応する**(列インデックスの0始まり/1始まり設定`_listIndexService.IsZeroBased`が未確認のため、安全側に倒して数値は非対応のまま)。
+
+`find_item_in_datatable_everywhere()`に`use_regex`/`column`引数を追加して結線した(既存の`_cell_matches()`ヘルパーがそのまま使えた)。実機キャプチャが無いため`Variables.GenerateDataTableFromCSV`で実データを用意した合成DSLで実際に実行・確認するテストを追加した。
+
+**残り5セレクタ(`ReplaceItemInDataTableEverywhere`/`ByColumnIndex`/`WithRegexEverywhere`/`WithRegexByColumnIndex`+`FindItemInDataTableWithRegexByColumnIndex`)は意図的に見送った**。decompileした`FindOrReplaceInDataTable.Execute()`を読むと、既存の`pad_action_lib.find_or_replace_in_datatable()`には複数の未確認・未実装のギャップがあると判明した: (1) `AllMatches: False`の早期停止が無い、(2) Replace時も`DataTableMatches`を出力するはずだが現在の実装は置換件数の`int`を返すだけ、(3) 置換後のセル型を元の型(int等)へ戻す処理(`Converter.ConvertToType`)が無く常に文字列になる。これらを実機未検証のまま埋めると、DataTableを実際に書き換える処理で誤った結果をでっち上げるリスクが高い(Findのみの読み取り専用操作より一段と危険)ため、今回は見送り、ギャップの詳細を記録するに留めた。
+
+## 124. 【本tick最大の発見】`AddRowToDataTable`の`RowToAdd`が実際には`List`であり、`pad_action_lib.add_row_to_datatable()`の既存実装(`dict(row)`)はクラッシュする潜在バグだったと判明——知見90・91等の「Tier1アクションだけでDataTableを組み立てる」手法が実は`pad_action_lib`層を経由する変換では一度も検証されていなかったと確定
+
+知見123の調査中、`FindOrReplaceInDataTable`のテスト用DataTableを知見90・91と同じ「`CreateNewDatatable`+`AddColumnToDataTable`+`CreateNewList`+`AddItemToList`+`AddRowToDataTable`」というTier1アクションの組み合わせで組み立てようとしたところ、生成されたPythonコードを実際に`exec()`すると**`add_row_to_datatable()`内の`dict(row)`が`ValueError: dictionary update sequence element #0 has length N; 2 is required`でクラッシュする**ことを発見した。
+
+**根本原因**: `Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll`を逆コンパイルして確認したところ、`AddRowToDataTable.RowToAdd`は実際には**`List<object>`**であり、`DataRow.ItemArray = RowToAdd.ToArray()`という**列の並び順による位置対応**で行に追加される(辞書のキー対応ではない)。`pad_action_lib.add_row_to_datatable()`の型ヒントは`row: Row`(`dict[str, object]`)で、実装も`table.append(dict(row))`——`row`が辞書でなければ必ず失敗する。
+
+**この重大な事実**: 知見90・91・97・98・99・107・111等で繰り返し使ってきた「`CreateNewDatatable`+`AddColumnToDataTable`+`CreateNewList`+`AddItemToList`+`AddRowToDataTable`だけでTier1アクションのみからDataTableを組み立てる」という実機検証手法は、**実機のPAD自身の実行エンジン**(C#/.NETのネイティブ実装)を使って**実機確認**するためのものであり、`pad_action_lib`(このPythonポート)を経由した**codegen→生成Python実行**の往復では一度も検証されていなかった。つまり、`FilterDataTable`/`JoinDataTable`の入力スキーマ自体の確証(知見90・91)は正しいが、「そのスキーマをPython側でTier1アクションのcodegenから実際に組み立てる」という変換のテストカバレッジには、今回発見まで大きな穴があった。
+
+**今回の修正(部分的)**: `add_row_to_datatable()`を、`row`が`list`の場合は`columns_of(table)`(既存の行から推測した列順序)と位置で対応付けて辞書に変換するよう修正した。**ただしこの`DataTable`表現(列順序を各行の辞書のキー順序で保持する、`datatable.py`モジュールdocstring参照)には列だけを独立して追跡する仕組みが無いため、行が1件も無い状態(`AddColumnToDataTable`だけ呼ばれた直後)で`list`形式の`RowToAdd`を渡すと列名が全く分からず解決不能**——この場合はでっち上げた列名を使わず明示的な`ValueError`にするよう変更した(以前の`dict()`の分かりにくいクラッシュより改善したが、根本的には未解決)。
+
+**残る構造的課題(design/pad_todo.mdに記録)**: 「空のDataTableに`AddColumnToDataTable`で列を追加した直後に`AddRowToDataTable`で最初の行を`List`で追加する」という、知見90・91のVM検証で繰り返し使ったパターン自体は、**現在のDataTable表現では原理的に解決不能**——真に解決するには`DataTable`を「行のリスト」ではなく「列名リスト+行のリスト」を持つ型に再設計する必要があり、`datatable.py`・`variables_actions.py`の広範囲に影響する大きな変更になる。今回は影響範囲の大きさから見送り、明示的なエラーメッセージへの改善のみ行った。

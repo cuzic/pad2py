@@ -123,6 +123,31 @@ def test_add_delete_modify_row() -> None:
     assert table == [{"a": 3, "b": 4}]
 
 
+def test_add_row_to_datatable_with_list_zips_positionally_against_existing_columns() -> None:
+    # design/dsl_format_findings.md 知見124(decompile確認済み): PADの実際の
+    # AddRowToDataTable.RowToAddはList<object>(DataRow.ItemArray = RowToAdd.ToArray()、
+    # 辞書ではなく列順序による位置対応)——このため以前はdict(row)が直接クラッシュ
+    # していた潜在バグを修正した。テーブルに既存の行が1件以上あれば、その列順序
+    # (columns_of())と位置で対応付けて追加できる。
+    table: va.DataTable = [{"a": 1, "b": 2}]
+    va.add_row_to_datatable(table, [3, 4])
+    assert table == [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
+
+
+def test_add_row_to_datatable_with_list_on_empty_table_raises_clear_error() -> None:
+    # design/dsl_format_findings.md 知見124: 行が1件も無い状態(AddColumnToDataTableだけ
+    # 呼ばれた直後)では列名が独立して追跡されていない(モジュールdocstring参照)ため、
+    # list形式のRowToAddを解決できない——でっち上げた列名を使わず明示的にエラーにする。
+    with pytest.raises(ValueError, match="no rows yet"):
+        va.add_row_to_datatable([], [1, 2])
+
+
+def test_add_row_to_datatable_with_list_wrong_length_raises() -> None:
+    table: va.DataTable = [{"a": 1, "b": 2}]
+    with pytest.raises(ValueError, match="3 values but table has 2 columns"):
+        va.add_row_to_datatable(table, [3, 4, 5])
+
+
 def test_find_or_replace_in_datatable() -> None:
     table = [{"a": "hello", "b": "world"}]
     count = va.find_or_replace_in_datatable(table, "hello", "HI")
@@ -151,6 +176,20 @@ def test_find_item_in_datatable_everywhere_entire_cell_contents() -> None:
 def test_find_item_in_datatable_everywhere_no_match_returns_empty() -> None:
     table = [{"a": "apple", "b": "banana"}]
     assert va.find_item_in_datatable_everywhere(table, "zzz_nomatch") == []
+
+
+def test_find_item_in_datatable_everywhere_use_regex() -> None:
+    # design/dsl_format_findings.md 知見123(decompile確認済み、実機未確認):
+    # FindOrReplaceInDataTableの兄弟セレクタFindItemInDataTableWithRegexEverywhere。
+    table = [{"a": "order-123", "b": "no digits here"}]
+    assert va.find_item_in_datatable_everywhere(table, r"\d+", use_regex=True) == [(0, 0)]
+
+
+def test_find_item_in_datatable_everywhere_column_scoped() -> None:
+    # design/dsl_format_findings.md 知見123の追記: 兄弟セレクタ
+    # FindItemInDataTableByColumnIndex(この層では列名のみ対応)。
+    table = [{"a": "x", "b": "x"}, {"a": "y", "b": "x"}]
+    assert va.find_item_in_datatable_everywhere(table, "x", column="b") == [(0, 1), (1, 1)]
 
 
 def test_delete_empty_and_duplicate_rows() -> None:

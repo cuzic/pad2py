@@ -25,7 +25,7 @@ import math
 from .expr_runtime import pad_equal as _pad_compare_equal
 import random as _random
 
-from .datatable import DataTable, Row
+from .datatable import DataTable, Row, columns_of
 from .datatable import datatable_from_csv_text as datatable_from_csv_text
 from .datatable import datatable_to_csv_text as datatable_to_csv_text
 
@@ -142,8 +142,39 @@ def clear_datatable(table: DataTable) -> None:
     table.clear()
 
 
-def add_row_to_datatable(table: DataTable, row: Row) -> None:
-    table.append(dict(row))
+def add_row_to_datatable(table: DataTable, row: Row | list[object]) -> None:
+    """design/dsl_format_findings.md 知見124(decompile確認済み): PADの実際の
+    `AddRowToDataTable.RowToAdd`は`List<object>`(列名との対応は**列の並び順**、
+    `DataRow.ItemArray = RowToAdd.ToArray()`)——辞書ではない。知見90・91等で
+    「`CreateNewDatatable`+`AddColumnToDataTable`+`CreateNewList`+`AddItemToList`+
+    `AddRowToDataTable`だけでTier1アクションのみからDataTableを組み立てる」という
+    手法を繰り返し使ってきたが、これは**実機のPAD自体でのみ検証済み**で、
+    `pad_action_lib`層(このPythonポート)を経由する codegen→実行の往復では
+    一度も検証されていなかった——このdictベースの実装は実際には`list`が渡されると
+    クラッシュするバグだったと判明した(知見124)。
+
+    `row`が`list`の場合は`columns_of(table)`(既存の行から推測した列順序)と位置で
+    対応付けて辞書に変換する。**この`DataTable`表現(列順序を各行の辞書のキー順序で
+    保持する、モジュールdocstring参照)には列だけを独立して追跡する仕組みが無いため、
+    行が1件も無い状態(`AddColumnToDataTable`だけ呼ばれた直後)で`list`を渡すと
+    列名が全く分からず解決不能**——この場合は明示的な`ValueError`にする(でっち上げた
+    列名を使わない)。この限界自体は根本的な表現の見直し(列を行と独立に保持する
+    `DataTable`型への変更)が必要な、より大きな構造的課題として残っている
+    (design/pad_todo.md参照)。
+    """
+    if isinstance(row, list):
+        columns = columns_of(table)
+        if not columns:
+            raise ValueError(
+                "add_row_to_datatable() cannot add a list-shaped row to a table with no "
+                "rows yet (columns added via add_column_to_datatable() to an empty table "
+                "are not tracked independently of rows in this DataTable representation)"
+            )
+        if len(row) != len(columns):
+            raise ValueError(f"row has {len(row)} values but table has {len(columns)} columns")
+        table.append(dict(zip(columns, row)))
+    else:
+        table.append(dict(row))
 
 
 def delete_row_from_datatable(table: DataTable, index: int) -> None:
@@ -208,6 +239,8 @@ def find_item_in_datatable_everywhere(
     all_matches: bool = True,
     match_case: bool = False,
     match_entire_cell_contents: bool = False,
+    use_regex: bool = False,
+    column: str | None = None,
 ) -> list[tuple[int, int]]:
     """design/dsl_format_findings.md 知見89で実機確認済みの出力契約。
 
@@ -216,11 +249,22 @@ def find_item_in_datatable_everywhere(
     最初の1件だけを含むリストのまま返る(実機のテキスト直列化`"0, 0"`は要素数1の
     リストと要素数2のリスト`"0, 0\\n1, 0"`で同じ"行, 列"形式が繰り返されるのみで、
     型が変わる兆候は無かった)。
+
+    design/dsl_format_findings.md 知見123(decompile確認済み、実機未確認):
+    `use_regex`/`column`は`FindOrReplaceInDataTable`の兄弟セレクタ
+    (`FindItemInDataTableWithRegexEverywhere`/`FindItemInDataTableByColumnIndex`)の
+    decompile結果から追加した。`column`は実機のPAD自体が`ColumnNameOrIndex`という
+    文字列/数値どちらも受け付けるパラメータを使う(`int.TryParse`成功時は列インデックス、
+    失敗時は列名として解釈)が、この層では**列名のみ**に対応する(列インデックスとしての
+    数値文字列は実機のゼロ始まり/1始まり設定`_listIndexService.IsZeroBased`に依存し
+    未確認のため、安全側に倒して対応しない——列名を渡した場合のみ機能する)。
     """
     matches: list[tuple[int, int]] = []
     for row_idx, row in enumerate(table):
-        for col_idx, cell in enumerate(row.values()):
-            if _cell_matches(cell, value_to_find, False, not match_case, match_entire_cell_contents):
+        for col_idx, (col_name, cell) in enumerate(row.items()):
+            if column is not None and col_name != column:
+                continue
+            if _cell_matches(cell, value_to_find, use_regex, not match_case, match_entire_cell_contents):
                 matches.append((row_idx, col_idx))
                 if not all_matches:
                     return matches
