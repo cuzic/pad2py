@@ -41,26 +41,27 @@ VM(UiPath Studio実機)に依存するものと依存しないものを分けて
   - Object Repository(P2 #12)の`.objects/`構造とModern selectorのXAML表現
   - C#式言語プロジェクト(P3 #18)の新Studioでの選択UI有無
 
-## Phase 1: スコープ決定(技術調査ではなく意思決定)
+## Phase 1: スコープ決定(技術調査ではなく意思決定)【決定済み、2026-11-05】
 
 PAD側は段階的にTier1→Tier2→Tier3とアクション範囲を広げたが、UiPathは
 標準アクティビティだけで数百、Marketplace/NuGet込みだと際限がない。
-着手前に明示的に決めるべきこと:
+以下、ユーザーの意思決定により確定:
 
-1. **対象ワークフロー種別**: Sequence/Flowchartのみか、State Machine
-   (2パス参照解決が必要、知見30)も含むか
-2. **対象プロジェクト種別**: Processのみか、Libraryも含むか(Libraryは
-   公開済み`.nupkg`に元の`.xaml`が含まれないという技術的制約があるため
-   要注意、知見28)
-3. **初期カバー対象アクティビティ(Tier1相当)**: 知見で実機確認済みの
-   活動——`Assign`/`If`/`ForEach`/`TryCatch`/`Switch`/`While`/`DoWhile`/
-   `Break`/`Parallel`/`MessageBox`/`HttpClient`(`ui:HttpClient`)/
-   `Excel Application Scope`+`Write Cell`/`Send Outlook Mail Message`/
-   `Click`/`Invoke Workflow File`/`Append Line`/`Read Text File`/
-   `Invoke Code`/`Set To Clipboard`——がそのまま初期候補になる
-4. **競合状況の再確認**(`pad2py_business_context`メモ参照): Robocorp
-   Converter Acceleratorの現在の保守状況、UiPath自身の`uip` CLI/
-   AI-agent向けSkill展開の進捗を、本格着手前に再チェックする価値がある
+1. **対象ワークフロー種別: Sequence/Flowchartのみ**。State Machine
+   (2パス参照解決が必要、知見30)はv1スコープ外とし、Phase 8の「明示的に
+   スコープ外とするもの」に送る
+2. **対象プロジェクト種別: Processのみ**。Library(公開済み`.nupkg`に
+   元の`.xaml`が含まれないという技術的制約、知見28)はv1スコープ外
+3. **初期カバー対象アクティビティ(Tier1相当): 知見で実機確認済みの
+   活動一式**——`Assign`/`If`/`ForEach`/`TryCatch`/`Switch`/`While`/
+   `DoWhile`/`Break`/`Parallel`/`MessageBox`/`HttpClient`
+   (`ui:HttpClient`)/`Excel Application Scope`+`Write Cell`/
+   `Send Outlook Mail Message`/`Click`/`Invoke Workflow File`/
+   `Append Line`/`Read Text File`/`Invoke Code`/`Set To Clipboard`
+
+競合状況の再確認(Robocorp Converter Acceleratorの保守状況、UiPathの
+`uip` CLI/AI-agent向けSkill展開の進捗)は、本格実装着手の判断材料としては
+後回しでよいと判断——今は技術調査(Phase 0)を優先する。
 
 ## Phase 2: ランタイム方針の確認
 
@@ -160,12 +161,15 @@ PAD側の`test_round_trip.py`・`trace_compare.py`相当のものを作る。
 
 ## 次にやること
 
-直近で価値が高く、かつVM非依存で着手できるのは:
-
-1. Phase 1のスコープ決定(ユーザーとの意思決定——Sequence/Flowchartのみか、
-   Tier1アクティビティセットの具体的な中身)
-2. Phase 0の`And`/`Or`変換アルゴリズム設計とセレクタ意味論調査(机上検討+
-   知見としての記録)
+1. **(次の一手として選択済み)セレクタ意味論の調査**: `ui:Click`等の
+   `Selector`属性(`<wnd app='...' cls='...'/><ctrl name='...'
+   role='...'/>`形式)の構文・属性語彙・fuzzy matching/Computer Vision
+   フォールバックの挙動を調査し、pywinautoの検索条件へのマッピング方針
+   (Phase 4の選択肢(a)素朴マッピング or (b)独自パーサー実装)を決める。
+   VM非依存で着手できる部分(公式ドキュメントでの属性語彙確認)と、
+   実機確認が要る部分(fuzzy matchingの実際の挙動)を分けて進める
+2. Phase 0の`And`/`Or`変換アルゴリズム設計(VM非依存、セレクタ調査と並行
+   可能)
 3. Phase 2〜3着手: `dump_daemon`に`uipath_dsl`(仮称)パッケージを新設し、
    最小のXAMLツリーウォーカー(`Sequence`+`Assign`+`MessageBox`程度)を
    `xaml_probe/Main.xaml`で試作するところから始めるのが、PAD側の最初の
