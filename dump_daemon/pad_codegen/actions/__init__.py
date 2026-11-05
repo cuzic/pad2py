@@ -23,12 +23,14 @@ from . import (
     mouse_keyboard,
     pad_datetime,
     pdf,
+    powerpoint,
     scripting,
     text,
     ui_element,
     variables,
     web,
     window,
+    word,
     xml,
 )
 
@@ -51,6 +53,8 @@ _FAMILIES = (
     clipboard,
     pdf,
     excel,
+    word,
+    powerpoint,
 )
 
 

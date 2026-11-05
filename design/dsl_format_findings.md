@@ -1718,3 +1718,5 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 いずれもモジュール接頭辞(`Excel.`/`Word.`/`PowerPoint.`)はdocs-local調査では未確認だった(知見76のAssemblyTitle方式の裏付けが取れていなかった)が、今回の実機確認で**モジュール名そのものがAssemblyTitleとして使われている**ことが確定した(PDFモジュールの`Pdf`のような特別な大小文字の違いは無い)。
 
 **この知見の結論・方針判断**: 知見77の「AutomationIdを直接読む」手法は、キーボード追加や貼り付けを一切せずに**検索語1つでモジュール全体のaction_idカタログを一括取得できる**、最も安価でリスクの低い実機確認手段だと分かった——今後Tier3の新しいモジュールを調査する際は、まずこの一括検索で候補を洗い出し、個別のcodegen結線時に必要なものだけ知見78/79のキーボード追加で追加確認する、という段取りが効率的。このコミット以降で、スコープ内が確認できた`Excel.*`の`pad_codegen`結線を進める(`Word`/`PowerPoint`は別途)。
+
+**追記(同日、後続コミット)**: `Word.*`(5関数)・`PowerPoint.*`(7関数)も`pad_codegen`に結線した。両モジュールともライブCOM専用で元から`pad_action_lib`側が非対応のモード(Wordの`ReadMode`/`WriteMode`のPage/Bookmark系、`MatchWildCards`の既知`True`リテラル)はTODOフォールバックへ委ね、`PowerPoint.MovePowerPointSlide`のクロスプレゼンテーション判定(`SourceInstance`/`DestinationInstance`の同一性)は変数参照である以上codegen時点では判定できないため、呼び出し自体を生成して実行時のNotImplementedErrorに委ねた。これでPDF/Excel/Word/PowerPointのTier3スコープ内アクション全件のaction_id確認・codegen結線が完了した。

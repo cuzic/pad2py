@@ -1469,3 +1469,139 @@ def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo
     tree = build_block_tree(parse_dsl(plain_text_dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Excel.ReadFromExcel" in code
+
+
+def test_generate_python_from_word_full_scope_in_batch_converts_all_actions() -> None:
+    # design/dsl_format_findings.md 知見80: Word.*のaction_idは全て、PADデザイナー自身の
+    # 検索結果TreeItemのAutomationIdを直接読んで実機確認済み。パラメータ名は
+    # docs-local/pad_word_findings.mdのdecompile調査から。
+    dsl = (
+        "Word.LaunchWord LaunchWordMode: Word.LaunchWordMode.NewDocument "
+        "ReadOnly: False Instance=> WordInstance\n"
+        "Word.WriteToWord Instance: WordInstance Text: $'''hello''' "
+        "WriteMode: Word.WriteWordMode.EndOfDocument\n"
+        "Word.ReadFromWord Instance: WordInstance "
+        "ReadMode: Word.ReadWordMode.WholeDocument WordData=> WordData\n"
+        "Word.FindAndReplaceWord Instance: WordInstance TextToFind: $'''a''' "
+        "TextToReplaceWith: $'''b''' AllMatches: True\n"
+        "Word.SaveWord Instance: WordInstance SaveMode: Word.SaveWordMode.Save\n"
+        "Word.CloseWord Instance: WordInstance CloseMode: Word.CloseWordMode.DoNotSave"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import word_actions" in code
+    assert (
+        "WordInstance = word_actions.launch_word(mode='NewDocument', path=None, "
+        "read_only=False)" in code
+    )
+    assert (
+        "word_actions.write_to_word(WordInstance, 'hello', append_new_line=False, "
+        "write_mode='EndOfDocument', bookmark='')" in code
+    )
+    assert (
+        "WordData = word_actions.read_from_word(WordInstance, read_mode='WholeDocument', "
+        "pages='1', bookmark='')" in code
+    )
+    assert (
+        "word_actions.find_and_replace_word(WordInstance, 'a', 'b', all_matches=True, "
+        "match_case=False, match_entire_word=False, match_wild_cards=False)" in code
+    )
+    assert (
+        "word_actions.save_word(WordInstance, save_mode='Save', "
+        "document_format='FromExtension', document_path=None)" in code
+    )
+    assert (
+        "word_actions.close_word(WordInstance, close_mode='DoNotSave', "
+        "document_format='FromExtension', document_path=None)" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_word_unsupported_modes_fall_back_to_todo() -> None:
+    # ページ/ブックマーク系はライブWordのレンダリング/ライブコレクション依存のため
+    # pad_action_lib側がNotImplementedErrorにする——でっち上げたコードを出力せず安全に
+    # TODOへ倒れることを確認する。既知のMatchWildCards=Trueリテラルも同様。
+    page_mode_dsl = (
+        "Word.ReadFromWord Instance: WordInstance ReadMode: Word.ReadWordMode.Page "
+        "WordData=> WordData"
+    )
+    tree = build_block_tree(parse_dsl(page_mode_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Word.ReadFromWord" in code
+
+    bookmark_write_dsl = (
+        "Word.WriteToWord Instance: WordInstance Text: $'''x''' "
+        "WriteMode: Word.WriteWordMode.StartOfBookmark"
+    )
+    tree = build_block_tree(parse_dsl(bookmark_write_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Word.WriteToWord" in code
+
+    wildcard_dsl = (
+        "Word.FindAndReplaceWord Instance: WordInstance TextToFind: $'''a''' "
+        "TextToReplaceWith: $'''b''' MatchWildCards: True"
+    )
+    tree = build_block_tree(parse_dsl(wildcard_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Word.FindAndReplaceWord" in code
+
+
+def test_generate_python_from_powerpoint_full_scope_batch_converts_all_actions() -> None:
+    # design/dsl_format_findings.md 知見80: PowerPoint.*のaction_idも同じ経路で実機確認済み。
+    # パラメータ名はdocs-local/pad_powerpoint_findings.mdのdecompile調査から。
+    dsl = (
+        "PowerPoint.LaunchPowerPoint LaunchPowerPointMode: "
+        "PowerPoint.LaunchPowerPointMode.NewPresentation ReadOnly: False "
+        "Instance=> PPTInstance\n"
+        "PowerPoint.AddPowerPointSlide Instance: PPTInstance "
+        "AddSlidePosition: PowerPoint.AddSlidePosition.LastSlide SlideIndex=> NewSlideIndex\n"
+        "PowerPoint.WriteToPowerPoint Instance: PPTInstance Text: $'''hello''' "
+        "WriteMode: PowerPoint.WriteMode.FirstSlide\n"
+        "PowerPoint.ReadFromPowerPoint Instance: PPTInstance "
+        "ReadMode: PowerPoint.ReadMode.WholePresentation PowerPointData=> PPTData\n"
+        "PowerPoint.DeletePowerPointSlide Instance: PPTInstance "
+        "DeleteSlidePosition: PowerPoint.DeleteSlidePosition.LastSlide\n"
+        "PowerPoint.MovePowerPointSlide SourceInstance: PPTInstance SourceSlidePosition: 1 "
+        "DestinationInstance: PPTInstance DestinationSlidePosition: 2\n"
+        "PowerPoint.SavePowerPoint Instance: PPTInstance "
+        "SaveMode: PowerPoint.SaveMode.Save\n"
+        "PowerPoint.ClosePowerPoint Instance: PPTInstance "
+        "CloseMode: PowerPoint.CloseMode.DoNotSave"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import powerpoint_actions" in code
+    assert (
+        "PPTInstance = powerpoint_actions.launch_power_point(mode='NewPresentation', "
+        "path=None, read_only=False)" in code
+    )
+    assert (
+        "NewSlideIndex = powerpoint_actions.add_power_point_slide(PPTInstance, "
+        "add_slide_position='LastSlide', slide_position=1)" in code
+    )
+    assert (
+        "powerpoint_actions.write_to_power_point(PPTInstance, 'hello', "
+        "append_new_line=False, write_mode='FirstSlide', slide_position=1)" in code
+    )
+    assert (
+        "PPTData = powerpoint_actions.read_from_power_point(PPTInstance, "
+        "read_mode='WholePresentation', slides='1')" in code
+    )
+    assert (
+        "powerpoint_actions.delete_power_point_slide(PPTInstance, "
+        "delete_slide_position='LastSlide', slide_position=1)" in code
+    )
+    assert (
+        "powerpoint_actions.move_power_point_slide(PPTInstance, 1, PPTInstance, 2)" in code
+    )
+    assert (
+        "powerpoint_actions.save_power_point(PPTInstance, save_mode='Save', "
+        "document_format='FromExtension', document_path=None)" in code
+    )
+    assert (
+        "powerpoint_actions.close_power_point(PPTInstance, close_mode='DoNotSave', "
+        "document_format='FromExtension', document_path=None)" in code
+    )
+    assert "# TODO" not in code

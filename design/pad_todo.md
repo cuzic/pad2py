@@ -129,9 +129,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `GetFirstFreeColumnRow`/`GetFirstFreeRowOnColumn`の14件全て)も完了した
   (`Instance`参照はPAD側では不透明参照だが、Python側では他の変数参照と同じなので
   特別な結線は不要だった)。テスト用フロー`tier3_discover`は保存せず破棄済み。
-  残課題: `Word.*`/`PowerPoint.*`はaction_id確認済みだがcodegen結線はまだ(🖥️不要、
-  💻のみで進められる——パラメータ名の確認にはdocs-local調査+decompileの追加確認が
-  必要な場合がある)。
+  ✅ **`Word.*`/`PowerPoint.*`のcodegen結線も完了**(🖥️不要、💻のみ):
+  `docs-local/pad_word_findings.md`/`pad_powerpoint_findings.md`のパラメータ調査にもとづき、
+  `word_actions`の5関数(`launch_word`/`save_word`/`close_word`/`read_from_word`/
+  `write_to_word`/`find_and_replace_word`)・`powerpoint_actions`の7関数
+  (`launch_power_point`/`save_power_point`/`close_power_point`/`read_from_power_point`/
+  `write_to_power_point`/`add_power_point_slide`/`delete_power_point_slide`/
+  `move_power_point_slide`)を`dump_daemon/pad_codegen/actions/word.py`/`powerpoint.py`に
+  結線した。ライブCOM専用で未対応のモード(Word: ReadMode/WriteModeのPage/Bookmark系、
+  既知の`MatchWildCards=True`リテラル)は安全にTODOフォールバックへ委ねた。
+  **これでPDF/Excel/Word/PowerPointの全Tier3スコープ内アクションのaction_id確認・
+  codegen結線が完了**(残るTier3領域は無し)。
 
 ## C. 構造的・運用上の課題
 

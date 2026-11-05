@@ -103,6 +103,8 @@ def generate_python(
         "xml_actions",
         "pdf_actions",
         "excel_actions",
+        "word_actions",
+        "powerpoint_actions",
         "cmd_actions",
         "clipboard_actions",
     ):
