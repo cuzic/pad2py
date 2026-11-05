@@ -13,8 +13,9 @@ PADのDataTable/List系アクションの多くは対象コレクションを`[I
 (`pad_action_lib.expr_runtime.pad_equal()`に共通実装、`pad_codegen`側もこれを使うよう
 結線済み)。`FilterDataTableAction`のフィルタ条件(`FilterParameters`)のDataTableスキーマ
 (`COLUMN`/`OPERATOR`/`VALUE`/`RULE`列)は知見90でdecompile+実機確認済みのため結線済み
-(`filter_datatable()`)。`JoinDataTableAction`の結合条件スキーマは同じ手法で続けて
-調査できる見込みだが本モジュールでは依然未確認のため未実装のまま残す。
+(`filter_datatable()`)。`JoinDataTableAction`の結合条件(`JoinParameters`)のDataTable
+スキーマ(`"COLUMN 1"`/`OPERATOR`/`"COLUMN 2"`列)も知見91で同じ手法(decompile+実機
+確認)で判明したため結線済み(`join_datatable()`)。
 """
 from __future__ import annotations
 
@@ -356,10 +357,90 @@ def filter_datatable(table: DataTable, conditions: DataTable, match_case: bool =
     return [dict(row) for row in table if row_matches(row)]
 
 
-def join_datatable(left: DataTable, right: DataTable, join_type: str = "Inner") -> DataTable:
-    raise NotImplementedError(
-        "JoinDataTableAction's join-parameter DataTable schema has not been read; not implemented"
-    )
+def _join_as_number(value: object) -> int | float | None:
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    return None
+
+
+def _join_condition_matches(row1: Row, row2: Row, condition: Row) -> bool:
+    column1 = str(condition.get("COLUMN 1"))
+    column2 = str(condition.get("COLUMN 2"))
+    operator = str(condition.get("OPERATOR"))
+    a, b = row1.get(column1), row2.get(column2)
+    if operator == "Equal":
+        return _pad_compare_equal(a, b)
+    if operator == "NotEqual":
+        return not _pad_compare_equal(a, b)
+    na, nb = _join_as_number(a), _join_as_number(b)
+    if na is not None and nb is not None:
+        a, b = na, nb
+    if operator == "GreaterThan":
+        return a > b  # type: ignore[operator]
+    if operator == "GreaterThanOrEqual":
+        return a >= b  # type: ignore[operator]
+    if operator == "LessThan":
+        return a < b  # type: ignore[operator]
+    if operator == "LessThanOrEqual":
+        return a <= b  # type: ignore[operator]
+    raise ValueError(f"Unsupported JoinDataTable operator: {operator!r}")
+
+
+def join_datatable(
+    first: DataTable, second: DataTable, join_parameters: DataTable, join_operation: str = "Inner"
+) -> DataTable:
+    """design/dsl_format_findings.md 知見91で実機確認済みの出力契約。
+
+    `join_parameters`(`JoinParameters`)は`"COLUMN 1"`/`OPERATOR`/`"COLUMN 2"`列を持つ
+    DataTable(decompileした`JoinDataTableExtensions`/`JoinDataTableAction`から判明、
+    `Equal`での`Inner`/`Left`/`Full`を実機のRun実行+ファイル書き出しで検証済み)。
+    全条件行はAND結合(`FilterParameters`の`RULE`に相当する列は無い)。`OPERATOR`は
+    `Equal`/`NotEqual`のみ知見85/88の`pad_equal()`(クロス型の数値文字列同値判定)を
+    使い、順序比較系は数値変換できる場合のみ数値として比較する(decompile済みソースが
+    `ComparisonCalculator.Compare`に委譲している箇所を`expr_runtime`の既存ヘルパーで
+    再現、個別の実機検証はしていない)。両テーブルで列名が重複する場合、2番目の
+    テーブル側の列名に`" (2)"`を付けて区別する(実機確認済み)。`Left`/`Full`の
+    不一致側は`None`で埋める(CSV変換時は空文字列として書き出される、実機確認済み)。
+    """
+    first_columns = list(first[0].keys()) if first else []
+    second_columns = list(second[0].keys()) if second else []
+    renamed_second_columns = [f"{c} (2)" if c in first_columns else c for c in second_columns]
+
+    def rows_match(row1: Row, row2: Row) -> bool:
+        return all(_join_condition_matches(row1, row2, cond) for cond in join_parameters)
+
+    def combine(row1: Row | None, row2: Row | None) -> Row:
+        result: Row = {col: (row1.get(col) if row1 is not None else None) for col in first_columns}
+        for col, renamed in zip(second_columns, renamed_second_columns):
+            result[renamed] = row2.get(col) if row2 is not None else None
+        return result
+
+    result: DataTable = []
+    if join_operation in ("Inner", "Left", "Full"):
+        for row1 in first:
+            matched = False
+            for row2 in second:
+                if rows_match(row1, row2):
+                    result.append(combine(row1, row2))
+                    matched = True
+            if not matched and join_operation != "Inner":
+                result.append(combine(row1, None))
+        if join_operation == "Full":
+            for row2 in second:
+                if not any(rows_match(row1, row2) for row1 in first):
+                    result.append(combine(None, row2))
+    else:
+        raise ValueError(f"Unsupported JoinDataTable join_operation: {join_operation!r}")
+    return result
 
 
 def retrieve_datatable_column_into_list(table: DataTable, column: str) -> list:

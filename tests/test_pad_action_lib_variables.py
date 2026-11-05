@@ -181,9 +181,46 @@ def test_merge_datatables() -> None:
     assert target == [{"a": 1}, {"a": 2}]
 
 
-def test_join_datatable_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        va.join_datatable([{"a": 1}], [{"a": 1}])
+def test_join_datatable_inner_equal_matches() -> None:
+    # design/dsl_format_findings.md 知見91(実機確認済み)。
+    t1 = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}]
+    t2 = [{"Name": "Alice", "City": "NYC"}, {"Name": "Carol", "City": "LA"}]
+    params = [{"COLUMN 1": "Name", "OPERATOR": "Equal", "COLUMN 2": "Name"}]
+    assert va.join_datatable(t1, t2, params, join_operation="Inner") == [
+        {"Name": "Alice", "Age": "30", "Name (2)": "Alice", "City": "NYC"},
+    ]
+
+
+def test_join_datatable_left_pads_unmatched_first_rows_with_none() -> None:
+    t1 = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}]
+    t2 = [{"Name": "Alice", "City": "NYC"}, {"Name": "Carol", "City": "LA"}]
+    params = [{"COLUMN 1": "Name", "OPERATOR": "Equal", "COLUMN 2": "Name"}]
+    assert va.join_datatable(t1, t2, params, join_operation="Left") == [
+        {"Name": "Alice", "Age": "30", "Name (2)": "Alice", "City": "NYC"},
+        {"Name": "Bob", "Age": "25", "Name (2)": None, "City": None},
+    ]
+
+
+def test_join_datatable_full_also_includes_unmatched_second_rows() -> None:
+    t1 = [{"Name": "Alice", "Age": "30"}, {"Name": "Bob", "Age": "25"}]
+    t2 = [{"Name": "Alice", "City": "NYC"}, {"Name": "Carol", "City": "LA"}]
+    params = [{"COLUMN 1": "Name", "OPERATOR": "Equal", "COLUMN 2": "Name"}]
+    assert va.join_datatable(t1, t2, params, join_operation="Full") == [
+        {"Name": "Alice", "Age": "30", "Name (2)": "Alice", "City": "NYC"},
+        {"Name": "Bob", "Age": "25", "Name (2)": None, "City": None},
+        {"Name": None, "Age": None, "Name (2)": "Carol", "City": "LA"},
+    ]
+
+
+def test_join_datatable_no_conditions_is_cartesian_product() -> None:
+    # JoinDataTableActionはFilterDataTableと違い空条件での早期returnが無く、
+    # all()が空リストに対してVacuous-Trueになる(PAD側の.All()と一致)ため直積になる。
+    t1 = [{"a": 1}, {"a": 2}]
+    t2 = [{"b": 10}]
+    assert va.join_datatable(t1, t2, []) == [
+        {"a": 1, "b": 10},
+        {"a": 2, "b": 10},
+    ]
 
 
 def test_filter_datatable_no_conditions_returns_copy() -> None:

@@ -1937,3 +1937,23 @@ A/B節のRDP必須項目を再点検した結果、`FindOrReplaceInDataTable.Fin
 **修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`filter_datatable(table, conditions, match_case=True)`を実装した。論理演算子の優先順位(ANDがORより強く結合)に従い、`RULE: Or`が現れた位置でOR区切りのAND-groupに分割してから評価する(単純な左から右への畳み込みではない)。`Equal`/`NotEqual`の型不一致時の挙動もdecompileの`flag`判定を忠実に再現した。`pad_codegen/actions/variables.py`の`Variables.FilterDataTable`を結線し、`FilterParameters`が知見72の「一度も編集されていない」空バックティック文字列(`` `` ``→Pythonの`""`)の場合は`[]`に読み替える(`FilterDataTableAction.Execute()`自身も`FilterParameters.Rows.Count == 0`で元のテーブルをそのまま返すため、この既定動作と一致する)。`codegen_coverage.py`: 177/202→178/202(88%)。
 
 **留保事項**: 実機で直接検証したのは`Equal`・`Contains`・`RULE: And`の組み合わせのみ。残り13種の演算子(`GreaterThan`等の順序比較・`IsEmpty`/`IsBlank`系・`StartsWith`等)と`RULE: Or`(OR-group分割)自体はdecompileしたソースコードに忠実な実装であり、ソースの正確性自体は`Equal`/`Contains`の一致で裏付けられたが、個別には実機未検証のまま。`Variables.JoinDataTable`も同じDLL内に`JoinDataTableExtensions`(`TryGetJoinFirstColumnName`等)が見つかっており、同じ2段階アプローチ(decompile→Run検証)で次に調査できる見込みだが、`JoinDataTableAction`自体はFilterより実装が複雑(複合インデックスによる最適化パス・Left/Full結合でのnull埋め・重複列名の` (2)`リネーム等)なため、本tickでは着手しなかった。
+
+## 91. 知見90と同じ手法(decompile+Run実行検証)を`Variables.JoinDataTable`にも適用——`JoinParameters`スキーマを特定し、`Inner`/`Left`/`Full`全3種を実機確認
+
+知見90で確立した「decompileでスキーマを特定→知見81のRun実行手法でTier1確認済みアクションだけから実際にそのスキーマを構築して検証」という2段階アプローチを、同じDLL内に見つかっていた`JoinDataTableAction`/`JoinDataTableExtensions`にも適用した。
+
+**decompile結果**: `JoinParameters`は`"COLUMN 1"`/`OPERATOR`/`"COLUMN 2"`の3列を持つDataTable(`FilterParameters`の`COLUMN`と異なり**列名に半角スペースを含む**点に注意)。`OPERATOR`は`JoinComparisonOperator`(`Equal`/`NotEqual`/`GreaterThan`/`GreaterThanOrEqual`/`LessThan`/`LessThanOrEqual`の6種、`FilterConditionOperator`の文字列系演算子は無し)。全条件行はAND結合(`FilterParameters`の`RULE`列に相当するものは存在しない)。`RowsMatch()`が`ComparisonCalculator.I.Compare`(知見85/88で確認済みの同じ比較エンジン)に委譲しているため、`Equal`/`NotEqual`はクロス型の数値文字列同値判定も効くと推測できる。`BuildEmptyResultTable()`で両テーブルの列名が重複する場合、2番目のテーブル側の列名に`" (2)"`を付けて区別する。`Left`/`Full`結合の不一致側は`null`で埋める。
+
+**実機検証**: `T1`(Name/Age列、Alice/30・Bob/25)と`T2`(Name/City列、Alice/NYC・Carol/LA)を構築し、`JoinParameters`(`COLUMN 1`="Name" `OPERATOR`="Equal" `COLUMN 2`="Name")で`Inner`/`Left`/`Full`の3パターンを実行した。
+
+| JoinOperation | 結果(CSV) | 解釈 |
+| --- | --- | --- |
+| `Inner` | `Name,Age,Name (2),City` / `Alice,30,Alice,NYC` | 一致するAliceのみ、列名重複が`Name (2)`に |
+| `Left` | 上記 + `Bob,25,,`(空セル) | T1の不一致行(Bob)もNoneパディングで残る |
+| `Full` | 上記 + `,,Carol,LA`(T1側が空セル) | T2の不一致行(Carol)もT1側を空にして追加 |
+
+3パターンとも一切のエラー無く実行でき、decompileで予測した通りの結果(列名の`" (2)"`リネーム・null埋めの空セル化を含む)と完全に一致した。
+
+**修正内容**: `dump_daemon/pad_action_lib/variables_actions.py`に`join_datatable(first, second, join_parameters, join_operation="Inner")`を実装した。`Equal`/`NotEqual`は知見85/88の`pad_equal()`、順序比較系は数値変換できる場合のみ数値として比較する(decompileのComparisonCalculator委譲を再現、個別の実機検証は`Equal`のみ)。`pad_codegen/actions/variables.py`の`Variables.JoinDataTable`を結線し、`JoinParameters`が空バックティック文字列の場合は`[]`に読み替える——`FilterDataTable`と違い`JoinDataTableAction.Execute()`には早期returnが無く、空条件での`all()`判定がPAD側の`.All()`と同じVacuous-True(直積/cartesian product)になるため、この読み替えは実機の挙動と一致する(知見90の「未設定なら元のテーブルのまま」とは異なる意味論)。`codegen_coverage.py`: 178/202→179/202(89%)。
+
+**留保事項**: 実機で直接検証したのは`Equal`のみ。残り5種の順序比較演算子はdecompileしたソースコードに忠実な実装だが個別には実機未検証。これで`pad_todo.md`のA節に長年残っていた「`FilterDataTable`/`JoinDataTable`のスキーマ未確認」というブロッカーは両方解消された。

@@ -23,11 +23,12 @@ tier1_variables_list_datatable_batch3.txt`・`tier1_text_variables_batch1.txt`�
 `RULE`列)は知見90でdecompile(`FilterDataTableUtilities.cs`)+実機のRun実行による
 検証(`Equal`の2条件AND・`Contains`)で確認済みのため結線した(`filter_datatable()`)。
 
+`Variables.JoinDataTable`の`JoinParameters`スキーマ(`"COLUMN 1"`/`OPERATOR`/
+`"COLUMN 2"`列、空白を含む列名に注意)は知見91で同じ手法(decompile+`Inner`/`Left`/
+`Full`の実機Run実行検証)で確認済みのため結線した(`join_datatable()`)。両テーブルの
+列名重複時は2番目のテーブル側に`" (2)"`を付けて区別する実機挙動も確認済み。
+
 以下は意図的に未対応としてフォールバックに委ねる(でっち上げを避ける):
-- `Variables.JoinDataTable`: 結合条件のDataTableスキーマが未確認——
-  コードを生成すると実行時に必ず壊れる(`FilterDataTable`と同じdecompile手法で
-  次回調査できる見込み、`JoinDataTableExtensions.TryGetJoinFirstColumnName`等が
-  手がかり)。
 - `Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator`の`ReadFieldsAsText:
   False`(数値らしき文字列を実際の数値型に変換すると推測されるが未確認)の場合:
   `pad_action_lib.datatable`は常に文字列のまま保持する(`ReadFieldsAsText: True`相当)
@@ -206,6 +207,24 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}{node.output_var} = variables_actions.filter_datatable("
             f"{table}, {filter_parameters}, match_case={match_case})"
+        ]
+
+    if action_id == "Variables.JoinDataTable":
+        first = safe_render(p.get("FirstDataTable"))
+        second = safe_render(p.get("SecondDataTable"))
+        join_operation = enum_last(p.get("JoinOperation"))
+        # 知見91: 空バックティック文字列(知見72)は「結合条件が0件」を意味し、
+        # JoinDataTableAction.Execute()にはFilterDataTableのような早期returnが無いため
+        # (全条件をAND判定するall()の空リストに対する挙動がPAD側のVacuous-Trueな
+        # .All()と一致する)、join_datatable()へそのまま`[]`として渡せば実機と同じ
+        # 直積(cartesian product)になる。
+        raw_join_parameters = p.get("JoinParameters")
+        join_parameters = "[]" if raw_join_parameters == "" else safe_render(raw_join_parameters)
+        if None in (first, second, join_operation, join_parameters) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.join_datatable("
+            f"{first}, {second}, {join_parameters}, join_operation={join_operation!r})"
         ]
 
     if action_id == "Variables.DeleteEmptyRowsFromDataTable":

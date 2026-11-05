@@ -106,8 +106,11 @@ def test_variables_list_datatable_batch3_converts_except_unverified_engines() ->
     assert (
         "FilteredDataTable = variables_actions.filter_datatable('sample', [], match_case=True)" in code
     )
-    # Deliberately unconverted: unverified-schema actions.
-    assert _todo("Variables.JoinDataTable") in code
+    # JoinParametersが空バックティック文字列(未設定)のため[]に読み替えて結線される(knowledge 91)。
+    assert (
+        "JoinedDataTable = variables_actions.join_datatable('sample', 'sample', [], "
+        "join_operation='Inner')" in code
+    )
     # ReadFieldsAsText: False(数値コレーション挙動が未確認)のため依然TODO(knowledge 84)。
     assert _todo("Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator") in code
 
