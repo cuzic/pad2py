@@ -55,6 +55,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   重複実装もこちらへ統一した。
 - [ ] 🖥️ UI要素系の残り2条件アクション`UIAutomation.IfImage.ExistsOnScreen`/
   `UIAutomation.IfWindowContains.WindowContainsElement`のPython変換ロジック(セレクタ/画像照合の意味論)。
+  🔍 **decompileで確認(知見90/91と同じDLL群から`UIAutomation.Actions.dll`を追加取得)**:
+  知見89〜91の「decompileでスキーマ特定→Tier1アクションだけで構築してRun検証」という
+  手法がここには効かないと判明——`IfImageAction.Images`は`List<PngEncodedImage>`
+  (実際にスクリーンキャプチャで切り出したPNGバイナリそのもの、paste/Tier1アクションの
+  組み合わせでは作れない)、`WindowContainsElement`の`Control`は既知の`UIControl`
+  (知見38の`appmask['<表示名>']`名前参照と同じ型)で、ブロッカーの正体は新しいスキーマ
+  不明ではなく、既存の「UI要素リポジトリの実セレクタ取得にはRDPか2FA経由のクラウド保存が
+  必要」という古い既知の制約(知見38/39/42)そのもの。この2項目は真にRDP必要で確定。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の
