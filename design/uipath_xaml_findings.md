@@ -3125,6 +3125,40 @@ Booleanへ変換可能な型なら受理し、評価前にBooleanへ変換する
 ヘルパー追加が複数の既知の限界を同時に解消する好例になった。知見43・
 44〜62の系統点検は、現時点で既知の課題を全て解消した状態になった。
 
+## 63. `CBool`のリテラル文字列判定(`_vb_cbool_of_string_literal`)が桁区切り文字列を受理せず不整合だったバグを修正(VM不使用)
+
+知見62で`CBool`の非リテラルフォールバックを`_vb_bool()`へ統一した際、
+念のため対になるコード生成時専用の`_vb_cbool_of_string_literal()`
+(リテラル文字列専用の別実装)も見直したところ、桁区切り文字列の扱いに
+不整合が見つかった。
+
+**確定した内容**: `_vb_bool()`(知見60)は`float(normalized.replace(",",
+""))`という形でコンマを除去してから数値変換しており、これは`CDbl`/
+`CInt`/`CBool`いずれの文字列引数も内部で`ParseDouble`
+(`NumberStyles.AllowThousands`、知見52)を経由するという確定済みの
+事実と整合している。一方`_vb_cbool_of_string_literal()`
+(コード生成時にリテラル文字列だけを特別扱いする別実装、知見42・43)は
+素の`float(text)`のままコンマを除去していなかったため、`CBool("1,234")`
+のような桁区切り文字列**リテラル**だけが`ValueError`→
+`NotImplementedError`(コード生成自体の失敗)になっていた——同じ値を
+変数経由(`CBool(someVar)`、`someVar = "1,234"`)で渡せば`_vb_bool()`
+が正しく処理できるのに、リテラルとして直接書いた場合だけ失敗する
+という不整合だった。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`):
+`_vb_cbool_of_string_literal()`の数値変換部分も`_vb_bool()`と同じ
+`.replace(",", "")`を適用し、規則を揃えた。
+
+`tests/test_uipath_codegen.py`の
+`test_cbool_string_literal_matches_vb_semantics_not_python_truthiness`
+に`('CBool("1,234")', True)`を追加。UiPath関連テスト全198件通過。
+
+**この知見で確定したこと**: 知見62の修正を見直す過程で、対になる
+コード生成時専用ロジックとの不整合という、より小さいが実在するバグが
+もう1件見つかった——「ランタイム版ヘルパーを直したら、対になる
+コード生成時専用ロジックも同じ規則になっているか確認する」という、
+今回新たに得られた教訓。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

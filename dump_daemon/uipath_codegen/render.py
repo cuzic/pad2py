@@ -450,7 +450,13 @@ def _vb_cbool_of_string_literal(text: str) -> bool:
     if normalized == "false":
         return False
     try:
-        return float(text) != 0
+        # 桁区切りのコンマは実際に受理される(`ParseDouble`の
+        # `NumberStyles.AllowThousands`、知見52で確定)——`_vb_bool`
+        # (知見60)側のランタイム版は既にコンマを除去しているため、
+        # コード生成時のこちらのリテラル専用判定でも同じ規則に揃える
+        # (知見63、揃えないと`CBool("1,234")`のようなリテラルだけが
+        # 不要に`NotImplementedError`になってしまう不整合だった)。
+        return float(normalized.replace(",", "")) != 0
     except ValueError:
         raise NotImplementedError(
             f"CBool({text!r}): not 'True'/'False' or numeric — VB would raise "

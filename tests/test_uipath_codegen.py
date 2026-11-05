@@ -423,6 +423,11 @@ def test_cint_matches_dotnet_runtime_source_for_nothing_and_thousands(
         ('CBool("False")', False),
         ('CBool("0")', False),
         ('CBool("1")', True),
+        # 知見63: 桁区切りのコンマはリテラル文字列経由でも受理される
+        # (`_vb_bool()`経由の非リテラルと規則を揃えた)——以前は
+        # `float()`がコンマで`ValueError`になり`NotImplementedError`に
+        # なっていた。
+        ('CBool("1,234")', True),
     ],
 )
 def test_cbool_string_literal_matches_vb_semantics_not_python_truthiness(

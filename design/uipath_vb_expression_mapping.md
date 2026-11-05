@@ -42,7 +42,7 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | 三項演算子 `If(cond, whenTrue, whenFalse)` | 同上 | `whenTrue if _vb_bool(cond) else whenFalse`(2026-11-05修正、知見61参照——`cond`はBooleanへの暗黙変換が必要、下記「注意点」参照) |
 | `CInt(x)` | `[... & CStr(CInt("5")) & ...]`(知見36、実機コンパイル確認) | `round(_vb_cdbl(x))`(2026-11-05修正、知見42・53参照——VBの`CInt`は銀行丸め/round-half-to-even(知見42)に加え、`Nothing`→`0`・桁区切り文字列・`Boolean`→`-1`も`CDbl`と同じ変換を内部で使う(知見53、.NETランタイム本体のソースで確定)ため`_vb_cdbl()`経由にする) |
 | `CDbl(x)` | 同上 | `_vb_cdbl(x)`(2026-11-05修正、知見52参照——.NETランタイム本体のソース(`Conversions.vb`)で確定。`Nothing`→`0`、桁区切り文字列(`"1,234.5"`)を受理、`Boolean`は`True→-1`) |
-| `CBool(x)` | 同上 | 引数が文字列リテラルならコード生成時に`"True"`/`"False"`(大文字小文字無視)か数値として確定済みの`True`/`False`を埋め込む(2026-11-05修正、知見42参照——Pythonの`bool(文字列)`は空文字列以外は常に`True`になり食い違う。例: `bool("False")`は`True`)。リテラル以外(変数参照等)は`_vb_bool(x)`(2026-11-05修正、知見62参照——知見60・61の`_vb_bool()`を再利用して以前の既知の限界を解消) |
+| `CBool(x)` | 同上 | 引数が文字列リテラルならコード生成時に`"True"`/`"False"`(大文字小文字無視)か数値(桁区切り文字列も受理、知見63)として確定済みの`True`/`False`を埋め込む(2026-11-05修正、知見42・63参照——Pythonの`bool(文字列)`は空文字列以外は常に`True`になり食い違う。例: `bool("False")`は`True`)。リテラル以外(変数参照等)は`_vb_bool(x)`(2026-11-05修正、知見62参照——知見60・61の`_vb_bool()`を再利用して以前の既知の限界を解消) |
 | `IsNothing(x)` | 同上 | `x is None` |
 | 文字列補間 `$"...{expr}..."` | `[$"value={result}-end"]`(知見36、実機コンパイル確認——`{`/`}`含めそのまま`[...]`内に直列化される) | f-string `f"...{expr}..."` |
 | `String.IsNullOrEmpty(x)` | `[CStr(String.IsNullOrEmpty("")) & ...]`(知見36、実機コンパイル確認) | `not x`(ただし空白のみの文字列の扱いに差——`String.IsNullOrWhiteSpace`との混同に注意) |
