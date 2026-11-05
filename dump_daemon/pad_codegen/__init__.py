@@ -18,6 +18,7 @@ from .actions import generate_action
 from .actions.conditions import render_if_window_condition
 from .actions.wait import generate as generate_wait_action
 from .context import CodegenContext
+from .error_tags import resolve_error_tag
 from .render import INDENT, render_condition, render_text_template, render_value
 from ..pad_dsl import (
     ActionRecord,
@@ -44,6 +45,7 @@ from ..pad_dsl import (
     SwitchNode,
     WaitActionRecord,
 )
+from ..pad_dsl.types import OnErrorArmHeader
 from ..control_repository.types import ControlRepositoryEntry
 
 __all__ = [
@@ -234,7 +236,7 @@ def _generate_switch(node: SwitchNode, indent: int, ctx: CodegenContext) -> list
 
 
 def _generate_guarded(node: GuardedNode, indent: int, ctx: CodegenContext) -> list[str]:
-    """`GuardedNode`(`ON ERROR`/`ON BLOCK ERROR`で保護された文) → `try`/`except Exception`。
+    """`GuardedNode`(`ON ERROR`/`ON BLOCK ERROR`で保護された文) → `try`/`except`。
 
     design/dsl_format_findings.md 知見34で実機確認したのは「All errors (default)」
     (名前無しcatch-all、1アームのみ)に本体アクションを追加し「Continue flow run」を選んだ
@@ -243,29 +245,46 @@ def _generate_guarded(node: GuardedNode, indent: int, ctx: CodegenContext) -> li
     複数アームが区切り無しに連続しうることも実機確認した。
 
     名前付きケース(例: `RunPythonScriptError`)は、PADの各アクションごとに固定の文字列タグで
-    あり、.NET/Pythonの例外**型**への対応表という発想自体が実態と違うことが確認できた。
-    しかも`RunPythonScript`に限って言えば、そのタグが実際に使われるのはエージェントの
-    クラッシュ・Pythonパス不正等の**インフラ的な失敗のみ**で、ユーザースクリプト自身の
-    実行時エラーは`actions.scripting`側で既に空文字列化して吸収しており(呼び出し元に
-    伝播しない、確認済みの挙動)、そもそも`except`の型指定が要らない。しかし`GuardedNode`が
-    保護する対象はRunPythonScriptに限らず任意の文であり、他のアクションがどのタグをどの
-    条件で使うかを網羅的に確認したわけではないため、複数アームや名前付きケースを安易に
-    `except`の型指定に変換する一般的な対応はまだ見送る——1アームかつ名前無しcatch-allの
-    場合のみ変換し、それ以外は保護対象の文だけ出力して`# TODO`を残す。`node.node`が
-    `BlockNode(BlockRecord)`の場合(知見40の`ON BLOCK ERROR`)も構造は全く同じなので、
-    このロジックをそのまま流用できる。
+    あり、.NET/Pythonの例外**型**への対応表という発想自体が実態と違うことが確認できた。しかし
+    知見73の結線により、`pad_action_lib`の各モジュールはこのタグ名と同じクラス名で
+    `PadActionError`を継承した例外を実際に投げるようになった——つまり、タグ名がそのまま
+    Pythonの例外クラス名として実在する場合は、でっち上げではなく確認済みの対応関係として
+    `except <そのクラス>:`に変換できる(`error_tags.resolve_error_tag()`、複数ファミリーが
+    同名タグを独立に持つ場合は全てをタプルで広く捕捉)。名前付きアームが1つでも未知のタグ
+    (`pad_action_lib`のスコープ外、例: `Scripting`系)を使っている場合は、全アームを安全に
+    `# TODO`へ丸ごとフォールバックする(部分的にだけ変換すると、保護範囲が歯抜けになり
+    誤解を招くため)。`node.node`が`BlockNode(BlockRecord)`の場合(知見40の`ON BLOCK ERROR`)も
+    構造は全く同じなので、このロジックをそのまま流用できる。
     """
     prefix = INDENT * indent
-    if len(node.on_error.arms) == 1 and node.on_error.arms[0][0].case_name is None:
-        handler_body = node.on_error.arms[0][1]
-        lines = [f"{prefix}try:"]
-        lines.extend(_generate_node(node.node, indent + 1, ctx))
-        lines.append(f"{prefix}except Exception:")
-        lines.extend(_ensure_nonempty_suite(_generate_block_body(handler_body, indent + 1, ctx), indent + 1))
+    except_clauses = _resolve_except_clauses(node.on_error.arms)
+    if except_clauses is None:
+        lines = list(_generate_node(node.node, indent, ctx))
+        lines.append(f"{prefix}# TODO: ON ERROR/ON BLOCK ERROR handling not converted (named/multiple error cases)")
         return lines
-    lines = list(_generate_node(node.node, indent, ctx))
-    lines.append(f"{prefix}# TODO: ON ERROR/ON BLOCK ERROR handling not converted (named/multiple error cases)")
+    lines = [f"{prefix}try:"]
+    lines.extend(_generate_node(node.node, indent + 1, ctx))
+    for except_expr, handler_body in except_clauses:
+        lines.append(f"{prefix}except {except_expr}:")
+        lines.extend(_ensure_nonempty_suite(_generate_block_body(handler_body, indent + 1, ctx), indent + 1))
     return lines
+
+
+def _resolve_except_clauses(
+    arms: list[tuple[OnErrorArmHeader, list[Node]]],
+) -> list[tuple[str, list[Node]]] | None:
+    """各アームの`case_name`を`except`節の型表現へ解決する。1つでも未知のタグがあれば`None`。"""
+    clauses: list[tuple[str, list[Node]]] = []
+    for header, body in arms:
+        if header.case_name is None:
+            clauses.append(("Exception", body))
+            continue
+        refs = resolve_error_tag(header.case_name)
+        if refs is None:
+            return None
+        expr = refs[0] if len(refs) == 1 else f"({', '.join(refs)})"
+        clauses.append((expr, body))
+    return clauses
 
 
 def _generate_loop_block(node: BlockNode, indent: int, ctx: CodegenContext) -> list[str]:

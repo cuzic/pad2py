@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -661,9 +662,10 @@ def test_generate_python_renders_guarded_node_as_try_except() -> None:
 
 def test_generate_python_leaves_multi_arm_on_error_as_todo() -> None:
     # design/dsl_format_findings.md 知見36(実機確認済み): 名前付きケース+catch-allが
-    # 区切り無しに連続しうる。どのPAD内部エラーケース名がどのPython例外型に対応するか
-    # 分からないため、複数アーム・名前付きケースはでっち上げず`# TODO`に倒す——保護対象の
-    # 文自体は(try/exceptでラップせず)普通に出力する。
+    # 区切り無しに連続しうる。`RunPythonScriptError`は`pad_action_lib`のスコープ外
+    # (Scripting系)のタグなので対応する例外クラスが無く、1つでも未知のタグがあると
+    # 全アームを安全に`# TODO`へ丸ごと倒す(下の`test_generate_python_converts_named_on_error_arm...`
+    # 系との対比——既知のタグなら実際に`except`節へ変換できる)。
     dsl = (
         "SET Result TO $'''a'''\n"
         "ON ERROR RunPythonScriptError\n"
@@ -677,6 +679,82 @@ def test_generate_python_leaves_multi_arm_on_error_as_todo() -> None:
     compile(code, "<generated>", "exec")
     assert "Result = 'a'" in code
     assert "# TODO: ON ERROR/ON BLOCK ERROR handling not converted" in code
+    assert "try:" not in code
+
+
+def test_generate_python_converts_named_on_error_arm_to_known_tag_exception() -> None:
+    # design/pad_todo.md A節: 知見36で確定した複数アーム構文に、知見73で`pad_action_lib`へ
+    # 結線済みの`[Throws]`タグ例外クラス(`pad_action_lib.errors.PadActionError`の
+    # サブクラス)を組み合わせる。タグ名(`CopyFileError`)がクラス名と一致する場合、
+    # でっち上げではなく確認済みの対応関係として実際の`except`節に変換できる。
+    dsl = (
+        "File.Copy Files: $'''__nonexistent_source__.txt''' Destination: $'''__DEST_DIR__''' "
+        "IfFileExists: File.IfExists.DoNothing CopiedFiles=> CopiedFiles\n"
+        "ON ERROR CopyFileError\n"
+        "SET NewVar2 TO $'''failed'''\n"
+        "ON ERROR\n"
+        "SET NewVar TO $'''recovered'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import file_actions" in code
+    assert "try:" in code
+    assert "except file_actions.CopyFileError:" in code
+    assert "except Exception:" in code
+    assert "# TODO: ON ERROR" not in code
+
+    # 実在するディレクトリを宛先にし、存在しないファイルをコピーさせて、確実に
+    # `CopyFileError`(`InvalidDestinationFolderError`等ではなく)を発生させた上で
+    # 本当にexcept節が捕捉してハンドラを実行することまで確認する。
+    dest_dir = tempfile.mkdtemp()
+    code_with_real_dest = code.replace("__DEST_DIR__", dest_dir)
+    namespace: dict[str, object] = {}
+    exec(code_with_real_dest, namespace)
+    assert namespace["NewVar2"] == "failed"
+
+
+def test_generate_python_converts_colliding_tag_name_to_tuple_of_all_matching_classes() -> None:
+    # `FileNotFoundError`は`file_actions`/`compression_actions`/`cryptography_actions`に
+    # それぞれ無関係な別クラスとして独立に存在する(同じタグ名を持つだけで継承関係は無い)。
+    # DSL側だけではどのファミリーのタグかを判別できないため、安全側に全てをタプルで捕捉する。
+    dsl = (
+        "File.ReadTextFromFile.ReadText File: $'''a.txt''' Encoding: File.FileEncoding.Default "
+        "ReadContent=> ReadContent\n"
+        "ON ERROR FileNotFoundError\n"
+        "SET NewVar2 TO $'''missing'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import compression_actions" in code
+    assert "from dump_daemon.pad_action_lib import cryptography_actions" in code
+    assert "from dump_daemon.pad_action_lib import file_actions" in code
+    assert (
+        "except (compression_actions.FileNotFoundError, "
+        "cryptography_actions.FileNotFoundError, file_actions.FileNotFoundError):"
+    ) in code
+
+
+def test_generate_python_falls_back_to_todo_when_named_arm_tag_is_unknown() -> None:
+    # 既知のタグ(CopyFileError)と未知のタグが混在する場合も、部分的に変換すると保護範囲が
+    # 歯抜けになり誤解を招くため、全アームを安全に`# TODO`へ丸ごと倒す。
+    dsl = (
+        "File.Copy Files: $'''source.txt''' Destination: $'''dest''' "
+        "IfFileExists: File.IfExists.DoNothing CopiedFiles=> CopiedFiles\n"
+        "ON ERROR CopyFileError\n"
+        "SET NewVar2 TO $'''failed'''\n"
+        "ON ERROR SomeTotallyUnknownTag\n"
+        "SET NewVar3 TO $'''unknown'''\n"
+        "END"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO: ON ERROR/ON BLOCK ERROR handling not converted" in code
+    assert "except file_actions.CopyFileError:" not in code
     assert "try:" not in code
 
 

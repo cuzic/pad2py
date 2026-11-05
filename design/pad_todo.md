@@ -20,7 +20,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (`ComparisonCalculator.Compare`)の挙動確認(大文字小文字・型変換ルール)。
 - [ ] 🖥️ UI要素系の残り2条件アクション`UIAutomation.IfImage.ExistsOnScreen`/
   `UIAutomation.IfWindowContains.WindowContainsElement`のPython変換ロジック(セレクタ/画像照合の意味論)。
-- [ ] 🖥️ ON ERROR/ON BLOCK ERRORの名前付き・複数アーム(8/16)の実機再確認とcodegen結線。
+- [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
+  知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
+  `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の
+  `except <クラス>:`(同名タグが複数ファミリーに独立定義されている場合はタプルで全て捕捉)
+  に変換するようにした——VM不要、既存の確認済み知識の組み合わせのみで実装。ただし
+  既存の唯一の実機フィクスチャ(知見36、`RunPythonScriptError`)は`Scripting`系の
+  タグで`pad_action_lib`のスコープ外のため今も`# TODO`のまま(想定通り)。
+  🖥️ 残課題: `codegen_coverage.py`のerror_handlingバケット(8/16)を実際に動かすには、
+  `pad_action_lib`で結線済みのタグ(`CopyFileError`等)を使う`ON ERROR <TagName>`の
+  実機キャプチャが別途必要。
 - [ ] 💻🖥️ `pad_expr`(Lark式パーサー)の演算子優先順位・結合性を実機で確認し、確認できたら
   `pad_codegen`を`RawExpr`丸ごとTODOから実際のPython式生成へ切り替える。複合式(`AND`/`OR`/算術混在)の
   実例を複数実機コンパイルして優先順位の違いが出るケースを探す。
