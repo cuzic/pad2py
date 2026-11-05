@@ -441,3 +441,20 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
     点検は、公式ドキュメントだけで確定できる範囲は全て解消完了
     (残るは`Mod`/`\`のゼロ除算(型依存)と`CDbl`の`Nothing`/桁区切り
     文字列(VM実機検証が必要)のみ)。
+14. **(完了、2026-11-05)** `CDbl`の`Nothing`/桁区切り文字列/Boolean変換を
+    .NETランタイム本体のソースで確定・修正(VM不使用——知見46で「VM実機
+    検証が必要」として残していた最後の項目を解消、知見52): 公式
+    ドキュメントの代わりに.NETランタイム本体の実装ソース
+    (`Microsoft.VisualBasic.Core`パッケージの`Conversions.vb`、
+    `dotnet/runtime`リポジトリ、Microsoft Learn APIリファレンスページが
+    「Source」リンクとして公式に指している)を直接確認——
+    `ToDouble(Object)`/`ToDouble(String)`は`Nothing`に対し例外を出さず
+    `0`を返す、`ParseDouble`は`NumberStyles.AllowThousands`を含む
+    フラグで`Double.Parse`するため桁区切りのコンマを受理する、
+    `Case TypeCode.Boolean`は`CDbl(Boolean)`相当を呼ぶ(知見51の
+    Boolean→`-1`規則がここにも適用される)ことを確定した。`_vb_cdbl()`
+    ヘルパーを追加し結線(`_CAST_FUNCS`辞書は不要になったため削除)。
+    回帰テスト追加、UiPath関連テスト全150件通過。これで知見44〜52の
+    「VB.NET演算子・型変換関数の値の食い違い」系統点検は、現実的に
+    対応可能な範囲の課題を全て解消した(唯一残るのは`Mod`/`\`のゼロ除算
+    (型依存、静的型情報が無く対応不可))。

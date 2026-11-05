@@ -72,6 +72,8 @@ from ..uipath_selector import selector_text_to_pywinauto
 from .render import (
     VB_ADD_HELPER_NAME,
     VB_ADD_HELPER_SOURCE,
+    VB_CDBL_HELPER_NAME,
+    VB_CDBL_HELPER_SOURCE,
     VB_CMP_HELPER_NAME,
     VB_CMP_HELPER_SOURCE,
     VB_CSTR_HELPER_NAME,
@@ -162,6 +164,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `_vb_div`(`/`のゼロ除算処理先、知見50)も同様。
     if any(f"{VB_DIV_HELPER_NAME}(" in line for line in body):
         imports.append(VB_DIV_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_cdbl`(`CDbl`のNothing/桁区切り文字列強制先、知見52)も同様。
+    if any(f"{VB_CDBL_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_CDBL_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

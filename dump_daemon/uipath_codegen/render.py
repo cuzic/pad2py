@@ -30,13 +30,40 @@ from dump_daemon.uipath_expr import (
 from ..uipath_dsl.types import Expr, Literal, VbExpr
 
 # design/uipath_vb_expression_mapping.md で実機確認済み(知見32・36)の
-# 型変換関数のうち、単純な名前変換で安全に対応できるもの。`CDbl`は`float()`
-# で十分(浮動小数点への変換は丸めの余地が無く情報を失わない)。`CStr`/
-# `CInt`/`CBool`は値そのものがVBとPythonで食い違いうる(知見42・45と同じ
-# 種類の問題)ため、個別に`_render_func_call`内で処理する(下記参照)。
-_CAST_FUNCS = {
-    "cdbl": "float",
-}
+# 型変換関数は全て、値そのものがVBとPythonで食い違いうる(知見42・45・52と
+# 同じ種類の問題)ため、個別に`_render_func_call`内で処理する(下記参照)。
+# 単純な名前変換だけで安全な型変換関数は無くなった(`CDbl`も知見52で
+# `Nothing`/桁区切り文字列の食い違いが見つかり特別扱いに移行した)。
+
+# `CDbl(x)`は.NETランタイム本体のソース(`Microsoft.VisualBasic.Core`の
+# `Conversions.vb`、`dotnet/runtime`リポジトリ、VM不使用——公式ドキュメント
+# だけでは確定できなかった知見46の残課題を、実際のランタイム実装
+# ソースコードという「確度の高いソース」で確定、知見52参照)で以下を
+# 確定した:
+# - `CDbl(Nothing)`: `ToDouble(Object)`/`ToDouble(String)`いずれも
+#   `If Value Is Nothing Then Return 0`——`0`を返す(例外にならない)。
+# - `CDbl("1,234.5")`のような桁区切り文字列: 内部の`ParseDouble`が
+#   `Double.Parse`に`NumberStyles.AllowThousands`を含むフラグを渡して
+#   いるため、桁区切りのコンマは実際に受理される。
+# - `CDbl(True)`: `ToDouble(Object)`の`Case TypeCode.Boolean`は
+#   `Return CDbl(DirectCast(Value, Boolean))`——知見51で確定した
+#   「Booleanの数値変換はTrue→-1」の一般規則がここにも適用される。
+# Pythonの`float(None)`は`TypeError`、`float("1,234.5")`は桁区切りの
+# コンマで`ValueError`になるため、単純な`float(x)`への変換のままでは
+# 食い違う。桁区切りの妥当性(3桁ごとの正しいグループ化か)までは検証
+# せず単純に除去する軽微な簡略化を許容する(でっち上げた検証ロジックより
+# 単純な方を選んだ、既知の限界として下記に記録)。
+VB_CDBL_HELPER_NAME = "_vb_cdbl"
+VB_CDBL_HELPER_SOURCE = """\
+def _vb_cdbl(x):
+    if x is None:
+        return 0.0
+    if isinstance(x, bool):
+        return -1.0 if x else 0.0
+    if isinstance(x, str):
+        return float(x.strip().replace(",", ""))
+    return float(x)
+"""
 
 # `CStr(Double)`はVBの既定フォーマット("G"、丸め桁数15——mscorlib/Legacy
 # ターゲット、知見30-6参照)に従い、整数値になる場合は小数点を省略する
@@ -313,10 +340,10 @@ def _render_func_call(node: FuncCall) -> str:
         # `bool(x)`はVBのCBoolと一致するため、でっち上げた型チェックを
         # 挿入するより素直な`bool(x)`のままにする。
         return f"bool({args[0]})"
-    if key in _CAST_FUNCS:
+    if key == "cdbl":
         if len(args) != 1:
-            raise NotImplementedError(f"{node.name} expects exactly 1 argument")
-        return f"{_CAST_FUNCS[key]}({args[0]})"
+            raise NotImplementedError("CDbl expects exactly 1 argument")
+        return f"{VB_CDBL_HELPER_NAME}({args[0]})"
     if key == "isnothing":
         if len(args) != 1:
             raise NotImplementedError("IsNothing expects exactly 1 argument")

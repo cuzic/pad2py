@@ -417,6 +417,45 @@ def test_cbool_non_literal_string_falls_back_to_bool_with_known_limitation():
 @pytest.mark.parametrize(
     ("vb_text", "expected"),
     [
+        # .NETランタイム本体のソース(Conversions.vb、dotnet/runtime)で
+        # 確定(知見52): ToDouble(Object)/ToDouble(String)はNothingに対し
+        # 例外を出さず0を返す。Pythonのfloat(None)はTypeErrorになり食い違う。
+        ("CDbl(Nothing)", "0"),
+        # ParseDoubleがNumberStyles.AllowThousandsを渡しているため桁区切り
+        # のコンマは実際に受理される。Pythonのfloat("1,234.5")はコンマで
+        # ValueErrorになり食い違う。
+        ('CDbl("1,234.5")', "1234.5"),
+        ('CDbl("12,345,678")', "12345678"),
+        # Case TypeCode.Booleanは CDbl(Boolean)相当を呼ぶ——知見51で確定
+        # した「Booleanの数値変換はTrue→-1」の一般規則がここにも適用される。
+        ("CDbl(True)", "-1"),
+        ("CDbl(False)", "0"),
+        # 通常の数値/数値文字列は従来通り。
+        ("CDbl(5)", "5"),
+        ('CDbl("5")', "5"),
+    ],
+)
+def test_cdbl_matches_dotnet_runtime_source_not_python_float(
+    vb_text: str, expected: str
+) -> None:
+    """知見52: `CDbl`の`Nothing`/桁区切り文字列/Boolean変換を、公式ドキュ
+    メントではなく.NETランタイム本体のソース(`Conversions.vb`)で確定した
+    内容どおりに実装したことの回帰テスト。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
         # VBのCStr(Double)は既定でG書式(mscorlib/Legacyターゲット、G15)
         # に従い、整数値になる場合は小数点を省略する——Pythonのstr(float)
         # は常に`.0`を残すため食い違う(知見46、公式ドキュメントで確定)。

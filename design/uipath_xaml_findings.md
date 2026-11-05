@@ -2590,31 +2590,81 @@ UiPath関連テスト全143件通過、回帰無し。
 持ち越していたBooleanの算術演算子への変換規則を確定・修正できた
 ——知見44〜51の一連の「VB.NET演算子の値の食い違い」系統点検で、現状
 公式ドキュメントだけで確定できる範囲の課題は全て解消した(残るのは
-`Mod`/`\`のゼロ除算(型依存、静的型情報が無く対応不可)と`CDbl`の
-`Nothing`/桁区切り文字列(VM実機検証が必要)のみ)。
+`Mod`/`\`のゼロ除算(型依存、静的型情報が無く対応不可)のみ。`CDbl`の
+`Nothing`/桁区切り文字列は知見52で.NETランタイム本体のソースにより
+VM不使用のまま解決した)。
+
+## 52. `CDbl`の`Nothing`/桁区切り文字列/Boolean変換を.NETランタイム本体のソースで確定——VM実機検証を経ずに解決(知見46・49・50で繰り返し残していた最後の課題)
+
+知見46で「`CDbl(Nothing)`/桁区切り文字列は公式ドキュメントだけでは確定
+できず、VM実機検証が必要」として残していた課題を、公式ドキュメントの
+代わりに「確度の高いソース」として記録していた.NETランタイム本体の
+実装ソースコード(`Microsoft.VisualBasic.Core`パッケージの
+`Conversions.vb`、`dotnet/runtime`リポジトリ、GitHub上で公開)を直接
+確認することで、VM無しのまま確定できた。
+
+**確認したソースファイル**:
+`https://github.com/dotnet/runtime/blob/main/src/libraries/Microsoft.VisualBasic.Core/src/Microsoft/VisualBasic/CompilerServices/Conversions.vb`
+(Microsoft Learn APIリファレンスページの`Conversions.ToDouble`項目が
+「Source」リンクとしてこのファイルの該当行を指している——公式ドキュメント
+のAPIリファレンスページ自体が正式にこのソースへリンクしているため、
+非公式な野良ソースの参照ではない)。
+
+**確定した内容**:
+- **`CDbl(Nothing)`**: `ToDouble(Object)`/`ToDouble(String)`いずれも
+  冒頭で`If Value Is Nothing Then Return 0`——例外にならず`0`を返す。
+- **`CDbl("1,234.5")`のような桁区切り文字列**: 文字列版の内部実装
+  `ParseDouble`関数が`Double.Parse`へ渡す`NumberStyles`フラグに
+  `NumberStyles.AllowThousands`を含んでいる(他に
+  `AllowDecimalPoint`/`AllowExponent`/`AllowLeadingSign`/
+  `AllowLeadingWhite`/`AllowTrailingSign`/`AllowParentheses`/
+  `AllowTrailingWhite`/`AllowCurrencySymbol`も含むが、`AllowThousands`
+  以外は今回は実装対象外、下記「既知の限界」参照)——桁区切りのコンマは
+  実際に受理される。
+- **`CDbl(True)`**: `ToDouble(Object)`の`Select Case`に
+  `Case TypeCode.Boolean: Return CDbl(DirectCast(Value, Boolean))`が
+  存在し、`CDbl(Boolean)`相当を呼ぶ——知見51で確定した「Booleanの数値
+  変換は`True`→`-1`」の一般規則がここにも適用される。
+
+Pythonの`float(None)`は`TypeError`、`float("1,234.5")`はコンマで
+`ValueError`になるため、単純な`float(x)`変換のままでは食い違う。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `CDbl`を
+`_CAST_FUNCS`の単純名前変換(`float`)から外し、`CInt`/`CBool`/`CStr`と
+同じ個別特別扱いへ移行——これにより`_CAST_FUNCS`辞書自体が空になり、
+もう使われなくなったので削除した。`_vb_cdbl(x)`ヘルパーを追加:
+```python
+def _vb_cdbl(x):
+    if x is None:
+        return 0.0
+    if isinstance(x, bool):
+        return -1.0 if x else 0.0
+    if isinstance(x, str):
+        return float(x.strip().replace(",", ""))
+    return float(x)
+```
+
+`tests/test_uipath_codegen.py`に
+`test_cdbl_matches_dotnet_runtime_source_not_python_float`を追加
+(`CDbl(Nothing)`→`"0"`、`CDbl("1,234.5")`→`"1234.5"`、`CDbl(True)`→
+`"-1"`等)。UiPath関連テスト全150件通過。
+
+**既知の限界(意図的に未対応のまま記録)**: `ParseDouble`が実際に渡す
+`NumberStyles`フラグのうち、今回実装したのは桁区切り(`AllowThousands`)
+のみ——`AllowParentheses`(会計表記の括弧を負数として扱う、例:
+`"(5)"`→`-5`)・`AllowCurrencySymbol`(通貨記号、例: `"$5"`)は未対応の
+まま残す(UiPathの実データでこれらの書式が使われる実例が無く、適用範囲が
+狭いため優先度低と判断)。また桁区切りの妥当性(3桁ごとの正しいグループ化
+か、例: `"1,2,3"`のような不正な区切り方)も検証していない——単純に全ての
+コンマを除去するのみで、VBなら`FormatException`になるはずの不正な
+グループ化を黙って受理してしまう軽微な既知の限界として記録する。
+
+**この知見で確定したこと**: 知見46で「VM実機検証が必要」として
+`^`/`Not`(知見45で解決済み)と同じ分類に置いていた最後の項目を、VM無しで
+解決できた——これにより知見44〜52の「VB.NET演算子・型変換関数の値の
+食い違い」系統点検で、現実的に対応可能な範囲の課題は全て解消した。
 
 ## 今後の調査候補(未着手)
-
-- **`CDbl(x)`の2点が公式ドキュメントだけでは確定できず未解決(2026-11-05、
-  知見46作業中に派生して調査)**: 知見42〜46の系統点検の延長で`CDbl`も
-  洗い直そうとしたが、以下の2点は公式ドキュメント
-  (Microsoft Learn「Type Conversion Functions」)では確定できなかった
-  ——`^`/`Not`(知見44・45)と同じ「VM実機検証が必要」カテゴリとして、
-  でっち上げた修正は入れずに記録するに留める:
-  - **`CDbl(Nothing)`**: VB6/VBAのフォーラム回答には「数値型変数は
-    `Nothing`と比較すると暗黙的に0相当になる」という言及があるが、
-    VB.NET公式ドキュメントで`CDbl(Nothing)`の挙動を明示した記載は
-    見つからなかった(フォーラム回答のみでは`CInt`/`CBool`の修正時の
-    ような確度に達しない)。現状の`render.py`の`CDbl`→`float(x)`変換は、
-    `x`が`None`の場合`TypeError`になりVBの挙動と食い違う可能性がある。
-  - **`CDbl("1,234.5")`のような桁区切り文字列**: 公式ドキュメントは
-    「文字列からの変換はカレントカルチャに依存する」と明記するのみで、
-    桁区切り文字(千の位のコンマ等)が実際に受理されるかどうかは
-    確認できなかった。Pythonの`float("1,234.5")`は`ValueError`になる
-    ため、もしVBが受理するなら食い違う。
-  実機(VM)でこの2点を確認してから対応するか、確度の高いソース
-  (.NET Framework `Microsoft.VisualBasic.CompilerServices.Conversions`
-  のリファレンスソース等)が見つかった時点で改めて着手する。
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造
