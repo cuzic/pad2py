@@ -16,6 +16,8 @@ design/evidence/uipath_xaml_probe/Main.xaml(実機フィクスチャ)を通し�
 """
 from __future__ import annotations
 
+import contextlib
+import io
 from pathlib import Path
 
 import pytest
@@ -255,3 +257,42 @@ def test_main_xaml_pipeline_smoke():
     assert "pyperclip.copy('cliptext')" in code
     assert "try:" in code and "except Exception as exception:" in code
     assert "# TODO: unknown activity" in code  # Library呼び出し(p:NewActivity)
+
+
+def test_realistic_workflow_actually_executes_correctly():
+    """ここまでのテストは`compile()`レベルの構文確認か、生成コード中の
+    特定行の有無を文字列として確認するだけだった。本テストは手作りの
+    現実的な(`break`がループ外にある等の破綻が無い)ワークフローIRを
+    実際に`exec()`し、複数のTier1構成要素(配列リテラル→`ForEach`→
+    `&`による文字列蓄積→`If`/`Else`の分岐)が**実行時に正しく連携して
+    動く**ことまで確認する——`design/evidence/uipath_xaml_probe/Main.xaml`
+    (知見確認用の寄せ集め、モジュールdocstring参照)では確認できない水準の
+    保証。design/uipath_transpiler_roadmap.md「次にやること」に記載した
+    『より現実的なフィクスチャでの検証』に対応する。
+    """
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="result"), value=Literal(value="")),
+            ForEachNode(
+                item_var="item",
+                values=VbExpr(text='{"x","y","z"}'),
+                body=[
+                    AssignNode(target=VbExpr(text="result"), value=VbExpr(text="result & item"))
+                ],
+            ),
+            IfNode(
+                condition=VbExpr(text='result="xyz"'),
+                then_body=[MessageBoxNode(text=Literal(value="matched"))],
+                else_body=[MessageBoxNode(text=Literal(value="no match"))],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "matched"

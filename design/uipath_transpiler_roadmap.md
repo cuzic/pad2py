@@ -265,11 +265,13 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
    のため、使用タイミングの調整が必要
 2. **複数ファイル結線**(Phase 6): `Invoke Workflow File`で参照される
    サブワークフローを実際に解決し、Python関数呼び出しへ変換する
-3. **より現実的なフィクスチャでの検証**: `Main.xaml`は知見確認用の
-   寄せ集めなので、実際に動く(コンパイル可能な)サンプルワークフローを
-   別途1つ用意し、`generate_python()`の出力が本当に実行可能であることを
-   `exec()`で確認する回帰テストを追加する(`pad_codegen`の対応するテストと
-   同じ水準)
+3. **(完了)** より現実的なフィクスチャでの検証:
+   `test_realistic_workflow_actually_executes_correctly`
+   (`tests/test_uipath_codegen.py`)で、手作りの現実的なワークフローIR
+   (配列リテラル→`ForEach`→`&`による文字列蓄積→`If`/`Else`分岐)を
+   `exec()`し、標準出力を実際に検証するところまで確認した——それまでの
+   テストは`compile()`レベルの構文確認か生成コード中の行の有無の確認に
+   留まっていたのに対し、実行時の正しさまで保証する初めてのテスト
 4. **セレクタマッピングの実機検証**: `uipath_selector`の属性名対応・
    `role`値の語彙一致は現状いずれも未検証の仮定——VMで実際にpywinauto
    セレクタが対象要素を一意特定できるかを確認する(design/dsl_format_findings.md
