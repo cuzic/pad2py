@@ -11,14 +11,26 @@ VB.NETの`+`演算子オーバーロード規則(文字列専用の連結には�
 design/dsl_format_findings.md 知見88(実機確認済み): `=`/`<>`演算子も知見85の
 `ComparisonCalculator.Compare`と同じ型変換規則に従う(`"1" = 1`は真、`"Apple" =
 "apple"`は偽)。
+
+design/dsl_format_findings.md 知見101(実機確認済み): `+`/`=`演算子が「数値を表す
+文字列」と認識する範囲はPythonの`int()`/`float()`より狭く、**指数表記(`"1e2"`)を
+数値として認識しない**——`1 + "1e2"`は数値加算ではなく文字列結合(`"11e2"`)に、
+`"1e2" = 100`は偽になる(知見84/92/100のCSV読み込み系の数値変換はこれとは別の
+PADサブシステムで、こちらは指数表記を数値として受理する——両者は異なる規則)。
+`_NUMERIC_STRING_RE`で単純な符号+整数+小数部のみを数値文字列として認識するよう
+制限する。
 """
 from __future__ import annotations
+
+import re
+
+_NUMERIC_STRING_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)$")
 
 
 def _as_number(value: object) -> int | float | None:
     if isinstance(value, (int, float)):
         return value
-    if isinstance(value, str):
+    if isinstance(value, str) and _NUMERIC_STRING_RE.match(value):
         try:
             return int(value)
         except ValueError:
@@ -42,11 +54,13 @@ def pad_equal(a: object, b: object) -> bool:
 
     知見85で確認した`ComparisonCalculator.Compare`(`SubtractLists`等が使う比較エンジン)
     と同じ規則に従う: 文字列同士は大文字小文字を区別するが(`"Apple"` = `"apple"`は偽)、
-    数値を表す文字列と数値は型をまたいで等価と判定される(`"1"` = `1`は真)。
+    数値を表す文字列と数値は型をまたいで等価と判定される(`"1"` = `1`は真)。知見101で
+    指数表記(`"1e2"`)は数値として認識されない(`"1e2" = 100`は偽)ことを実機確認済み
+    のため、`_as_number()`と同じ`_NUMERIC_STRING_RE`の判定を共有する。
     """
     if a == b:
         return True
-    try:
-        return float(a) == float(b)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return False
+    na, nb = _as_number(a), _as_number(b)
+    if na is not None and nb is not None:
+        return na == nb
+    return False

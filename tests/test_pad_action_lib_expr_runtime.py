@@ -49,3 +49,16 @@ def test_pad_equal_matches_identical_strings() -> None:
 
 def test_pad_equal_matches_identical_numbers() -> None:
     assert er.pad_equal(1, 1) is True
+
+
+def test_pad_add_treats_exponent_notation_as_non_numeric() -> None:
+    # design/dsl_format_findings.md 知見101(実機確認済み): "1e2"は数値として認識されず
+    # 文字列結合にフォールバックする(実機で1 + "1e2" = "11e2"を確認)。
+    assert er.pad_add(1, "1e2") == "11e2"
+    assert er.pad_add("1e2", 1) == "1e21"
+
+
+def test_pad_equal_treats_exponent_notation_as_non_numeric() -> None:
+    # 実機確認済み: "1e2" = 100は偽になる。
+    assert er.pad_equal("1e2", 100) is False
+    assert er.pad_equal(100, "1e2") is False
