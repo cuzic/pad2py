@@ -24,6 +24,7 @@ from dump_daemon.uipath_codegen import generate_python
 from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
+    ClickNode,
     ForEachNode,
     IfNode,
     Literal,
@@ -186,6 +187,37 @@ def test_switch_with_string_typed_keys():
     )
     code = generate_python(wf)
     assert "if n == 'a':" in code
+    _compiles(code)
+
+
+def test_click_with_known_selector_generates_pywinauto_chain():
+    """知見9の実例セレクタ。マッピング可能な属性があれば実コードを生成し、
+    未マッピング属性(app/aaname)・role値の未検証をコメントで警告する。"""
+    selector = (
+        "<wnd app='notepad.exe' cls='Notepad' title='Untitled - Notepad' />"
+        "<ctrl name='Text Editor' role='editable text' />"
+    )
+    wf = _wrap([ClickNode(selector=selector, display_name="Click 'editable text'")])
+    code = generate_python(wf)
+    assert 'Desktop(backend="uia")' in code
+    assert ".click_input()" in code
+    assert "# WARNING:" in code
+    _compiles(code)
+
+
+def test_click_with_no_selector_is_todo():
+    wf = _wrap([ClickNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: Click with no selector" in code
+    _compiles(code)
+
+
+def test_click_with_unmappable_selector_is_todo():
+    """`idx`のような未対応属性しか無いセレクタは、でっち上げたkwargsを
+    出力せず`# TODO`に倒す。"""
+    wf = _wrap([ClickNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: Click selector had no mappable attributes" in code
     _compiles(code)
 
 

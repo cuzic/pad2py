@@ -222,12 +222,23 @@ codegenで必要になった時点で結合するか、改めて検討する。
 `pad_codegen`と同じ「架空のAPIをでっち上げず`# TODO`に倒す」方針を踏襲し、
 制御フロー一式(Sequence/Assign/If/ForEach/TryCatch/Switch/While/DoWhile/
 Break/Parallel)と単純な入出力系(MessageBox→`print()`/Append Line/
-Read Text File/Set To Clipboard→`pyperclip`)は実際にコード生成し、
-セレクタ解決が未解決のClick、複数ファイル結線が未実装のInvoke Workflow
-File、インラインコードのInvoke Code、ライブCOM連携が要るExcel/Outlook、
-プロパティ要素(Headers等)を未パースのHttpClientは`# TODO`に倒す。
-`And`/`Or`/`Xor`→`&`/`|`/`^`変換(両オペランド括弧必須)も設計通り実装。
-`tests/test_uipath_codegen.py`(13件)で検証済み。
+Read Text File/Set To Clipboard→`pyperclip`)、**Click(セレクタ解決込み、
+下記参照)**は実際にコード生成し、複数ファイル結線が未実装のInvoke
+Workflow File、インラインコードのInvoke Code、ライブCOM連携が要る
+Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
+`# TODO`に倒す。`And`/`Or`/`Xor`→`&`/`|`/`^`変換(両オペランド括弧必須)も
+設計通り実装。`tests/test_uipath_codegen.py`(16件)で検証済み。
+
+**セレクタ解決(`dump_daemon/uipath_selector/`、同日中に追加着手・完了)**:
+知見37で把握したClassic Selector(`WND`/`CTRL`)の属性語彙に基づき、
+`<wnd .../><ctrl .../>`形式のセレクタ文字列をpywinautoの検索条件連鎖
+(`Desktop(backend="uia").window(...).child_window(...)...`)へマッピング
+する。知見37自体が明記する2つの未検証事項——属性「名前」の対応は机上の
+推定であり実機確認済みではないこと、`role`属性の「値」(例:
+`"editable text"`)がUIAの`ControlType`語彙と一致する保証が無いこと——を
+踏襲し、生成コードには必ず警告コメント(`# WARNING:`)を付す。マッピング
+不能な属性のみのセレクタ(`idx`等)は、でっち上げるより`# TODO`に倒す。
+`tests/test_uipath_selector.py`(5件)で検証済み。
 
 **実装中に見つかった追加の既知の制約**:
 - `uipath_expr`に配列/コレクションリテラル`{a, b, c}`(知見5で確認済みだが
@@ -252,13 +263,14 @@ File、インラインコードのInvoke Code、ライブCOM連携が要るExcel
    (`Set Selected Item`等)を1つ置いてXAMLを確認する。新Studio問題の
    解消を待たずに着手できる可能性がある——ただしVMは他セッションと共用
    のため、使用タイミングの調整が必要
-2. **セレクタ解決の実装**(Phase 4の残り最大項目): 知見37で把握した
-   Classic Selector(WND/CTRL/WEBCTRL)の属性語彙をpywinautoの検索条件へ
-   マッピングし、`ClickNode`等の`# TODO`を実コードに変える
-3. **複数ファイル結線**(Phase 6): `Invoke Workflow File`で参照される
+2. **複数ファイル結線**(Phase 6): `Invoke Workflow File`で参照される
    サブワークフローを実際に解決し、Python関数呼び出しへ変換する
-4. **より現実的なフィクスチャでの検証**: `Main.xaml`は知見確認用の
+3. **より現実的なフィクスチャでの検証**: `Main.xaml`は知見確認用の
    寄せ集めなので、実際に動く(コンパイル可能な)サンプルワークフローを
    別途1つ用意し、`generate_python()`の出力が本当に実行可能であることを
    `exec()`で確認する回帰テストを追加する(`pad_codegen`の対応するテストと
    同じ水準)
+4. **セレクタマッピングの実機検証**: `uipath_selector`の属性名対応・
+   `role`値の語彙一致は現状いずれも未検証の仮定——VMで実際にpywinauto
+   セレクタが対象要素を一意特定できるかを確認する(design/dsl_format_findings.md
+   知見56でPAD側は実機検証済み、UiPath側はこれから)

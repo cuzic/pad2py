@@ -43,6 +43,7 @@ from ..uipath_dsl.types import (
     WhileNode,
     WorkflowFile,
 )
+from ..uipath_selector import selector_text_to_pywinauto
 from .render import render_expr
 
 INDENT = "    "
@@ -84,6 +85,8 @@ def _collect_imports(body: list[str]) -> list[str]:
     imports = []
     if any("pyperclip." in line for line in body):
         imports.append("import pyperclip")
+    if any("Desktop(" in line for line in body):
+        imports.append("from pywinauto import Desktop")
     imports.sort()
     return imports
 
@@ -150,7 +153,9 @@ def _generate_node(node: Node, indent: int) -> list[str]:
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
         return _generate_set_to_clipboard(node, indent)
-    if isinstance(node, (ClickNode, InvokeWorkflowFileNode, InvokeCodeNode,
+    if isinstance(node, ClickNode):
+        return _generate_click(node, indent)
+    if isinstance(node, (InvokeWorkflowFileNode, InvokeCodeNode,
                           ExcelApplicationScopeNode, ExcelWriteCellNode,
                           SendOutlookMailNode, HttpClientNode)):
         return _generate_unresolved_activity(node, indent)
@@ -332,10 +337,31 @@ def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[st
     return [*todo, f"{prefix}pyperclip.copy({text})"]
 
 
+def _generate_click(node: ClickNode, indent: int) -> list[str]:
+    """`ui:Click`のセレクタ(design/uipath_xaml_findings.md 知見37参照)を
+    `uipath_selector`でpywinautoの検索条件連鎖へマッピングする。属性の
+    「名前」の対応は机上の推定、`role`の「値」はUIAの`ControlType`語彙との
+    一致を未検証のまま渡している——両方とも警告コメントとして生成コードに
+    残し、実機で要素を一意特定できることまでは主張しない。マッピング可能な
+    属性が1つも無かった場合(セレクタ自体が無い場合含む)は、でっち上げる
+    くらいなら`# TODO`に倒す。"""
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Click with no selector captured"]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Click selector had no mappable attributes: {node.selector}"
+        ]
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{rendered.expr}.click_input()")
+    return lines
+
+
 def _generate_unresolved_activity(node, indent: int) -> list[str]:
     """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
-    (セレクタ意味論・複数ファイル結線・インラインコード・ライブExcel/Outlook
-    連携・`HttpClient`のHeaders等プロパティ要素未パース)——架空の変換を
+    (複数ファイル結線・インラインコード・ライブExcel/Outlook連携・
+    `HttpClient`のHeaders等プロパティ要素未パース)——架空の変換を
     でっち上げず`# TODO`に倒す。"""
     prefix = INDENT * indent
     return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}"]
