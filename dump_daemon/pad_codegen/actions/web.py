@@ -11,13 +11,18 @@ InvokeSoapServiceの全てで結線した(知見93以前は`invoke_web_service()
 `invoke_soap_service()`が`follow_redirection`/`user_agent`を一切受け付けず、
 httpxの既定`follow_redirects=False`のままPADの既定`True`と食い違っていた)。
 
-`ClearCookies`/`EncodeRequestBody`は依然意図的に未対応としてフォールバックに
-委ねる(でっち上げを避ける): `ClearCookies`はPAD側がフロー実行全体で永続的な
-Cookieセッションを持つ前提の挙動と推測されるが、`pad_action_lib`側は呼び出し
-毎に新規`httpx.Client`を作る設計のためそもそもCookie永続化という概念自体が
-存在せず、安易に対応すると設計変更(`CodegenContext`へセッション状態を
-持たせる等)を伴う大きな決定になる。`EncodeRequestBody`(リクエスト本文の
-URLエンコード有無と推測)はdecompile調査が未着手のため意味論が未確認。
+`EncodeRequestBody`は知見96でdecompile確認済み(`HttpUtility.UrlEncode`相当、
+`TrimRequestBody`より先に適用)のため`Web.InvokeWebService`で結線した
+(`web_actions.invoke_web_service()`の`encode_request_body`引数に委譲)。
+`InvokeSoapService`には存在しないパラメータ(SOAPボディは常にXMLのため不要)。
+
+`ClearCookies`は依然意図的に未対応としてフォールバックに委ねる(でっち上げを
+避ける): 知見96のdecompileで`CompiledJob.CookieContainer`というフロー実行
+全体で共有される永続的なCookieジャーの存在を確認した(`ClearCookies: True`で
+リセットし、各レスポンスのCookieは常にこのジャーへ蓄積される)。`pad_action_lib`
+側は呼び出し毎に新規`httpx.Client`を作る設計のためこのような永続化が無く、
+対応するには`CodegenContext`へセッション状態を持たせる等の設計変更を伴う
+大きな決定になるため、意味論が判明した今でも後回しにする。
 """
 from __future__ import annotations
 
@@ -61,12 +66,13 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         timeout = safe_render(p.get("ConnectionTimeout"))
         fail_on_error = safe_render(p.get("FailOnErrorStatus"))
         trim_body = safe_render(p.get("TrimRequestBody"))
+        encode_body = safe_render(p.get("EncodeRequestBody"))
         follow = safe_render(p.get("FollowRedirection"))
         user_agent = safe_render(p.get("UserAgent"))
         accept_untrusted = safe_render(p.get("AcceptUntrustedCertificates"))
         encoding = enum_last(p.get("Encoding"))
         values = (url, method, accept, content_type, custom_headers, request_body, timeout,
-                  fail_on_error, trim_body, follow, user_agent, accept_untrusted, encoding)
+                  fail_on_error, trim_body, encode_body, follow, user_agent, accept_untrusted, encoding)
         if None in values:
             return None
         # DownloadFromWebと同じ扱い: `AutoDetect`は「エンコーディングを強制しない」こと
@@ -85,8 +91,8 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"accept={accept}, content_type={content_type}, custom_headers={custom_headers}, "
             f"request_body={request_body}, connection_timeout={timeout}, "
             f"fail_on_error_status={fail_on_error}, trim_request_body={trim_body}, "
-            f"follow_redirection={follow}, user_agent={user_agent}, "
-            f"accept_untrusted_certificates={accept_untrusted})"
+            f"encode_request_body={encode_body}, follow_redirection={follow}, "
+            f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted})"
         ]
         if response_var:
             lines.append(f"{prefix}{response_var} = {tmp}.response")

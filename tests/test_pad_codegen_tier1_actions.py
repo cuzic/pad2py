@@ -221,7 +221,10 @@ def test_web_xml_batch8_converts_except_dpapi_password() -> None:
     assert (
         "_web_service_result = web_actions.invoke_web_service('sample', method='Get', " in code
     )
-    assert f"follow_redirection=True, user_agent={_UA!r}, accept_untrusted_certificates=False)" in code
+    assert (
+        f"encode_request_body=True, follow_redirection=True, user_agent={_UA!r}, "
+        "accept_untrusted_certificates=False)" in code
+    )
     assert "WebServiceResponse = _web_service_result.response" in code
     assert "WebServiceResponseHeaders = _web_service_result.response_headers" in code
     assert "StatusCode = _web_service_result.status_code" in code

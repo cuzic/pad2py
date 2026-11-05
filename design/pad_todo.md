@@ -142,6 +142,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   ため今まで症状無し)バグと、`Folder.GetFiles`/`GetSubfolders`の`SortBy1`しか
   ゲートしておらず`SortBy2`/`SortBy3`の実際の並べ替えキー指定を見逃す不完全な
   ゲートを発見・修正した。
+  ✅ **`EncodeRequestBody`もdecompileで解明・結線完了(知見96)**: VM上の
+  `Microsoft.Flow.RPA.Desktop.Modules.Web.Actions.dll`をdecompileし、
+  `HttpUtility.UrlEncode`相当(空白は`+`)を`TrimRequestBody`より先に適用する
+  実装だと確定。`invoke_web_service()`に`encode_request_body`引数を追加し結線した。
+  副産物として`ClearCookies`がフロー実行全体で共有される永続Cookieジャー
+  (`CompiledJob.CookieContainer`)のリセットだと意味論が確定したが、再現には
+  `pad_action_lib`の「呼び出し毎に新規`httpx.Client`」設計の変更を伴うため、
+  実機で複数Web呼び出しを跨ぐ必要例も無いことから依然見送る。
 
 ## B. 一度も実機検証していない領域(TODOより深い穴)
 

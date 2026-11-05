@@ -2010,3 +2010,15 @@ A節に「低優先度」として残っていた`TrimFields`(CSV各フィール
 **発見3: `Folder.GetFiles`/`Folder.GetSubfolders`の`SortBy2`/`SortBy3`** — 既存のゲートは`SortBy1 != "NoSort"`のみを確認しており、`SortBy1: NoSort`かつ`SortBy2`/`SortBy3`に実際の並べ替えキーが指定されている(2次・3次キーだけを使うケース)を見逃していた。実機フィクスチャでは3つとも常に`NoSort`だったため今まで表面化しなかった。`SortBy2`/`SortBy3`も`NoSort`であることを確認する完全なゲートに修正した。
 
 **意義**: 知見93・94で見つけた「値を読み取るふりをして無視する」パターンが、個別の思いつきではなく体系的な見落としとして複数箇所に存在していたことが、機械的な突き合わせによって確認できた。この種のバグはテストでは検出されない(生成されたコードがコンパイル・実行自体は成功するため)——実機の既定値が偶然TODOフォールバックの既定動作と一致する限り症状が出ないサイレントな不整合である。
+
+## 96. `Web.InvokeWebService`の`EncodeRequestBody`をdecompileで解明——`HttpUtility.UrlEncode`相当、`TrimRequestBody`より先に適用。副産物として`ClearCookies`がフロー全体で共有される永続Cookieジャーだと確定(実装は設計変更を伴うため見送り)
+
+知見90・91で確立した「`ilspycmd`でPAD本体のDLLを再デコンパイルしスキーマ/意味論を特定する」手法を、知見94・95で未対応のまま残した`Web.InvokeWebService`の`EncodeRequestBody`に適用した。VM上の`Microsoft.Flow.RPA.Desktop.Modules.Web.Actions.dll`(208,184バイト)を取得・decompileし、`InvokeWebServiceAction.Execute()`のソースを直読みした。
+
+**発見した事実**: `EncodeRequestBody: True`の場合、`RequestBody`全体に`HttpUtility.UrlEncode(RequestBody)`(`application/x-www-form-urlencoded`形式のURLエンコード、空白は`+`——Pythonの`urllib.parse.quote_plus()`と同じ規則)を適用してから、`FormulateWebRequest()`内部で`TrimRequestBody`の処理(文字列全体の`.Trim()`)を行う、という順序だった。つまり**エンコードが先、トリムが後**。
+
+**副産物の発見**: `FormulateWebRequest()`の実装を読む過程で、`ClearCookies`の正体も判明した——`CompiledJob.CookieContainer`という、**1回のフロー実行全体で共有される永続的なCookieジャー**が存在し、各Web系アクションの呼び出しのたびに、レスポンスのCookie(`Set-Cookie`)が無条件にこのジャーへ蓄積され(`CompiledJob.CookieContainer.Add(response.Cookies)`)、次の呼び出しでもそのまま使われる。`ClearCookies: True`の場合のみ、リクエスト送信直前にこのジャーを空の新規`CookieContainer`へ差し替える。つまりPADは**ブラウザのような暗黙のCookieセッションをフロー実行全体で維持**しており、`ClearCookies: False`(実機で唯一確認できている値)は「このセッションを維持したまま続ける」ことを意味する。
+
+**修正内容**: `dump_daemon/pad_action_lib/web_actions.py`の`invoke_web_service()`に`encode_request_body: bool = False`引数を追加し、`urllib.parse.quote_plus()`→(`trim_request_body`なら)`.strip()`の順で適用するようにした(`InvokeSoapService`には`EncodeRequestBody`自体のパラメータが無い——SOAPボディは常にXMLのため不要)。`pad_codegen/actions/web.py`の`Web.InvokeWebService.InvokeWebService`を結線した。
+
+**`ClearCookies`は依然未対応のまま意図的に保留**: 意味論自体はdecompileで確定したが、再現するには`pad_action_lib`側に「呼び出し毎に新規`httpx.Client`を作る」という現在の設計を変更し、フロー実行全体(1つの生成されたPythonスクリプトの実行全体)で共有される永続的なCookie状態(`httpx.Client`インスタンス自体の共有、または`CodegenContext`経由のセッション状態注入)を新設する必要がある——これは個別のパラメータ結線ではなく、codegenのアーキテクチャに踏み込む決定であり、かつ実機フィクスチャでは常に`ClearCookies: False`(かつ1フィクスチャにつきWeb系アクションは1個のみ)しか確認できておらず、複数のWeb呼び出しを跨ぐCookie永続化が実際に必要になる実例も無いため、今回は見送った。

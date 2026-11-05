@@ -13,9 +13,17 @@
 `FollowRedirection`(実機既定`True`)は`invoke_web_service()`/`invoke_soap_service()`
 では知見93以前は未対応(httpxの既定`follow_redirects=False`のまま食い違っていた)
 だったが、`follow_redirection`引数を追加し`DownloadFromWeb`と同じ扱いに統一した。
+
+`EncodeRequestBody`は知見96で`Microsoft.Flow.RPA.Desktop.Modules.Web.Actions.dll`
+をdecompileして確認済み: `True`の場合、`RequestBody`全体に`HttpUtility.UrlEncode`
+(`application/x-www-form-urlencoded`形式、空白は`+`——Pythonの`urllib.parse.
+quote_plus()`と同じ規則)を適用してから`TrimRequestBody`の処理(文字列全体の
+`.strip()`)を行う、という順序だった(実機確認では無くdecompileソースの直読みに
+基づく、`EncodeRequestBody`自体は`InvokeWebService`のみに存在)。
 """
 from __future__ import annotations
 
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -119,6 +127,7 @@ def invoke_web_service(
     request_body: str = "",
     fail_on_error_status: bool = False,
     trim_request_body: bool = True,
+    encode_request_body: bool = False,
     follow_redirection: bool = True,
     user_agent: str | None = None,
     use_credentials: bool = False,
@@ -135,7 +144,12 @@ def invoke_web_service(
         headers.setdefault("Content-Type", content_type)
     if user_agent:
         headers.setdefault("User-Agent", user_agent)
-    body = request_body.strip() if trim_request_body else request_body
+    # design/dsl_format_findings.md 知見96(decompile確認済み): `EncodeRequestBody`は
+    # `HttpUtility.UrlEncode(RequestBody)`(application/x-www-form-urlencoded形式、
+    # 空白は`+`)を`TrimRequestBody`より先に適用する——両方`True`の場合、エンコード後の
+    # 文字列をさらにtrimする(エンコード結果に空白は残らないため実害は無いが順序を再現)。
+    body = urllib.parse.quote_plus(request_body) if encode_request_body else request_body
+    body = body.strip() if trim_request_body else body
     auth = (username, password) if use_credentials else None
     owns_client = client is None
     http_client = client or httpx.Client(

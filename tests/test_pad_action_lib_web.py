@@ -229,3 +229,35 @@ def test_invoke_soap_service_passes_fail_on_error_status() -> None:
             fail_on_error_status=True,
             client=_client(handler),
         )
+
+
+def test_invoke_web_service_encodes_request_body_before_trimming() -> None:
+    # design/dsl_format_findings.md 知見96(decompile確認済み): EncodeRequestBody:True
+    # はHttpUtility.UrlEncode相当(application/x-www-form-urlencoded、空白は+)を
+    # TrimRequestBodyより先に適用する。
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.read()
+        return httpx.Response(200, text="ok")
+
+    web.invoke_web_service(
+        "http://example.test/",
+        request_body="a b&c",
+        encode_request_body=True,
+        client=_client(handler),
+    )
+    assert captured["body"] == b"a+b%26c"
+
+
+def test_invoke_web_service_does_not_encode_request_body_by_default() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.read()
+        return httpx.Response(200, text="ok")
+
+    web.invoke_web_service(
+        "http://example.test/", request_body="a b&c", client=_client(handler)
+    )
+    assert captured["body"] == b"a b&c"
