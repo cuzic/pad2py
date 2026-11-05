@@ -76,6 +76,8 @@ from .render import (
     VB_CMP_HELPER_SOURCE,
     VB_CSTR_HELPER_NAME,
     VB_CSTR_HELPER_SOURCE,
+    VB_NUM_HELPER_NAME,
+    VB_NUM_HELPER_SOURCE,
     render_expr,
 )
 
@@ -152,6 +154,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `_vb_add`(`+`演算子の型混在ディスパッチ先、知見48)も同様。
     if any(f"{VB_ADD_HELPER_NAME}(" in line for line in body):
         imports.append(VB_ADD_HELPER_SOURCE.rstrip("\n"))
+    # `_vb_num`(`-`/`*`/`/`/`Mod`/`\`の数値強制先、知見49)も同様。
+    if any(f"{VB_NUM_HELPER_NAME}(" in line for line in body):
+        imports.append(VB_NUM_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 

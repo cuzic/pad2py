@@ -124,6 +124,25 @@ def _vb_add(a, b):
     return a + b
 """
 
+# `-`/`*`/`/`は`+`と違って文字列同士の特別な意味(連結)を持たない
+# 純粋な数値演算子(Microsoft Learn「- Operator」「* Operator」「/
+# Operator」、いずれも「Supported Types: All numeric types」と明記し、
+# 文字列を直接扱う記載は無い——VM不使用・公式ドキュメントで確定、知見49
+# 参照)。`Option Strict Off`下では一般の暗黙変換規則により文字列が
+# Doubleへ変換されてから演算される(変換不可なら実行時エラー)。
+# `Nothing`は常に`0`として扱われる(3ページとも共通して明記)。Pythonの
+# `-`/`*`/`/`は文字列や`None`を渡すと`TypeError`で即座にクラッシュする
+# (知見48の`+`と同じ問題がこちらにも存在した)。
+VB_NUM_HELPER_NAME = "_vb_num"
+VB_NUM_HELPER_SOURCE = """\
+def _vb_num(x):
+    if x is None:
+        return 0
+    if isinstance(x, str):
+        return float(x)
+    return x
+"""
+
 # design/uipath_vb_expression_mapping.md「確認済み演算子の変換上の注意点」
 # (2026-11-05確定分): And/Or/Xorは全て、両オペランドを括弧で囲んだ上で
 # Pythonのビット演算子(&/|/^)へ1対1で変換する——Pythonのboolがintの
@@ -289,7 +308,9 @@ def _render_bin_op(node: BinOp) -> str:
         # `TypeError`になるか、VBの実際の算術加算結果と食い違う。
         return f"{VB_ADD_HELPER_NAME}({left}, {right})"
     if op == "-":
-        return f"({left}) - ({right})"
+        # 知見49参照: `-`は文字列を扱わない純粋な数値演算子——単純な`-`
+        # 変換のままだと文字列/`Nothing`オペランドで`TypeError`になる。
+        return f"{VB_NUM_HELPER_NAME}({left}) - {VB_NUM_HELPER_NAME}({right})"
     if op == "mod":
         # VBの`Mod`は余りの符号が**被除数**の符号に従う(Microsoft Learn「Mod
         # Operator」、公式の変換式`a - (b * Fix(a / b))`どおり——例:
@@ -297,18 +318,23 @@ def _render_bin_op(node: BinOp) -> str:
         # (`-7 % 3`は`2`)で、両オペランドの符号が異なる場合に値が食い違う
         # ため単純な`%`への変換は不可——VBの公式変換式をそのまま再現する
         # (`int()`はPythonのtruncate-toward-zeroで、VBの`Fix()`と一致)。
-        return f"({left}) - (({right}) * int(({left}) / ({right})))"
+        # `Mod`も`Nothing`を`0`として扱う数値演算子(知見49、同ページで
+        # 確定)なので`_vb_num()`で両オペランドを事前に揃える。
+        a = f"{VB_NUM_HELPER_NAME}({left})"
+        b = f"{VB_NUM_HELPER_NAME}({right})"
+        return f"({a}) - (({b}) * int(({a}) / ({b})))"
     if op == "\\":
         # VBの`\`(整数除算)はゼロ方向への切り捨て(truncation、Microsoft
         # Learn「\ Operator」——例: `67 \ -3`は`-22`)。Pythonの`//`は
         # 負方向への床除算(floor、`67 // -3`は`-23`)で、両オペランドの
         # 符号が異なる場合に値が食い違うため単純な`//`への変換は不可。
         # `int()`はtruncate-toward-zeroなので`int(a / b)`で正しく再現できる。
-        return f"int(({left}) / ({right}))"
+        # `\`も`Nothing`を`0`として扱う数値演算子(知見49)。
+        return f"int({VB_NUM_HELPER_NAME}({left}) / {VB_NUM_HELPER_NAME}({right}))"
     if op == "*":
-        return f"({left}) * ({right})"
+        return f"{VB_NUM_HELPER_NAME}({left}) * {VB_NUM_HELPER_NAME}({right})"
     if op == "/":
-        return f"({left}) / ({right})"
+        return f"{VB_NUM_HELPER_NAME}({left}) / {VB_NUM_HELPER_NAME}({right})"
     if op == "^":
         # VBの`^`は常にDouble型で計算される(Microsoft Learn「^ Operator」)
         # ため`2^2`はVBでは`4.0`相当になるが、Pythonの`2 ** 2`は整数`4`の

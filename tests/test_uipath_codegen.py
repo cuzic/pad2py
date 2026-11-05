@@ -593,6 +593,43 @@ def test_plus_operator_dispatches_add_vs_concat_like_vb_not_python_typeerror(
 
 
 @pytest.mark.parametrize(
+    ("vb_text", "expected"),
+    [
+        # `-`/`*`/`/`/`Mod`/`\`は文字列を扱わない純粋な数値演算子
+        # (Microsoft Learn各ページ「Supported Types: All numeric types」)
+        # ——`Nothing`は0として扱われる(知見49)。単純な変換のままだと
+        # Pythonはstr/Noneを渡されると`TypeError`で即座にクラッシュする。
+        ('"10" - 3', "7"),
+        ('"10" * 3', "30"),
+        ('"10" / 4', "2.5"),
+        ("5 - Nothing", "5"),
+        ("Nothing - 5", "-5"),
+        ("5 * Nothing", "0"),
+        ('"10" Mod 3', "1"),
+        ('"10" \\ 3', "3"),
+        ("Nothing Mod 3", "0"),
+    ],
+)
+def test_numeric_operators_coerce_string_and_nothing_like_vb_not_python_typeerror(
+    vb_text: str, expected: str
+) -> None:
+    """知見49: `-`/`*`/`/`/`Mod`/`\\`の文字列/`Nothing`オペランド強制を
+    実装したことの回帰テスト。単純な変換のままだとPythonは
+    `TypeError`で即座にクラッシュする(知見48の`+`と同じ問題がこちらにも
+    存在した)。
+    """
+    wf = _wrap([MessageBoxNode(text=VbExpr(text=f"CStr({vb_text})"))])
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == expected
+
+
+@pytest.mark.parametrize(
     ("vb_text", "expect_nan"),
     [
         # 負の底+非整数の指数はVBでNaNになる(知見45、実機確認)。
