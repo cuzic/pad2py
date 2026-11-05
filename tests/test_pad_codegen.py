@@ -870,6 +870,22 @@ def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() 
     assert "click_input" not in code
 
 
+def test_generate_python_keeps_get_window_use_timeout_as_todo_when_bring_to_front_true() -> None:
+    # 知見57: `BringWindowToFront: True`時の正確な意味論(`.set_focus()`相当か等)は
+    # 実機未検証のため、セレクタが解決できてもTODOのままにする。
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repository = parse_control_repository(fixture_text)
+    dsl = (
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: True Timeout: 5 WindowInstance=> AutomationWindow2"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree, repository=repository)
+    assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" in code
+
+
 def test_generate_python_keeps_click_click_as_todo_when_offset_unverified() -> None:
     # design/dsl_format_findings.md 知見38のDSLキャプチャ全件で確認済みなのは
     # OffsetX/OffsetY: 0のみ。非ゼロオフセットの実機挙動(pywinautoのcoords=指定が
@@ -1110,21 +1126,14 @@ def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -
     assert "# TODO: unmapped keyword: GOTO MyLabel" in code
 
 
-def test_generate_python_adds_verified_pywinauto_selector_hint_when_repository_given() -> None:
-    # design/dsl_format_findings.md 知見56(実機検証済み): 知見46でAttributesの中身
-    # (Window: Name/Process、子コントロール: Class)を確認した後も、その情報から実際に
-    # pywinautoセレクタを組み立てて実機の要素を特定できるかはこれまで未検証のまま、
-    # pad_codegen.pyはTODOコメントに表示名パスを出すだけに留めていた。
-    # 実際にDesktop(backend="uia").window(title="Untitled - Notepad").child_window(
-    # class_name="Edit")を実機(GCP Windows VM)で実行し、メモ帳の実ウィンドウ・実テキスト
-    # 編集領域を正しく一意に特定できることを確認した。これを踏まえ、`generate_python()`に
-    # 任意の`repository`引数(`parse_control_repository()`の戻り値)を追加し、
-    # 渡された場合はTODOコメントに検証済みのpywinautoセレクタ式を提案として付記する
-    # ようにした——あくまでコメント内の提案であり、生成される実行コード自体を変えることは
-    # 無い(でっち上げたセレクタで動くコードを出力することは無い、という方針は維持)。
-    # `GetWindow.GetUseTimeout`は「window instance」の表現方法が未解決のため、今も
-    # TODO+ヒントのまま残っている(Click.Click/WaitActionは既に実コード化済みなので
-    # このテストの対象には使えない)。
+def test_generate_python_from_real_get_window_use_timeout_capture_converts_to_window_lookup() -> (
+    None
+):
+    # design/dsl_format_findings.md 知見56・57・81(実機確認済み): かつては「window
+    # instance」の表現方法が未解決のため`GetWindow.GetUseTimeout`はTODO+セレクタ提案の
+    # ヒント止まりだったが、知見81の作業中に「window instanceはPAD側では単なる変数名
+    # (VarRef)であり、Python側もpywinautoのWindowSpecificationをそのまま代入するだけで
+    # 特別な結線が不要」と気づき、実行コードへ格上げした(BringWindowToFront: False時のみ)。
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
         encoding="utf-8"
     )
@@ -1132,10 +1141,8 @@ def test_generate_python_adds_verified_pywinauto_selector_hint_when_repository_g
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
     compile(code, "<generated>", "exec")
-    assert (
-        'verified pywinauto selector: Desktop(backend="uia").window(title=\'Untitled - '
-        "Notepad')" in code
-    )
+    assert "AutomationWindow2 = Desktop(backend=\"uia\").window(title='Untitled - Notepad')" in code
+    assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" not in code
 
 
 def test_generate_python_omits_selector_hint_when_repository_not_given() -> None:

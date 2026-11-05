@@ -34,4 +34,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
             if selector_expr is not None:
                 return [f"{prefix}{selector_expr}.click_input()"]
+    if node.action_id == "UIAutomation.GetWindow.GetUseTimeout":
+        # design/dsl_format_findings.md 知見57で実機確認済み。`Control`パラメータは
+        # `UIAutomation.Click.Click`と同じ`UiElementRef`で、知見56の`_build_pywinauto_
+        # selector_expr()`がそのまま使える。「window instance」出力変数は、知見57で
+        # 確認した通りPAD側では単なる変数名(`VarRef`)として他のアクションに渡されるだけ
+        # なので、Python側でも`Desktop(backend="uia").window(...)`の戻り値(pywinautoの
+        # WindowSpecification)をそのまま代入するだけで特別な結線は不要。
+        #
+        # `BringWindowToFront: True`時の正確な意味論(`.set_focus()`相当か等)は知見57で
+        # 明記した通り実機未検証のため、これが確認できた`False`(省略時含む)の場合に限る。
+        # `Timeout`パラメータの正確な意味論(待機ポーリングの有無等)も実機未検証のため、
+        # 生成コードには一切反映しない(値を無視するだけで、架空の待機処理は追加しない)。
+        element = node.params.get("Control")
+        bring_to_front = node.params.get("BringWindowToFront", False)
+        window_var = node.output_vars.get("WindowInstance")
+        if isinstance(element, UiElementRef) and bring_to_front is False and window_var:
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                return [f"{prefix}{window_var} = {selector_expr}"]
     return None

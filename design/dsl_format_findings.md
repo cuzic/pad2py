@@ -1752,3 +1752,5 @@ VMが空いたタイミングで、知見78のキーボード追加技法(`.set_
 **後始末**: テストフロー`pad_expr_precedence`は保存せず閉じ、作成した5つの出力ファイル(`pad_expr_check1.txt`〜`pad_expr_check5.txt`)は`clipwire exec`経由で削除済み。VM解放はpad2py-57へ通知済み。
 
 **今後の課題**: `/`(除算)・`mod`の値の意味論(特に負数での`mod`の符号規則)の実機確認——今回発見した「Run実行+ファイル書き出しで実機の計算結果を読む」手法がそのまま使える(例: `SET Result TO -7 mod 3`を実行してファイルへ書き出し、Pythonの`%`演算子の結果(`2`)と一致するか`C`言語系の切り捨て除算の余り(`-1`)になるかを比較する)。
+
+**追記(同日、後続コミット)**: 本件の作業中に、知見57で「windows instanceの表現方法が未解決」として据え置かれていた`UIAutomation.GetWindow.GetUseTimeout`も、知見79/80で`Excel`/`Word`/`PowerPoint`の`Instance`参照について得た洞察(「不透明な参照はPAD側では単なる変数名で、Python側でも通常の変数参照として扱えば特別な結線は不要」)がそのまま当てはまると気づいた。`Control`パラメータは`UIAutomation.Click.Click`と同じ`UiElementRef`なので、知見56の`_build_pywinauto_selector_expr()`がそのまま使える——セレクタが解決でき、かつ意味論未検証の`BringWindowToFront: True`ではない場合に限り、`{WindowInstance変数} = Desktop(backend="uia").window(...)`という実行コードを生成するよう`dump_daemon/pad_codegen/actions/ui_element.py`を更新した(`Timeout`パラメータの意味論は未検証のまま無視、`BringWindowToFront: True`時は従来通り安全にTODOへ倒す)。これは`pad2py-pad-host`のVM操作無しに(既存の実機キャプチャ済みフィクスチャの再解釈だけで)完結した。

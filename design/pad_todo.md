@@ -9,7 +9,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - 🖥️ = PAD実機VM(`pad2py-pad-host`)でのRDP/WinRM操作が必要
   - 💻 = ローカル(パーサー/codegen/テスト)のみで完結、VM不要
 
-## A. codegenの既知TODO(33/186分岐点、理由は特定済み)
+## A. codegenの既知TODO(32/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
 - [ ] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
@@ -45,6 +45,12 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `SetVariableRecord`の複合式を実際のPython式へ変換するようにした(commit 512cf11)。
   🖥️ 残課題: `mod`の負数での符号規則・`/`が常に浮動小数点除算になるかという値の意味論は
   今回発見した「Run実行+ファイル書き出し」の手法で追って確認できる見込み(知見81に記録)。
+  💻 **ついでに`UIAutomation.GetWindow.GetUseTimeout`も実コード化(VM不要)**: 知見79/80の
+  「不透明な参照(Instance系)はPAD側では単なる変数名、Python側も通常の変数参照で良い」
+  という洞察が知見57の「window instance」問題にも当てはまると気づいた。`Control`が
+  `UIAutomation.Click.Click`と同じ`UiElementRef`なので知見56のセレクタ式がそのまま使え、
+  セレクタが解決でき`BringWindowToFront: True`(意味論未検証)でない場合に限り
+  `{変数} = Desktop(backend="uia").window(...)`を生成するよう`ui_element.py`を更新した。
 - [ ] 🖥️ `Cryptography.*`/`Compression.*`のDPAPI`Sensitive`引数 — 恒久的に非対応と結論済みだが、
   「暗号化環境自体を模倣してテストする」余地があるか再検討(低優先度、現状は見送り)。
 

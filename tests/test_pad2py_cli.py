@@ -149,13 +149,12 @@ def test_cli_handles_real_wait_for_window_whole_subflow_capture(tmp_path) -> Non
     compile(code, "<generated>", "exec")
 
 
-def test_cli_adds_verified_pywinauto_selector_hint_from_control_repository(tmp_path) -> None:
-    # design/dsl_format_findings.md 知見56: convert()がparse_control_repository()の結果を
-    # generate_python()へ自動的に橋渡しするようになったため、一括コピーの生データを
-    # CLIに渡すだけで(追加の手順無しに)実機検証済みのpywinautoセレクタ提案がTODOコメントに
-    # 付くことを確認する——ユーザーが意識する入出力経路(ファイル→CLI→ファイル)そのもの。
-    # `GetWindow.GetUseTimeout`は「window instance」の表現方法が未解決のため、今も
-    # TODO+ヒントのまま残っている。
+def test_cli_converts_get_window_use_timeout_from_control_repository(tmp_path) -> None:
+    # design/dsl_format_findings.md 知見56・57・81: convert()がparse_control_repository()の
+    # 結果をgenerate_python()へ自動的に橋渡しするようになったため、一括コピーの生データを
+    # CLIに渡すだけで(追加の手順無しに)`GetWindow.GetUseTimeout`が実行コード
+    # (window instance変数へのDesktop(...).window(...)の代入)に変換されることを確認する
+    # ——ユーザーが意識する入出力経路(ファイル→CLI→ファイル)そのもの。
     fixture = FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt"
     output_path = tmp_path / "out.py"
 
@@ -163,10 +162,7 @@ def test_cli_adds_verified_pywinauto_selector_hint_from_control_repository(tmp_p
 
     assert exit_code == 0
     code = output_path.read_text(encoding="utf-8")
-    assert (
-        'verified pywinauto selector: Desktop(backend="uia").window(title=\'Untitled - '
-        "Notepad')" in code
-    )
+    assert "AutomationWindow2 = Desktop(backend=\"uia\").window(title='Untitled - Notepad')" in code
     compile(code, "<generated>", "exec")
 
 
