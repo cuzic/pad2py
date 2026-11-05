@@ -2817,6 +2817,51 @@ of ''」)の一般則とは異なる——この一般則は「片方がNothing�
 より踏み込んだ教訓。知見44〜55でこれまでに見つかった全ての問題は
 現時点で解消済み。
 
+## 56. `_vb_cstr(None)`が`"None"`という絶対にVBが出さない文字列を返していたバグを発見・修正——知見55に続きクロスチェックで`_vb_cstr`自身のバグを発見(VM不使用)
+
+知見55で`_vb_add`自身のバグを見つけた流れで、`&`演算子のディスパッチャ
+`ConcatenateObject`(`Operators.vb`)も確認したところ、`_vb_cstr()`
+ヘルパー自身(知見46で導入)に未発見のバグが見つかった。
+
+**確定した内容**: `Conversions.vb`の`ToString(Object)`(`CStr`の実体)は
+`If Value Is Nothing Then Return Nothing`——つまり`CStr(Nothing)`自体は
+実際には(nullの)`Nothing`を返す。一方`ConcatenateObject`
+(`&`演算子のディスパッチャ)は`Return CStr(Left) & CStr(Right)`という
+形で、`CStr`の戻り値(nullになりうる)をそのまま`&`(`System.String.Concat`
+相当)に渡す——`System.String.Concat`は公式に「null引数は空文字列として
+扱う」と保証されている(.NET標準ライブラリの既定動作)ため、結果として
+`Nothing & Nothing`は最終的に空文字列`""`になる。
+
+しかし修正前の`_vb_cstr(x)`はこの`x is None`のケースを一切考慮しておらず、
+`isinstance(x, float)`に該当しないため最終行の`return str(x)`まで
+落ちて`str(None)`=`"None"`という**VBが絶対に出力しない文字列**を
+返していた。これは`CStr(Nothing)`単体でも、`"x=" & Nothing`のような
+頻出する文字列結合シナリオでも発生する——`&`は`_vb_cstr(left) +
+_vb_cstr(right)`の形で実装されている(知見46)ため、この`_vb_cstr`の
+バグが`&`演算子にも直接伝播していた。
+
+**修正内容**(`dump_daemon/uipath_codegen/render.py`): `_vb_cstr(x)`の
+先頭に`if x is None: return ""`を追加——「`CStr(Nothing)`自体は厳密には
+nullを返す」という点までは完全には再現せず、「`&`での最も一般的な実用
+シナリオ(文字列結合)で正しい結果になる」ことを優先した近似を採用した
+(`uipath_codegen`はnull値を型として伝播させる仕組みを持たないため、
+厳密なnull伝播を実装するのは過剰——単独の`CStr(Nothing)`がダイアログ等
+文字列以外の文脈でどう扱われるかまでは追跡しない、既知の限界として記録)。
+
+`tests/test_uipath_codegen.py`の
+`test_cstr_matches_vb_g_format_not_python_str_float`に
+`("CStr(Nothing)", "")`、
+`test_concat_uses_same_vb_cstr_conversion_as_cstr`に
+`('"x=" & Nothing', "x=")`/`('Nothing & "abc"', "abc")`を追加。UiPath
+関連テスト全164件通過。
+
+**この知見で確定したこと**: 知見55に続き、ランタイムソースのクロス
+チェックで既存実装自身のバグ(今回は知見46の`_vb_cstr`)がもう1件見つかった
+——この「完了宣言後に別の演算子ディスパッチャを確認するたびに、既存
+ヘルパーの`Nothing`絡みエッジケースの見落としが見つかる」というパターンが
+2回連続した。他の演算子(`^`/比較演算子)のディスパッチャで同様の
+`Nothing`絡みの見落としが無いか、継続して確認する価値がある。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

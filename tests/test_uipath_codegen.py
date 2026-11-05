@@ -505,6 +505,11 @@ def test_cdbl_matches_dotnet_runtime_source_not_python_float(
         ('CStr("abc")', "abc"),
         ("CStr(5)", "5"),
         ("CStr(True)", "True"),
+        # `Nothing`は空文字列へ丸める(知見56、.NETランタイム本体のソース
+        # ——厳密には`CStr(Nothing)`自体はnullを返すが、単純な`str(x)`に
+        # 通すと絶対にVBが出さない`"None"`という文字列になってしまう
+        # ため、`&`での実用シナリオで正しくなる空文字列への近似を採用)。
+        ("CStr(Nothing)", ""),
     ],
 )
 def test_cstr_matches_vb_g_format_not_python_str_float(vb_text: str, expected: str) -> None:
@@ -526,6 +531,11 @@ def test_cstr_matches_vb_g_format_not_python_str_float(vb_text: str, expected: s
         # 単純な`str()`ではDouble値の見た目が食い違う。
         ('"x=" & 4.0', "x=4"),
         ('"n=" & 5 & "/" & True', "n=5/True"),
+        # `Nothing`は`&`では実質的に空文字列として扱われる(知見56、
+        # `Operators.vb`の`ConcatenateObject`→`System.String.Concat`の
+        # null自動読み替えで確定)。
+        ('"x=" & Nothing', "x="),
+        ('Nothing & "abc"', "abc"),
     ],
 )
 def test_concat_uses_same_vb_cstr_conversion_as_cstr(vb_text: str, expected: str) -> None:

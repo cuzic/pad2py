@@ -34,7 +34,7 @@ UiPath固有のデコンパイル知識は不要**——以下は原則として
 | `AndAlso` / `OrElse`(短絡評価) | 同上 | `and`/`or` |
 | `Not` | 同上(Integerオペランドは知見45で実機確認) | `(lambda _x: (not _x) if isinstance(_x, bool) else ~_x)(x)`(2026-11-05修正、知見45参照——Booleanは論理否定、Integerはビット反転) |
 | `Xor` | 同上 | `(a) ^ (b)`(ビット演算子。`And`/`Or`の`&`/`|`と同じ理由でPython実挙動で検証済み、下記「注意点」参照) |
-| `CStr(x)` | 同上 | `_vb_cstr(x)`(2026-11-05修正、知見46参照——VBのDouble既定書式(G15)は整数値の小数点を省略するため単純な`str(x)`では食い違う。例: `CStr(4.0)`は`"4"`だが`str(4.0)`は`"4.0"`。`NaN`/`Infinity`/`-Infinity`も特別扱い) |
+| `CStr(x)` | 同上 | `_vb_cstr(x)`(2026-11-05修正、知見46・56参照——VBのDouble既定書式(G15)は整数値の小数点を省略するため単純な`str(x)`では食い違う。例: `CStr(4.0)`は`"4"`だが`str(4.0)`は`"4.0"`。`NaN`/`Infinity`/`-Infinity`も特別扱い。`Nothing`は空文字列に近似(知見56、厳密にはnullだが`&`での実用シナリオを優先)) |
 | `True` / `False` | 同上 | `True` / `False` |
 | `IsNot`(参照比較の否定) | `[CStr(If(result IsNot Nothing, "notnothing", "isnothing")) & ...]`(知見36、実機コンパイル確認) | `is not` |
 | `Nothing` | 同上 | `None` |

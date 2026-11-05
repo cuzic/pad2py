@@ -79,9 +79,22 @@ def _vb_cdbl(x):
 # `uipath_codegen/__init__.py`の`_collect_imports`が使用時のみ行う
 # (未使用時に余計なコードを増やさない既存方針、`pyperclip`/`Desktop`の
 # import挿入と同じ仕組み)。
+# `x is None`(`Nothing`)の場合は空文字列を返す(2026-11-05追補、知見56
+# 参照)——.NETランタイム本体のソース(`Conversions.vb`の
+# `ToString(Object)`)を確認すると`CStr(Nothing)`自体は実際には`Nothing`
+# (nullのString参照)を返すが、これをそのままPythonの`str(x)`に通すと
+# `"None"`という絶対にVBが出力しない文字列になってしまう(VBの文字列
+# 結合`&`は`System.String.Concat`経由でnull文字列を自動的に空文字列へ
+# 読み替えるため、`&`の文脈では最終的に空文字列と等価になる——
+# `Operators.vb`の`ConcatenateObject`で確認)。「nullを厳密に伝播させる」
+# より「`&`での最も一般的な実用シナリオで正しい結果になる」ことを優先し、
+# 空文字列へ丸める近似を採用した(単独の`CStr(Nothing)`がダイアログ等
+# 文字列以外の文脈でどう扱われるかまでは追跡しない、既知の限界)。
 VB_CSTR_HELPER_NAME = "_vb_cstr"
 VB_CSTR_HELPER_SOURCE = """\
 def _vb_cstr(x):
+    if x is None:
+        return ""
     if isinstance(x, float):
         if x != x:
             return "NaN"
