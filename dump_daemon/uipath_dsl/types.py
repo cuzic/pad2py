@@ -1164,6 +1164,67 @@ class ForEachFolderNode:
 
 
 @dataclass
+class RenameFileNode:
+    """`<ui:RenameFileX>`(知見191、GitHub code searchで123件ヒット
+    ——`DeleteFileX`(知見189)と同じ「X」付きファイルシステム操作系
+    活動ファミリーの一員)。`UiPath/skills`公式リポジトリのStudio
+    実機ground-truthコーパス+実機(`KooBonchan/wine-bouti`)で確認した
+    構成は`FilePath`+`NewName`+`KeepExtension`(ground-truthの既定値
+    `"True"`)+`FileResource`/`OutputFileResource`(Integration Service
+    連携用、未モデル化)。
+
+    `KeepExtension="True"`の場合、元のファイルの拡張子を`NewName`に
+    付加してから`os.rename()`(Python標準の確認済みAPI)で改名する
+    ——`os.path.splitext()`(拡張子分離)+`os.path.dirname()`
+    (ディレクトリ部分の保持)という確認済みの標準的な組み合わせ。"""
+
+    file_path: Expr = None
+    new_name: Expr = None
+    keep_extension: str | None = None
+    file_resource: Expr = None
+    output_file_resource: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class RenameFolderNode:
+    """`<ui:RenameFolderX>`(知見191、`RenameFile`の兄弟活動、GitHub
+    code searchで実機確認済み)。`FolderPath`+`NewName`のみ——
+    `KeepExtension`に相当する属性は無い(フォルダに拡張子の概念は
+    無いため)。`os.rename()`が直接対応する。"""
+
+    folder_path: Expr = None
+    new_name: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class CreateFileNode:
+    """`<ui:CreateFile>`(知見191、`UiPath.System.Activities`、GitHub
+    code searchで266件ヒット——`DeleteFileX`等とは違い非X形のまま)。
+    `UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス+
+    実機(`piyushagarwal08/JU-Notes`)で確認した構成は`Path`
+    (ディレクトリ)+`Name`(ファイル名)+`Output`(出力、実機で非
+    `{x:Null}`の値を確認できず——`ForEachFileX`(知見190)と同じ
+    「絶対パス文字列」表現で対応する)+`PathResource`(未モデル化)+
+    `ContinueOnError`。
+
+    `os.path.join(Path, Name)`で完全パスを組み立て、`open(path,
+    "w").close()`(空ファイルを作成する、Python標準の確認済み手法)で
+    作成する。既存ファイルが既にある場合の上書き挙動がUiPath実機と
+    一致するかは未確認(本調査の対象外)——`CopyFile`/`MoveFile`
+    (知見117・188)のような`Overwrite`相当の属性自体がこの活動には
+    無いため、既存ファイルの扱いに関する分岐自体が存在しない。"""
+
+    path: Expr = None
+    name: Expr = None
+    output: Expr = None
+    path_resource: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2286,6 +2347,9 @@ Node = (
     | DeleteFolderNode
     | ForEachFileNode
     | ForEachFolderNode
+    | RenameFileNode
+    | RenameFolderNode
+    | CreateFileNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

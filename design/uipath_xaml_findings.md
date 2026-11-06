@@ -9023,6 +9023,59 @@ chained_property`とは別の、`_SAFE_BARE_MEMBERS`で許可された名前
 `tests/test_uipath_codegen.py`9件)、UiPath関連テスト全855件通過、
 リポジトリ全体で全1906件通過。
 
+## 191. `ui:RenameFileX`+`ui:RenameFolderX`+`ui:CreateFile`を新規実装——ファイルシステム操作系の最後の未実装活動群、`MoveFileNode`(知見188)と同様の既存ロジック再利用パターンを踏襲
+
+知見189で確認した「`ui:DeleteFileX`/`ui:DeleteFolderX`等、`X`付きが
+実在して無印タグは実在ゼロ」というファイルシステム操作系活動ファミリー
+の調査の続きとして、`ui:RenameFileX`(GitHub code searchで123件ヒット)+
+`ui:RenameFolderX`(同ファミリーの兄弟活動)+`ui:CreateFile`
+(`UiPath.System.Activities`、266件ヒット——`DeleteFileX`等とは違い
+非`X`形のまま実在することを確認)を実装した。`UiPath/skills`公式
+リポジトリのStudio実機ground-truthコーパス+実機サンプル3件
+(`KooBonchan/wine-bouti`の`RenameFileX`、`PakamTharunReddy/RPA`の
+`RenameFolderX`、`piyushagarwal08/JU-Notes`の`CreateFile`)で構成を
+確認した。
+
+`RenameFileX`は`FilePath`+`NewName`+`KeepExtension`
+(ground-truthの既定値`"True"`)+`FileResource`/`OutputFileResource`
+(Integration Service連携用、未モデル化のため常に`# TODO`)。
+`KeepExtension="True"`の場合、元のファイルの拡張子を`NewName`に
+付加してから`os.rename()`で改名する——`os.path.splitext()`
+(拡張子分離)+`os.path.dirname()`(ディレクトリ部分の保持)という
+確認済みの標準的な組み合わせ。`RenameFolderX`は`FolderPath`+
+`NewName`のみ(`KeepExtension`に相当する属性は無い——フォルダに
+拡張子の概念が無いため)で、同じ`os.rename()`パターンに倒した。
+`CreateFile`は`Path`(ディレクトリ)+`Name`(ファイル名)+`Output`
+(出力、実機サンプルでは非`{x:Null}`の値を確認できなかった)+
+`PathResource`(未モデル化)+`ContinueOnError`で、
+`os.path.join(Path, Name)`で完全パスを組み立て、`open(path,
+"w").close()`(空ファイルを作成する、Python標準の確認済み手法)で
+作成する。
+
+`CreateFile`の`Output`は、`ForEachFileX`(知見190)で確立した
+「絶対パス文字列として表現する」パターンをそのまま再利用した——
+`.NET`の`FileInfo`オブジェクトをでっち上げず、生成した完全パスの
+文字列そのものを代入する。また、既存ファイルが既にある場合の
+上書き挙動がUiPath実機と一致するかは確認できなかった(本調査の
+対象外)ため、`CopyFile`/`MoveFile`(知見117・188)のような
+`Overwrite`相当の属性自体がこの活動には無く、既存ファイルの扱いに
+関する分岐を一切設けていない——「確認できないことは実装しない」
+という方針をそのまま適用した。
+
+3つとも実装パターン自体は新規性が低く、`MoveFileNode`(知見188、
+`CopyFileNode`の決定木を再利用)と同じ「既存の確認済みロジックへの
+素直な帰着」で済んだ——新しいVB変換・新しいランタイム落ちの発見は
+今回は無かった。実機XAML3件で`generate_python()`+`compile()`を
+確認(`RenameFileX`サンプルは`.AsText(...)`/`.Format(...)`という
+無関係な既存の未対応呼び出しでTODO化されたが、これは新機能のバグ
+ではない)。`RenameFileX`の成功パス(`KeepExtension="True"`)は
+実機サンプルが踏まなかったため合成XMLで別途確認し、さらに実際の
+一時ディレクトリで`old.txt`→`renamed.txt`(拡張子保持)への実際の
+リネームが実行時に正しく動くことも手動確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`18件)、
+UiPath関連テスト全848件通過、リポジトリ全体で全1924件通過(28件
+skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

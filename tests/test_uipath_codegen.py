@@ -50,6 +50,7 @@ from dump_daemon.uipath_dsl import (
     CloseWindowNode,
     CommentNode,
     CopyFileNode,
+    CreateFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
@@ -101,6 +102,8 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
+    RenameFileNode,
+    RenameFolderNode,
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
@@ -3680,6 +3683,225 @@ def test_for_each_folder_recursive_uses_os_walk_dirnames():
     )
     code = generate_python(wf)
     assert "for _dp, _dns, _fns in os.walk('d') for _dn in _dns" in code
+    _compiles(code)
+
+
+def test_rename_file_calls_os_rename():
+    """知見191: `ui:RenameFileX`(GitHub code searchで123件ヒット
+    ——`DeleteFileX`(知見189)と同じ「X」付きファイルシステム操作系
+    活動ファミリー)。`KeepExtension="True"`時は元の拡張子を保持する。"""
+    wf = _wrap(
+        [
+            RenameFileNode(
+                file_path=Literal(value="/tmp/old.txt"),
+                new_name=Literal(value="new"),
+                keep_extension="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_new_name += os.path.splitext(_old)[1]" in code
+    assert "os.rename(_old, os.path.join(os.path.dirname(_old), _new_name))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_rename_file_with_keep_extension_false_does_not_append_extension():
+    wf = _wrap(
+        [
+            RenameFileNode(
+                file_path=Literal(value="/tmp/old.txt"),
+                new_name=Literal(value="new.txt"),
+                keep_extension="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.path.splitext" not in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_rename_file_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            RenameFileNode(
+                file_path=Literal(value="a.txt"),
+                new_name=Literal(value="b"),
+                keep_extension="True",
+                display_name="Rename File",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Rename File" in code
+    assert "os.rename(" in code
+    _compiles(code)
+
+
+def test_rename_file_with_missing_path_or_name_is_todo():
+    wf = _wrap([RenameFileNode(file_path=None, new_name=Literal(value="b"))])
+    code = generate_python(wf)
+    assert "# TODO: RenameFile with missing FilePath/NewName" in code
+    _compiles(code)
+
+
+def test_rename_file_with_file_resource_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RenameFileNode(
+                file_path=Literal(value="a.txt"),
+                new_name=Literal(value="b"),
+                keep_extension="True",
+                file_resource=VbExpr(text="res"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RenameFile with FileResource/OutputFileResource set" in code
+    _compiles(code)
+
+
+def test_rename_file_with_unrecognized_keep_extension_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RenameFileNode(
+                file_path=Literal(value="a.txt"),
+                new_name=Literal(value="b"),
+                keep_extension=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RenameFile with unrecognized/unset KeepExtension" in code
+    _compiles(code)
+
+
+def test_rename_folder_calls_os_rename():
+    """知見191: `ui:RenameFolderX`(`RenameFile`の兄弟活動)。
+    `KeepExtension`に相当する属性は無い。"""
+    wf = _wrap(
+        [
+            RenameFolderNode(
+                folder_path=Literal(value="/tmp/old"),
+                new_name=Literal(value="new"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.rename(_old, os.path.join(os.path.dirname(_old), 'new'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_rename_folder_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            RenameFolderNode(
+                folder_path=Literal(value="a"),
+                new_name=Literal(value="b"),
+                display_name="Rename Folder",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Rename Folder" in code
+    assert "os.rename(" in code
+    _compiles(code)
+
+
+def test_rename_folder_with_missing_path_or_name_is_todo():
+    wf = _wrap([RenameFolderNode(folder_path=None, new_name=Literal(value="b"))])
+    code = generate_python(wf)
+    assert "# TODO: RenameFolder with missing FolderPath/NewName" in code
+    _compiles(code)
+
+
+def test_create_file_joins_path_and_name():
+    """知見191: `ui:CreateFile`(GitHub code searchで266件ヒット——
+    `DeleteFileX`等とは違い非X形のまま)。`open(path, "w").close()`
+    で空ファイルを作成する。"""
+    wf = _wrap(
+        [
+            CreateFileNode(
+                path=Literal(value="C:/Hello/"),
+                name=Literal(value="Anuj.txt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_full_path = os.path.join('C:/Hello/', 'Anuj.txt')" in code
+    assert 'open(_full_path, "w").close()' in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_create_file_with_output_assigns_full_path():
+    wf = _wrap(
+        [
+            CreateFileNode(
+                path=Literal(value="C:/Hello/"),
+                name=Literal(value="Anuj.txt"),
+                output=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "result = _full_path" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_create_file_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            CreateFileNode(
+                path=Literal(value="a"),
+                name=Literal(value="b.txt"),
+                display_name="Create File",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Create File" in code
+    assert "open(_full_path" in code
+    _compiles(code)
+
+
+def test_create_file_with_missing_path_or_name_is_todo():
+    wf = _wrap([CreateFileNode(path=None, name=Literal(value="b.txt"))])
+    code = generate_python(wf)
+    assert "# TODO: CreateFile with missing Path/Name" in code
+    _compiles(code)
+
+
+def test_create_file_with_path_resource_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CreateFileNode(
+                path=Literal(value="a"),
+                name=Literal(value="b.txt"),
+                path_resource=VbExpr(text="res"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CreateFile with PathResource set" in code
+    _compiles(code)
+
+
+def test_create_file_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CreateFileNode(
+                path=Literal(value="a"),
+                name=Literal(value="b.txt"),
+                continue_on_error=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CreateFile with ContinueOnError set" in code
     _compiles(code)
 
 

@@ -2473,3 +2473,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      9件)、UiPath関連テスト全855件通過、リポジトリ全体で全1906件
      通過。
+
+149. **(完了、2026-11-06)** `ui:RenameFileX`+`ui:RenameFolderX`+
+     `ui:CreateFile`を新規実装(知見191): ファイルシステム操作系
+     活動群の最後の未実装分。`RenameFileX`/`RenameFolderX`は
+     `os.rename()`(`KeepExtension="True"`時は`os.path.splitext()`で
+     拡張子を保持)、`CreateFile`は`os.path.join()`+`open(path,
+     "w").close()`で対応——いずれも`MoveFileNode`(知見188)と同様、
+     既存の確認済みロジックへの素直な帰着で、新しいVB変換やランタイム
+     落ちの発見は無かった。`CreateFile`の`Output`は`ForEachFileX`
+     (知見190)の「絶対パス文字列」表現パターンを再利用。実機XAML3件
+     +合成データ+実際の一時ディレクトリでの`os.rename()`実行結果を
+     手動確認。回帰テスト追加(`tests/test_uipath_dsl.py`3件・
+     `tests/test_uipath_codegen.py`18件)、UiPath関連テスト全848件
+     通過、リポジトリ全体で全1924件通過。

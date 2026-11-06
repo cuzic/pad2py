@@ -29,6 +29,7 @@ from dump_daemon.uipath_dsl import (
     CloseWindowNode,
     CommentNode,
     CopyFileNode,
+    CreateFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
@@ -76,6 +77,8 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
+    RenameFileNode,
+    RenameFolderNode,
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
@@ -1697,6 +1700,52 @@ def test_for_each_folder_properties():
     assert node.include_sub_folders == "False"
     assert node.item_var == "CurrentFolder"
     assert node.index_var == "CurrentIndex"
+
+
+def test_rename_file_properties():
+    """知見191: `ui:RenameFileX`(GitHub code searchで123件ヒット
+    ——`DeleteFileX`(知見189)と同じ「X」付きファイルシステム操作系
+    活動ファミリー)。実機`KooBonchan/wine-bouti`で確認した
+    `KeepExtension="True"`の実例。"""
+    xml = (
+        f"<ui:RenameFileX {_UI_XMLNS} DisplayName=\"Rename File\" "
+        'FilePath="[path]" NewName="[newname]" KeepExtension="True" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RenameFileNode)
+    assert node.file_path == VbExpr(text="path")
+    assert node.new_name == VbExpr(text="newname")
+    assert node.keep_extension == "True"
+    assert node.file_resource is None
+
+
+def test_rename_folder_properties():
+    """知見191: `ui:RenameFolderX`(`RenameFile`の兄弟活動)。実機
+    `PakamTharunReddy/RPA`で確認した実例。"""
+    xml = (
+        f"<ui:RenameFolderX {_UI_XMLNS} DisplayName=\"Rename Folder\" "
+        'FolderPath="dummy" NewName="Dummy" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RenameFolderNode)
+    assert node.folder_path == Literal(value="dummy")
+    assert node.new_name == Literal(value="Dummy")
+
+
+def test_create_file_properties():
+    """知見191: `ui:CreateFile`(GitHub code searchで266件ヒット——
+    `DeleteFileX`等とは違い非X形のまま)。実機`piyushagarwal08/JU-
+    Notes`で確認した実例。"""
+    xml = (
+        f"<ui:CreateFile {_UI_XMLNS} DisplayName=\"Create File\" "
+        'ContinueOnError="{x:Null}" Name="Anuj.txt" Path="C:/Hello/" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CreateFileNode)
+    assert node.path == Literal(value="C:/Hello/")
+    assert node.name == Literal(value="Anuj.txt")
+    assert node.output is None
+    assert node.continue_on_error is None
 
 
 def test_log_message_properties():

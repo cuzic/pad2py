@@ -34,6 +34,7 @@ from .types import (
     CloseWindowNode,
     CommentNode,
     CopyFileNode,
+    CreateFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
@@ -89,6 +90,8 @@ from .types import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
+    RenameFileNode,
+    RenameFolderNode,
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
@@ -1036,6 +1039,37 @@ def _parse_for_each_folder(elem: etree._Element) -> ForEachFolderNode:
     )
 
 
+def _parse_rename_file(elem: etree._Element) -> RenameFileNode:
+    return RenameFileNode(
+        file_path=_attr_expr(elem, "FilePath"),
+        new_name=_attr_expr(elem, "NewName"),
+        keep_extension=_attr_or_none(elem, "KeepExtension"),
+        file_resource=_attr_expr(elem, "FileResource"),
+        output_file_resource=_attr_expr(elem, "OutputFileResource"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_rename_folder(elem: etree._Element) -> RenameFolderNode:
+    return RenameFolderNode(
+        folder_path=_attr_expr(elem, "FolderPath"),
+        new_name=_attr_expr(elem, "NewName"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_create_file(elem: etree._Element) -> CreateFileNode:
+    output = _attr_expr(elem, "Output") or _in_argument_property_expr(elem, "Output")
+    return CreateFileNode(
+        path=_attr_expr(elem, "Path"),
+        name=_attr_expr(elem, "Name"),
+        output=output,
+        path_resource=_attr_expr(elem, "PathResource"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
     return KillProcessNode(
         process_name=_attr_expr(elem, "ProcessName"),
@@ -1968,6 +2002,9 @@ _DISPATCH = {
     (UI_NS, "DeleteFolderX"): _parse_delete_folder,
     (UI_NS, "ForEachFileX"): _parse_for_each_file,
     (UI_NS, "ForEachFolderX"): _parse_for_each_folder,
+    (UI_NS, "RenameFileX"): _parse_rename_file,
+    (UI_NS, "RenameFolderX"): _parse_rename_folder,
+    (UI_NS, "CreateFile"): _parse_create_file,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

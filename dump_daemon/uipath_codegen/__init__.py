@@ -74,6 +74,7 @@ from ..uipath_dsl.types import (
     CloseWindowNode,
     CommentNode,
     CopyFileNode,
+    CreateFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
@@ -127,6 +128,8 @@ from ..uipath_dsl.types import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
+    RenameFileNode,
+    RenameFolderNode,
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
@@ -354,6 +357,7 @@ def _collect_imports(body: list[str]) -> list[str]:
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
         or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
+        or "os.rename(" in line
         for line in body
     ):
         imports.append("import os")
@@ -508,6 +512,12 @@ def _generate_node(
         return _generate_for_each_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachFolderNode):
         return _generate_for_each_folder(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, RenameFileNode):
+        return _generate_rename_file(node, indent)
+    if isinstance(node, RenameFolderNode):
+        return _generate_rename_folder(node, indent)
+    if isinstance(node, CreateFileNode):
+        return _generate_create_file(node, indent)
     if isinstance(node, TryCatchNode):
         return _generate_try_catch(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SwitchNode):
@@ -3524,6 +3534,113 @@ def _generate_for_each_folder(
         _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
     )
     lines.extend(body)
+    return lines
+
+
+# 知見191: `ui:RenameFileX`。`KeepExtension="True"`の場合、元のファイルの
+# 拡張子を`NewName`に付加してから`os.rename()`(Python標準の確認済み
+# API)で改名する——`os.path.splitext()`/`os.path.dirname()`という
+# 確認済みの標準的な組み合わせ。
+def _generate_rename_file(node: RenameFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_rename_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_rename_file_body(node: RenameFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_path is None or node.new_name is None:
+        return [f"{prefix}# TODO: RenameFile with missing FilePath/NewName"]
+    if node.file_resource is not None or node.output_file_resource is not None:
+        return [
+            f"{prefix}# TODO: RenameFile with FileResource/"
+            "OutputFileResource set — Integration Service resource "
+            "handling not confirmed, refusing to guess"
+        ]
+    if node.keep_extension not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: RenameFile with unrecognized/unset "
+            f"KeepExtension ({node.keep_extension!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    new_name = _render_value_or_todo(node.new_name, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}_old = {file_path}", f"{prefix}_new_name = {new_name}"]
+    if node.keep_extension == "True":
+        lines.append(f"{prefix}_new_name += os.path.splitext(_old)[1]")
+    lines.append(
+        f"{prefix}os.rename(_old, os.path.join(os.path.dirname(_old), _new_name))"
+    )
+    return lines
+
+
+# 知見191: `ui:RenameFolderX`(`RenameFile`の兄弟活動)。`os.rename()`が
+# 直接対応する。
+def _generate_rename_folder(node: RenameFolderNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_rename_folder_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_rename_folder_body(node: RenameFolderNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.folder_path is None or node.new_name is None:
+        return [f"{prefix}# TODO: RenameFolder with missing FolderPath/NewName"]
+    todo: list[str] = []
+    folder_path = _render_value_or_todo(node.folder_path, prefix, todo)
+    new_name = _render_value_or_todo(node.new_name, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_old = {folder_path}",
+        f"{prefix}os.rename(_old, os.path.join(os.path.dirname(_old), {new_name}))",
+    ]
+
+
+# 知見191: `ui:CreateFile`。`os.path.join(Path, Name)`で完全パスを組み
+# 立て、`open(path, "w").close()`(空ファイルを作成する、Python標準の
+# 確認済み手法)で作成する。`Output`は`ForEachFileX`(知見190)と同じ
+# 「絶対パス文字列」表現で対応する。
+def _generate_create_file(node: CreateFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_create_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_create_file_body(node: CreateFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None or node.name is None:
+        return [f"{prefix}# TODO: CreateFile with missing Path/Name"]
+    if node.path_resource is not None:
+        return [
+            f"{prefix}# TODO: CreateFile with PathResource set "
+            f"({_describe_expr_for_comment(node.path_resource)}) — "
+            "Integration Service resource handling not confirmed, "
+            "refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: CreateFile with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    name = _render_value_or_todo(node.name, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_full_path = os.path.join({path}, {name})",
+        f'{prefix}open(_full_path, "w").close()',
+    ]
+    if node.output is not None:
+        todo2: list[str] = []
+        target = _render_value_or_todo(node.output, prefix, todo2)
+        if todo2:
+            return todo2
+        lines.append(f"{prefix}{target} = _full_path")
     return lines
 
 
