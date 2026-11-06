@@ -5895,6 +5895,55 @@ replace_text_in_scope`を追加(`_iter_invoke_nodes`のスコープ再帰発見
 リストにも追加、知見88と同種の見落とし防止)。`tests/test_uipath_dsl.py`
 に2件・`tests/test_uipath_codegen.py`に4件追加、全1369件通過。
 
+## 122. `ui:MultipleAssign`を新規実装(5件中5件に出現する最強の実務需要信号)、`Condition`の省略されないプロパティ要素形(`mva:VisualBasicValue`)も発見・修正(知見117〜121の手法を新しい実プロジェクト群へ継続、VM不使用)
+
+知見117〜121の「実機XAMLに対する実際のコード生成の検証」を、これまで
+使っていなかった新しい実プロジェクト群(`cameronmcnz/uipath-tutorials`
+の追加ファイル・`rpabotsworld/uipath-with-github-action`・
+`ShonHarsh/RPADev-S02P01-ForEachIfStatement-VB`・`miyag/
+UiPath.ReusableCode`)へ適用した。**5件中5件に`MultipleAssign`が出現する
+**——これまでの検証で見た中で最も強い実務需要の信号だった。
+
+**`ui:MultipleAssign`**(`UiPath.System.Activities`): `.AssignOperations`
+配下の`scg:List<ui:AssignOperation>`の各要素は`.To`/`.Value`を持ち、
+単一の`Assign`(知見2)と構造・意味論が完全に同じ——複数の`Assign`を
+1つの活動にまとめた糖衣構文に過ぎないと判断し、新しい値表現をでっち
+上げず各要素を既存の`AssignNode`として再利用、コード生成も既存の
+`_generate_assign`を単純にループで呼ぶだけで済んだ。
+
+**`Condition`の省略されないプロパティ要素形の発見**: `MultipleAssign`
+修正後の再検証で、`ui:InterruptibleDoWhile`の`Condition`が`# TODO`に
+倒れる実例を発見した——`Condition`属性そのものが存在せず、代わりに
+`<ui:InterruptibleDoWhile.Condition><mva:VisualBasicValue
+ExpressionText="guess &lt;&gt; secretNumber" />
+</ui:InterruptibleDoWhile.Condition>`という、プロパティ要素形そのもの
+(`mva:VisualBasicValue`、`Microsoft.VisualBasic.Activities`——.NET
+Workflow Foundation自体の標準型で、UiPath独自ではない)が直列化されて
+いた。知見14で「`[...]`角括弧式の正体は`VisualBasicValue`の省略記法」
+と確認済みだったが、Studioが常に省略形(`Condition="[...]"`属性)を
+使うとは限らず、省略されない完全形も実在すると今回確認できた——
+`ExpressionText`属性が角括弧無しの生のVB式テキストを保持する。属性形が
+無い場合のみこの要素形へフォールバックする`_condition_expr`を新設し、
+`While`/`DoWhile`の両方に適用した(`If`/`Switch`等の他の条件式プロパティ
+も理論上同じ機構のはずだが、実機確認はまだ`While`/`DoWhile`のみ——
+確認が取れたものだけ修正する方針を継続)。
+
+**新たに発見したが今回は見送ったもの**: `InputDialog`(ユーザー入力
+ダイアログ、`MessageBox`の入力版——`MessageBox`が`print()`へ変換される
+のと同じ「非対話的な変換」の限界に直面するため設計判断が必要)・
+`New Integer() {...}`(VB.NETの明示的配列構築構文、既存の`{a,b,c}`配列
+リテラルとは別の文法)・`Log Message`の`Level`属性がVB式で囲まれた列挙
+参照(`"[UiPath.Core.Activities.LogLevel.Info]"`)になる実例(現在は
+プレーンな文字列`"Info"`/`"Error"`のみ対応、列挙参照形は未対応)・
+`Verify Expression with Operator`(`UiPath.Testing.Activities`、知見の
+P3で既に低優先と判断済み)。
+
+`dump_daemon/uipath_dsl/types.py`に`MultipleAssignNode`、`xaml_tree.py`
+に`_parse_multiple_assign`+`_condition_expr`(`_parse_while`/
+`_parse_do_while`を更新)、`uipath_codegen/__init__.py`に
+`_generate_multiple_assign`を追加。`tests/test_uipath_dsl.py`に2件・
+`tests/test_uipath_codegen.py`に2件追加、全1381件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -42,6 +42,7 @@ from dump_daemon.uipath_dsl import (
     Literal,
     LogMessageNode,
     MessageBoxNode,
+    MultipleAssignNode,
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
@@ -601,6 +602,49 @@ def test_invoke_workflow_file(main_wf):
     assert invoke.continue_on_error is None
 
 
+def test_multiple_assign_operations():
+    """知見122: `ui:MultipleAssign.AssignOperations`配下の`scg:List
+    <ui:AssignOperation>`。`cameronmcnz/uipath-tutorials`の実機XAMLの
+    属性構成をそのまま合成XMLで再現する——各`AssignOperation`の
+    `.To`/`.Value`は単一の`Assign`と全く同じ構造。"""
+    xml = (
+        '<ui:MultipleAssign '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'DisplayName="Multiple Assign">'
+        "<ui:MultipleAssign.AssignOperations>"
+        '<scg:List x:TypeArguments="ui:AssignOperation" Capacity="4">'
+        "<ui:AssignOperation>"
+        "<ui:AssignOperation.To>"
+        '<OutArgument x:TypeArguments="x:Int32">[count]</OutArgument>'
+        "</ui:AssignOperation.To>"
+        "<ui:AssignOperation.Value>"
+        '<InArgument x:TypeArguments="x:Int32">0</InArgument>'
+        "</ui:AssignOperation.Value>"
+        "</ui:AssignOperation>"
+        "<ui:AssignOperation>"
+        "<ui:AssignOperation.To>"
+        '<OutArgument x:TypeArguments="x:Int32">[secretNumber]</OutArgument>'
+        "</ui:AssignOperation.To>"
+        "<ui:AssignOperation.Value>"
+        '<InArgument x:TypeArguments="x:Int32">5</InArgument>'
+        "</ui:AssignOperation.Value>"
+        "</ui:AssignOperation>"
+        "</scg:List>"
+        "</ui:MultipleAssign.AssignOperations>"
+        "</ui:MultipleAssign>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MultipleAssignNode)
+    assert node.display_name == "Multiple Assign"
+    assert len(node.assignments) == 2
+    assert node.assignments[0] == AssignNode(target=VbExpr(text="count"), value=Literal(value="0"))
+    assert node.assignments[1] == AssignNode(
+        target=VbExpr(text="secretNumber"), value=Literal(value="5")
+    )
+
+
 def test_while_and_do_while(main_wf):
     while_node = main_wf.root.body[10]
     assert isinstance(while_node, WhileNode)
@@ -612,6 +656,33 @@ def test_while_and_do_while(main_wf):
     assert isinstance(do_while_node, DoWhileNode)
     assert do_while_node.condition is None  # Condition属性が省略されている実例
     assert do_while_node.body == []
+
+
+def test_do_while_condition_as_visual_basic_value_property_element():
+    """知見122: `Condition`は通常`[...]`角括弧の属性形だが、
+    `cameronmcnz/uipath-tutorials`の実機XAMLで`<ui:InterruptibleDoWhile.
+    Condition><mva:VisualBasicValue ExpressionText="..." />
+    </ui:InterruptibleDoWhile.Condition>`という、省略されない要素形
+    そのものを発見した——`ExpressionText`は角括弧無しの生のVB式テキスト。
+    """
+    xml = (
+        '<ui:InterruptibleDoWhile '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" '
+        'DisplayName="Do While">'
+        "<ui:InterruptibleDoWhile.Body>"
+        '<Sequence DisplayName="Body" />'
+        "</ui:InterruptibleDoWhile.Body>"
+        "<ui:InterruptibleDoWhile.Condition>"
+        '<mva:VisualBasicValue x:TypeArguments="x:Boolean" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'ExpressionText="guess &lt;&gt; secretNumber" />'
+        "</ui:InterruptibleDoWhile.Condition>"
+        "</ui:InterruptibleDoWhile>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DoWhileNode)
+    assert node.condition == VbExpr(text="guess <> secretNumber")
 
 
 def test_append_line_and_read_text_file(main_wf):

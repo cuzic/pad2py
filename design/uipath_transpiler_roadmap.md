@@ -1448,3 +1448,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     見落とし防止)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
     `tests/test_uipath_codegen.py`4件)、UiPath関連テスト全490件通過、
     リポジトリ全体で全1369件通過。
+80. **(完了、2026-11-06)** `ui:MultipleAssign`を新規実装(5件中5件に
+    出現する最強の実務需要信号)、`Condition`の省略されないプロパティ
+    要素形(`mva:VisualBasicValue`)も発見・修正(VM不使用、知見122——
+    知見117〜121の手法を新しい実プロジェクト群へ継続): `MultipleAssign`
+    の`.AssignOperations`配下の各`AssignOperation`は単一の`Assign`
+    (知見2)と構造・意味論が完全に同じ糖衣構文と判断し、既存の
+    `AssignNode`/`_generate_assign`をそのまま再利用(新しい生成ロジック
+    不要)。修正後の再検証で`ui:InterruptibleDoWhile`の`Condition`が
+    属性形ではなく`<X.Condition><mva:VisualBasicValue
+    ExpressionText="..." /></X.Condition>`という省略されない要素形
+    そのもので直列化される実例を発見——知見14の「角括弧式の正体は
+    `VisualBasicValue`の省略記法」という理解の裏付けになったが、Studioが
+    常に省略形を使うとは限らないと判明。属性形が無い場合のみこの要素形へ
+    フォールバックする`_condition_expr`を新設し`While`/`DoWhile`へ適用。
+    `InputDialog`(対話的な入力の非対話変換という設計判断が必要)・
+    `New Integer() {...}`(VB.NETの明示的配列構築構文)・`LogMessage`の
+    `Level`が列挙参照形になる実例は次回へ見送り。回帰テスト追加
+    (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+    2件)、UiPath関連テスト全494件通過、リポジトリ全体で全1381件通過。

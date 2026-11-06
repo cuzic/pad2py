@@ -67,6 +67,7 @@ from dump_daemon.uipath_dsl import (
     Literal,
     LogMessageNode,
     MessageBoxNode,
+    MultipleAssignNode,
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
@@ -110,6 +111,40 @@ def test_assign_object_typed_expr():
     wf = _wrap([AssignNode(target=VbExpr(text="result"), value=VbExpr(text='"ok"'))])
     code = generate_python(wf)
     assert "result = 'ok'" in code
+
+
+def test_multiple_assign_generates_one_statement_per_assign_operation():
+    """知見122: `MultipleAssign`は複数の`Assign`を1つの活動にまとめた糖衣
+    構文に過ぎない——`cameronmcnz/uipath-tutorials`の複数の実機XAMLで
+    発見(5件中5件に出現する強い実務需要の信号)。各`AssignOperation`を
+    既存の`_generate_assign`へそのまま委ねる。"""
+    wf = _wrap(
+        [
+            MultipleAssignNode(
+                assignments=[
+                    AssignNode(target=VbExpr(text="count"), value=Literal(value="0")),
+                    AssignNode(target=VbExpr(text="secretNumber"), value=Literal(value="5")),
+                ],
+                display_name="Multiple Assign",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Multiple Assign" in code
+    assert "count = '0'" in code
+    assert "secretNumber = '5'" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_multiple_assign_with_no_operations_generates_no_statements():
+    """空の`AssignOperations`(実機未確認だが構造上あり得る空リスト)でも
+    でっち上げたプレースホルダ代入は生成しない——呼び出し元の`Sequence`
+    側が`_ensure_nonempty_suite`で`pass`を補う既存の仕組みに委ねる。"""
+    wf = _wrap([MultipleAssignNode(assignments=[])])
+    code = generate_python(wf)
+    assert "pass" in code
+    _compiles(code)
 
 
 @pytest.mark.parametrize("type_str", ["OutArgument(x:String)", "InOutArgument(x:String)"])

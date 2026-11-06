@@ -91,6 +91,19 @@ class AssignNode:
 
 
 @dataclass
+class MultipleAssignNode:
+    """`<ui:MultipleAssign>`(知見122、`UiPath.System.Activities`)。
+    `.AssignOperations`配下の`scg:List<ui:AssignOperation>`の各要素は
+    `.To`/`.Value`を持ち、単一の`Assign`(知見2)と構造・意味論が完全に
+    同じ——複数の`Assign`を1つの活動にまとめた糖衣構文に過ぎないと判断し、
+    各要素を既存の`AssignNode`として素直に再利用する(新しい値表現を
+    でっち上げない)。"""
+
+    assignments: list[AssignNode] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class MessageBoxNode:
     """`<ui:MessageBox Text="..." />`(知見2・5)。
 
@@ -967,6 +980,7 @@ class UnknownActivityNode:
 Node = (
     SequenceNode
     | AssignNode
+    | MultipleAssignNode
     | MessageBoxNode
     | IfNode
     | ForEachNode

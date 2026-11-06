@@ -53,6 +53,7 @@ from .types import (
     Literal,
     LogMessageNode,
     MessageBoxNode,
+    MultipleAssignNode,
     Node,
     ParallelNode,
     ReadTextFileNode,
@@ -266,6 +267,24 @@ def _parse_assign(elem: etree._Element) -> AssignNode:
     return AssignNode(target=target, value=value)
 
 
+def _parse_multiple_assign(elem: etree._Element) -> MultipleAssignNode:
+    """知見122: `ui:MultipleAssign.AssignOperations`配下の`scg:List
+    <ui:AssignOperation>`。各`AssignOperation`の`.To`/`.Value`は単一の
+    `Assign`(`_parse_assign`)と全く同じ構造——同じ`_argument_text`
+    ヘルパーをそのまま再利用する。"""
+    ops_elem = _find_property_element(elem, "AssignOperations")
+    assignments: list[AssignNode] = []
+    if ops_elem is not None:
+        for list_elem in _direct_children(ops_elem):
+            for op_elem in _direct_children(list_elem):
+                to_elem = _find_property_element(op_elem, "To")
+                value_elem = _find_property_element(op_elem, "Value")
+                target = _parse_expr(_argument_text(to_elem))
+                value = _parse_expr(_argument_text(value_elem))
+                assignments.append(AssignNode(target=target, value=value))
+    return MultipleAssignNode(assignments=assignments, display_name=_attr(elem, "DisplayName"))
+
+
 def _parse_message_box(elem: etree._Element) -> MessageBoxNode:
     return MessageBoxNode(
         text=_attr_expr(elem, "Text"),
@@ -398,15 +417,40 @@ def _parse_switch(elem: etree._Element) -> SwitchNode:
     )
 
 
+def _condition_expr(elem: etree._Element, attr_name: str) -> Expr:
+    """知見122: `Condition`は通常`[...]`角括弧の属性形(`_attr_expr`、
+    知見14で確認済みの「角括弧式の正体は`VisualBasicValue`の省略記法」
+    という理解の通り)だが、`cameronmcnz/uipath-tutorials`の実機XAMLで
+    `<X.Condition><mva:VisualBasicValue ExpressionText="..." />
+    </X.Condition>`という、省略されない要素形そのものに実際に出会った
+    ——`ExpressionText`は角括弧無しの生のVB式テキストを保持する。属性形
+    が無い場合のみこの要素形へフォールバックする。"""
+    direct = _attr_expr(elem, attr_name)
+    if direct is not None:
+        return direct
+    prop_elem = _find_property_element(elem, attr_name)
+    if prop_elem is None:
+        return None
+    for child in _direct_children(prop_elem):
+        _, local = _split_tag(child.tag)
+        if local == "VisualBasicValue":
+            text = _attr(child, "ExpressionText")
+            if text is not None:
+                return VbExpr(text=text)
+    return None
+
+
 def _parse_while(elem: etree._Element) -> WhileNode:
     body_elem = _find_property_element(elem, "Body")
-    return WhileNode(condition=_attr_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem))
+    return WhileNode(
+        condition=_condition_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem)
+    )
 
 
 def _parse_do_while(elem: etree._Element) -> DoWhileNode:
     body_elem = _find_property_element(elem, "Body")
     return DoWhileNode(
-        condition=_attr_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem)
+        condition=_condition_expr(elem, "Condition"), body=_unwrap_body_sequence(body_elem)
     )
 
 
@@ -1128,6 +1172,7 @@ _DISPATCH = {
     (WF_NS, "Switch"): _parse_switch,
     (WF_NS, "Parallel"): _parse_parallel,
     (UI_NS, "MessageBox"): _parse_message_box,
+    (UI_NS, "MultipleAssign"): _parse_multiple_assign,
     (UI_NS, "ForEach"): _parse_for_each,
     (UI_NS, "ForEachRow"): _parse_for_each_row,
     (UI_NS, "InterruptibleWhile"): _parse_while,

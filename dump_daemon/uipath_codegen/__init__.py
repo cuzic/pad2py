@@ -78,6 +78,7 @@ from ..uipath_dsl.types import (
     Literal,
     LogMessageNode,
     MessageBoxNode,
+    MultipleAssignNode,
     Node,
     ParallelNode,
     ReadTextFileNode,
@@ -359,6 +360,8 @@ def _generate_node(
         ]
     if isinstance(node, AssignNode):
         return _generate_assign(node, indent)
+    if isinstance(node, MultipleAssignNode):
+        return _generate_multiple_assign(node, indent)
     if isinstance(node, MessageBoxNode):
         return _generate_message_box(node, indent)
     if isinstance(node, IfNode):
@@ -447,6 +450,19 @@ def _generate_assign(node: AssignNode, indent: int) -> list[str]:
     target = _render_value_or_todo(node.target, prefix, todo)
     value = _render_value_or_todo(node.value, prefix, todo)
     return [*todo, f"{prefix}{target} = {value}"]
+
+
+def _generate_multiple_assign(node: MultipleAssignNode, indent: int) -> list[str]:
+    """知見122: 各`AssignOperation`を既存の`_generate_assign`へそのまま
+    委ねる——`MultipleAssign`は複数の`Assign`を1つの活動にまとめた糖衣
+    構文に過ぎないため、新しい生成ロジックは不要。"""
+    prefix = INDENT * indent
+    lines: list[str] = []
+    for assignment in node.assignments:
+        lines.extend(_generate_assign(assignment, indent))
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
 
 
 # 知見107: `MessageBox`の`Buttons`(UiPath公式ドキュメントに列挙値の記載は
