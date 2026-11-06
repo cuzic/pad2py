@@ -27,6 +27,7 @@ from .types import (
     BuildDataTableNode,
     CatchArm,
     CheckNode,
+    ClearDataTableNode,
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
@@ -75,6 +76,7 @@ from .types import (
     Node,
     OpenApplicationNode,
     OpenBrowserNode,
+    OutputDataTableNode,
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -826,6 +828,22 @@ def _parse_get_row_item(elem: etree._Element) -> GetRowItemNode:
         column_index=_attr_expr(elem, "ColumnIndex"),
         column_name=_attr_expr(elem, "ColumnName"),
         value=value,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_clear_data_table(elem: etree._Element) -> ClearDataTableNode:
+    return ClearDataTableNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_output_data_table(elem: etree._Element) -> OutputDataTableNode:
+    text = _attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text")
+    return OutputDataTableNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        text=text,
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1750,6 +1768,8 @@ _DISPATCH = {
     (UI_NS, "AddDataRow"): _parse_add_data_row,
     (UI_NS, "RemoveDataRow"): _parse_remove_data_row,
     (UI_NS, "GetRowItem"): _parse_get_row_item,
+    (UI_NS, "ClearDataTable"): _parse_clear_data_table,
+    (UI_NS, "OutputDataTable"): _parse_output_data_table,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

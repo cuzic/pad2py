@@ -2380,3 +2380,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      合成テストで確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
      `tests/test_uipath_codegen.py`10件)、UiPath関連テスト全764件
      通過、リポジトリ全体で全1830件通過。
+
+142. **(完了、2026-11-06)** `ui:ClearDataTable`+`ui:OutputDataTable`
+     を新規実装(知見184): `ClearDataTable`は`DataTable`のみの最も
+     単純な活動で、`list.clear()`が`DataTable`表現非依存で安全。
+     `OutputDataTable`はUiPath公式ドキュメントで確認した「CSV形式へ
+     変換」という大枠を、Python標準`csv`モジュールで近似(厳密な
+     書式詳細は`# WARNING`——知見159の`GetFullText`と同じ判断パターン)
+     し、`GetRowItem`(知見183)と同じ`isinstance(row, dict)`の実行時
+     分岐でDataTableの両表現に対応する3つ目の実装パターン。実機XAML
+     4件+合成データ3パターンの実行結果を確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     9件)、UiPath関連テスト全775件通過、リポジトリ全体で全1839件
+     通過。

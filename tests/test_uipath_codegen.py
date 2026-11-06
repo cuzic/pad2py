@@ -43,6 +43,7 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     BuildDataTableNode,
     CheckNode,
+    ClearDataTableNode,
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
@@ -87,6 +88,7 @@ from dump_daemon.uipath_dsl import (
     MultipleAssignNode,
     OpenApplicationNode,
     OpenBrowserNode,
+    OutputDataTableNode,
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -2838,6 +2840,83 @@ def test_get_row_item_with_both_column_index_and_column_name_is_todo_not_guessed
     )
     code = generate_python(wf)
     assert "# TODO: GetRowItem with both ColumnIndex and ColumnName set" in code
+    _compiles(code)
+
+
+def test_clear_data_table_calls_list_clear():
+    """知見184: `ui:ClearDataTable`(GitHub code searchで225件ヒット)。
+    `AddDataRow`/`RemoveDataRow`と同じ理由で`list.clear()`は
+    `DataTable`変数の実行時表現を一切問わない安全な操作。"""
+    wf = _wrap([ClearDataTableNode(data_table=VbExpr(text="dt"))])
+    code = generate_python(wf)
+    assert "dt.clear()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_clear_data_table_display_name_becomes_a_comment():
+    wf = _wrap(
+        [ClearDataTableNode(data_table=VbExpr(text="dt"), display_name="Clear Data Table")]
+    )
+    code = generate_python(wf)
+    assert "# Clear Data Table" in code
+    assert "dt.clear()" in code
+    _compiles(code)
+
+
+def test_clear_data_table_with_no_data_table_is_todo():
+    wf = _wrap([ClearDataTableNode(data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: ClearDataTable with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_output_data_table_generates_csv_via_isinstance_dispatch():
+    """知見184: `ui:OutputDataTable`(GitHub code searchで894件ヒット)。
+    `GetRowItem`(知見183)と同じ`isinstance(row, dict)`の実行時分岐で
+    `DataTable`の両表現(dict行/list行)に対応するCSVを生成する。"""
+    wf = _wrap(
+        [OutputDataTableNode(data_table=VbExpr(text="dt"), text=VbExpr(text="s"))]
+    )
+    code = generate_python(wf)
+    assert "import csv" in code
+    assert "import io" in code
+    assert "isinstance(dt[0], dict)" in code
+    assert "s = _buf.getvalue()" in code
+    assert "WARNING" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict = {}
+    exec(code, namespace)
+
+
+def test_output_data_table_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            OutputDataTableNode(
+                data_table=VbExpr(text="dt"),
+                text=VbExpr(text="s"),
+                display_name="Output Data Table",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Output Data Table" in code
+    assert "csv.writer(" in code
+    _compiles(code)
+
+
+def test_output_data_table_with_no_data_table_is_todo():
+    wf = _wrap([OutputDataTableNode(data_table=None, text=VbExpr(text="s"))])
+    code = generate_python(wf)
+    assert "# TODO: OutputDataTable with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_output_data_table_with_no_text_is_todo():
+    wf = _wrap([OutputDataTableNode(data_table=VbExpr(text="dt"), text=None)])
+    code = generate_python(wf)
+    assert "# TODO: OutputDataTable with no output Text captured" in code
     _compiles(code)
 
 

@@ -838,6 +838,49 @@ class GetRowItemNode:
 
 
 @dataclass
+class ClearDataTableNode:
+    """`<ui:ClearDataTable DataTable="..." />`(知見184、GitHub code
+    searchで225件ヒット)。`UiPath/skills`公式リポジトリのStudio実機
+    ground-truthコーパス(`UiPath.System.Activities/25.10/
+    ClearDataTable.xaml`)+実機3件(`MaxineXiong/Scraping-PDF-Invoices-
+    with-RPA`・`jeffdnganga/DSRIncentivesPostingPerformer`)で確認した
+    構成は`DataTable`のみ——`DisplayName`以外に属性は一切無い、本調査
+    で遭遇した中でも最も単純な活動の1つ。
+
+    `AddDataRow`(知見181)/`RemoveDataRow`(知見182)と同じ理由で、
+    全ての行を削除する(`list.clear()`)という操作は`DataTable`変数の
+    実行時表現を一切問わない安全な操作——要素を読む必要すら無い。"""
+
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class OutputDataTableNode:
+    """`<ui:OutputDataTable>`(知見184、GitHub code searchで894件
+    ヒット)。`UiPath/skills`公式リポジトリのStudio実機ground-truth
+    コーパス+実機2件(`piyushagarwal08/JU-Notes`・`vajrang-b/
+    UiPathIn30Days`)で確認した構成は`DataTable`+`Text`(出力)+
+    `DisplayName`のみ。UiPath公式ドキュメント(docs.uipath.com、
+    WebSearchで確認)によれば、`DataTable`をCSV形式の文字列へ変換する
+    活動——区切り文字・引用符の扱い・改行コードといった厳密な書式の
+    詳細まではドキュメントで確認できなかったため、Python標準の`csv`
+    モジュール(確認済みの標準ライブラリ、RFC4180準拠のCSVを生成する)
+    で近似する——`GetFullText`(知見159)と同じ「公式ドキュメントで
+    確認した大枠の挙動は確信を持って実装するが、厳密な書式の細部は
+    未確認として`# WARNING`に残す」という判断パターン。
+
+    `GetRowItem`(知見183)と同じ`isinstance(row, dict)`の実行時分岐で
+    `DataTable`変数の両表現(dict行/list行)に対応する——dict行の場合は
+    先頭行のキーをヘッダー行として出力し、list行の場合はヘッダー無し
+    で値のみを出力する。"""
+
+    data_table: Expr = None
+    text: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1948,6 +1991,8 @@ Node = (
     | AddDataRowNode
     | RemoveDataRowNode
     | GetRowItemNode
+    | ClearDataTableNode
+    | OutputDataTableNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

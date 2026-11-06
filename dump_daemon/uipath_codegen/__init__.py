@@ -67,6 +67,7 @@ from ..uipath_dsl.types import (
     BreakNode,
     BuildDataTableNode,
     CheckNode,
+    ClearDataTableNode,
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
@@ -113,6 +114,7 @@ from ..uipath_dsl.types import (
     Node,
     OpenApplicationNode,
     OpenBrowserNode,
+    OutputDataTableNode,
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -290,6 +292,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `tests/test_ocr_fallback.py`で実機VM検証済みの既存確認済み依存。
     if any("pytesseract.image_to_string(" in line for line in body):
         imports.append("import pytesseract")
+    # `csv`/`io`(`OutputDataTable`→`csv.writer(io.StringIO())`変換先、
+    # 知見184)も同様。標準ライブラリ。
+    if any("csv.writer(" in line for line in body):
+        imports.append("import csv")
+    if any("io.StringIO(" in line for line in body):
+        imports.append("import io")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -515,6 +523,10 @@ def _generate_node(
         return _generate_remove_data_row(node, indent)
     if isinstance(node, GetRowItemNode):
         return _generate_get_row_item(node, indent)
+    if isinstance(node, ClearDataTableNode):
+        return _generate_clear_data_table(node, indent)
+    if isinstance(node, OutputDataTableNode):
+        return _generate_output_data_table(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -2057,6 +2069,68 @@ def _generate_get_row_item_body(node: GetRowItemNode, indent: int) -> list[str]:
             return todo
         return [f"{prefix}{target} = {row}[{column_name}]"]
     return [f"{prefix}# TODO: GetRowItem with no ColumnIndex/ColumnName/Column captured"]
+
+
+# 知見184: `ui:ClearDataTable`。`AddDataRow`/`RemoveDataRow`と同じ理由で
+# `list.clear()`は`DataTable`変数の実行時表現を一切問わない安全な操作。
+def _generate_clear_data_table(node: ClearDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_clear_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_clear_data_table_body(node: ClearDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: ClearDataTable with no DataTable captured"]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{data_table}.clear()"]
+
+
+# 知見184: `ui:OutputDataTable`。UiPath公式ドキュメント(WebSearchで
+# 確認)によれば`DataTable`をCSV形式の文字列へ変換する活動——厳密な
+# 区切り文字/引用符/改行コードの書式詳細は未確認のため、Python標準の
+# `csv`モジュール(確認済みの標準ライブラリ)で近似する(`GetFullText`
+# 知見159と同じ「大枠は確信、書式の細部は`# WARNING`」という判断)。
+# `GetRowItem`(知見183)と同じ`isinstance(row, dict)`の実行時分岐で
+# `DataTable`の両表現(dict行/list行)に対応する。
+def _generate_output_data_table(node: OutputDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_output_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_output_data_table_body(node: OutputDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: OutputDataTable with no DataTable captured"]
+    if node.text is None:
+        return [f"{prefix}# TODO: OutputDataTable with no output Text captured"]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    target = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}# WARNING: exact CSV formatting (delimiter/quoting/line "
+        "endings) of UiPath's real OutputDataTable not independently "
+        "confirmed — using Python's csv module as a confirmed-standard "
+        "approximation",
+        f"{prefix}_buf = io.StringIO()",
+        f"{prefix}_writer = csv.writer(_buf)",
+        f"{prefix}if {data_table} and isinstance({data_table}[0], dict):",
+        f"{inner}_writer.writerow({data_table}[0].keys())",
+        f"{inner}for _row in {data_table}:",
+        f"{INDENT * (indent + 2)}_writer.writerow(_row.values())",
+        f"{prefix}else:",
+        f"{inner}for _row in {data_table}:",
+        f"{INDENT * (indent + 2)}_writer.writerow(_row)",
+        f"{prefix}{target} = _buf.getvalue()",
+    ]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

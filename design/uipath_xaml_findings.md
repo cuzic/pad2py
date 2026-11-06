@@ -8710,6 +8710,43 @@ uipath-tutorials`・`allenlooplee/CloudOcrActivitiesPack`・
 test_uipath_codegen.py`10件)、UiPath関連テスト全764件通過、
 リポジトリ全体で全1830件通過。
 
+## 184. `ui:ClearDataTable`+`ui:OutputDataTable`を新規実装——前者は最も単純な「表現非依存で安全な」操作、後者はPython標準csvモジュールでCSV変換を近似(GetFullTextと同じ「大枠は確信、書式の細部はWARNING」判断)
+
+知見183の`ui:GetRowItem`に続き、`UiPath.System.Activities`名前空間の
+残るDataTable操作系活動を調査した。`UiPath/skills`公式リポジトリの
+Studio実機ground-truthコーパスで`ClearDataTable.xaml`/
+`OutputDataTable.xaml`の両方を発見し、実機(`MaxineXiong/Scraping-
+PDF-Invoices-with-RPA`・`jeffdnganga/DSRIncentivesPostingPerformer`・
+`piyushagarwal08/JU-Notes`・`vajrang-b/UiPathIn30Days`)でも確認した。
+
+`ui:ClearDataTable`は`DataTable`のみ——`DisplayName`以外に属性が
+一切無い、本調査で遭遇した中でも最も単純な活動の1つ。`AddDataRow`
+(知見181)/`RemoveDataRow`(知見182)と同じ理由で、`list.clear()`は
+`DataTable`変数の実行時表現を一切問わない安全な操作(要素を読む
+必要すら無い、「表現非依存で安全な」操作の中でも最も単純な例)。
+
+`ui:OutputDataTable`は`DataTable`+`Text`(出力)のみ。UiPath公式
+ドキュメント(docs.uipath.com、WebSearchで確認)によれば
+`DataTable`をCSV形式の文字列へ変換する活動だが、区切り文字・引用符の
+扱い・改行コードといった厳密な書式の詳細はドキュメントで確認でき
+なかった——知見159の`GetFullText`(「exact UI Automation API behind
+'Get Full Text' not independently confirmed」という`# WARNING`)と
+同じ判断パターンを適用し、Python標準の`csv`モジュール(確認済みの
+標準ライブラリ)で近似しつつ、厳密な書式が未確認であることを
+`# WARNING`コメントに明記した。`GetRowItem`(知見183)と同じ
+`isinstance(row, dict)`の実行時分岐で`DataTable`の両表現(dict行の
+場合は先頭行のキーをヘッダー行として出力・list行の場合はヘッダー
+無しで値のみ出力)に対応する、3つ目の「実行時分岐で両表現に対応する」
+実装パターン。
+
+実機XAML4件で`parse_activity()`+`_generate_node()`+`_collect_imports`
+を実行し、`generate_python()`+`compile()`を確認した。合成データで
+3パターン(dict行/list行/空リスト)全ての実行結果も手動確認し、
+いずれも意味の通るCSV文字列(`'a,b\r\n1,2\r\n3,4\r\n'`等)が生成される
+ことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`9件)、UiPath関連テスト全775件通過、
+リポジトリ全体で全1839件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

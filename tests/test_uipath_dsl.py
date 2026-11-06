@@ -22,6 +22,7 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     BuildDataTableNode,
     CheckNode,
+    ClearDataTableNode,
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
@@ -62,6 +63,7 @@ from dump_daemon.uipath_dsl import (
     MultipleAssignNode,
     OpenApplicationNode,
     OpenBrowserNode,
+    OutputDataTableNode,
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -1391,6 +1393,35 @@ def test_get_row_item_with_column_name_properties():
     assert node.column_index is None
     assert node.column is None
     assert node.value == VbExpr(text="output")
+
+
+def test_clear_data_table_properties():
+    """知見184: `ui:ClearDataTable`(GitHub code searchで225件ヒット)。
+    実機`jeffdnganga/DSRIncentivesPostingPerformer`で確認した
+    `DataTable="[dt_invoicePostingResults]"`の実例——`DataTable`のみの
+    最も単純な構成。"""
+    xml = (
+        f"<ui:ClearDataTable {_UI_XMLNS} DisplayName=\"Clear Data Table\" "
+        'DataTable="[dt]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ClearDataTableNode)
+    assert node.data_table == VbExpr(text="dt")
+    assert node.display_name == "Clear Data Table"
+
+
+def test_output_data_table_properties():
+    """知見184: `ui:OutputDataTable`(GitHub code searchで894件ヒット)。
+    実機`vajrang-b/UiPathIn30Days`で確認した`Text="[Out_Str]"`の
+    実例。"""
+    xml = (
+        f"<ui:OutputDataTable {_UI_XMLNS} DisplayName=\"Output Data Table\" "
+        'DataTable="[Out_DT]" Text="[Out_Str]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, OutputDataTableNode)
+    assert node.data_table == VbExpr(text="Out_DT")
+    assert node.text == VbExpr(text="Out_Str")
 
 
 def test_log_message_properties():
