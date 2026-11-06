@@ -360,4 +360,26 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             lines.append(f"{prefix}{last_col_var} = _table_range[3]")
         return lines
 
+    if action_id in (
+        "Excel.ReadCellFormula.ReadFormulaFromCellCoordinates",
+        "Excel.ReadCellFormula.ReadFormulaFromNamedCell",
+    ):
+        # design/dsl_format_findings.md 知見190: `write_to_excel()`が「数式文字列は
+        # テキストとしてそのまま書き込むだけ」と対になる読み取り側。
+        instance = safe_render(p.get("Instance"))
+        if instance is None or not node.output_var:
+            return None
+        if action_id == "Excel.ReadCellFormula.ReadFormulaFromCellCoordinates":
+            column = safe_render(p.get("Column"))
+            row = safe_render(p.get("Row"))
+            if column is None or row is None:
+                return None
+            call = f"excel_actions.read_cell_formula({instance}, 'CellCoordinates', column={column}, row={row})"
+        else:
+            cell_name = safe_render(p.get("CellName"))
+            if cell_name is None:
+                return None
+            call = f"excel_actions.read_cell_formula({instance}, 'NamedCell', cell_name={cell_name})"
+        return [f"{prefix}{node.output_var} = {call}"]
+
     return None

@@ -121,6 +121,10 @@ class GetTableRangeError(PadActionError):
     pass
 
 
+class ReadCellFormulaError(PadActionError):
+    pass
+
+
 @dataclass
 class ExcelInstanceHandle:
     """不透明なワークブック参照(「window instance」問題と同種)。
@@ -556,3 +560,40 @@ def get_table_range(
         raise GetTableRangeError(f"table not found: {table_name!r}")
     min_col, min_row, max_col, max_row = range_boundaries(table.ref)
     return min_row, min_col, max_row, max_col
+
+
+def read_cell_formula(
+    instance: ExcelInstanceHandle,
+    mode: str = "CellCoordinates",
+    column: str = "A",
+    row: int = 1,
+    cell_name: str = "",
+) -> str:
+    """design/dsl_format_findings.md 知見190(decompile確認済み): `ReadCellFormula`の
+    `IExcelActions.ReadFormulaFromCell()`は`Range.Item(1,1).Formula`(1セルに正規化した
+    うえで数式文字列を読む、名前付きセルが複数セルの範囲でも先頭セルのみ)を、
+    `HasFormula=False`なら空文字列を返すだけ——`openpyxl`の`Cell.data_type == "f"`
+    (数式セルかどうかを明示的に判別する公開API、`"="`始まりかどうかの文字列ヒューリスティック
+    ではなく確実な判定)を使えば1対1で対応できる。既存の`write_to_excel()`が「数式文字列は
+    テキストとしてそのまま書き込むだけ」とドキュメント化している対称操作。
+    """
+    try:
+        if mode == "CellCoordinates":
+            cell = instance.active_sheet[f"{column}{row}"]
+        elif mode == "NamedCell":
+            try:
+                sheet, col, row_ = _defined_name_start(instance.workbook, cell_name)
+            except KeyError as exc:
+                raise ReadCellFormulaError(f"named cell not found: {cell_name!r}") from exc
+            cell = sheet.cell(row=row_, column=col)
+        else:
+            raise ValueError(f"Unknown ReadCellFormulaMode: {mode!r}")
+    except ReadCellFormulaError:
+        raise
+    except Exception as exc:
+        raise ReadCellFormulaError(str(exc)) from exc
+
+    if cell.data_type == "f":
+        value = cell.value
+        return value if isinstance(value, str) else str(value)
+    return ""

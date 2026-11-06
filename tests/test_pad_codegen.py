@@ -3182,6 +3182,61 @@ def test_generate_python_keeps_get_table_range_as_todo_when_is_pivot_true() -> N
     assert "# TODO: map PAD action: Excel.GetTableRange" in code
 
 
+def test_generate_python_from_excel_read_cell_formula_by_coordinates_converts() -> None:
+    # design/dsl_format_findings.md 知見190: `write_to_excel()`が数式文字列をそのまま
+    # 書き込むことと対になる読み取り側。
+    setup_dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''=1+2''' "
+        "Column: $'''A''' Row: 1"
+    )
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = (
+        "Excel.ReadCellFormula.ReadFormulaFromCellCoordinates Instance: ExcelInstance "
+        "Column: $'''A''' Row: 1 CellFormula=> CellFormula"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "CellFormula = excel_actions.read_cell_formula(ExcelInstance, 'CellCoordinates', column='A', row=1)" in code
+    assert "# TODO" not in code
+
+    exec(code, namespace)
+    assert namespace["CellFormula"] == "=1+2"
+
+
+def test_generate_python_from_excel_read_cell_formula_by_named_cell_converts() -> None:
+    setup_dsl = "Excel.LaunchExcel.Launch Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    import openpyxl.workbook.defined_name
+
+    instance = namespace["ExcelInstance"]
+    sheet = instance.active_sheet
+    sheet["B2"] = "=SUM(A1:A5)"
+    instance.workbook.defined_names["MyFormulaCell"] = openpyxl.workbook.defined_name.DefinedName(
+        "MyFormulaCell", attr_text=f"'{sheet.title}'!$B$2"
+    )
+
+    dsl = (
+        "Excel.ReadCellFormula.ReadFormulaFromNamedCell Instance: ExcelInstance "
+        "CellName: $'''MyFormulaCell''' CellFormula=> CellFormula"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "CellFormula = excel_actions.read_cell_formula(ExcelInstance, 'NamedCell', cell_name='MyFormulaCell')" in code
+    assert "# TODO" not in code
+
+    exec(code, namespace)
+    assert namespace["CellFormula"] == "=SUM(A1:A5)"
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

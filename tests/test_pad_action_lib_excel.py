@@ -322,3 +322,43 @@ def test_get_table_range_is_pivot_not_implemented() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(NotImplementedError):
         xl.get_table_range(instance, "AnyTable", is_pivot=True)
+
+
+def test_read_cell_formula_returns_formula_text_by_coordinates() -> None:
+    # design/dsl_format_findings.md 知見190(decompile確認済み): `Range.Item(1,1).Formula`
+    # を読むだけ——openpyxlは`Cell.data_type == "f"`で数式セルを判別できる。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "=1+2"
+    assert xl.read_cell_formula(instance, "CellCoordinates", column="A", row=1) == "=1+2"
+
+
+def test_read_cell_formula_returns_empty_string_for_non_formula_cell() -> None:
+    # decompile確認済み: `HasFormula=False`の場合は空文字列を返す(例外ではない)。
+    instance = xl.launch_excel("NewDocument")
+    xl.write_to_excel(instance, "plain text", column="A", row=1)
+    assert xl.read_cell_formula(instance, "CellCoordinates", column="A", row=1) == ""
+
+
+def test_read_cell_formula_by_named_cell() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["B2"] = "=SUM(A1:A5)"
+    defined_name = openpyxl.workbook.defined_name.DefinedName(
+        "MyFormulaCell", attr_text=f"'{sheet.title}'!$B$2"
+    )
+    instance.workbook.defined_names["MyFormulaCell"] = defined_name
+
+    assert xl.read_cell_formula(instance, "NamedCell", cell_name="MyFormulaCell") == "=SUM(A1:A5)"
+
+
+def test_read_cell_formula_named_cell_not_found_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.ReadCellFormulaError):
+        xl.read_cell_formula(instance, "NamedCell", cell_name="NoSuchName")
+
+
+def test_read_cell_formula_unknown_mode_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.ReadCellFormulaError):
+        xl.read_cell_formula(instance, "NotAMode")

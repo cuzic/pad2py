@@ -202,6 +202,24 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     読み取りのみで`openpyxl`に対応概念が無く、上記6件と同種のライブCOM専用と確定した
     (対応不要、同じTODOフォールバックのままでよい)。これで横断監査リストの全エントリが
     「結線済み」または「対応不要と確認済み」のいずれかに分類された。
+  - [x] 🔍 **`tools/pad_selector_audit.py`をExcel/Word/PowerPoint/Pdf/UIAutomationへ実際に
+    実行(知見190)**: Excelで84件の候補が出たが、ほぼ全てが`excel_actions.py`自身の
+    docstringが既に明記する「ユーザー指定スコープ外」(フィルタ・ソート・オートフィット・
+    マクロ実行・セル色設定・コピペ・検索置換・ルックアップ・ライブ選択状態)だった。
+    `Excel.ReadCellFormula`(数式文字列の読み取り、`write_to_excel()`の対称操作)のみ
+    スコープ内と判断し新規結線した。Word/PowerPoint/Pdfは既知の保留事項のみ(新規発見無し)。
+  - [ ] 💻🔍 **残課題(知見190で発見)**:
+    - `Excel.ResizeColumnsOrRows`のCustomSize側(Autofitではない、`ColumnWidth`/
+      `RowHeight`への明示的な数値設定、`openpyxl`の`column_dimensions`/`row_dimensions`
+      で対応できそうに見える)・`ClearCellsFromExcel`・`DeleteCellsAction`・
+      `CopyExcelWorksheet`(`openpyxl`の`Workbook.copy_worksheet()`が候補)・
+      `GetEmptyCellFromExcel`——いずれも「値の読み書き・基本ワークシート操作」スコープ内に
+      収まりそうだが、時間の都合で今回は見送った。
+    - `UIAutomation.WaitForWindow`/`WaitForWindowContent`の`ByInstanceOrHandle`/
+      `ByTitleClass`兄弟セレクタ(計12件、`conditions.py`の`IfWindow`側は既にサフィックス
+      解析で対応済みだが`wait.py`の`_WAIT_ACTION_TARGETS`は`Control`ベースの素のセレクタ
+      しか持たない)——`conditions.py`の既存ロジックを`wait.py`へ移植するだけで対応できる
+      見込み(VM不要)。
   - [x] 💻 **`Services`は知見165の監査対象リストに含まれていなかったと判明・新規4アクション
     結線完了(知見187)**: `Microsoft.Flow.RPA.Desktop.Modules.Services.Actions.dll`を
     新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、

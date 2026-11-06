@@ -3060,3 +3060,28 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 これにより、知見171のライブCOM専用6件(`Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`/`Excel.RunMacro`/`Excel.GetSelectedCellRange`/`PowerPoint.CopyPastePowerPointSlide`)に次ぐ**7件目**として`Excel.GetActiveCell`を確定した。対応は不要(専用dispatchを追加せず、既存の汎用TODOフォールバックに安全に落ちる現状のままでよい)——この知見エントリ自体が、将来同じ調査を繰り返さないための記録。
 
 この手動照合により、`_all_modules_flat_actions_raw.txt`に列挙された全モジュール・全エントリ(Database/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDF)が、知見186までの`Display`・知見188までの`Services`も含め、1件残らず「結線済み」または「ライブCOM専用等の理由で対応不要と確認済み」のいずれかに分類されたことを確認した——`codegen_coverage.py`の「残り11件」(`Text.RecognizeEntitiesInText`・`ON ERROR`8件・UIAutomation条件2件)がこの横断監査の最終的な残課題の全量であることも併せて再確認した(VM不要)。
+
+## 190. `tools/pad_selector_audit.py`をExcel/Word/PowerPoint/PDF/UIAutomationへ実際に走らせて「結線済みaction_id集合」との差分を機械的に取得——Excelで84件の候補が出たが、その大半は`excel_actions.py`自身のdocstringが既に明記する「ユーザー指定スコープ外」機能だったと判明。`Excel.ReadCellFormula`(数式文字列の読み取り)のみ新規結線
+
+知見189の手動照合に続き、本来この監査のために作られていた`tools/pad_selector_audit.py`を実際に`--module Excel`/`Word`/`PowerPoint`/`Pdf`/`UIAutomation`の5モジュールに対して実行した(VM不要、ローカルのdecompile結果と`pad_codegen`のソースコードのみを使う静的解析)。
+
+**Excel: 84件の「未結線候補」のほぼ全てが既知のユーザー指定スコープ外機能だった**: `dump_daemon/pad_action_lib/excel_actions.py`のモジュールdocstring(本セッション以前から存在)に、既に次の除外方針が明記されていた——「フィルタ・ソート・オートフィット・マクロ実行・セル色設定・コピペ・検索置換・ルックアップ...はライブのExcelアプリケーションの機能そのものであり、ファイルベースのopenpyxlでは本質的に再現できない」。84件の候補を精査すると、ほぼ全てがこのいずれかに該当すると確認できた:
+- `FilterCellsFromExcel`/`ClearFilterFromExcel`(フィルタ、8件)
+- `SortCellsFromExcel`(ソート、4件)
+- `ResizeColumnsOrRowsAction.Autofit*`(オートフィット、6件——`ResizeType.Autofit`は`Range.Autofit()`というExcelの実際のレンダリングエンジンに依存し`openpyxl`に対応概念が無い)
+- `SetColor`(セル色設定、6件)
+- `CopyCellsFromExcel`/`PasteCellsToExcel`(コピペ、9件)
+- `FindAndReplaceAction`(検索置換、4件)
+- `LookupRange`(ルックアップ、4件)
+- `ReadFromExcel.Read`/`WriteToExcel.Write`(知見155で既に確認済みの`Selection`/`ActiveCell`、ライブ選択状態)
+- `LaunchExcel.LaunchAndOpenUnderExistingProcess`/`LaunchUnderExistingProcess`(知見171と同種のライブプロセスアタッチ)
+- `ActivateCellInExcel`/`SelectCellsFromExcel`(ライブUIの選択操作そのもの、`Range.Select()`/`Range.Activate()`)
+- `AppendCells`(既に別の理由(Valueパラメータが存在しない)で意図的に`NotImplementedError`としていた既知の除外)
+
+残った中で明確に「値の読み書き・基本ワークシート操作・静的な内容」スコープ内と判断できたのは`Excel.ReadCellFormula`(`ReadFormulaFromCellCoordinates`/`ReadFormulaFromNamedCell`)のみだった——`IExcelActions.ReadFormulaFromCell()`をdecompileしたところ、`Range.Item(1,1).Formula`(`HasFormula=False`なら空文字列)を読むだけで、既存の`write_to_excel()`が既にドキュメント化している「数式文字列はテキストとしてそのまま書き込むだけ」という対称操作だと確認できた。`openpyxl`の`Cell.data_type == "f"`(数式セルかどうかの公開API、`"="`始まりの文字列ヒューリスティックではない)で1対1対応できると判断し、`excel_actions.read_cell_formula()`を実装、`pad_codegen/actions/excel.py`に結線した。
+
+`ResizeColumnsOrRowsAction`の**CustomSize側**(`ResizeAllColumns`/`ResizeAllRows`/`ResizeRangeOfColumns`/`ResizeRangeOfRows`/`ResizeSingleColumn`/`ResizeSingleRow`、`ColumnWidth`/`RowHeight`への明示的な数値設定、Autofitとは別のResizeTypeブランチ)は、`openpyxl`の`column_dimensions[col].width`/`row_dimensions[row].height`(同じ「文字単位」/「ポイント」規約)で対応できそうに見えるが、`ClearCellsFromExcel`・`DeleteCellsAction`・`CopyExcelWorksheet`・`GetEmptyCellFromExcel`と合わせて今回は時間の都合で見送り、次回以降の調査対象として記録する(いずれも「値の読み書き・基本ワークシート操作」スコープ内に収まりそうな候補で、ユーザー指定スコープ外の除外リストには該当しない)。
+
+**Word/PowerPoint/Pdf/UIAutomationの監査結果は全て既知の事項と一致**: `Word`の15件(`FindAndReplaceWord`のワイルドカード2件、`InsertImageToWord`のクリップボード/ブックマーク相対系10件、`ReadFromWord.ReadPage`、`WriteToWord`のブックマーク書き込み2件)は知見177/181で既に「書き込み側のブックマーク相対モードは`AppendNewLine`絡みの段落構造が未確認のため保留」と記録済みの既知の保留事項と一致した(新規発見無し)。`UIAutomation`の20件(`WaitForImageAction`系8件・`WaitForWindow`/`WaitForWindowContent`のByInstanceOrHandle/ByTitleClass兄弟セレクタ12件)は、前者が知見38/39/42の画像セレクタRDP制約、後者が`wait.py`の`_WAIT_ACTION_TARGETS`が`Control`ベースの素のセレクタしか持たず(`conditions.py`の`IfWindow`側は既にサフィックス解析で対応済み)`WaitForWindow`側は未対応だったという**新たに発見した構造的ギャップ**——次回以降の調査対象として記録する(VM不要、`conditions.py`の既存ロジックを`wait.py`へ移植するだけで対応できる見込み)。`PowerPoint`/`Pdf`は未結線候補0件だった。
+
+実装: `pad_action_lib/excel_actions.py`に`ReadCellFormulaError`・`read_cell_formula()`を追加。`pad_codegen/actions/excel.py`に`Excel.ReadCellFormula.ReadFormulaFromCellCoordinates`/`ReadFormulaFromNamedCell`の分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に5件追加、`tests/test_pad_codegen.py`に2件追加(いずれもexec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1076 passed, 28 skippedを確認(VM不要)。
