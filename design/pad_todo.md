@@ -415,9 +415,10 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     新規結線完了(`connect_and_execute()`は`pad_action_lib`側に既に実装済みだったが
     codegen未結線だった)。
   - [~] 💻🖥️ `Web.Actions.dll`/`XML.Actions.dll`/`Cmd.Actions.dll`/`Text.Actions.dll`/
-    `Cryptography.Actions.dll`にも監査を適用し、未結線セレクタの全量をVM上のリフレクション
-    (知見139と同じ手法)で確認完了——**結線作業自体はまだ未着手**(次のtickの対象として
-    記録する):
+    `Cryptography.Actions.dll`にも監査を適用(知見139と同じ手法)。
+    **2026-11-05更新**: `XML`/`Cryptography`は全件結線完了、`Cmd`/`Text`も僅かな
+    残課題(下記)を除き完了(知見140-143・148・149)。`Web`のみ組み合わせ爆発のため
+    段階的対応中(下記参照):
     - [x] `XML.Actions.dll`(12セレクタ、全件結線完了)。
       ✅ **決着(知見140)**: `GetElementValueAsNumeric`/`AsBoolean`/`AsDateTime`・
       `ExecuteXPathAndGetFirstValueOnly`・`WriteToFile`(非フォーマット)の5件を
