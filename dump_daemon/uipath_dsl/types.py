@@ -957,6 +957,66 @@ class OutputDataTableNode:
 
 
 @dataclass
+class AddDataColumnNode:
+    """`<ui:AddDataColumn>`(知見198、GitHub code searchで856件ヒット
+    ——知見195で3番目に有望と評価したDataTable操作系候補)。実機2件
+    (`HarshadRanganathan/uipath-learning`・`Its-Nishant-10/
+    book_scraping`)で確認した構成は`ColumnName`+`DataTable`+
+    `x:TypeArguments`(列の.NET型、実機は全件`x:Object`、Pythonには
+    対応する型強制が無いためモデル化不要)+`Column`(DataColumnオブジェクト
+    参照、未モデル化)+`DefaultValue`+`AllowDBNull`/`AutoIncrement`/
+    `MaxLength`/`Unique`(列スキーマ制約)。実機では全て`{x:Null}`の例
+    (`Its-Nishant-10`)と、`AllowDBNull="True"`/`AutoIncrement="False"`/
+    `MaxLength="100"`/`Unique="False"`という明示的な値の例
+    (`HarshadRanganathan`)の両方を確認した。
+
+    知見183の`isinstance(row, dict)`判定(`GetRowItem`)を初めて
+    「読み取り」ではなく「既存の全行への書き込み(列の追加)」という
+    文脈で使う——dict行の場合のみ、各行に`ColumnName`キー(値は
+    `DefaultValue`、未設定なら`None`)を追加する。list行表現の場合は
+    何もしない(列の並び順を追跡していないため安全に対応できない)
+    ——`GetRowItem`等の既存の読み取り専用のisinstance分岐と違い、
+    非dict行では意図的に何もしないという一方向の対応であることを
+    生成コードに`# WARNING`コメントで明記する。`AutoIncrement="True"`
+    (自動連番割り当て、未確認)・`Unique="True"`(一意性制約の実施、
+    未確認)・`AllowDBNull="False"`(既存行へのNOT NULL制約の実施、
+    未確認)は常に`# TODO`へ倒す——`MaxLength`は列の追加操作自体には
+    影響しない(値の代入時のみ関係する制約で、本トランスパイラは
+    どの代入にも文字数制限を課していないため)ためTODO化せず無視する。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    column_name: Expr = None
+    column: Expr = None
+    default_value: Expr = None
+    allow_db_null: str | None = None
+    auto_increment: str | None = None
+    unique: str | None = None
+
+
+@dataclass
+class RemoveDataColumnNode:
+    """`<ui:RemoveDataColumn>`(知見198、GitHub code searchで273件
+    ヒット、`AddDataColumn`の正反対)。実機2件(`cameronmcnz/uipath-
+    tutorials`・`UiPathJapan/samples`)で確認した構成は`ColumnName`+
+    `DataTable`のみ——`Column`(DataColumnオブジェクト参照)・
+    `ColumnIndex`(列インデックス直接指定)はground-truth・実機のどちら
+    でも非null値を一度も確認できなかった。
+
+    `AddDataColumn`(同知見198)と対になる実装——dict行の場合のみ
+    `ColumnName`キーを`dict.pop(key, None)`(キーが無くても安全)で
+    削除する。list行表現の場合は何もしない(同じ理由、`# WARNING`
+    コメントで明記)。`Column`/`ColumnIndex`が設定されている場合は
+    常に`# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    column_name: Expr = None
+    column: Expr = None
+    column_index: Expr = None
+
+
+@dataclass
 class ReadCsvFileNode:
     """`<ui:ReadCsvFile>`(知見185、`UiPath.Excel.Activities`名前空間、
     GitHub code searchで657件ヒット)。`UiPath/skills`公式リポジトリの
@@ -2442,6 +2502,8 @@ Node = (
     | GetRowItemNode
     | ClearDataTableNode
     | OutputDataTableNode
+    | AddDataColumnNode
+    | RemoveDataColumnNode
     | ReadCsvFileNode
     | WriteCsvFileNode
     | InvokePowerShellNode

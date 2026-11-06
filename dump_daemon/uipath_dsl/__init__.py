@@ -12,6 +12,7 @@ Phase 1〜3を参照。
 """
 from .types import (
     ActivateNode,
+    AddDataColumnNode,
     AddDataRowNode,
     AppendLineNode,
     AssignNode,
@@ -84,6 +85,7 @@ from .types import (
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataColumnNode,
     RemoveDataRowNode,
     RenameFileNode,
     RenameFolderNode,
@@ -120,6 +122,7 @@ from .xaml_tree import parse_activity, parse_workflow_file
 
 __all__ = [
     "ActivateNode",
+    "AddDataColumnNode",
     "AddDataRowNode",
     "AppendLineNode",
     "AssignNode",
@@ -192,6 +195,7 @@ __all__ = [
     "ReadCsvFileNode",
     "ReadTextFileNode",
     "RefreshBrowserNode",
+    "RemoveDataColumnNode",
     "RemoveDataRowNode",
     "RenameFileNode",
     "RenameFolderNode",

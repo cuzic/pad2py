@@ -248,9 +248,10 @@ DataTable`/`AddDataColumn`/`RemoveDataColumn`/`SortDataTable`/
 DataTableへ変換——既存のDataTableを読まず新規に構築するため出力
 表現を自分で選べる)→実装済み、`csv.DictReader`/`str.split()`の
 二択で対応、固定幅モードは実機未確認のため見送り
-③`RemoveDataColumn`/`AddDataColumn`(スキーマ変更のみで行の値は読まない
-——知見183の`isinstance(row, dict)`判定と組み合わせればdict行限定で
-部分対応できる可能性)。**依然保留**: `SortDataTable`/
+③**(完了、知見198)** ~~`RemoveDataColumn`/`AddDataColumn`~~(スキーマ
+変更のみで行の値は読まない——知見183の`isinstance(row, dict)`判定と
+組み合わせればdict行限定で部分対応できる可能性)→実装済み、dict行
+限定で対応・list行は`# WARNING`付きで非対応のまま。**依然保留**: `SortDataTable`/
 `FilterDataTable`/`JoinDataTables`(新規発見の3件目)は列名ベースの
 値アクセスが本質的に必要で、このスキーマ解決パスの設計を待つ。
 `SortDataTable`は実機で属性名`Order`(ground-truthの`SortOrder`とは

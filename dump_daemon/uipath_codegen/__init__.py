@@ -60,6 +60,7 @@ from openpyxl.utils.exceptions import CellCoordinatesException
 
 from ..uipath_dsl.types import (
     ActivateNode,
+    AddDataColumnNode,
     AddDataRowNode,
     AppendLineNode,
     AssignNode,
@@ -129,6 +130,7 @@ from ..uipath_dsl.types import (
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataColumnNode,
     RemoveDataRowNode,
     RenameFileNode,
     RenameFolderNode,
@@ -567,6 +569,10 @@ def _generate_node(
         return _generate_clear_data_table(node, indent)
     if isinstance(node, OutputDataTableNode):
         return _generate_output_data_table(node, indent)
+    if isinstance(node, AddDataColumnNode):
+        return _generate_add_data_column(node, indent)
+    if isinstance(node, RemoveDataColumnNode):
+        return _generate_remove_data_column(node, indent)
     if isinstance(node, ReadCsvFileNode):
         return _generate_read_csv_file(node, indent)
     if isinstance(node, WriteCsvFileNode):
@@ -2337,6 +2343,101 @@ def _generate_output_data_table_body(node: OutputDataTableNode, indent: int) -> 
         f"{inner}for _row in {data_table}:",
         f"{INDENT * (indent + 2)}_writer.writerow(_row)",
         f"{prefix}{target} = _buf.getvalue()",
+    ]
+
+
+# 知見198: `ui:AddDataColumn`/`ui:RemoveDataColumn`。知見183の
+# `isinstance(row, dict)`判定を「読み取り」ではなく「既存の全行への
+# 書き込み(列の追加/削除)」という文脈で使う——dict行の場合のみ対応し、
+# list行表現では何もしない一方向の対応であることを`# WARNING`で明記。
+def _generate_add_data_column(node: AddDataColumnNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_add_data_column_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_add_data_column_body(node: AddDataColumnNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None or node.column_name is None:
+        return [f"{prefix}# TODO: AddDataColumn with missing DataTable/ColumnName"]
+    if node.column is not None:
+        return [
+            f"{prefix}# TODO: AddDataColumn with Column set "
+            f"({_describe_expr_for_comment(node.column)}) — DataColumn "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.auto_increment == "True":
+        return [
+            f"{prefix}# TODO: AddDataColumn with AutoIncrement=True — "
+            "auto-incrementing identity column semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.unique == "True":
+        return [
+            f"{prefix}# TODO: AddDataColumn with Unique=True — uniqueness "
+            "constraint enforcement not confirmed, refusing to guess"
+        ]
+    if node.allow_db_null == "False":
+        return [
+            f"{prefix}# TODO: AddDataColumn with AllowDBNull=False — NOT "
+            "NULL constraint enforcement on existing rows not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    column_name = _render_value_or_todo(node.column_name, prefix, todo)
+    default_value = (
+        _render_value_or_todo(node.default_value, prefix, todo)
+        if node.default_value is not None
+        else "None"
+    )
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}# WARNING: dict行表現のDataTableのみ対応(list行は変更されない)",
+        f"{prefix}for _row in {data_table}:",
+        f"{inner}if isinstance(_row, dict):",
+        f"{INDENT * (indent + 2)}_row[{column_name}] = {default_value}",
+    ]
+
+
+def _generate_remove_data_column(node: RemoveDataColumnNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_remove_data_column_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_remove_data_column_body(
+    node: RemoveDataColumnNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None or node.column_name is None:
+        return [f"{prefix}# TODO: RemoveDataColumn with missing DataTable/ColumnName"]
+    if node.column is not None:
+        return [
+            f"{prefix}# TODO: RemoveDataColumn with Column set "
+            f"({_describe_expr_for_comment(node.column)}) — DataColumn "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.column_index is not None:
+        return [
+            f"{prefix}# TODO: RemoveDataColumn with ColumnIndex set "
+            f"({_describe_expr_for_comment(node.column_index)}) — "
+            "column-index-based removal not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    column_name = _render_value_or_todo(node.column_name, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}# WARNING: dict行表現のDataTableのみ対応(list行は変更されない)",
+        f"{prefix}for _row in {data_table}:",
+        f"{inner}if isinstance(_row, dict):",
+        f"{INDENT * (indent + 2)}_row.pop({column_name}, None)",
     ]
 
 

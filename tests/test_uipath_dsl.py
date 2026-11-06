@@ -15,6 +15,7 @@ from lxml import etree
 
 from dump_daemon.uipath_dsl import (
     ActivateNode,
+    AddDataColumnNode,
     AddDataRowNode,
     AppendLineNode,
     AssignNode,
@@ -78,6 +79,7 @@ from dump_daemon.uipath_dsl import (
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataColumnNode,
     RemoveDataRowNode,
     RenameFileNode,
     RenameFolderNode,
@@ -1512,6 +1514,44 @@ def test_output_data_table_properties():
     assert isinstance(node, OutputDataTableNode)
     assert node.data_table == VbExpr(text="Out_DT")
     assert node.text == VbExpr(text="Out_Str")
+
+
+def test_add_data_column_properties():
+    """知見198: `ui:AddDataColumn`(GitHub code searchで856件ヒット)。
+    実機`HarshadRanganathan/uipath-learning`で確認した`AllowDBNull`/
+    `AutoIncrement`/`MaxLength`/`Unique`が明示的な値を持つ実例。"""
+    xml = (
+        f"<ui:AddDataColumn {_UI_XMLNS} x:TypeArguments=\"x:Object\" "
+        'Column="{x:Null}" DefaultValue="{x:Null}" AllowDBNull="True" '
+        'AutoIncrement="False" ColumnName="C" DataTable="[dt]" '
+        'DisplayName="Add data column" MaxLength="100" Unique="False" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AddDataColumnNode)
+    assert node.data_table == VbExpr(text="dt")
+    assert node.column_name == Literal(value="C")
+    assert node.allow_db_null == "True"
+    assert node.auto_increment == "False"
+    assert node.unique == "False"
+    assert node.column is None
+    assert node.default_value is None
+
+
+def test_remove_data_column_properties():
+    """知見198: `ui:RemoveDataColumn`(GitHub code searchで273件
+    ヒット、`AddDataColumn`の正反対)。実機`cameronmcnz/uipath-
+    tutorials`で確認した実例。"""
+    xml = (
+        f"<ui:RemoveDataColumn {_UI_XMLNS} Column=\"{{x:Null}}\" "
+        'ColumnIndex="{x:Null}" ColumnName="firstname" '
+        'DataTable="[input]" DisplayName="Remove Data Column" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveDataColumnNode)
+    assert node.data_table == VbExpr(text="input")
+    assert node.column_name == Literal(value="firstname")
+    assert node.column is None
+    assert node.column_index is None
 
 
 def test_read_csv_file_properties():

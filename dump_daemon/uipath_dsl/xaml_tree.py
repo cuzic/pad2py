@@ -19,6 +19,7 @@ from lxml import etree
 
 from .types import (
     ActivateNode,
+    AddDataColumnNode,
     AddDataRowNode,
     AppendLineNode,
     AssignNode,
@@ -91,6 +92,7 @@ from .types import (
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataColumnNode,
     RemoveDataRowNode,
     RenameFileNode,
     RenameFolderNode,
@@ -901,6 +903,29 @@ def _parse_output_data_table(elem: etree._Element) -> OutputDataTableNode:
         data_table=_attr_expr(elem, "DataTable"),
         text=text,
         display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_add_data_column(elem: etree._Element) -> AddDataColumnNode:
+    return AddDataColumnNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=_attr_expr(elem, "DataTable"),
+        column_name=_attr_expr(elem, "ColumnName"),
+        column=_attr_expr(elem, "Column"),
+        default_value=_attr_expr(elem, "DefaultValue"),
+        allow_db_null=_attr_or_none(elem, "AllowDBNull"),
+        auto_increment=_attr_or_none(elem, "AutoIncrement"),
+        unique=_attr_or_none(elem, "Unique"),
+    )
+
+
+def _parse_remove_data_column(elem: etree._Element) -> RemoveDataColumnNode:
+    return RemoveDataColumnNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=_attr_expr(elem, "DataTable"),
+        column_name=_attr_expr(elem, "ColumnName"),
+        column=_attr_expr(elem, "Column"),
+        column_index=_attr_expr(elem, "ColumnIndex"),
     )
 
 
@@ -2046,6 +2071,8 @@ _DISPATCH = {
     (UI_NS, "GetRowItem"): _parse_get_row_item,
     (UI_NS, "ClearDataTable"): _parse_clear_data_table,
     (UI_NS, "OutputDataTable"): _parse_output_data_table,
+    (UI_NS, "AddDataColumn"): _parse_add_data_column,
+    (UI_NS, "RemoveDataColumn"): _parse_remove_data_column,
     (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,

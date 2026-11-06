@@ -36,6 +36,7 @@ from dump_daemon.uipath_codegen import (
 from dump_daemon.uipath_codegen.render import VB_CMP_HELPER_NAME, VB_NUM_HELPER_SOURCE
 from dump_daemon.uipath_dsl import (
     ActivateNode,
+    AddDataColumnNode,
     AddDataRowNode,
     AppendLineNode,
     AssignNode,
@@ -103,6 +104,7 @@ from dump_daemon.uipath_dsl import (
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataColumnNode,
     RemoveDataRowNode,
     RenameFileNode,
     RenameFolderNode,
@@ -3230,6 +3232,211 @@ def test_output_data_table_with_no_text_is_todo():
     wf = _wrap([OutputDataTableNode(data_table=VbExpr(text="dt"), text=None)])
     code = generate_python(wf)
     assert "# TODO: OutputDataTable with no output Text captured" in code
+    _compiles(code)
+
+
+def test_add_data_column_adds_key_to_dict_rows():
+    """知見198: `ui:AddDataColumn`(GitHub code searchで856件ヒット)。
+    知見183の`isinstance(row, dict)`判定を「既存の全行への列追加」
+    という文脈で使う——dict行にのみ`ColumnName`キーを追加する。"""
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for _row in dt:" in code
+    assert "if isinstance(_row, dict):" in code
+    assert "_row['C'] = None" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    dt = [{"Name": "Alice"}, ["list", "row"]]
+    namespace["dt"] = dt
+    namespace["Test"]()
+    assert dt[0] == {"Name": "Alice", "C": None}
+    assert dt[1] == ["list", "row"]
+
+
+def test_add_data_column_with_default_value_uses_it():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                default_value=Literal(value="x"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_row['C'] = 'x'" in code
+    _compiles(code)
+
+
+def test_add_data_column_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                display_name="Add data column",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Add data column" in code
+    _compiles(code)
+
+
+def test_add_data_column_with_missing_data_table_or_name_is_todo():
+    wf = _wrap([AddDataColumnNode(data_table=None, column_name=Literal(value="C"))])
+    code = generate_python(wf)
+    assert "# TODO: AddDataColumn with missing DataTable/ColumnName" in code
+    _compiles(code)
+
+
+def test_add_data_column_with_column_reference_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                column=VbExpr(text="col"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddDataColumn with Column set" in code
+    _compiles(code)
+
+
+def test_add_data_column_with_auto_increment_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                auto_increment="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddDataColumn with AutoIncrement=True" in code
+    _compiles(code)
+
+
+def test_add_data_column_with_unique_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                unique="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddDataColumn with Unique=True" in code
+    _compiles(code)
+
+
+def test_add_data_column_with_allow_db_null_false_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AddDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="C"),
+                allow_db_null="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddDataColumn with AllowDBNull=False" in code
+    _compiles(code)
+
+
+def test_remove_data_column_pops_key_from_dict_rows():
+    """知見198: `ui:RemoveDataColumn`(GitHub code searchで273件
+    ヒット、`AddDataColumn`の正反対)。`dict.pop(key, None)`で
+    キーが無くても安全に削除する。"""
+    wf = _wrap(
+        [
+            RemoveDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="firstname"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for _row in dt:" in code
+    assert "if isinstance(_row, dict):" in code
+    assert "_row.pop('firstname', None)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    dt = [{"firstname": "Alice", "lastname": "A"}, ["list", "row"]]
+    namespace["dt"] = dt
+    namespace["Test"]()
+    assert dt[0] == {"lastname": "A"}
+    assert dt[1] == ["list", "row"]
+
+
+def test_remove_data_column_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            RemoveDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="firstname"),
+                display_name="Remove Data Column",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Remove Data Column" in code
+    _compiles(code)
+
+
+def test_remove_data_column_with_missing_data_table_or_name_is_todo():
+    wf = _wrap(
+        [RemoveDataColumnNode(data_table=None, column_name=Literal(value="firstname"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataColumn with missing DataTable/ColumnName" in code
+    _compiles(code)
+
+
+def test_remove_data_column_with_column_reference_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RemoveDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="firstname"),
+                column=VbExpr(text="col"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataColumn with Column set" in code
+    _compiles(code)
+
+
+def test_remove_data_column_with_column_index_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RemoveDataColumnNode(
+                data_table=VbExpr(text="dt"),
+                column_name=Literal(value="firstname"),
+                column_index=Literal(value="0"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataColumn with ColumnIndex set" in code
     _compiles(code)
 
 

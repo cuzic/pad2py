@@ -2564,3 +2564,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`11件)、UiPath関連テスト全872件通過、
      リポジトリ全体で全1954件通過。
+
+156. **(完了、2026-11-06)** `ui:AddDataColumn`+`ui:RemoveDataColumn`を
+     新規実装(知見198): 知見195で3番目に有望と評価したDataTable操作
+     系の候補。知見183の`isinstance(row, dict)`判定を初めて「既存の
+     全行への書き込み」という文脈で使用——dict行の場合のみ列を追加/
+     削除し、list行表現では意図的に何もしない(`# WARNING`で明記)。
+     `AutoIncrement=True`/`Unique=True`/`AllowDBNull=False`は常に
+     TODOへ倒し、`MaxLength`は列追加操作自体に影響しないため無視。
+     実機XAML(両属性バリエーション)+合成データ+`exec()`経由の実際の
+     関数呼び出しでdict行の変更/list行の不変を確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     15件)、UiPath関連テスト全887件通過、リポジトリ全体で全1969件
+     通過。

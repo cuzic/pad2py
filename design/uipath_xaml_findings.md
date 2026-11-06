@@ -9370,6 +9370,56 @@ ground-truthに存在しない属性が実機には存在する」という、�
 `tests/test_uipath_codegen.py`11件)、UiPath関連テスト全872件通過、
 リポジトリ全体で全1954件通過(28件skip、変化無し)。
 
+## 198. `ui:AddDataColumn`+`ui:RemoveDataColumn`を新規実装——知見195で3番目に有望と評価したDataTable操作系候補、知見183の`isinstance(row, dict)`判定を初めて「既存の全行への書き込み」という文脈で使用、list行表現には`# WARNING`付きで意図的に非対応のまま
+
+知見195で「DataTable操作ファミリーの3番目に有望な候補」と評価した
+`ui:AddDataColumn`(GitHub code searchで856件ヒット)+`ui:
+RemoveDataColumn`(273件ヒット、`AddDataColumn`の正反対)を実装した。
+`RemoveDataColumn`は`UiPath/skills`公式リポジトリのStudio実機
+ground-truthコーパスがあるが、`AddDataColumn`は知見195の調査時点
+から変わらずコーパスに存在しない(別パッケージ版の可能性、実機のみで
+構成確認)。
+
+実機確認した構成: `AddDataColumn`は`ColumnName`+`DataTable`+
+`x:TypeArguments`(列の.NET型、実機は全件`x:Object`、Pythonには対応
+する型強制が無いためモデル化不要)+`Column`(DataColumnオブジェクト
+参照、未モデル化)+`DefaultValue`+`AllowDBNull`/`AutoIncrement`/
+`MaxLength`/`Unique`(列スキーマ制約)。実機2件で、全て`{x:Null}`の例
+(`Its-Nishant-10/book_scraping`)と、`AllowDBNull="True"`/
+`AutoIncrement="False"`/`MaxLength="100"`/`Unique="False"`という
+明示的な値の例(知見195で確認済みの`HarshadRanganathan/uipath-
+learning`)の両方を再確認した。`RemoveDataColumn`は`ColumnName`+
+`DataTable`のみ(実機2件で`Column`/`ColumnIndex`はどちらも常に
+`{x:Null}`)。
+
+知見183の`GetRowItem`で確立した`isinstance(row, dict)`判定を、
+初めて「読み取り」ではなく「既存の全行への書き込み(列の追加/削除)」
+という文脈で使った——dict行の場合のみ、各行に`ColumnName`キーを
+追加(`AddDataColumn`、値は`DefaultValue`、未設定なら`None`)/削除
+(`RemoveDataColumn`、`dict.pop(key, None)`でキーが無くても安全)する。
+list行表現の場合は意図的に何もしない——`GetRowItem`等の既存の
+読み取り専用ternary式と違い、この「非dict行では沈黙する」という
+片方向の対応を生成コードの`# WARNING`コメントで明記した(`OutputDataTable`
+知見184の近似実装と同じ「大枠は確信、適用範囲の限界はコメントで
+明示する」という判断パターン)。
+
+`AutoIncrement="True"`(自動連番割り当て、未確認)・`Unique="True"`
+(一意性制約の実施、未確認)・`AllowDBNull="False"`(既存行への
+NOT NULL制約の実施、未確認)は常に`# TODO`へ倒す——`MaxLength`は
+列の追加操作自体には影響しない(値の代入時のみ関係する制約で、本
+トランスパイラはどの代入にも文字数制限を課していないため)ため
+TODO化せず無視する設計とした。
+
+実機サンプル(両方の属性バリエーション)で`parse_activity()`+
+`generate_python()`+`compile()`を確認し、さらに実際のPython
+インタプリタで両活動を実行し、dict行が正しく変更される一方で
+list行表現の要素が変更されずに残ることを確認した(`exec()`経由で
+生成関数を実際に呼び出し、ミュータブルな`list`オブジェクトへの
+インプレース変更を直接検証する、本調査で新しいテスト手法)。回帰
+テスト追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+15件)、UiPath関連テスト全887件通過、リポジトリ全体で全1969件通過
+(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
