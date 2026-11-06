@@ -111,7 +111,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       検証すべき。
     - `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`: UI要素セレクタ
       を使わず「現在のウィンドウ全体をスキャンする」操作と判明——出力される識別名の
-      形式(表示テキスト/AutomationId)が実機未確認。
+      形式(表示テキスト/AutomationId)が実機未確認。**知見175調査時に追加確認**:
+      両方とも`UIAutomationActionBase`派生で`PerformAutomation(... r.GetCheckboxState
+      /GetSelectedCheckboxesInWindow/GetSelectedRadiobuttonInWindow ...)`という
+      `IAutomationRuntimeProxy`経由——知見172のRPC不透明な壁にそのまま該当、
+      decompileでは解決不可と確定(RDP実機確認が必要)。
     - `ExtractDataFromTable`/`ExtractDataFromWindow`: ライブExcel COM書き出しを伴う
       複合動作で、知見155のExcelスコープ(openpyxlでは再現不可)と同じ制約に抵触。
     - `WaitForImageAction`: `IfImageAction`と同じ`CheckImageActionBase`系列——知見38/39/42
