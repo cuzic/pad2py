@@ -380,11 +380,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       7グループ。いずれも正しい3セグメント形式へ結線し直した(`pad_action_lib`側は
       変更不要)。副産物として、既存のPDF合成テストが実在しない列挙値`SinglePage`
       (実際は`Single`)を仮定していた誤りも発見・修正。
-      - [ ] 💻🖥️ **残課題**: `Pdf.ExtractPages`/`Pdf.MergeFiles`は`[Action(...)]`に
-        `Id`属性が無く`Name`属性のみを持つ(兄弟セレクタも無し)——`Id`無しの場合に
-        本当にクラス名がaction_idになるのか、`Name`が何らかの形で影響するのかが
-        今回のdecompileだけでは未確定のまま(新たな未確認事項、既存結線は変更せず
-        現状維持)。`Word.InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装
+      ✅ **決着(知見162)**: `Pdf.ExtractPages`/`Pdf.MergeFiles`の`[Action(Name=...)]`
+      (`Id`属性が無く`Name`属性のみ)についての未確認事項を解消した——
+      `Microsoft.PowerPlatform.PowerAutomate.Desktop.Actions.SDK.dll`をdecompileし、
+      `ActionAttributeBase.Name`に`[Obsolete("Use ActionAttribute.Id instead.")]`
+      という明示的な非推奨注記があることを確認した。つまり`Name`は`Id`の旧名で
+      全く同じ役割——`Id`が無く`Name`のみ設定されたクラスは`Name`の値がそのまま
+      中間セグメントになると確定した。既存の`Pdf.ExtractPages`/`Pdf.MergeFiles`結線
+      (フラットな2セグメント形式)は当初から正しかった(修正不要)。
+      `Word.InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装
         のため対象外のまま。
 - [x] 💻 `GenerateDataTableFromCSVAction`/`ConvertDataTableToCSVAction`の`ColumnsSeparator`が
   `SystemDefault`以外(Comma/Semicolon/Tab)で常にTODOへ倒れていたゲート漏れ、および

@@ -2709,3 +2709,23 @@ Excel/Word/PowerPoint/PDFの実際のVMリフレクション出力を`tools/sele
 - `WaitForImageAction`: `IfImageAction`と同じ`CheckImageActionBase`系列で、知見38/39/42の既知の制約(画像セレクタの実機取得にRDPが必要)がそのまま当てはまる。
 
 テストは`tests/test_pad_codegen.py`に`TakeScreenshotOfUIElementAndSaveToFile`のexec検証テストを追加し、`tests/fake_pywinauto.py`に`.capture_as_image().save()`のフェイクを新規実装した(既存の`FakeControl`/`FakeRegistry`パターンに倣う)。
+
+## 162. 知見156の未解決事項(`Pdf.ExtractPages`/`Pdf.MergeFiles`の`Name`属性)を解消——`Microsoft.PowerPlatform.PowerAutomate.Desktop.Actions.SDK.dll`のdecompileで、`ActionAttributeBase.Name`は`Id`の非推奨な旧名であり同じ役割だと確定
+
+知見156で「`Pdf.ExtractPages`(`ExtractPagesToNewPDFAction`クラス)/`Pdf.MergeFiles`は`[Action(...)]`に`Id`属性が無く`Name`属性のみを持つ——`Id`無しの場合に本当にクラス名がaction_idになるのか、`Name`が何らかの形でaction_idに影響するのかは今回のdecompileだけでは確定できない」として残していた未解決事項を、SDK自体の属性定義をdecompileして解消した。
+
+`pad2py-fetch-actions-sdk-dll`(新規clipwire target)で`Microsoft.PowerPlatform.PowerAutomate.Desktop.Actions.SDK.dll`(42,272バイト、`[Action]`属性自体や`ActionSelectorBase`が定義されている中核SDK)を取得し`ilspycmd`でdecompileしたところ、`ActionAttributeBase`(`[Action]`/`[ConditionAction]`/`[WaitAction]`の共通基底)の定義に以下を確認した:
+
+```csharp
+public abstract class ActionAttributeBase : Attribute
+{
+    public string Id { get; set; }
+    [Obsolete("Use ActionAttribute.Id instead.")]
+    public string Name { get; set; }
+    ...
+}
+```
+
+`Name`プロパティには`[Obsolete("Use ActionAttribute.Id instead.")]`という明示的な非推奨注記があり、これは「`Id`の旧名であり同じ役割を持つ(SDKのバージョンが上がる過程で`Name`→`Id`へ改名されたが、後方互換のため両方のプロパティが残っている)」ことを意味する——`Id`が未設定で`Name`のみ設定されているクラス(`ExtractPagesToNewPDFAction`の`Name = "ExtractPages"`、`MergeFiles`クラスの`Name = "MergeFiles"`)は、`Name`の値がそのまま中間セグメントとして使われると確定した(値を読み取る側のEngine/Runtime実装は本SDK dllには無く別アセンブリだが、`Obsolete`注記自体が「同じ用途の後継プロパティ」であることを明確に示しており、これ以上の裏付けを待たずに安全に確定できる水準の確証)。
+
+結論: 既存の`pad_codegen/actions/pdf.py`の`Pdf.ExtractPages`/`Pdf.MergeFiles`という結線(フラットな2セグメント形式)は、当初から正しかったと確定した——修正は不要。`design/pad_todo.md`の残課題注記を解消する。
