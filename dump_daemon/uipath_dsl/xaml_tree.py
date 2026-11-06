@@ -453,12 +453,33 @@ def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
     )
 
 
+_HTTP_CLIENT_COLLECTION_PROPS = ("Headers", "Cookies", "Parameters", "UrlSegments", "Attachments")
+
+
 def _parse_http_client(elem: etree._Element) -> HttpClientNode:
-    known = {"EndPoint", "Method"}
+    """知見96: `Body`/`TimeoutMS`も`EndPoint`/`Method`と同じく専用フィールドへ
+    昇格する(それまでは`extra_attrs`の生文字列止まりだった)。`Headers`等の
+    `scg:Dictionary`プロパティ要素(実機フィクスチャでは全て空、`<ui:HttpClient.
+    Headers><scg:Dictionary .../></ui:HttpClient.Headers>`で子要素なし)は、
+    1件以上のエントリを持つかどうかだけを`has_populated_collections`として
+    記録する——populated時のエントリ直列化形は実機未確認のため、中身の
+    パースはしない(でっち上げ回避)。"""
+    known = {"EndPoint", "Method", "Body", "TimeoutMS"}
     extra = {k: v for k, v in elem.attrib.items() if _split_tag(k)[1] not in known}
+    has_populated = False
+    for prop_name in _HTTP_CLIENT_COLLECTION_PROPS:
+        prop_elem = _find_property_element(elem, prop_name)
+        if prop_elem is None:
+            continue
+        for dict_elem in _direct_children(prop_elem):
+            if _direct_children(dict_elem):
+                has_populated = True
     return HttpClientNode(
         endpoint=_attr_expr(elem, "EndPoint"),
         method=_attr(elem, "Method") or "GET",
+        body=_attr_expr(elem, "Body"),
+        timeout_ms=_attr(elem, "TimeoutMS"),
+        has_populated_collections=has_populated,
         extra_attrs=extra,
     )
 

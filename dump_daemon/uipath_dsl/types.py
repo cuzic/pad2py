@@ -322,10 +322,21 @@ class SendOutlookMailNode:
 class HttpClientNode:
     """`<ui:HttpClient EndPoint="..." Method="..." />`(知見29、
     DisplayName「HTTP Request」の裏のCLR型名)。`extra_attrs`に主要属性以外の
-    生の属性値を残し、取りこぼしを防ぐ(`pad_codegen`の素通し方針と同じ)。"""
+    生の属性値を残し、取りこぼしを防ぐ(`pad_codegen`の素通し方針と同じ)。
+
+    `body`/`timeout_ms`は知見96でコード生成対象に追加した属性
+    (`Body`/`TimeoutMS`、実機確認済みの既定値は`{x:Null}`/`"6000"`)。
+    `has_populated_collections`は`Headers`/`Cookies`/`Parameters`/
+    `UrlSegments`/`Attachments`(いずれも`scg:Dictionary`プロパティ要素、
+    実機フィクスチャでは全て空)のいずれかに1件以上のエントリがあるかを
+    示す——populated時の実直列化形(キー/値のXML表現)は実機未確認のため、
+    空の場合のみコード生成し、それ以外は`# TODO`へ倒す(知見96)。"""
 
     endpoint: Expr
     method: str = "GET"
+    body: Expr = None
+    timeout_ms: str | None = None
+    has_populated_collections: bool = False
     extra_attrs: dict[str, str] = field(default_factory=dict)
 
 

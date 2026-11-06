@@ -660,8 +660,11 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
             "(To='a@b.com', Subject='Hi', Body='x')",
         ),
         (
-            HttpClientNode(endpoint=VbExpr(text="url"), method="POST"),
-            "(EndPoint=[url], Method='POST')",
+            # 知見96: 単純な構成(Body未設定・コレクション全て空)はもはや
+            # unresolvedに倒れず実際のrequestsコードを生成するため、ここでは
+            # Bodyを設定してunresolvedへのフォールバックを明示的に発生させる。
+            HttpClientNode(endpoint=VbExpr(text="url"), method="POST", body=Literal(value="x")),
+            "(EndPoint=[url], Method='POST', Body='x')",
         ),
     ],
 )
@@ -670,6 +673,58 @@ def test_unresolved_activity_todo_includes_captured_fields(node, expected_detail
     code = generate_python(wf)
     assert f"# TODO: unsupported in v1 codegen: {type(node).__name__} {expected_detail}" in code
     _compiles(code)
+
+
+def test_http_client_generates_real_requests_call_for_simple_case():
+    """知見96: `Headers`/`Cookies`/`Parameters`/`UrlSegments`/`Attachments`が
+    全て空・`Body`未設定という実機フィクスチャで確認済みの構成では、
+    `# TODO`ではなく実際に動く`requests.request(...)`を生成する。"""
+    node = HttpClientNode(endpoint=Literal(value="https://example.com/api"), method="GET")
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "import requests" in code
+    assert "requests.request('GET', 'https://example.com/api')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_http_client_converts_timeout_ms_to_seconds():
+    """知見96: `TimeoutMS`(UiPath公式ドキュメント、既定値6000ms)をrequestsの
+    `timeout`(秒)へ単位変換する。"""
+    node = HttpClientNode(
+        endpoint=Literal(value="https://example.com/api"), method="GET", timeout_ms="6000"
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "requests.request('GET', 'https://example.com/api', timeout=6.0)" in code
+    _compiles(code)
+
+
+def test_http_client_falls_back_to_todo_with_populated_headers():
+    """知見96: `Headers`等に1件以上のエントリがある場合は実直列化形が
+    実機未確認のため、でっち上げず`# TODO`に倒す。"""
+    node = HttpClientNode(
+        endpoint=Literal(value="https://example.com/api"),
+        method="POST",
+        has_populated_collections=True,
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO: unsupported in v1 codegen: HttpClientNode" in code
+    assert "requests.request(" not in code
+    _compiles(code)
+
+
+def test_http_client_real_fixture_now_generates_real_code():
+    """知見96: design/evidence/uipath_xaml_probe/Main.xamlの`<ui:HttpClient>`
+    (知見29)は空のHeaders/Cookies/Parameters/UrlSegments/Attachments・
+    未設定のBodyという実機確認済みの単純な構成——これまでは`# TODO`に
+    倒れていたが、今は実際にrequestsコードが生成されることを確認する。"""
+    wf = parse_workflow_file(FIXTURE_DIR / "Main.xaml")
+    code = generate_python(wf)
+    assert "import requests" in code
+    assert "requests.request('GET'" in code
+    assert "# TODO: unsupported in v1 codegen: HttpClientNode" not in code
 
 
 def test_excel_application_scope_todo_includes_custom_scope_var():
@@ -686,21 +741,22 @@ def test_excel_application_scope_todo_includes_custom_scope_var():
 
 
 def test_http_client_todo_includes_extra_attrs():
-    """知見92: `extra_attrs`(`EndPoint`/`Method`以外の全属性、実機フィクスチャ
-    では`BodyFormat`/`AcceptFormat`/`TimeoutMS`等)は`xaml_tree._parse_http_client`
+    """知見92: `extra_attrs`(`EndPoint`/`Method`/`Body`/`TimeoutMS`以外の
+    全属性、実機フィクスチャでは`AcceptFormat`等)は`xaml_tree._parse_http_client`
     が既に捕捉済みだったが、`# TODO`コメントへ一度も出ていなかった——知見75と
-    同じ「捕捉済みデータの未活用」パターンの追加分。"""
+    同じ「捕捉済みデータの未活用」パターンの追加分。`Body`を設定して知見96の
+    実コード生成パスではなくunresolvedフォールバックを明示的に発生させる。"""
     node = HttpClientNode(
         endpoint=VbExpr(text="url"),
         method="POST",
-        extra_attrs={"BodyFormat": "application/xml", "TimeoutMS": "6000"},
+        body=Literal(value="payload"),
+        extra_attrs={"AcceptFormat": "JSON"},
     )
     wf = _wrap([node])
     code = generate_python(wf)
     assert (
         "# TODO: unsupported in v1 codegen: HttpClientNode (EndPoint=[url], "
-        "Method='POST', ExtraAttrs={'BodyFormat': 'application/xml', "
-        "'TimeoutMS': '6000'})"
+        "Method='POST', Body='payload', ExtraAttrs={'AcceptFormat': 'JSON'})"
     ) in code
     _compiles(code)
 

@@ -34,13 +34,14 @@ Switch/While/DoWhile/Break/Parallel)・Variables/Argumentsの既定値初期化�
 
 **完成に向けて残っているもの**: 詳細は本ドキュメント末尾の新設節
 「[残タスク: v1完成までに必要なもの](#残タスク-v1完成までに必要なもの2026-11-05見直し)」
-参照。要点だけ言うと、(1) Phase 1で確定した「Flowchartもv1スコープ」が
-実装では未着手のまま黙って先送りされている食い違いの解消、
-(2) Tier1確定済みだが未実装の5活動(Excel×2/Outlook/InvokeCode/
-HttpClient、いずれもライブラリ選定等のユーザー判断待ち)、
-が実質的に残る2つの大きな項目——それ以外は実データでの需要が出るまで
-意図的に見送っている既知の限界(セレクタ属性・配列添字曖昧性・相対パス等)
-であり、v1「完成」の障害とはみなさない。
+参照。2026-11-05中にユーザーから明示的な意思決定を得た(AskUserQuestion):
+(1) Flowchartは実装する(Phase 1の決定文を実装に合わせて黙って狭めるのではなく、
+実際にIR・コード生成を追加する)、(2) Excel=`openpyxl`・Outlook=`win32com`で
+実装する、(3) HttpClientのHeaders/Bodyパースを先に進める(知見96で着手・
+最も単純な構成は解消済み)、(4) InvokeCodeは今回は見送る。残る実質的なタスクは
+Flowchart本体の実装・Excel/Outlookのコード生成実装の2つ——それ以外は実データ
+での需要が出るまで意図的に見送っている既知の限界(セレクタ属性・配列添字
+曖昧性・相対パス等)であり、v1「完成」の障害とはみなさない。
 
 ## Phase 0: 残る研究のクローズ
 
@@ -335,6 +336,11 @@ Excel/Outlook、プロパティ要素(Headers等)を未パースのHttpClientは
 `# TODO`に倒す。`And`/`Or`/`Xor`→`&`/`|`/`^`変換(両オペランド括弧必須)も
 設計通り実装。`tests/test_uipath_codegen.py`(16件)で検証済み。
 
+**(2026-11-05追補、知見96)** `HttpClientNode`は実機確認済みの最も単純な
+構成(Headers等が全て空・Body未設定)に限り`requests`への実コード生成へ
+移行した——下記「実装ログ」項56参照。Excel/Outlook/InvokeCodeは
+引き続き`# TODO`のまま(残タスクB参照、ユーザー決定済みで着手予定)。
+
 **セレクタ解決(`dump_daemon/uipath_selector/`、同日中に追加着手・完了。
 2026-11-05に実機検証(知見38)を反映して更新)**:
 知見37で把握したClassic Selector(`WND`/`CTRL`)の属性語彙に基づき、
@@ -375,7 +381,7 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
 全体969件)。ここでは「決まったv1スコープに対して何が実際に欠けているか」
 だけを俯瞰する。
 
-### A. スコープと実装の食い違い(要ユーザー判断)
+### A. スコープと実装の食い違い【ユーザー決定済み、2026-11-05: 実装する】
 
 1. **Flowchartが実質スコープ外のまま放置されている**: Phase 1の決定
    (#1、本ドキュメント上部)は「対象ワークフロー種別: Sequence/
@@ -384,28 +390,29 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
    `ValueError`(「Flowchart/State Machine roots are out of v1 scope」)
    で拒否しており、Flowchart用のIR・コード生成コードは1行も存在しない。
    この食い違いはPhase 1・Phase 8どちらの文面にも反映されず、実装側で
-   サイレントに先送りされていた(今回の俯瞰で発見)。**ユーザー判断が
-   必要**: (a) Phase 1の決定文を「Sequenceのみ」に修正して現状を正とする
-   か、(b) `FlowStep`/`FlowDecision`/`FlowSwitch`+`x:Reference`接続という
-   全く別のIR構造・コード生成を新規に実装するか
+   サイレントに先送りされていた(今回の俯瞰で発見)。**ユーザー決定
+   (2026-11-05)**: `FlowStep`/`FlowDecision`/`FlowSwitch`+`x:Reference`
+   接続という全く別のIR構造・コード生成を新規に実装する——まだ未着手
+   (実機XAML構造の確証が無く、公式ドキュメント調査から始める必要がある)
 
-### B. Tier1確定済みだが未実装の5活動(技術的に不可能ではなく、ライブラリ選定待ち)
+### B. Tier1確定済みだが未実装の活動【ユーザー決定済み、2026-11-05】
 
-知見70で発見されて以来、`_generate_unresolved_activity`へ常にルーティング
-されたまま。知見75・83で`# TODO`コメントに捕捉済みフィールド(元の`.xaml`の
-値)を追記済みのため、着手時はそこが起点になる。
+知見70で発見された5活動のうち、着手順とライブラリはユーザー決定済み
+(AskUserQuestion)。知見75・83・92〜95で`# TODO`コメントに捕捉済み
+フィールド(元の`.xaml`の値)を追記済みのため、着手時はそこが起点になる。
 
-2. `ExcelApplicationScopeNode`+`ExcelWriteCellNode`: `openpyxl`
-   (ファイル直接操作、Excelプロセス不要・軽量)か`win32com`(実際のExcel
-   プロセスを操作、UiPathの実行時挙動に近い)か、どちらで実装するかの選定
-3. `SendOutlookMailNode`: `win32com`(Outlookクライアント経由、UiPathの
-   実際の挙動に近い)か`smtplib`(SMTP直送、Outlook不要だが挙動が異なる)
-   かの選定
-4. `InvokeCodeNode`: インラインVB.NETコード(文単位、`uipath_expr`が
-   対応する式単位の範囲外)をPythonへどう変換するか自体が未解決
-5. `HttpClientNode`: `requests`への変換自体は単純だが、`Headers`/`Body`
-   プロパティ要素のパース(知見75で値の捕捉のみ対応済み、構造化は未実装)
-   が残る
+2. **(完了、知見96)** `HttpClientNode`: `requests`ライブラリへの変換を
+   実装した——実機フィクスチャで確認済みの最も単純な構成(`Headers`等の
+   コレクションが全て空、`Body`未設定)は実際にコード生成されるように
+   なった(カバレッジ72%→76%)。`Body`設定時・コレクション非空時の
+   実直列化形は依然未確認のため、その場合は引き続き`# TODO`。
+3. `ExcelApplicationScopeNode`+`ExcelWriteCellNode`: `openpyxl`で実装する
+   (ユーザー決定、2026-11-05)——未着手
+4. `SendOutlookMailNode`: `win32com`で実装する(ユーザー決定、2026-11-05)
+   ——未着手
+5. `InvokeCodeNode`: 今回は見送る(ユーザー決定、2026-11-05)——インライン
+   VB.NETコード(文単位、`uipath_expr`が対応する式単位の範囲外)をPythonへ
+   どう変換するか自体が未解決のまま
 
 ### C. 検証基盤の薄さ(構造的制約、Phase 7で既知として記録済み)
 
@@ -1057,3 +1064,16 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
     挙動自体は変更無し、合成`project.json`テストに加えて実機フィクスチャ
     でも同じ拒否が成立することをロック。回帰テスト追加、UiPath関連テスト
     全276件通過、リポジトリ全体で全1005件通過。
+56. **(完了、2026-11-05)** `HttpClientNode`の`requests`への実コード生成を
+    実装(VM不使用、知見96——ユーザーがFlowchart実装・Excel=openpyxl・
+    Outlook=win32com・HttpClient先行・InvokeCode見送りを明示的に決定した
+    直後に着手、残タスクB参照): 実機フィクスチャ(`Headers`等のコレクション
+    全て空、`Body`未設定)という最も単純な構成に限り`requests.request(method,
+    endpoint, timeout=...)`を生成するよう`HttpClientNode`に`body`/
+    `timeout_ms`/`has_populated_collections`フィールドを追加。`TimeoutMS`
+    既定値6000ms・`AcceptFormat`/`BodyFormat`既定値はUiPath公式ドキュメント
+    (docs.uipath.com)で確認——実機フィクスチャの値はいずれもStudio既定値
+    のままだったと確定。`requests`を新規依存に追加(`uv add requests`)。
+    カバレッジ72%→76%(22/29)に向上、知見70の未対応5活動は4件に減少。
+    回帰テスト5件追加、既存のTODO系テスト・カバレッジ閾値テストを更新、
+    UiPath関連テスト全280件通過、リポジトリ全体で全1013件通過。

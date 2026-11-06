@@ -4458,6 +4458,62 @@ activity`の全分岐(`InvokeCodeNode`/`ExcelApplicationScopeNode`/
 (`FIXTURE_LIB_DIR`定数を新設)。UiPath関連テスト全276件通過、リポジトリ
 全体で全1005件通過。
 
+## 96. `HttpClientNode`を実際に`requests`ライブラリへ変換するコード生成を実装——知見70以来TODO固定だった5活動のうち最初の1件を解消(VM不使用、ユーザーの明示的な意思決定を受けて着手)
+
+ユーザーからロードマップ俯瞰レビュー後に「Flowchartスコープ」「Excel/
+Outlook/HttpClientのライブラリ選定」という残タスクについて明示的な意思
+決定を得た(AskUserQuestion): Flowchart実装・Excel=openpyxl・
+Outlook=win32com・HttpClientのHeaders/Bodyパースを今進める(InvokeCode
+は見送り)。この知見では、最も小さく・最も実機データで裏付けの取れる
+HttpClientから着手した。
+
+**実機データの再確認**: `design/evidence/uipath_xaml_probe/Main.xaml`の
+`<ui:HttpClient>`(知見29)を再確認したところ、`Body="{x:Null}"`は
+**属性**(プロパティ要素ではない)であり、`Headers`/`Cookies`/
+`Parameters`/`UrlSegments`/`Attachments`はいずれも`<ui:HttpClient.
+Headers><scg:Dictionary x:TypeArguments="x:String, InArgument(x:String)"
+/></ui:HttpClient.Headers>`という**子要素を持たない空の辞書**だった——
+つまりこの実機フィクスチャは「もっとも単純な構成(ヘッダーもボディも
+無いGETリクエスト)」そのものだった。
+
+**公式ドキュメント確認**(docs.uipath.com/activities/other/latest/
+developer/http-request、legacy HttpClient活動): `TimeoutMS`の既定値は
+6000ms(実機フィクスチャの値`"6000"`と一致)。`AcceptFormat`既定値`ANY`・
+`BodyFormat`既定値`application/xml`も実機フィクスチャの値と一致——
+いずれもユーザーが明示的に変更したのではなく単純にStudioの既定値のまま
+だったと確定した。
+
+**実装**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `HttpClientNode`に`body`(`Expr`)・
+`timeout_ms`(生文字列)・`has_populated_collections`(bool)を追加。
+`_parse_http_client`が`Body`/`TimeoutMS`を専用フィールドとして捕捉し、
+5つの`scg:Dictionary`プロパティ要素それぞれに1件以上の子要素があるかを
+判定する(populated時の中身のXML形は実機未確認のためパースしない)。
+新設の`_generate_http_client`は、`has_populated_collections`が`False`
+かつ`body`が`None`(実機確認済みの最も単純な構成)の場合のみ
+`requests.request(method, endpoint, timeout=...)`を実際に生成する——
+それ以外(Body設定済み、または5つのコレクションのいずれかにエントリが
+ある場合)は、実直列化形が未確認のため`_generate_unresolved_activity`の
+`# TODO`へ安全に倒す(その際の詳細コメントにも新設の`Body`フィールドを
+追記、知見92〜95と同じ「捕捉済みデータを隠さない」方針)。
+
+**結果**: `dump_daemon.uipath_codegen_coverage`の分岐点カバレッジが
+72%(21/29)→76%(22/29)へ向上(知見70以来初めての数値改善)。知見70で
+発見した5つの未対応アクティビティは4件(ExcelApplicationScopeNode/
+ExcelWriteCellNode/InvokeCodeNode/SendOutlookMailNode)に減った。
+`requests`を新規依存に追加(`uv add requests`)。回帰テスト5件追加
+(単純ケースの実コード生成・`TimeoutMS`単位変換・populated時のTODO
+フォールバック・実機フィクスチャでの確認・既存TODO系テストの更新)、
+UiPath関連テスト全280件通過、リポジトリ全体で全1013件通過。
+
+**この知見で確定したこと**: 知見70の「5つの未対応アクティビティ」は
+必ずしも等しく難しいわけではなく、実機データが「たまたま最も簡単な
+ケース(空コレクション・ボディ無し)」だった`HttpClient`は、Excel/
+Outlook/InvokeCodeより先に、ライブラリ選定という意思決定すら不要な
+形で前進できた——残る4件はいずれもライブラリ選定(Excel=openpyxl・
+Outlook=win32com、ユーザー決定済み)またはより大きな設計判断
+(InvokeCodeの文単位コード変換、見送り決定済み)が必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

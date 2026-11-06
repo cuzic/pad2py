@@ -782,6 +782,7 @@ dependencies = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "pywinauto" },
     { name = "pyzipper" },
+    { name = "requests" },
     { name = "uvicorn" },
 ]
 
@@ -815,6 +816,7 @@ requires-dist = [
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=306" },
     { name = "pywinauto", specifier = ">=0.6.8" },
     { name = "pyzipper", specifier = ">=0.4.0" },
+    { name = "requests", specifier = ">=2.34.2" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 

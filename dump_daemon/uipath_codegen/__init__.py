@@ -201,6 +201,9 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import pyperclip")
     if any("Desktop(" in line for line in body):
         imports.append("from pywinauto import Desktop")
+    # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
+    if any("requests.request(" in line for line in body):
+        imports.append("import requests")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -315,8 +318,10 @@ def _generate_node(
         return _generate_click(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, HttpClientNode):
+        return _generate_http_client(node, indent)
     if isinstance(node, (InvokeCodeNode, ExcelApplicationScopeNode, ExcelWriteCellNode,
-                          SendOutlookMailNode, HttpClientNode)):
+                          SendOutlookMailNode)):
         return _generate_unresolved_activity(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
@@ -799,6 +804,40 @@ def _generate_invoke_workflow_file(
     return [*todo, *warning, f"{prefix}{func_name}({', '.join(kwargs)})"]
 
 
+def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
+    """知見96: `HttpClientNode`は知見29以来常に`_generate_unresolved_
+    activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
+    (`Headers`/`Cookies`/`Parameters`/`UrlSegments`/`Attachments`が全て空、
+    `Body`も未設定(`{x:Null}`))に限り`requests`ライブラリへの実変換を行う。
+
+    `TimeoutMS`(UiPath公式ドキュメント docs.uipath.com/activities/other/
+    latest/developer/http-request、既定値6000ms——実機フィクスチャの値と
+    一致)はミリ秒からrequestsの`timeout`引数(秒)へ単位変換するだけで、
+    複雑な解釈は挟まない。
+
+    `Body`が設定されている場合、または上記いずれかのコレクションに
+    1件以上のエントリがある場合は、その実直列化形(キー/値のXML表現、
+    `AcceptFormat`/`BodyFormat`がヘッダーにどう反映されるか)が実機未確認
+    のため、でっち上げず`_generate_unresolved_activity`の`# TODO`(知見75・
+    92)へ委ねる——`Method`/`EndPoint`は確認済みのため、そちらにも
+    引き続き同じ詳細情報が出る。
+    """
+    prefix = INDENT * indent
+    if node.has_populated_collections or node.body is not None:
+        return _generate_unresolved_activity(node, indent)
+    todo: list[str] = []
+    endpoint = _render_value_or_todo(node.endpoint, prefix, todo)
+    if todo:
+        return todo
+    kwargs = [repr(node.method), endpoint]
+    if node.timeout_ms:
+        try:
+            kwargs.append(f"timeout={float(node.timeout_ms) / 1000.0!r}")
+        except ValueError:
+            pass
+    return [f"{prefix}requests.request({', '.join(kwargs)})"]
+
+
 def _describe_expr_for_comment(expr: Expr) -> str:
     """`# TODO`コメントに埋め込むための人間向け簡易説明(知見75)。
     `render.py`の`render_expr()`のような実行可能Pythonコードへの変換は
@@ -883,10 +922,13 @@ def _generate_unresolved_activity(
         # `EndPoint`/`Method`以外の全属性を既に捕捉している——実機
         # フィクスチャでは`BodyFormat`/`AcceptFormat`/`TimeoutMS`等)も
         # これまで一度もTODOコメントへ出ていなかった、同じ未活用パターン。
+        # 知見96: `Body`も`EndPoint`/`Method`と同じ専用フィールドへ昇格した
+        # ため、このTODOフォールバックに分岐した理由(Body設定済み、または
+        # Headers等のコレクションが空でない)が分かるよう表示する。
         extra = {k: v for k, v in sorted(node.extra_attrs.items()) if k != "DisplayName"}
         detail = (
             f" (EndPoint={_describe_expr_for_comment(node.endpoint)}, "
-            f"Method={node.method!r}"
+            f"Method={node.method!r}, Body={_describe_expr_for_comment(node.body)}"
             f"{f', ExtraAttrs={extra!r}' if extra else ''})"
         )
     lines = [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
