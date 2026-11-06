@@ -818,6 +818,28 @@ def test_activate_selector_and_properties():
     assert node.continue_on_error is None
 
 
+def test_target_selector_normalizes_x_null_to_none():
+    """知見163: `_target_selector`(`Click`/`Hover`/`Activate`/`TypeInto`/
+    `TypeSecureText`/`SendHotkey`/`GetText`/`GetFullText`/`SelectItem`/
+    `UiElementExists`の10箇所で重複していたインライン実装を統合した
+    共通ヘルパー)。`UiPath/skills`公式リポジトリのStudio実機
+    ground-truthコーパス(`Activate.xaml`)で発見した`Selector=
+    "{x:Null}"`(未設定)という実例——修正前は文字列`"{x:Null}"`が
+    そのまま`selector`に残り、`if not node.selector:`判定を素通りして
+    `# TODO: ... had no mappable attributes: {x:Null}`という紛らわしい
+    文言になっていた。知見13の`{x:Null}`→`None`正規化規約に揃えた。"""
+    xml = (
+        f"<ui:Activate {_UI_XMLNS} DisplayName=\"Activate\">"
+        "<ui:Activate.Target>"
+        '<ui:Target Selector="{x:Null}" />'
+        "</ui:Activate.Target>"
+        "</ui:Activate>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ActivateNode)
+    assert node.selector is None
+
+
 def test_log_message_properties():
     xml = (
         f"<ui:LogMessage {_UI_XMLNS} "

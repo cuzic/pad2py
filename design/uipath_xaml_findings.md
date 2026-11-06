@@ -7733,6 +7733,44 @@ __init__.py`に`_generate_activate`/`_generate_activate_body`
 test_uipath_codegen.py`7件)、UiPath関連テスト全658件通過、
 リポジトリ全体で全1698件通過。
 
+## 163. `Target.Selector`の`{x:Null}`正規化漏れを発見・修正、10箇所の重複インライン実装を共通ヘルパーへ統合(知見133・141と同じ「バグ修正+重複解消を1回で」パターン)
+
+知見162(`ui:Activate`)の実装検証で、`UiPath/skills`公式ground-truth
+コーパス(`Activate.xaml`)の`Selector="{x:Null}"`(未設定)という
+実例を使って手動確認したところ、`selector`フィールドに文字列
+`"{x:Null}"`がそのまま残り(本来`None`であるべき)、`# TODO: Activate
+selector had no mappable attributes: {x:Null}`という紛らわしい文言に
+なることを発見した。
+
+原因を遡ると、`Target`プロパティ要素配下の`ui:Target`要素から
+`Selector`属性を取得する処理(`selector = None; target_prop = _find_
+property_element(elem, "Target"); ...; selector = _attr(child,
+"Selector")`という6行のブロック)が、`_parse_click`/`_parse_hover`/
+`_parse_activate`/`_parse_type_into`/`_parse_type_secure_text`/
+`_parse_send_hotkey`/`_parse_get_text`/`_parse_get_full_text`/
+`_parse_select_item`/`_parse_ui_element_exists`の**10箇所全てで
+バイト同一のまま重複**しており、いずれも`_attr()`で属性値を直接
+読むため`_parse_expr`(知見13の`{x:Null}`→`None`正規化規約)を経由
+していなかった——でっち上げではなく「解析できなかった」という安全側
+の結果自体は変わらないため実害は軽微だったが、`None`の場合に出る
+分かりやすい「no selector captured」という文言には倒れず、`{x:Null}`
+という内部実装の生テキストがそのまま利用者向けのコメントに漏れて
+いた。
+
+知見133(`.Equals`等の`_apply_chained_call`統合)・知見141
+(`_with_scope_child_display_name`の15箇所重複解消)と同じ「バグ修正
+と重複解消を1回で行う」パターンで、新しい共通ヘルパー`_target_
+selector(elem)`を追加し、`{x:Null}`→`None`正規化をこの1箇所に
+集約した上で、10箇所の重複インラインブロックを全て`selector =
+_target_selector(elem)`という1行呼び出しへ置き換えた——この10個の
+活動の個別のパーサー関数自体は他に一切変更していない。既存の
+全1698件のテスト(退行無し)に加え、実機XAML2件(`PacktPublishing`の
+`KeyboardActions.xaml`・`Digital-RPA/MRE_B2BE`の`CloseSICS.xaml`)で
+`generate_python()`+`compile()`を再検証し、挙動が変わらないことを
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件、`Activate`
+を使って`{x:Null}`→`None`正規化を直接確認)、UiPath関連テスト全
+659件通過、リポジトリ全体で全1699件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

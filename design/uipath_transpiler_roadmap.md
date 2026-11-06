@@ -2089,3 +2089,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      7件)、UiPath関連テスト全658件通過、リポジトリ全体で全1698件
      通過。
+
+121. **(完了、2026-11-06)** `Target.Selector`の`{x:Null}`正規化漏れを
+     発見・修正、10箇所の重複インライン実装を共通ヘルパー`_target_
+     selector`へ統合(知見163): `Click`/`Hover`/`Activate`/`TypeInto`/
+     `TypeSecureText`/`SendHotkey`/`GetText`/`GetFullText`/
+     `SelectItem`/`UiElementExists`の10箇所全てが`_attr()`で`Selector`
+     属性を直接読んでおり、`_parse_expr`の`{x:Null}`→`None`正規化
+     規約(知見13)を経由していなかった——知見162の`ui:Activate`実装
+     検証で発見。知見133・141と同じ「バグ修正+重複解消を1回で」
+     パターンで対応し、個別のパーサー関数自体は変更していない。
+     既存テスト全1698件に退行無し、実機XAML2件で再検証。回帰テスト
+     追加(`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全659件
+     通過、リポジトリ全体で全1699件通過。

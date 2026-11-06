@@ -528,14 +528,37 @@ def _cursor_offset(cursor_elem: etree._Element, attr_name: str) -> str | None:
     return children[0].text
 
 
-def _parse_click(elem: etree._Element) -> ClickNode:
-    selector = None
+def _target_selector(elem: etree._Element) -> str | None:
+    """知見163: `<X.Target><ui:Target Selector="..." /></X.Target>`から
+    `Selector`属性を取得する共通ヘルパー——`Click`/`Hover`/`Activate`/
+    `TypeInto`/`TypeSecureText`/`SendHotkey`/`GetText`/`GetFullText`/
+    `SelectItem`/`UiElementExists`の10箇所で同一のインライン実装が
+    重複していた(バグ修正+重複解消を1回で行う、知見133・141と同じ
+    パターン)。知見128のStudio実機ground-truthコーパス(`Activate.xaml`
+    等)で`Selector="{x:Null}"`(未設定)という実例を発見した際、
+    重複していた10箇所全てが`_parse_expr`(知見13の`{x:Null}`→
+    `None`正規化規約)を経由せず`_attr()`で生テキストを直接読んでいた
+    ため、この規約から漏れて`selector`に文字列`"{x:Null}"`がそのまま
+    残っていた(本来`None`であるべき値が真値として`if not node.
+    selector:`判定を素通りし、`# TODO: ... had no mappable attributes:
+    {x:Null}`という紛らわしい文言になっていた——でっち上げではない
+    ため動作は安全側のままだったが、`None`の場合の「no selector
+    captured」という分かりやすい文言には倒れていなかった)。"""
     target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    if target_prop is None:
+        return None
+    selector = None
+    for child in _direct_children(target_prop):
+        _, local = _split_tag(child.tag)
+        if local == "Target":
+            selector = _attr(child, "Selector")
+    if selector == "{x:Null}":
+        return None
+    return selector
+
+
+def _parse_click(elem: etree._Element) -> ClickNode:
+    selector = _target_selector(elem)
     cursor_position = None
     cursor_offset_x = None
     cursor_offset_y = None
@@ -562,13 +585,7 @@ def _parse_click(elem: etree._Element) -> ClickNode:
 
 
 def _parse_hover(elem: etree._Element) -> HoverNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     cursor_position = None
     cursor_offset_x = None
     cursor_offset_y = None
@@ -594,13 +611,7 @@ def _parse_hover(elem: etree._Element) -> HoverNode:
 
 
 def _parse_activate(elem: etree._Element) -> ActivateNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return ActivateNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -611,13 +622,7 @@ def _parse_activate(elem: etree._Element) -> ActivateNode:
 
 
 def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     # `Activate`/`ActivateBefore`の表記揺れ(`TypeIntoNode`のdocstring参照)。
     # 同じXAMLに両方が同時に現れた実例は確認していないため、どちらかが
     # 存在すればそれを使う(両方無ければ`_attr_expr`が自然に`None`を返す)。
@@ -653,13 +658,7 @@ def _parse_type_secure_text(elem: etree._Element) -> TypeIntoNode:
     コード生成はTypeIntoと完全に同じため、新しいノード型を追加せず
     既存の`TypeIntoNode`をそのまま返す(`ui:ForEachRow`が`ForEachNode`
     を再利用するのと同じ設計)。"""
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     activate_before = _attr_expr(elem, "ActivateBefore")
     if activate_before is None and _attr(elem, "Activate") is not None:
         activate_before = _attr_expr(elem, "Activate")
@@ -681,13 +680,7 @@ def _parse_type_secure_text(elem: etree._Element) -> TypeIntoNode:
 
 
 def _parse_send_hotkey(elem: etree._Element) -> SendHotkeyNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return SendHotkeyNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -704,13 +697,7 @@ def _parse_send_hotkey(elem: etree._Element) -> SendHotkeyNode:
 
 
 def _parse_get_text(elem: etree._Element) -> GetTextNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return GetTextNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -726,13 +713,7 @@ def _parse_get_full_text(elem: etree._Element) -> GetTextNode:
     searchで300件ヒット)。`Target`構造は`GetText`と同じだが、出力
     `Text`はプロパティ要素形(`_in_argument_property_expr`、知見115)で
     直列化される——同じ`GetTextNode`を`full_text=True`で返す。"""
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return GetTextNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -746,13 +727,7 @@ def _parse_get_full_text(elem: etree._Element) -> GetTextNode:
 
 
 def _parse_select_item(elem: etree._Element) -> SelectItemNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return SelectItemNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -765,13 +740,7 @@ def _parse_select_item(elem: etree._Element) -> SelectItemNode:
 
 
 def _parse_ui_element_exists(elem: etree._Element) -> UiElementExistsNode:
-    selector = None
-    target_prop = _find_property_element(elem, "Target")
-    if target_prop is not None:
-        for child in _direct_children(target_prop):
-            _, local = _split_tag(child.tag)
-            if local == "Target":
-                selector = _attr(child, "Selector")
+    selector = _target_selector(elem)
     return UiElementExistsNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
