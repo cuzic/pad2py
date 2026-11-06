@@ -96,6 +96,7 @@ from ..uipath_dsl.types import (
     InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
+    KillProcessNode,
     Literal,
     LogMessageNode,
     MessageBoxNode,
@@ -314,8 +315,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     if any("logging.info(" in line or "logging.error(" in line for line in body):
         imports.append("import logging")
     # `subprocess`(`OpenApplication`→`subprocess.Popen(...)`変換先、
-    # 知見154)も同様。
-    if any("subprocess.Popen(" in line for line in body):
+    # 知見154、`KillProcess`→`subprocess.run(...)`変換先、知見169)も
+    # 同様。
+    if any("subprocess.Popen(" in line or "subprocess.run(" in line for line in body):
         imports.append("import subprocess")
     # `webbrowser`(`OpenBrowser`→`webbrowser.open(...)`変換先、知見168)
     # も同様。
@@ -468,6 +470,8 @@ def _generate_node(
         return _generate_check(node, indent)
     if isinstance(node, HighlightNode):
         return _generate_highlight(node, indent)
+    if isinstance(node, KillProcessNode):
+        return _generate_kill_process(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1512,6 +1516,52 @@ def _generate_highlight(node: HighlightNode, indent: int) -> list[str]:
         "debugging aid, no automation effect to reproduce"
     ]
     return _with_scope_child_display_name(node, lines, prefix)
+
+
+# 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
+# REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で多用される
+# ため極めて高頻度)。`ProcessName`に一致する全プロセスを終了する
+# ——Windows標準搭載の確認済みコマンド`taskkill /IM <name>.exe /F`
+# (`subprocess.run`経由)が直接対応する。`/T`(プロセスツリー全体の
+# 終了)は付けない(.NETの素の`Process.Kill()`は子プロセスを終了しない
+# ため、過大な終了範囲をでっち上げないよう安全側に倒す)。
+def _generate_kill_process(node: KillProcessNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_kill_process_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_kill_process_body(node: KillProcessNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.process_name is None:
+        return [f"{prefix}# TODO: KillProcess with no ProcessName captured"]
+    if node.process is not None:
+        return [
+            f"{prefix}# TODO: KillProcess with Process set "
+            f"({_describe_expr_for_comment(node.process)}) — UiPath Process "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.applies_to is not None:
+        return [
+            f"{prefix}# TODO: KillProcess with AppliesTo set "
+            f"({_describe_expr_for_comment(node.applies_to)}) — semantics "
+            "not confirmed, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: KillProcess with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    process_name = _render_value_or_todo(node.process_name, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}subprocess.run(["
+        f'"taskkill", "/IM", f"{{{VB_CSTR_HELPER_NAME}({process_name})}}.exe", "/F"'
+        "])"
+    ]
 
 
 # `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する

@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
+    KillProcessNode,
     Literal,
     LogMessageNode,
     MessageBoxNode,
@@ -1952,6 +1953,73 @@ def test_highlight_with_no_selector_still_generates_comment():
     code = generate_python(wf)
     assert "# Highlight" in code
     assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_kill_process_generates_taskkill_via_subprocess_run():
+    """知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット)。
+    Windows標準搭載の確認済みコマンド`taskkill /IM <name>.exe /F`
+    (`subprocess.run`経由)が直接対応する。"""
+    wf = _wrap([KillProcessNode(process_name=Literal(value="msedge"))])
+    code = generate_python(wf)
+    assert 'subprocess.run(["taskkill", "/IM", f"{_vb_cstr(\'msedge\')}.exe", "/F"])' in code
+    assert "import subprocess" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_kill_process_display_name_becomes_a_comment():
+    wf = _wrap([KillProcessNode(process_name=Literal(value="msedge"), display_name="Kill edge")])
+    code = generate_python(wf)
+    assert "# Kill edge" in code
+    assert "subprocess.run(" in code
+    _compiles(code)
+
+
+def test_kill_process_with_no_process_name_is_todo_not_guessed():
+    wf = _wrap([KillProcessNode(process_name=None)])
+    code = generate_python(wf)
+    assert "# TODO: KillProcess with no ProcessName captured" in code
+    _compiles(code)
+
+
+def test_kill_process_with_process_reference_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            KillProcessNode(
+                process_name=Literal(value="msedge"), process=VbExpr(text="proc")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: KillProcess with Process set" in code
+    assert "subprocess.run" not in code
+    _compiles(code)
+
+
+def test_kill_process_with_applies_to_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            KillProcessNode(
+                process_name=Literal(value="msedge"), applies_to=Literal(value="ThisProcess")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: KillProcess with AppliesTo set" in code
+    _compiles(code)
+
+
+def test_kill_process_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            KillProcessNode(
+                process_name=Literal(value="msedge"), continue_on_error=Literal(value="True")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: KillProcess with ContinueOnError set" in code
     _compiles(code)
 
 

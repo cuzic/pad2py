@@ -2177,3 +2177,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      9件)、UiPath関連テスト全687件通過、リポジトリ全体で全1727件
      通過。
+
+127. **(完了、2026-11-06)** `ui:KillProcess`(GitHub code searchで
+     1514件ヒット——REFrameworkの標準サブワークフロー`KillAllProcesses.
+     xaml`で多用)を新規実装(知見169): `Target`/`Selector`を一切
+     持たず、`ProcessName`(`.exe`拡張子を含まない)で指定した全
+     プロセスを終了する。Windows標準搭載の確認済みコマンド`taskkill
+     /IM <name>.exe /F`(`subprocess.run`経由)が直接対応する——
+     `OpenApplication`/`OpenBrowser`とは違う3番目のパターン(確認済み
+     の標準コマンドへ直接対応する最も単純なケース)。`/T`(プロセス
+     ツリー全体の終了)は付けない——過大な終了範囲をでっち上げない
+     安全側の判断。`Process`/`AppliesTo`/`ContinueOnError`が設定され
+     ている場合は`# TODO`へ倒す。実機XAML2件で`taskkill`呼び出しが
+     正しく生成されることを確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件)、
+     UiPath関連テスト全694件通過、リポジトリ全体で全1734件通過。

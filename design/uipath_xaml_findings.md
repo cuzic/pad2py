@@ -8001,6 +8001,47 @@ com/'))`が正しく生成されることを確認した(2件全て)。回帰テ
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`9件)、
 UiPath関連テスト全687件通過、リポジトリ全体で全1727件通過。
 
+## 169. `ui:KillProcess`(GitHub code searchで1514件ヒット——REFrameworkの標準サブワークフローで多用)を新規実装——Windows標準`taskkill`コマンドへの直接対応
+
+`OpenApplication`(知見154)・`OpenBrowser`(知見168)に続く
+プロセス関連活動として`ui:KillProcess`(GitHub code searchで
+1514件ヒット)を実装した。実機3件(`piyushagarwal08/JU-Notes`の
+REFramework標準サブワークフロー`KillAllProcesses.xaml`・
+`vajrang-b/UiPathIn30Days`)で構造を確認した結果、`Target`/
+`Selector`を一切持たない(既存ウィンドウに接続するのではなく、
+プロセス名で指定した全プロセスを終了する活動であるため)、
+`ProcessName`(実機確認済みの値は`"iexplore"`/`"msedge"`——`.exe`
+拡張子を含まない、.NETの`Process.GetProcessesByName()`と同じ慣習)
++`Process`(UiPathの`Process`型オブジェクト参照、実機確認した全件で
+`{x:Null}`)+`AppliesTo`(実機で一度も非`{x:Null}`の値を確認できず
+意味論未確認)+`ContinueOnError`(全件`{x:Null}`)。
+
+`OpenApplication`/`OpenBrowser`とは違う3番目のパターン:
+`OpenApplication`はXAMLに明示された絶対パスを`subprocess.Popen`で
+直接起動、`OpenBrowser`は実行ファイルパスが推測できないため
+`webbrowser`標準ライブラリに頼った——`KillProcess`はWindows標準
+搭載の確認済みコマンド`taskkill /IM <name>.exe /F`(`subprocess.run`
+経由)が直接対応する、最も単純なケースに戻った。`/T`(プロセス
+ツリー全体の終了)は付けない——.NETの素の`Process.Kill()`は子プロセス
+を終了しないため、過大な終了範囲をでっち上げないよう安全側に倒した
+判断。
+
+`dump_daemon/uipath_dsl/types.py`に`KillProcessNode(process_name,
+display_name, process, applies_to, continue_on_error)`、
+`xaml_tree.py`に`_parse_kill_process`+`(UI_NS, "KillProcess")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`に`_generate_kill_
+process`/`_generate_kill_process_body`(`Process`/`AppliesTo`/
+`ContinueOnError`が設定されている場合は`# TODO`へ倒す)を追加。
+`subprocess`の`import`検出条件(既存の`subprocess.Popen(`に加えて
+`subprocess.run(`も検出するよう拡張)。実機XAML2件
+(`KillAllProcesses.xaml`・`vajrang-b/UiPathIn30Days`の`Main.xaml`)
+で`generate_python()`+`compile()`を実行し、`subprocess.run(["taskkill",
+"/IM", f"{_vb_cstr('iexplore')}.exe", "/F"])`/
+`f"{_vb_cstr('msedge')}.exe"`が正しく生成されることを確認した
+(2件全て)。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`6件)、UiPath関連テスト全694件通過、
+リポジトリ全体で全1734件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -46,6 +46,7 @@ from dump_daemon.uipath_dsl import (
     InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
+    KillProcessNode,
     Literal,
     LogMessageNode,
     MessageBoxNode,
@@ -933,6 +934,28 @@ def test_highlight_selector_color_and_time():
     assert node.color == "Gold"
     assert node.highlight_time == Literal(value="1000")
     assert node.display_name == "Highlight 'TEXTAREA'"
+
+
+def test_kill_process_properties():
+    """知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
+    REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で多用
+    される)。`Target`/`Selector`を一切持たず、`ProcessName`(実機
+    確認済みの値は`"iexplore"`/`"msedge"`、`.exe`拡張子を含まない)で
+    指定した名前に一致する全プロセスを終了する。実機(`piyushagarwal08/
+    JU-Notes`・`vajrang-b/UiPathIn30Days`)で確認した属性構成を再現
+    する。"""
+    xml = (
+        f"<ui:KillProcess {_UI_XMLNS} "
+        'AppliesTo="{x:Null}" ContinueOnError="{x:Null}" Process="{x:Null}" '
+        'DisplayName="Kill Process edge" ProcessName="msedge" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, KillProcessNode)
+    assert node.process_name == Literal(value="msedge")
+    assert node.display_name == "Kill Process edge"
+    assert node.process is None
+    assert node.applies_to is None
+    assert node.continue_on_error is None
 
 
 def test_log_message_properties():

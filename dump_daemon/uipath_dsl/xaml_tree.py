@@ -58,6 +58,7 @@ from .types import (
     InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
+    KillProcessNode,
     Literal,
     LogMessageNode,
     MessageBoxNode,
@@ -641,6 +642,16 @@ def _parse_highlight(elem: etree._Element) -> HighlightNode:
         display_name=_attr(elem, "DisplayName"),
         color=_attr(elem, "Color"),
         highlight_time=_attr_expr(elem, "HighlightTime"),
+    )
+
+
+def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
+    return KillProcessNode(
+        process_name=_attr_expr(elem, "ProcessName"),
+        display_name=_attr(elem, "DisplayName"),
+        process=_attr_expr(elem, "Process"),
+        applies_to=_attr_expr(elem, "AppliesTo"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
     )
 
 
@@ -1531,6 +1542,7 @@ _DISPATCH = {
     (UI_NS, "Activate"): _parse_activate,
     (UI_NS, "Check"): _parse_check,
     (UI_NS, "Highlight"): _parse_highlight,
+    (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "SetFocus"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,

@@ -463,6 +463,33 @@ class HighlightNode:
 
 
 @dataclass
+class KillProcessNode:
+    """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
+    ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
+    多用されるため極めて高頻度)。`Target`/`Selector`を一切持たず、
+    `ProcessName`(実機確認済みの値は`"iexplore"`/`"msedge"`——`.exe`
+    拡張子を含まない、.NETの`Process.GetProcessesByName()`と同じ
+    慣習)で指定した名前に一致する全プロセスを終了する活動。実機3件
+    (`piyushagarwal08/JU-Notes`のREFramework標準`KillAllProcesses.xaml`・
+    `vajrang-b/UiPathIn30Days`)で確認した属性は`ProcessName`+
+    `Process`(UiPathの`Process`型オブジェクト参照、実機確認した全件で
+    `{x:Null}`)・`AppliesTo`(実機で一度も非`{x:Null}`の値を確認でき
+    ず意味論未確認)・`ContinueOnError`(全件`{x:Null}`)。
+
+    Windows専用コマンド`taskkill /IM <name>.exe /F`(`subprocess.run`
+    経由、プロセス名に一致する全プロセスを強制終了する、Windows標準
+    搭載の確認済みコマンド)が直接対応する——`/T`(プロセスツリー全体の
+    終了)は付けない(.NETの素の`Process.Kill()`は子プロセスを終了
+    しないため、過大な終了範囲をでっち上げないよう安全側に倒す)。"""
+
+    process_name: Expr = None
+    display_name: str | None = None
+    process: Expr = None
+    applies_to: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1481,6 +1508,7 @@ Node = (
     | ActivateNode
     | CheckNode
     | HighlightNode
+    | KillProcessNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode
