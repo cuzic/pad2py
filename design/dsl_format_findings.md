@@ -3112,3 +3112,15 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 実装: `pad_action_lib/excel_actions.py`に`GetEmptyCellError`・`_parse_column_ordinal()`・`_iter_empty_cells()`・`get_empty_cell()`を追加。`pad_codegen/actions/excel.py`に`_GET_EMPTY_CELL_DISPATCH`辞書と対応する分岐を追加(`AllEmptyCells`は単一出力変数、他3モードは`EmptyCellColumnIndex`/`EmptyCellRowIndex`の2出力変数パターン)。テストは`tests/test_pad_action_lib_excel.py`に9件追加、`tests/test_pad_codegen.py`に2件追加(いずれもexec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1096 passed, 28 skippedを確認(VM不要)。
 
 残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`ClearCellsFromExcel`・`DeleteCellsAction`・`CopyExcelWorksheet`)は次回以降の調査対象として`pad_todo.md`に記録する。
+
+## 193. 知見190の残課題のうち`Excel.CopyExcelWorksheet`(2兄弟セレクタ)を新規実装・結線——同一ワークブック内コピーのみ対応、クロスワークブックは`openpyxl`自体が明示的に禁止するため`NotImplementedError`
+
+知見190で見送った残課題のうち、`CopyExcelWorksheet`を精査・実装した。`ExcelActions.CopyExcelWorksheet()`をdecompileし、COMの`Worksheet.Copy(Before:=<先頭シート>, After:=<末尾シート>)`(`PasteWorksheetPosition`=`First`/`Last`)でシートをコピーし、`SetProperty("Name", destinationSheetName)`でリネームするだけと確定した。
+
+**重要な制約発見**: `SourceInstance`/`TargetInstance`が別々の`ExcelInstanceHandle`パラメータであることから、本来はクロスワークブック(別々のExcelインスタンス間)コピーが主要な用途として想定されている——しかし`openpyxl`の`Workbook.copy_worksheet()`を実際に試したところ、`ValueError: Cannot copy between worksheets from different workbooks`という**明示的な拒否**が確認できた(実際に試して確認、推測ではない)。独自にセル/書式/結合範囲を手動で複製するクロスワークブック実装を書くことも検討したが、`openpyxl`自身の`copy_worksheet()`が正しく処理している既知の詳細(結合セル・列幅・行高さ等)を再実装し直すリスクの方が大きいと判断し、**`SourceInstance`と`TargetInstance`が同一ワークブックの場合のみ対応し、それ以外は`NotImplementedError`**とした(でっち上げない判断)。
+
+`PasteWorksheetPosition=First`は、`openpyxl`の`copy_worksheet()`が常に末尾に追加する仕様(位置指定オプションが無い)のため、追加後に`Workbook.move_sheet(name, offset=-現在のインデックス)`で先頭へ移動させる2段階の実装になる(実際に`wb.sheetnames`の変化を確認して検証済み)。
+
+実装: `pad_action_lib/excel_actions.py`に`CopyExcelWorksheetError`・`CopyExcelWorksheetSetNameError`(decompile確認済みの`[Throws]`タグそのまま、既存の`WorksheetNotFoundError`等とは別名)・`copy_excel_worksheet()`を追加。`pad_codegen/actions/excel.py`に`_COPY_WORKSHEET_FIND_BY`辞書と対応する分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に4件追加、`tests/test_pad_codegen.py`に1件追加(exec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1102 passed, 28 skippedを確認(VM不要)。
+
+残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`ClearCellsFromExcel`・`DeleteCellsAction`)は次回以降の調査対象として`pad_todo.md`に記録する。

@@ -211,10 +211,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - [ ] 💻🔍 **残課題(知見190で発見)**:
     - `Excel.ResizeColumnsOrRows`のCustomSize側(Autofitではない、`ColumnWidth`/
       `RowHeight`への明示的な数値設定、`openpyxl`の`column_dimensions`/`row_dimensions`
-      で対応できそうに見える)・`ClearCellsFromExcel`・`DeleteCellsAction`・
-      `CopyExcelWorksheet`(`openpyxl`の`Workbook.copy_worksheet()`が候補)——いずれも
+      で対応できそうに見える)・`ClearCellsFromExcel`・`DeleteCellsAction`——いずれも
       「値の読み書き・基本ワークシート操作」スコープ内に収まりそうだが、時間の都合で
       今回は見送った。
+    ✅ **`Excel.CopyExcelWorksheet`の2件を結線完了(知見193)**: COMの`Worksheet.
+      Copy(Before/After)`+リネーム相当。同一ワークブック内コピーのみ対応——
+      `openpyxl`の`Workbook.copy_worksheet()`はクロスワークブックコピーを明示的に
+      禁止するため(実際に試して確認)、`SourceInstance`/`TargetInstance`が別々の
+      ワークブックの場合は`NotImplementedError`。
     ✅ **`Excel.GetEmptyCellFromExcel`の8件を結線完了(知見192)**: `GetEmptyCellsRangeMode`
       (`NamedCell`/`Coordinates`) × `EmptyCellsOperation`(`AllEmptyCells`/`FirstEmptyCell`/
       `FirstEmptyCellInColumn`/`FirstEmptyCellInRow`)。走査順序・空判定(`Cells.Text`が

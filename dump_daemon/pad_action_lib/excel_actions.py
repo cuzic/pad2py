@@ -705,3 +705,63 @@ def get_empty_cell(
         raise
     except Exception as exc:
         raise GetEmptyCellError(str(exc)) from exc
+
+
+class CopyExcelWorksheetError(PadActionError):
+    pass
+
+
+class CopyExcelWorksheetSetNameError(PadActionError):
+    pass
+
+
+def copy_excel_worksheet(
+    source_instance: ExcelInstanceHandle,
+    target_instance: ExcelInstanceHandle,
+    target_worksheet_name: str,
+    find_worksheet_by: str = "Name",
+    source_worksheet_name: str = "",
+    source_worksheet_index: int = 0,
+    paste_worksheet_position: str = "First",
+) -> None:
+    """design/dsl_format_findings.md 知見193(decompile確認済み): `ExcelActions.
+    CopyExcelWorksheet()`はCOMの`Worksheet.Copy(Before:=<先頭>, After:=<末尾>)`で
+    シートをコピーし、`SetProperty("Name", destinationSheetName)`でリネームするだけ
+    (`PasteWorksheetPosition`=`First`→`Before`先頭シート指定、`Last`→`After`末尾シート指定)。
+
+    `openpyxl`の`Workbook.copy_worksheet()`はワークブック間コピーを明示的に禁止する
+    (`ValueError: Cannot copy between worksheets from different workbooks`)ため、
+    `SourceInstance`/`TargetInstance`が同一ワークブックの場合のみ対応する——でっち上げた
+    独自のクロスワークブックコピー(セル/書式/結合範囲の手動複製)は実装しない。
+    """
+    if source_instance.workbook is not target_instance.workbook:
+        raise NotImplementedError(
+            "CopyExcelWorksheet across two different Excel instances/workbooks is not "
+            "supported: openpyxl's Workbook.copy_worksheet() explicitly rejects cross-"
+            "workbook copies ('Cannot copy between worksheets from different workbooks')"
+        )
+    workbook = source_instance.workbook
+    try:
+        resolved_source_name = _resolve_worksheet_name(
+            workbook, find_worksheet_by, source_worksheet_name, source_worksheet_index
+        )
+    except WorksheetNotFoundError as exc:
+        # decompile確認済み: `WorksheetNotFoundException`もこのaction自身の`[Throws]`タグ
+        # (`CopyExcelWorksheetError`)に包み直される——`DeleteWorksheet`等、他actionの
+        # タグ(`WorksheetNotFoundError`)とは別の名前。
+        raise CopyExcelWorksheetError(str(exc)) from exc
+    try:
+        new_sheet = workbook.copy_worksheet(workbook[resolved_source_name])
+        if paste_worksheet_position == "First":
+            offset = -workbook.sheetnames.index(new_sheet.title)
+            workbook.move_sheet(new_sheet.title, offset=offset)
+        elif paste_worksheet_position != "Last":
+            raise ValueError(f"Unknown WorksheetPosition: {paste_worksheet_position!r}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise CopyExcelWorksheetError(str(exc)) from exc
+    try:
+        new_sheet.title = target_worksheet_name
+    except Exception as exc:
+        raise CopyExcelWorksheetSetNameError(str(exc)) from exc

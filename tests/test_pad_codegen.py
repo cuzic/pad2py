@@ -3303,6 +3303,37 @@ def test_generate_python_from_excel_get_empty_cell_all_empty_cells_named_cell_co
     assert namespace["EmptyCells"] == [{"ColumnIndex": 2, "RowIndex": 1}]
 
 
+def test_generate_python_from_excel_copy_worksheet_by_name_converts() -> None:
+    # design/dsl_format_findings.md 知見193: `SourceInstance`/`TargetInstance`が同一
+    # インスタンス参照であれば同一ワークブック内コピーとして実行できる。
+    setup_dsl = "Excel.LaunchExcel.Launch Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+    instance = namespace["ExcelInstance"]
+    source_name = instance.workbook.sheetnames[0]
+    instance.active_sheet["A1"] = "hi"
+
+    dsl = (
+        "Excel.CopyExcelWorksheet.CopyWorksheetWithName "
+        f"SourceInstance: ExcelInstance TargetInstance: ExcelInstance SourceWorksheetName: $'''{source_name}''' "
+        "TargetWorksheetName: $'''Copy1''' PasteWorksheetPosition: Excel.WorksheetPosition.Last"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        f"excel_actions.copy_excel_worksheet(ExcelInstance, ExcelInstance, 'Copy1', "
+        f"find_worksheet_by='Name', source_worksheet_name='{source_name}', "
+        "paste_worksheet_position='Last')" in code
+    )
+
+    exec(code, namespace)
+    assert instance.workbook.sheetnames == [source_name, "Copy1"]
+    assert instance.workbook["Copy1"]["A1"].value == "hi"
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

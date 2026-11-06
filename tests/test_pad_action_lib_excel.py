@@ -478,3 +478,53 @@ def test_get_empty_cell_named_cell_not_found_raises() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(xl.GetEmptyCellError):
         xl.get_empty_cell(instance, operation="FirstEmptyCell", range_mode="NamedCell", named_cell="NoSuchName")
+
+
+def test_copy_excel_worksheet_by_name_appends_at_last() -> None:
+    # design/dsl_format_findings.md 知見193(decompile確認済み): COMの
+    # `Worksheet.Copy(Before/After)`+リネーム相当。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet.title = "Source"
+    sheet["A1"] = "hi"
+    xl.add_worksheet(instance, "Other", worksheet_position="Last")
+
+    xl.copy_excel_worksheet(
+        instance, instance, "Copy1", find_worksheet_by="Name",
+        source_worksheet_name="Source", paste_worksheet_position="Last",
+    )
+    assert instance.workbook.sheetnames == ["Source", "Other", "Copy1"]
+    assert instance.workbook["Copy1"]["A1"].value == "hi"
+
+
+def test_copy_excel_worksheet_by_index_inserts_at_first() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet.title = "Source"
+    xl.add_worksheet(instance, "Other", worksheet_position="Last")
+
+    xl.copy_excel_worksheet(
+        instance, instance, "Copy1", find_worksheet_by="Index",
+        source_worksheet_index=0, paste_worksheet_position="First",
+    )
+    assert instance.workbook.sheetnames == ["Copy1", "Source", "Other"]
+
+
+def test_copy_excel_worksheet_source_not_found_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.CopyExcelWorksheetError):
+        xl.copy_excel_worksheet(
+            instance, instance, "Copy1", find_worksheet_by="Name", source_worksheet_name="NoSuchSheet"
+        )
+
+
+def test_copy_excel_worksheet_across_instances_not_implemented() -> None:
+    # decompile確認済み: SourceInstance/TargetInstanceは別々のExcelInstanceHandle
+    # (クロスワークブックコピーが本来の用途)だが、openpyxlのcopy_worksheet()は
+    # これを明示的に禁止するため今回は見送る。
+    source = xl.launch_excel("NewDocument")
+    target = xl.launch_excel("NewDocument")
+    with pytest.raises(NotImplementedError):
+        xl.copy_excel_worksheet(
+            source, target, "Copy1", find_worksheet_by="Name", source_worksheet_name="Sheet"
+        )

@@ -76,6 +76,14 @@ _GET_EMPTY_CELL_DISPATCH: dict[str, tuple[str, str]] = {
 }
 
 
+# design/dsl_format_findings.md 知見193(decompile確認済み): `CopyExcelWorksheet`の
+# 兄弟セレクタ2件 → `FindWorksheetBy`の値。
+_COPY_WORKSHEET_FIND_BY: dict[str, str] = {
+    "Excel.CopyExcelWorksheet.CopyWorksheetWithName": "Name",
+    "Excel.CopyExcelWorksheet.CopyWorksheetWithIndex": "Index",
+}
+
+
 def _worksheet_lookup_args(p: dict, find_by: str) -> str | None:
     """`FindWorksheetBy`(セレクタごとに固定、知見155)/`Name`/`Index`の3引数を
     結合したPython式の断片を返す。"""
@@ -459,5 +467,30 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if row_var:
             lines.append(f"{prefix}{row_var} = _empty_cell[1]")
         return lines
+
+    copy_worksheet_find_by = _COPY_WORKSHEET_FIND_BY.get(action_id)
+    if copy_worksheet_find_by is not None:
+        # design/dsl_format_findings.md 知見193: `openpyxl`はワークブック間コピーを
+        # 禁止するため、`copy_excel_worksheet()`側で同一ワークブック以外は
+        # `NotImplementedError`に委ねる。
+        source_instance = safe_render(p.get("SourceInstance"))
+        target_instance = safe_render(p.get("TargetInstance"))
+        target_name = safe_render(p.get("TargetWorksheetName"))
+        position = _enum_arg(p, "PasteWorksheetPosition", "First")
+        if None in (source_instance, target_instance, target_name, position):
+            return None
+        args = [source_instance, target_instance, target_name, f"find_worksheet_by={copy_worksheet_find_by!r}"]
+        if copy_worksheet_find_by == "Name":
+            source_name = safe_render(p.get("SourceWorksheetName"))
+            if source_name is None:
+                return None
+            args.append(f"source_worksheet_name={source_name}")
+        else:
+            source_index = safe_render(p.get("SourceWorksheetIndex"))
+            if source_index is None:
+                return None
+            args.append(f"source_worksheet_index={source_index}")
+        args.append(f"paste_worksheet_position={position}")
+        return [f"{prefix}excel_actions.copy_excel_worksheet({', '.join(args)})"]
 
     return None
