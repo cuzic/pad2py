@@ -40,16 +40,23 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from openpyxl.utils import column_index_from_string
+from openpyxl.utils.cell import coordinate_from_string
+from openpyxl.utils.exceptions import CellCoordinatesException
+
 from ..uipath_dsl.types import (
     AppendLineNode,
     AssignNode,
     BreakNode,
+    BuildDataTableNode,
     ClickNode,
+    CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
+    ExcelAppendRangeNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -241,6 +248,11 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import smtplib")
     if any("email.mime.text.MIMEText(" in line for line in body):
         imports.append("import email.mime.text")
+    # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117)も同様。
+    if any("shutil.copy(" in line for line in body):
+        imports.append("import shutil")
+    if any("os.path." in line for line in body):
+        imports.append("import os")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -377,6 +389,10 @@ def _generate_node(
         return _generate_execute_non_query(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, CopyFileNode):
+        return _generate_copy_file(node, indent)
+    if isinstance(node, BuildDataTableNode):
+        return _generate_build_data_table(node, indent)
     if isinstance(node, HttpClientNode):
         return _generate_http_client(node, indent)
     if isinstance(node, ExcelApplicationScopeNode):
@@ -385,7 +401,16 @@ def _generate_node(
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
         return _generate_send_outlook_mail(node, indent)
-    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode, ExcelReadRangeNode, ExcelWriteRangeNode)):
+    if isinstance(
+        node,
+        (
+            InvokeCodeNode,
+            ExcelWriteCellNode,
+            ExcelReadRangeNode,
+            ExcelWriteRangeNode,
+            ExcelAppendRangeNode,
+        ),
+    ):
         return _generate_unresolved_activity(node, indent)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
@@ -1617,6 +1642,88 @@ def _generate_execute_non_query_body(node: ExecuteNonQueryNode, indent: int) -> 
     ]
 
 
+# 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名
+# で、ファイルパスの場合は指定した名前でコピーされると公式ドキュメントで
+# 確認済み——`shutil.copy()`自体がこの区別を内部で処理する(挙動を再発明
+# しない)。`Overwrite=False`時の挙動(既存ファイルがある場合にどうなるか)
+# は公式ドキュメントに明記が無いが、裏の.NET API(`File.Copy(src, dest,
+# overwrite)`)の確立済みの契約(overwrite=false時は`IOException`)に
+# 基づき、既存ファイルがあれば`FileExistsError`を投げる形にマッピングする
+# ——これはUiPath固有のドキュメントではなく.NET自体の公開APIコントラクト
+# に基づく判断であり、架空の挙動のでっち上げとは別種の確信度と位置づける。
+def _generate_copy_file(node: CopyFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_copy_file_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_copy_file_body(node: CopyFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None or node.destination is None:
+        return [f"{prefix}# TODO: Copy File with missing Path/Destination"]
+    if node.destination_resource is not None or node.path_resource is not None:
+        return [
+            f"{prefix}# TODO: Copy File with DestinationResource/PathResource set "
+            "— Integration Service resource handling not confirmed, refusing "
+            "to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Copy File with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.overwrite not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Copy File with unrecognized/unset Overwrite "
+            f"({node.overwrite!r}) — true default behavior not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    destination = _render_value_or_todo(node.destination, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_src = {path}",
+        f"{prefix}_dest = {destination}",
+        f"{prefix}if os.path.isdir(_dest):",
+        f"{INDENT * (indent + 1)}_dest = os.path.join(_dest, os.path.basename(_src))",
+    ]
+    if node.overwrite == "False":
+        lines.append(f"{prefix}if os.path.exists(_dest):")
+        lines.append(f"{INDENT * (indent + 1)}raise FileExistsError(_dest)")
+    lines.append(f"{prefix}shutil.copy(_src, _dest)")
+    return lines
+
+
+# 知見117: `ui:BuildDataTable`。`TableInfo`に埋め込まれた.NET `DataSet`の
+# XMLスキーマから列名を抜き出せるが(`_build_data_table_columns`)、
+# Pythonの`list[dict]`表現(`ExecuteQuery`/`ExcelReadRange`と同じ、知見114・
+# 115)では列は各行の辞書キーとして実行時に決まるため、空のテーブルの
+# 生成自体には列名は不要——`SelectItem.Items`(知見112)と同じ「design-time
+# スナップショットは実行時に不要」という判断。
+def _generate_build_data_table(node: BuildDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_build_data_table_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_build_data_table_body(node: BuildDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Build Data Table with no output DataTable captured"]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = []"]
+
+
 # `ContinueOnError`(知見72、実機XAMLで確認した`ui:InvokeWorkflowFile`の
 # 属性)が`True`相当の場合、VBは呼び出し先が例外を出しても継続する——
 # 現在の生成コード(単純な関数呼び出し)は例外をそのまま伝播させるため、
@@ -1675,6 +1782,17 @@ def _generate_invoke_workflow_file(
     return [*todo, *warning, f"{prefix}{func_name}({', '.join(kwargs)})"]
 
 
+def _with_scope_child_display_name(node: Node, lines: list[str], prefix: str) -> list[str]:
+    """`ExcelApplicationScopeNode`配下の子活動(`ExcelReadRangeNode`等)の
+    `display_name`は捕捉済みだったが知見117まで未活用だった(知見75・
+    92〜95と同種の「捕捉済みデータの未活用」)——`# TODO`に倒れない実コード
+    生成の場合も含め、どの活動かが分かるようコメントとして先頭に追記する。"""
+    display_name = getattr(node, "display_name", None)
+    if display_name:
+        return [f"{prefix}# {display_name}", *lines]
+    return lines
+
+
 def _generate_excel_application_scope(
     node: ExcelApplicationScopeNode, indent: int,
     invoke_resolver: dict[str, str] | None = None,
@@ -1710,9 +1828,23 @@ def _generate_excel_application_scope(
         if isinstance(child, ExcelWriteCellNode):
             lines.extend(_generate_excel_write_cell_in_scope(child, indent, var))
         elif isinstance(child, ExcelReadRangeNode):
-            lines.extend(_generate_excel_read_range_in_scope(child, indent, var))
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_read_range_in_scope(child, indent, var), prefix
+                )
+            )
         elif isinstance(child, ExcelWriteRangeNode):
-            lines.extend(_generate_excel_write_range_in_scope(child, indent, var))
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_write_range_in_scope(child, indent, var), prefix
+                )
+            )
+        elif isinstance(child, ExcelAppendRangeNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_append_range_in_scope(child, indent, var), prefix
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
@@ -1789,17 +1921,29 @@ def _generate_excel_read_range_in_scope(
 def _generate_excel_write_range_in_scope(
     node: ExcelWriteRangeNode, indent: int, scope_var: str
 ) -> list[str]:
+    """知見115の修正(実機データではなく、既存コードを実際の非空シートに
+    対して再検証して発見): 当初`openpyxl`の`Worksheet.append()`で実装
+    していたが、`append()`は常にシート末尾に追記する挙動のため、対象
+    シートに既存データがある場合に`StartingCell`の実際の位置を無視して
+    末尾に追記してしまう——UiPathの`Write Range`は指定した開始セルへ
+    上書きする(末尾追記ではない)ため、既存データがあるシートでは誤った
+    結果になるバグだった。`Worksheet.cell(row=..., column=..., value=...)`
+    による直接セル指定の書き込みに変更して修正——これにより`StartingCell`
+    を`"A1"`に限定する必要も無くなり、任意の開始セル("C5"等)に対応できる
+    ようになった(以前の制約を偶然副産物として解消)。"""
     prefix = INDENT * indent
     if node.data_table is None:
         return [f"{prefix}# TODO: Excel Write Range with no input DataTable captured"]
-    if node.starting_cell not in (None, "A1"):
-        return [
-            f"{prefix}# TODO: Excel Write Range with non-default StartingCell "
-            f"({node.starting_cell!r}) — openpyxl's append() cannot target an "
-            "arbitrary starting cell, refusing to guess"
-        ]
     if not node.sheet_name:
         return [f"{prefix}# TODO: Excel Write Range with no SheetName captured"]
+    try:
+        start_col_letter, start_row = coordinate_from_string(node.starting_cell or "A1")
+        start_col = column_index_from_string(start_col_letter)
+    except (ValueError, CellCoordinatesException):
+        return [
+            f"{prefix}# TODO: Excel Write Range with unparseable StartingCell "
+            f"({node.starting_cell!r}) — refusing to guess"
+        ]
     add_headers = node.add_headers if node.add_headers is not None else "False"
     if add_headers not in ("True", "False"):
         return [
@@ -1817,10 +1961,44 @@ def _generate_excel_write_range_in_scope(
     ]
     inner = INDENT * (indent + 1)
     if add_headers == "True":
-        lines.append(f"{inner}_ws.append(list(_rows[0].keys()))")
-    lines.append(f"{inner}for _row in _rows:")
-    lines.append(f"{INDENT * (indent + 2)}_ws.append(list(_row.values()))")
+        lines.append(f"{inner}for _j, _h in enumerate(list(_rows[0].keys())):")
+        lines.append(
+            f"{INDENT * (indent + 2)}_ws.cell(row={start_row}, column={start_col} + _j, value=_h)"
+        )
+        lines.append(f"{inner}_row0 = {start_row + 1}")
+    else:
+        lines.append(f"{inner}_row0 = {start_row}")
+    lines.append(f"{inner}for _i, _row in enumerate(_rows):")
+    lines.append(f"{INDENT * (indent + 2)}for _j, _v in enumerate(_row.values()):")
+    lines.append(
+        f"{INDENT * (indent + 3)}_ws.cell(row=_row0 + _i, column={start_col} + _j, value=_v)"
+    )
     return lines
+
+
+# 知見117: `ui:ExcelAppendRange`。`AddHeaders`/`StartingCell`は無く
+# (公式確認済み)、常にシート末尾への追記のみ——これは知見115追記の
+# `ExcelWriteRange`修正で外した「`append()`ベースの常に末尾追記する」
+# 挙動そのものに正確に対応する、別の活動。
+def _generate_excel_append_range_in_scope(
+    node: ExcelAppendRangeNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Excel Append Range with no input DataTable captured"]
+    if not node.sheet_name:
+        return [f"{prefix}# TODO: Excel Append Range with no SheetName captured"]
+    todo: list[str] = []
+    rows = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_ws = {scope_var}[{node.sheet_name!r}]",
+        f"{prefix}_rows = {rows}",
+        f"{prefix}for _row in _rows:",
+        f"{inner}_ws.append(list(_row.values()))",
+    ]
 
 
 # 知見102: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/

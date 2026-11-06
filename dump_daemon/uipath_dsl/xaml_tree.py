@@ -20,13 +20,16 @@ from .types import (
     AppendLineNode,
     AssignNode,
     BreakNode,
+    BuildDataTableNode,
     CatchArm,
     ClickNode,
+    CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
+    ExcelAppendRangeNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -554,6 +557,46 @@ def _parse_execute_non_query(elem: etree._Element) -> ExecuteNonQueryNode:
     )
 
 
+def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
+    return CopyFileNode(
+        path=_attr_expr(elem, "Path"),
+        destination=_attr_expr(elem, "Destination"),
+        overwrite=_attr(elem, "Overwrite"),
+        destination_resource=_attr_expr(elem, "DestinationResource"),
+        path_resource=_attr_expr(elem, "PathResource"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+_XS_NS = {"xs": "http://www.w3.org/2001/XMLSchema"}
+
+
+def _build_data_table_columns(table_info: str | None) -> list[str]:
+    """知見117: `TableInfo`属性に埋め込まれた.NET `DataSet`のXMLスキーマ
+    (`xs:schema`)から列名のみを抜き出す——`xs:complexType/xs:sequence/
+    xs:element`という階層(`TableName`要素直下の列定義のみに一致し、
+    外側の`NewDataSet`/`TableName`自身の`xs:element`は`xs:choice`配下の
+    ため一致しない)で絞り込む。パース失敗時は空リストを返す(呼び出し側が
+    `# TODO`へ倒す判断をする)。"""
+    if not table_info:
+        return []
+    try:
+        root = etree.fromstring(table_info.encode())
+    except etree.XMLSyntaxError:
+        return []
+    elements = root.findall(".//xs:complexType/xs:sequence/xs:element", _XS_NS)
+    return [name for el in elements if (name := el.get("name")) is not None]
+
+
+def _parse_build_data_table(elem: etree._Element) -> BuildDataTableNode:
+    return BuildDataTableNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        columns=_build_data_table_columns(_attr(elem, "TableInfo")),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -644,6 +687,14 @@ def _parse_excel_write_range(elem: etree._Element) -> ExcelWriteRangeNode:
         sheet_name=_attr(elem, "SheetName") or "",
         starting_cell=_attr(elem, "StartingCell"),
         add_headers=_attr(elem, "AddHeaders"),
+        data_table=_attr_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_excel_append_range(elem: etree._Element) -> ExcelAppendRangeNode:
+    return ExcelAppendRangeNode(
+        sheet_name=_attr(elem, "SheetName") or "",
         data_table=_attr_expr(elem, "DataTable"),
         display_name=_attr(elem, "DisplayName"),
     )
@@ -992,6 +1043,8 @@ _DISPATCH = {
     (UI_NS, "ExecuteQuery"): _parse_execute_query,
     (UI_NS, "ExecuteNonQuery"): _parse_execute_non_query,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
+    (UI_NS, "CopyFile"): _parse_copy_file,
+    (UI_NS, "BuildDataTable"): _parse_build_data_table,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
@@ -999,6 +1052,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
     (UI_NS, "ExcelReadRange"): _parse_excel_read_range,
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
+    (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "SendMail"): _parse_send_mail,

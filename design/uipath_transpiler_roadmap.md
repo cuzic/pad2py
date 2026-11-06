@@ -1347,3 +1347,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     回帰テスト追加(`tests/test_uipath_dsl.py`1件・
     `tests/test_uipath_codegen.py`16件)、UiPath関連テスト全422件通過、
     リポジトリ全体で全1283件通過。
+75. **(完了、2026-11-06)** 「実機XAMLに対する実際のコード生成の検証」
+    という新しい調査手法を導入し、`ExcelWriteRange`の実在バグを修正、
+    `CopyFile`/`BuildDataTable`/`ExcelAppendRange`を新規実装(VM不使用、
+    知見117): `generate_python()`/`generate_project_from_json()`を
+    GitHub上の外部実プロジェクト(`rpapub/PropulsiveForce`・
+    `allenlooplee/RPABook`)に対して直接実行し、クラッシュ無く`# TODO`に
+    倒れることと、実際の変換成功率を確認。密な実ワークフロー(1074行)で
+    6件の`# TODO`のうち3件(`CopyFile`/`BuildDataTable`/
+    `ExcelAppendRange`)を新規実装で解消。過程で`ExcelWriteRange`
+    (知見115)の`append()`ベース実装が非空シートへの書き込みで
+    `StartingCell`の位置を無視するバグを発見し、`Worksheet.cell()`に
+    よる直接セル指定へ修正(副産物として任意の開始セルに対応可能に)。
+    `ExcelReadRangeNode`/`ExcelWriteRangeNode`の`display_name`が未活用
+    だった件(知見75・92〜95と同種)も`_with_scope_child_display_name`で
+    修正。`AddDataRow`(DataTableスキーマのノード間追跡が必要、現行
+    アーキテクチャに無い)・`BrowserScope`(別サブシステム)は明示的に
+    見送り。回帰テスト追加(`tests/test_uipath_dsl.py`5件・
+    `tests/test_uipath_codegen.py`20件、既存2件の修正含む)、UiPath
+    関連テスト全444件通過、リポジトリ全体で全1310件通過。

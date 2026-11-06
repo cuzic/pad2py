@@ -5557,6 +5557,100 @@ populated判定は`_parse_send_outlook_mail`と同じロジックを再利用)�
 (受信系、`Messages`出力の構造等が別途調査必要)は今回スコープ外として
 見送り。
 
+## 117. 「実機XAMLに対する実際のコード生成の検証」という新しい調査手法を導入——真の非空シートに対する`ExcelWriteRange`の実在バグを発見・修正し、GitHub上の外部実プロジェクトから新たな実装候補(`CopyFile`/`BuildDataTable`/`ExcelAppendRange`)を特定(VM不使用)
+
+ユーザーからの「もっとできることないのかなぁ」という問いかけを受け、
+これまでの「個別活動を1つずつ機械的に実装する」Tier A一巡とは別の
+検証軸として、**pad2py自身の`generate_python()`/`generate_project_from_json()`
+を実際にGitHub上の外部の実プロジェクト(自分のテストフィクスチャではない)
+に対して実行する**という新しい調査手法を導入した——これまでの「実機
+XAMLの属性構造を確認する」調査(知見100の手法)とは別軸で、「生成コード
+自体が正しく動くか」を実データで検証する。
+
+**手法**: `gh api search/code`で`"main": "Main.xaml"` + `"projectType":
+"Process"` + `filename:project.json`を検索して小規模な実Processプロジェクト
+(`rpapub/PropulsiveForce`)を発見、`generate_project_from_json()`を実行し
+正しく`# TODO`に倒れることを確認(クラッシュ無し)。さらに
+`allenlooplee/RPABook`の既存調査済みリポジトリから、Flowchartベースの
+デモ(`Demo1`)とExcel/BrowserScope/DataTable操作が密に混在する実ワーク
+フロー(`Demo7/Main.xaml`、1074行)を選び、`generate_python()`を直接実行。
+Demo1は完全にエラー無く変換できた(ディスパッチループ構文がFlowchartの
+`Condition="True"`という非角括弧のリテラル条件まで正しく処理できることを
+確認——合成テストでは作っていなかった実例)。Demo7は1074行中わずか6件の
+`# TODO`のみで、すべて具体的で既知の活動(`CopyFile`/`AddDataRow`×2/
+`BrowserScope`/`BuildDataTable`/`ExcelAppendRange`)だと判明した——
+自分で推測した優先順位(Tier A/B/C/D)とは独立に、実際の外部ワークフローが
+何を必要としているかを直接確認できる、より強い根拠を得られた。
+
+**実在バグの発見・修正(`ExcelWriteRange`、知見115の追記)**: この調査の
+過程で、既存の`ExcelWriteRange`実装(`openpyxl`の`Worksheet.append()`
+ベース)を「既にデータがあるシート」に対して再検証したところ(ランダムな
+外部データではなく自分で意図的に組んだ再現テスト)、`append()`が常に
+シート末尾に追記する挙動のため、`StartingCell`の実際の位置を無視して
+末尾に追記してしまうという実在のバグを発見した——知見115の時点のテストは
+常に空シートに書き込んでいたため発覚していなかった。`Worksheet.cell
+(row=..., column=..., value=...)`による直接セル指定の書き込みに変更して
+修正——これにより「既存データの途中への上書き」が正しく動くようになり、
+副産物として`StartingCell`を`"A1"`に限定する制約も解消された(任意の
+開始セルに対応可能に)。実際に非空シートへ生成コードを実行し、修正前後の
+挙動差を確認済み。
+
+**`CopyFile`**(`UiPath.System.Activities`): `Path`/`Destination`
+(リテラル・VbExprの両方の実例)・`Overwrite`(`"True"`/`"False"`の両方の
+実例)を確認。`Destination`がフォルダパスかファイルパスかの判定は
+`shutil.copy()`自体が内部で処理する(UiPath公式ドキュメントが「フォルダ
+パスなら元の名前、ファイルパスなら指定名」と説明する挙動と一致)。
+`Overwrite="False"`時の挙動は公式ドキュメントに明記が無いが、裏の.NET
+API`File.Copy(src, dest, overwrite)`の確立済みの契約(`overwrite=false`
+時は既存ファイルがあると例外)に基づき`FileExistsError`を投げるガードを
+実装——実際に一時ファイルへ2回コピーを実行し、1回目は成功・2回目は正しく
+例外が発生することを確認済み。`DestinationResource`/`PathResource`
+(ground-truthのみで発見、Integration Service連携用と推定)は未確認のため
+見送り。
+
+**`BuildDataTable`**(`UiPath.System.Activities`): `TableInfo`属性に
+.NET `DataSet`のXMLスキーマ(`xs:schema`)が丸ごと埋め込まれるという、
+これまでに無かった直列化形を確認(`marcelocruzrpa/uipath-ai-skills`の
+ground-truth)。本パーサーは`xs:complexType/xs:sequence/xs:element`という
+階層で列名を抜き出すが、Pythonの`list[dict]`表現(知見114・115で確立)
+では列は各行の辞書キーとして実行時に決まるため、空テーブルの生成自体に
+列名は不要と判断し(`SelectItem.Items`、知見112と同じ判断)、`dt = []`
+を生成するだけで足りた。
+
+**`ExcelAppendRange`**: `AddHeaders`/`StartingCell`が無く常にシート末尾
+への追記のみという構造を確認——これは`ExcelWriteRange`の上記修正で
+`append()`ベースの実装から外した挙動そのものに正確に対応する、別の活動
+だと判明した(偶然ではなく、実際にUiPathが2つの別活動として区別して
+いる設計だと再確認)。
+
+**captured-but-unused data の追加発見**: `ExcelReadRangeNode`/
+`ExcelWriteRangeNode`の`display_name`フィールドは知見115で捕捉していた
+にもかかわらず、スコープ配下の子活動用のコード生成経路(`_generate_
+excel_*_range_in_scope`)には display_name コメントを追記するロジックが
+無く、知見75・92〜95と同種の「捕捉済みデータの未活用」が残っていたと
+今回判明——`_with_scope_child_display_name`という共通ヘルパーを新設して
+修正した。
+
+**スコープ外として明示的に見送ったもの**: `AddDataRow`(`ArrayRow`の
+位置指定の値を`list[dict]`表現の辞書へ変換するには対象`DataTable`の
+列名が必要だが、`BuildDataTable`の`TableInfo`から抜き出した列名を
+ノード間で追跡する仕組み(セレクタ解決やInvoke Workflow Fileの解決と
+同種の、cross-node resolverの新設)が現在のcodegenアーキテクチャに
+無く、今回は新設しなかった——`list`(位置指定)で妥協すると、既に実装
+済みの`ExcelWriteRange`(`AddHeaders=True`時に`.keys()`を呼ぶ)等の
+dict前提の消費者を静かに壊す実害があるため、正直に`# TODO`へ倒す方が
+安全と判断。将来「DataTableスキーマ解決パス」を新設する際の具体的な
+動機として記録しておく)。`BrowserScope`(Web UI Automationの別サブ
+システム、別途調査が必要)。
+
+`dump_daemon/uipath_dsl/types.py`に`CopyFileNode`/`BuildDataTableNode`/
+`ExcelAppendRangeNode`、`xaml_tree.py`に対応するパーサー関数(`TableInfo`
+XMLスキーマパーサー含む)、`uipath_codegen/__init__.py`に対応する生成
+関数+`ExcelWriteRange`の修正+`_with_scope_child_display_name`ヘルパーを
+追加。`tests/test_uipath_dsl.py`に5件・`tests/test_uipath_codegen.py`に
+20件追加(既存2件の修正含む)、全1310件通過。外部実プロジェクトでの
+再検証(`Demo7/Main.xaml`)で`# TODO`数が6→3件に減少したことを確認。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

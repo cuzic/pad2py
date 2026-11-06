@@ -210,3 +210,27 @@ Tier Aの4項目はいずれも既存パターンの横展開で、個別に知�
 進め方)。Tier Bの State Machine は単体の意思決定イベント(Phase1の再検討)
 として扱うのが良く、着手前に「Flowchartのdispatch-loopパターンがState
 Machineにどこまで転用できるか」を小さく調査するステップを挟むのが筋が良い。
+
+### 実機XAMLに対する実際のコード生成の検証(知見117で導入、2026-11-06)
+
+自分で推測した優先順位(Tier A/B/C/D)だけでなく、`generate_python()`/
+`generate_project_from_json()`をGitHub上の外部実プロジェクトに対して
+直接実行し、実際に何が`# TODO`に倒れるかを確認する手法を導入した——
+自分のテストフィクスチャとは独立の、より強い根拠になる。この手法で
+`CopyFile`/`BuildDataTable`/`ExcelAppendRange`(いずれも実装済み)を
+発見し、さらに`ExcelWriteRange`の実在バグ(非空シートへの書き込みで
+`StartingCell`の位置を無視する)も発見・修正できた。今後の新しい活動を
+選ぶ際は、Tier A/B/C/Dのリストに加えてこの手法も定期的に併用すると良い
+(候補: 別のGitHubリポジトリから複数の実プロジェクトを集めてバッチで
+実行し、`# TODO`の頻度を集計する、といった拡張も考えられる)。
+
+**AddDataRowの保留(将来のアーキテクチャ候補)**: `AddDataRow`は
+`ArrayRow`(位置指定の値)を対象`DataTable`へ追加する活動だが、
+Pythonの`list[dict]`表現では列名が必要で、それは別の`BuildDataTable`
+活動の`TableInfo`から来る——つまりノード間でDataTableの列スキーマを
+追跡する仕組みが必要になる。これは既存の`invoke_resolver`/
+`out_arg_resolver`(Invoke Workflow Fileの解決)と同種の、cross-node
+resolverの新設が必要なケース。今回は見送ったが、同種のDataTable操作
+活動(`FilterDataTable`/`SortDataTable`/`MergeDataTable`等)が今後増える
+ことを見据えると、一度「DataTableスキーマ解決パス」を設計する価値は
+ある。

@@ -36,10 +36,13 @@ from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
     BreakNode,
+    BuildDataTableNode,
     ClickNode,
+    CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     ExcelApplicationScopeNode,
+    ExcelAppendRangeNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -1935,6 +1938,113 @@ def test_send_mail_with_continue_on_error_is_todo_not_guessed():
     _compiles(code)
 
 
+def _copy_file_node(**overrides) -> CopyFileNode:
+    defaults = dict(
+        path=Literal(value="src.xlsx"),
+        destination=VbExpr(text="destFolder"),
+        overwrite="False",
+    )
+    defaults.update(overrides)
+    return CopyFileNode(**defaults)
+
+
+def test_copy_file_with_overwrite_false_generates_exists_guard():
+    """知見117: `Overwrite="False"`は.NETの`File.Copy(src, dest, overwrite)`
+    の確立済みの契約(既存ファイルがあれば例外)に基づき、`shutil.copy()`
+    呼び出し前に`FileExistsError`を投げるガードを生成する。実際に一時
+    ファイルへ対して実行し、2回目の呼び出しで正しく例外が発生することを
+    確認済み(本セッション内、リポジトリには残していない)。"""
+    wf = _wrap([_copy_file_node()])
+    code = generate_python(wf)
+    assert "import shutil" in code
+    assert "import os" in code
+    assert "_src = 'src.xlsx'" in code
+    assert "_dest = destFolder" in code
+    assert "if os.path.isdir(_dest):" in code
+    assert "if os.path.exists(_dest):" in code
+    assert "raise FileExistsError(_dest)" in code
+    assert "shutil.copy(_src, _dest)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_copy_file_with_overwrite_true_skips_exists_guard():
+    wf = _wrap([_copy_file_node(overwrite="True")])
+    code = generate_python(wf)
+    assert "raise FileExistsError" not in code
+    assert "shutil.copy(_src, _dest)" in code
+    _compiles(code)
+
+
+def test_copy_file_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([CopyFileNode(display_name="Copy File")])
+    code = generate_python(wf)
+    assert "# Copy File" in code
+    assert "# TODO: Copy File with missing Path/Destination" in code
+    _compiles(code)
+
+
+def test_copy_file_with_missing_path_or_destination_is_todo():
+    wf = _wrap([CopyFileNode()])
+    code = generate_python(wf)
+    assert "# TODO: Copy File with missing Path/Destination" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"destination_resource": VbExpr(text="destRes")},
+        {"path_resource": VbExpr(text="pathRes")},
+    ],
+)
+def test_copy_file_with_resource_properties_is_todo_not_guessed(overrides):
+    wf = _wrap([_copy_file_node(**overrides)])
+    code = generate_python(wf)
+    assert "# TODO: Copy File with DestinationResource/PathResource set" in code
+    _compiles(code)
+
+
+def test_copy_file_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap([_copy_file_node(continue_on_error=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: Copy File with ContinueOnError set" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize("overwrite", [None, "SomethingElse"])
+def test_copy_file_with_unrecognized_overwrite_is_todo_not_guessed(overwrite):
+    wf = _wrap([_copy_file_node(overwrite=overwrite)])
+    code = generate_python(wf)
+    assert "# TODO: Copy File with unrecognized/unset Overwrite" in code
+    _compiles(code)
+
+
+def test_build_data_table_generates_empty_list():
+    """知見117: `TableInfo`の列名は`list[dict]`表現では実行時に不要
+    (`SelectItem.Items`と同じ判断)——空リストを生成するだけで足りる。"""
+    wf = _wrap([BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Column1", "Column2"])])
+    code = generate_python(wf)
+    assert "dt = []" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_build_data_table_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([BuildDataTableNode(display_name="Build Data Table")])
+    code = generate_python(wf)
+    assert "# Build Data Table" in code
+    assert "# TODO: Build Data Table with no output DataTable captured" in code
+    _compiles(code)
+
+
+def test_build_data_table_with_no_output_is_todo():
+    wf = _wrap([BuildDataTableNode(data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: Build Data Table with no output DataTable captured" in code
+    _compiles(code)
+
+
 def test_unknown_activity_todo_includes_captured_attrs():
     """知見92: `UnknownActivityNode.attrs`(`xaml_tree.parse_activity`が
     `dict(elem.attrib)`で全属性を既に捕捉済み——Libraryアクティビティ呼び出し
@@ -2166,8 +2276,8 @@ def test_excel_write_range_with_default_starting_cell_generates_real_code():
     )
     code = generate_python(wf)
     assert "_ws = ExcelWorkbookScope['Sheet2']" in code
-    assert "_ws.append(list(_rows[0].keys()))" in code
-    assert "_ws.append(list(_row.values()))" in code
+    assert "_ws.cell(row=1, column=1 + _j, value=_h)" in code
+    assert "_ws.cell(row=_row0 + _i, column=1 + _j, value=_v)" in code
     assert "# TODO" not in code
     _compiles(code)
 
@@ -2189,8 +2299,9 @@ def test_excel_write_range_without_headers_skips_header_row():
         ]
     )
     code = generate_python(wf)
-    assert "_ws.append(list(_rows[0].keys()))" not in code
-    assert "_ws.append(list(_row.values()))" in code
+    assert "_row0 = 1" in code
+    assert "value=_h)" not in code
+    assert "_ws.cell(row=_row0 + _i, column=1 + _j, value=_v)" in code
     _compiles(code)
 
 
@@ -2208,7 +2319,11 @@ def test_excel_write_range_with_no_input_data_table_is_todo():
     _compiles(code)
 
 
-def test_excel_write_range_with_non_default_starting_cell_is_todo_not_guessed():
+def test_excel_write_range_with_non_default_starting_cell_generates_direct_cell_writes():
+    """修正(知見115追記): `openpyxl`の`append()`は常にシート末尾に追記する
+    挙動のため、`StartingCell`が`"A1"`以外の場合は当初`# TODO`に倒して
+    いたが、`Worksheet.cell(row=..., column=..., value=...)`による直接
+    セル指定に変更したことで、任意の開始セルに対応できるようになった。"""
     wf = _wrap(
         [
             ExcelApplicationScopeNode(
@@ -2217,6 +2332,7 @@ def test_excel_write_range_with_non_default_starting_cell_is_todo_not_guessed():
                     ExcelWriteRangeNode(
                         sheet_name="Sheet2",
                         starting_cell="B5",
+                        add_headers="False",
                         data_table=VbExpr(text="dt"),
                     )
                 ],
@@ -2224,7 +2340,135 @@ def test_excel_write_range_with_non_default_starting_cell_is_todo_not_guessed():
         ]
     )
     code = generate_python(wf)
-    assert "# TODO: Excel Write Range with non-default StartingCell" in code
+    assert "_row0 = 5" in code
+    assert "column=2 + _j" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_write_range_overwrites_in_place_rather_than_appending_to_sheet_end():
+    """知見115追記: 既存コードを実際の非空シートに対して再検証して発見した
+    バグの回帰テスト——`append()`ベースの実装は対象シートに既存データが
+    ある場合に末尾追記してしまい、`StartingCell`の実際の位置を無視して
+    いた。直接セル指定への変更で、指定したセルへの上書きになることを
+    確認する(real worksheet round-tripでの確認はこのテストの範囲外、
+    生成コードの文面がappend()を使わないことのみ確認)。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteRangeNode(
+                        sheet_name="Sheet1",
+                        starting_cell="A1",
+                        add_headers="True",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".append(" not in code
+    assert "_ws.cell(row=1, column=1 + _j, value=_h)" in code
+    assert "_row0 = 2" in code
+    _compiles(code)
+
+
+def test_excel_write_range_with_unparseable_starting_cell_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteRangeNode(
+                        sheet_name="Sheet2",
+                        starting_cell="not-a-cell",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Write Range with unparseable StartingCell" in code
+    _compiles(code)
+
+
+def test_excel_read_range_display_name_becomes_a_comment():
+    """知見117: `display_name`は`ExcelReadRangeNode`/`ExcelWriteRangeNode`/
+    `ExcelAppendRangeNode`いずれも捕捉済みだったが未活用だった(知見75・
+    92〜95と同種)——スコープ配下の子活動でも先頭コメントとして使われる
+    ことを確認する。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadRangeNode(
+                        sheet_name="Sheet1",
+                        range=Literal(value=""),
+                        data_table=VbExpr(text="dt"),
+                        display_name="Read Range",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Read Range" in code
+    _compiles(code)
+
+
+def test_excel_append_range_generates_append_calls():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelAppendRangeNode(
+                        sheet_name="Sheet1",
+                        data_table=VbExpr(text="checklogTable"),
+                        display_name="Append Range",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Append Range" in code
+    assert "_ws = ExcelWorkbookScope['Sheet1']" in code
+    assert "_rows = checklogTable" in code
+    assert "_ws.append(list(_row.values()))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_append_range_with_no_input_data_table_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelAppendRangeNode(sheet_name="Sheet1", data_table=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Append Range with no input DataTable captured" in code
+    _compiles(code)
+
+
+def test_excel_append_range_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelAppendRangeNode(sheet_name="", data_table=VbExpr(text="dt"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Append Range with no SheetName captured" in code
     _compiles(code)
 
 

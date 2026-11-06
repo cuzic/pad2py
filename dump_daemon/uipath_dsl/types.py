@@ -500,6 +500,41 @@ class InvokeWorkflowFileNode:
 
 
 @dataclass
+class CopyFileNode:
+    """`<ui:CopyFile>`(知見117、`UiPath.System.Activities`。実機XAML
+    ([allenlooplee/RPABook]等複数件)+`marcelocruzrpa/uipath-ai-skills`の
+    ground-truthで属性を確認——`Path`/`Destination`は`InArgument<String>`
+    (リテラル・VbExprの両方の実例あり)、`Overwrite`は`"True"`/`"False"`
+    両方の実例を確認済み。`DestinationResource`/`PathResource`(ground-truth
+    のみ、Integration Service連携用と推定)は未確認のため見送る。"""
+
+    path: Expr = None
+    destination: Expr = None
+    overwrite: str | None = None
+    destination_resource: Expr = None
+    path_resource: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class BuildDataTableNode:
+    """`<ui:BuildDataTable>`(知見117、`UiPath.System.Activities`)。
+    `TableInfo`は列定義を持つ.NET `DataSet` XMLスキーマ(`xs:schema`)が
+    丸ごと埋め込まれた文字列属性——`marcelocruzrpa/uipath-ai-skills`の
+    ground-truthで実例を確認した。本パーサーは列名のみを抜き出す
+    (`xs:element`の`name`属性、`TableName`要素直下の最初の階層のみ)。
+    列の型情報は捕捉しない(Pythonの`list[dict]`表現では実行時の値の型が
+    そのまま使われるため、静的な型情報は不要——`SelectItem.Items`
+    (知見112)と同じ「design-timeスナップショットは実行時に不要」という
+    判断)。"""
+
+    data_table: Expr = None
+    columns: list[str] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class AppendLineNode:
     """`<ui:AppendLine FileName="..." Text="..." />`(知見15)。
 
@@ -602,6 +637,20 @@ class ExcelWriteRangeNode:
     starting_cell: str | None = None
     add_headers: str | None = None
     data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ExcelAppendRangeNode:
+    """`<ui:ExcelAppendRange>`(知見117)。`ExcelWriteRangeNode`とは違い
+    `AddHeaders`/`StartingCell`は無い(確認済み、常にシート末尾への
+    追記のみ)——これは`ExcelWriteRangeNode`の修正(知見115追記、`append()`
+    ベースの実装から直接セル指定へ変更)で外した「常に末尾追記する」挙動
+    そのものに正確に対応する、別の活動。"""
+
+    sheet_name: str = ""
+    data_table: Expr = None
+    display_name: str | None = None
     display_name: str | None = None
 
 
@@ -822,6 +871,8 @@ Node = (
     | ExecuteQueryNode
     | ExecuteNonQueryNode
     | InvokeWorkflowFileNode
+    | CopyFileNode
+    | BuildDataTableNode
     | AppendLineNode
     | ReadTextFileNode
     | InvokeCodeNode
@@ -830,6 +881,7 @@ Node = (
     | ExcelApplicationScopeNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
+    | ExcelAppendRangeNode
     | SendOutlookMailNode
     | SendMailNode
     | HttpClientNode

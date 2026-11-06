@@ -6,6 +6,7 @@ Studio(2021.4.4)の `xaml_probe` プロジェクトから実際に書き出さ�
 """
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 import pytest
@@ -16,11 +17,14 @@ from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
     BreakNode,
+    BuildDataTableNode,
     ClickNode,
+    CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
+    ExcelAppendRangeNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -452,6 +456,21 @@ def test_excel_read_range_and_write_range():
     assert write_node.data_table == VbExpr(text="uploadTable")
 
 
+def test_excel_append_range_properties():
+    """知見117: `ui:ExcelAppendRange`。`allenlooplee/RPABook`の実機保存済み
+    XAMLの属性構成をそのまま合成XMLで再現する——`AddHeaders`/
+    `StartingCell`は無い(確認済み)。"""
+    xml = (
+        f"<ui:ExcelAppendRange {_UI_XMLNS} "
+        'DataTable="[checklogTable]" DisplayName="Append Range" SheetName="Sheet1" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelAppendRangeNode)
+    assert node.sheet_name == "Sheet1"
+    assert node.data_table == VbExpr(text="checklogTable")
+    assert node.display_name == "Append Range"
+
+
 def test_invoke_workflow_file(main_wf):
     invoke = main_wf.root.body[9]
     assert isinstance(invoke, InvokeWorkflowFileNode)
@@ -552,6 +571,61 @@ def test_send_mail_smtp_properties():
     assert node.has_populated_files is False
     assert node.from_ is None
     assert node.mail_message is None
+
+
+def test_copy_file_properties():
+    """知見117: `ui:CopyFile`。`allenlooplee/RPABook`の実機保存済みXAMLの
+    属性構成をそのまま合成XMLで再現する。"""
+    xml = (
+        f"<ui:CopyFile {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" Destination="[uploadFileName]" '
+        'DisplayName="Copy File" Overwrite="False" Path="youqian.xlsx" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CopyFileNode)
+    assert node.path == Literal(value="youqian.xlsx")
+    assert node.destination == VbExpr(text="uploadFileName")
+    assert node.overwrite == "False"
+    assert node.continue_on_error is None
+
+
+def test_build_data_table_extracts_column_names_from_embedded_schema():
+    """知見117: `ui:BuildDataTable`。`TableInfo`に埋め込まれた.NET DataSetの
+    XMLスキーマから列名を抜き出す——`marcelocruzrpa/uipath-ai-skills`の
+    ground-truth実例の構造をそのまま合成XMLで再現する。"""
+    table_info = (
+        "<NewDataSet>"
+        '<xs:schema id="NewDataSet" xmlns="" '
+        'xmlns:xs="http://www.w3.org/2001/XMLSchema" '
+        'xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">'
+        '<xs:element name="NewDataSet" msdata:IsDataSet="true">'
+        "<xs:complexType><xs:choice minOccurs=\"0\" maxOccurs=\"unbounded\">"
+        '<xs:element name="TableName"><xs:complexType><xs:sequence>'
+        '<xs:element name="Column1" minOccurs="0" />'
+        '<xs:element name="Column2" type="xs:int" minOccurs="0" />'
+        "</xs:sequence></xs:complexType></xs:element>"
+        "</xs:choice></xs:complexType></xs:element>"
+        "</xs:schema></NewDataSet>"
+    )
+    xml = (
+        f"<ui:BuildDataTable {_UI_XMLNS} "
+        f'DataTable="[checklogTable]" DisplayName="Build Data Table" '
+        f'TableInfo="{html.escape(table_info)}" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, BuildDataTableNode)
+    assert node.data_table == VbExpr(text="checklogTable")
+    assert node.columns == ["Column1", "Column2"]
+
+
+def test_build_data_table_with_unparseable_table_info_returns_empty_columns():
+    xml = (
+        f"<ui:BuildDataTable {_UI_XMLNS} "
+        'DataTable="[dt]" TableInfo="not valid xml &lt;" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, BuildDataTableNode)
+    assert node.columns == []
 
 
 def test_library_call_is_unknown_activity(main_wf):
