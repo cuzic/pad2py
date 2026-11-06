@@ -2357,3 +2357,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      5件)、UiPath関連テスト全746件通過、リポジトリ全体で全1813件
      通過。
+
+140. **(完了、2026-11-06)** `ui:RemoveDataRow`(`AddDataRow`知見181の
+     正反対)を新規実装(知見182): `RowIndex`によるインデックス削除
+     (`del {data_table}[{row_index}]`)は`DataTable`表現非依存で安全。
+     実装中、`RowIndex`の`Literal`値を素の文字列のままlistインデックス
+     へ使うと`TypeError`になる実機バグを発見——VBの`CInt()`と同じ
+     確認済みの整数変換経路(`round(_vb_cdbl(x))`、知見52・53)をコード
+     生成側から直接再利用して修正。`Row`(複雑なLINQ式)は`uipath_expr`
+     未対応のため安全に`# TODO`へ倒れる。実機XAML3件で確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     7件)、UiPath関連テスト全753件通過、リポジトリ全体で全1821件通過。

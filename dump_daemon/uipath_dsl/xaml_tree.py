@@ -77,6 +77,7 @@ from .types import (
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataRowNode,
     RethrowNode,
     SaveImageNode,
     SelectItemNode,
@@ -802,6 +803,15 @@ def _parse_add_data_row(elem: etree._Element) -> AddDataRowNode:
         array_row=_attr_expr(elem, "ArrayRow"),
         data_row=_attr_expr(elem, "DataRow"),
         data_table=_attr_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_remove_data_row(elem: etree._Element) -> RemoveDataRowNode:
+    return RemoveDataRowNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        row=_attr_expr(elem, "Row"),
+        row_index=_attr_expr(elem, "RowIndex"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1724,6 +1734,7 @@ _DISPATCH = {
     (UI_NS, "RestoreWindow"): _parse_restore_window,
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "AddDataRow"): _parse_add_data_row,
+    (UI_NS, "RemoveDataRow"): _parse_remove_data_row,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

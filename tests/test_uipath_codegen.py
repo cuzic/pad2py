@@ -89,6 +89,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataRowNode,
     RethrowNode,
     SaveImageNode,
     SelectItemNode,
@@ -2648,6 +2649,76 @@ def test_add_data_row_with_data_row_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: AddDataRow with DataRow set" in code
     assert ".append(" not in code
+    _compiles(code)
+
+
+def test_remove_data_row_with_row_index_deletes_by_position():
+    """知見182: `ui:RemoveDataRow`。`RowIndex`はPythonのlistインデックス
+    として使うため、`round(_vb_cdbl(...))`(VBの`CInt`と同じ確認済みの
+    整数変換経路、知見52・53)で整数へ変換する——`Literal`の素の文字列
+    値をそのままインデックスに使うと`TypeError`になる実機で発見した
+    バグの修正。"""
+    wf = _wrap(
+        [RemoveDataRowNode(data_table=VbExpr(text="t"), row_index=Literal(value="0"))]
+    )
+    code = generate_python(wf)
+    assert "del t[round(_vb_cdbl('0'))]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_remove_data_row_with_row_removes_by_value():
+    wf = _wrap(
+        [RemoveDataRowNode(data_table=VbExpr(text="t"), row=VbExpr(text="existingRow"))]
+    )
+    code = generate_python(wf)
+    assert "t.remove(existingRow)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_remove_data_row_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            RemoveDataRowNode(
+                data_table=VbExpr(text="t"),
+                row_index=Literal(value="0"),
+                display_name="Remove Data Row",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Remove Data Row" in code
+    assert "del t[" in code
+    _compiles(code)
+
+
+def test_remove_data_row_with_no_data_table_is_todo():
+    wf = _wrap([RemoveDataRowNode(data_table=None, row_index=Literal(value="0"))])
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataRow with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_remove_data_row_with_no_row_or_row_index_is_todo():
+    wf = _wrap([RemoveDataRowNode(data_table=VbExpr(text="t"))])
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataRow with no Row/RowIndex captured" in code
+    _compiles(code)
+
+
+def test_remove_data_row_with_both_row_and_row_index_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RemoveDataRowNode(
+                data_table=VbExpr(text="t"),
+                row=VbExpr(text="existingRow"),
+                row_index=Literal(value="0"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RemoveDataRow with both Row and RowIndex set" in code
     _compiles(code)
 
 

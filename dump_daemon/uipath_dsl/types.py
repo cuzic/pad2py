@@ -770,6 +770,35 @@ class AddDataRowNode:
 
 
 @dataclass
+class RemoveDataRowNode:
+    """`<ui:RemoveDataRow>`(知見182、`AddDataRow`(知見181)の正反対)。
+    `UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+    (`UiPath.System.Activities/25.10/RemoveDataRow.xaml`)+実機5件
+    (`lin8231/762-impl`・`samaypatel27/Stock-Market-Scrapper`・
+    `UiPath-Services/OrchestratorManager`)で確認した構成は`DataTable`
+    +`Row`(既存の`DataRow`オブジェクト参照、実機確認した非`{x:Null}`
+    の実例は複雑なLINQ式`io_UsersData.AsEnumerable().Where(Function
+    (Row) ...).First()`——`uipath_expr`が未対応のため安全に`# TODO`へ
+    倒れる)+`RowIndex`(整数インデックス、実機2件で`"0"`——「読み込んだ
+    ヘッダー行を削除する」という定番パターンで使われる)。
+
+    `AddDataRow`と同じ理由で、`RowIndex`による削除(`del
+    {data_table}[{row_index}]`)は`DataTable`変数の実行時表現(dict行/
+    list行)を一切問わない安全な操作——インデックス位置で削除する
+    だけで、要素の内部構造を読む必要が無い。`Row`が設定されている
+    場合は`{data_table}.remove({row})`(Pythonの`list.remove()`は
+    最初に一致する要素を削除する、オブジェクト等価性さえ合えば
+    内部表現を問わず安全)を試みるが、実機で確認した唯一の非`{x:Null}`
+    の実例は`uipath_expr`が未対応のLINQ式のため、結局は安全に
+    `# TODO`へ倒れる。"""
+
+    data_table: Expr = None
+    row: Expr = None
+    row_index: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1878,6 +1907,7 @@ Node = (
     | TakeScreenshotNode
     | GetOcrTextNode
     | AddDataRowNode
+    | RemoveDataRowNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

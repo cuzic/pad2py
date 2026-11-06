@@ -64,6 +64,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataRowNode,
     RethrowNode,
     SaveImageNode,
     SelectItemNode,
@@ -1337,6 +1338,36 @@ def test_add_data_row_properties():
     assert node.data_row is None
     assert node.data_table == VbExpr(text="MyDataTable")
     assert node.display_name == "Add Data Row"
+
+
+def test_remove_data_row_with_row_index_properties():
+    """知見182: `ui:RemoveDataRow`(`AddDataRow`知見181の正反対)。実機
+    `samaypatel27/Stock-Market-Scrapper`で確認した`RowIndex="0"`
+    (読み込んだヘッダー行を削除する定番パターン)の実例。"""
+    xml = (
+        f"<ui:RemoveDataRow {_UI_XMLNS} DisplayName=\"Removes Heading row\" "
+        'Row="{x:Null}" RowIndex="0" DataTable="[read2_dt]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveDataRowNode)
+    assert node.data_table == VbExpr(text="read2_dt")
+    assert node.row is None
+    assert node.row_index == Literal(value="0")
+    assert node.display_name == "Removes Heading row"
+
+
+def test_remove_data_row_with_row_properties():
+    """実機`UiPath-Services/OrchestratorManager`で確認した、複雑なLINQ式
+    `Row`の実例。"""
+    xml = (
+        f"<ui:RemoveDataRow {_UI_XMLNS} DisplayName=\"Remove Data Row\" "
+        'RowIndex="{x:Null}" DataTable="[io_UsersData]" '
+        'Row="[io_UsersData.AsEnumerable().Where(Function(Row) Convert.ToInt64(Row(&quot;ID&quot;)) = UserID).First()]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveDataRowNode)
+    assert node.row_index is None
+    assert "AsEnumerable" in node.row.text
 
 
 def test_log_message_properties():

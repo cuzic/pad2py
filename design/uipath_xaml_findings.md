@@ -8618,6 +8618,54 @@ World', -_vb_num(1)])`のような正しいコードが生成されることを�
 test_uipath_codegen.py`5件)、UiPath関連テスト全746件通過、
 リポジトリ全体で全1813件通過。
 
+## 182. `ui:RemoveDataRow`(`AddDataRow`知見181の正反対)を新規実装——`RowIndex`によるインデックス削除を実機確認、`Literal`を素のPython文字列のままlistインデックスへ使うと`TypeError`になる実機バグを発見・修正
+
+知見181の`ui:AddDataRow`の対になる活動として`ui:RemoveDataRow`
+(`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+(`UiPath.System.Activities/25.10/RemoveDataRow.xaml`)+実機5件
+(`lin8231/762-impl`・`samaypatel27/Stock-Market-Scrapper`・
+`UiPath-Services/OrchestratorManager`)で確認)を調査した。確認した
+構成は`DataTable`+`Row`(既存の`DataRow`オブジェクト参照)+
+`RowIndex`(整数インデックス)+`DisplayName`。実機で非`{x:Null}`の
+`Row`の実例は複雑なLINQ式(`io_UsersData.AsEnumerable().Where
+(Function(Row) Convert.ToInt64(Row("ID")) = UserID).First()`)
+のみで、`uipath_expr`が未対応のため安全に`# TODO`へ倒れることを
+確認した。`RowIndex`の実例は2件とも`"0"`——「読み込んだヘッダー行を
+削除する」という、`AddHeaders=False`で読み込んだDataTableの先頭行
+(ヘッダー)を除去する定番パターンだった。
+
+知見181と同じ理由で、`RowIndex`によるインデックス削除
+(`del {data_table}[{row_index}]`)は`DataTable`変数の実行時表現を
+一切問わない安全な操作だと判断したが、実装中に実機XAMLでの動作確認
+(`compile()`だけでなく生成コードの意味そのものを吟味する)によって
+重大な実機バグを発見した——`RowIndex="0"`は知見2・5の規約により
+`Literal(value="0")`(常に文字列として保持)としてパースされ、
+これを`render_expr`でそのまま使うと`del {data_table}['0']`という
+Pythonコードが生成される。Pythonのlistは文字列インデックスを
+受け付けず`TypeError: list indices must be integers or slices, not
+str`で即座にクラッシュする——`compile()`(構文チェックのみ)では
+検出できず、実行してみて初めて発覚する種類のバグだった。
+
+`_vb_num`(既存の算術変換ヘルパー)は`float`を返すため代用できない
+(`list[0.0]`も同じ`TypeError`になる)。正しい解決策は、VBの
+`CInt()`関数呼び出しが既に使っている確認済みの整数変換経路
+(`render.py`の`_render_func_call`、知見52・53で確定した
+`round(_vb_cdbl(x))`——`CInt`は切り捨てではなく銀行丸めで、
+Pythonの`round()`の既定動作と一致することを確認済み)を、
+`RemoveDataRow`のコード生成側から直接呼ぶことだった——ユーザーが
+明示的に`CInt(...)`と書いていないVB式でも、「Pythonの整数が必要な
+コンテキストで使う」という生成側の都合で同じ確認済みの変換を
+再利用する、これまでとは違う使い方(既存のVB関数呼び出し変換を
+コード生成側の都合で直接呼ぶ初めての例)。`_collect_imports`の
+`_vb_cdbl(`検出条件(既存)がそのまま効くため、新しい`import`検出
+ロジックは不要だった。
+
+実機XAML3件で`parse_activity()`+`_generate_node()`を実行し、
+`del t[round(_vb_cdbl('0'))]`が正しく生成されることを修正後に確認
+した(合成データでの実行結果も手動確認済み)。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`7件)、
+UiPath関連テスト全753件通過、リポジトリ全体で全1821件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

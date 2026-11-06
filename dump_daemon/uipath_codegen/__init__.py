@@ -115,6 +115,7 @@ from ..uipath_dsl.types import (
     ParallelNode,
     ReadTextFileNode,
     RefreshBrowserNode,
+    RemoveDataRowNode,
     RethrowNode,
     SaveImageNode,
     SelectItemNode,
@@ -509,6 +510,8 @@ def _generate_node(
         return _generate_kill_process(node, indent)
     if isinstance(node, AddDataRowNode):
         return _generate_add_data_row(node, indent)
+    if isinstance(node, RemoveDataRowNode):
+        return _generate_remove_data_row(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -1958,6 +1961,48 @@ def _generate_add_data_row_body(node: AddDataRowNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{data_table}.append({array_row})"]
+
+
+# 知見182: `ui:RemoveDataRow`(`AddDataRow`知見181の正反対)。`RowIndex`
+# による削除(`del {data_table}[{row_index}]`)は`DataTable`変数の
+# 実行時表現を問わない安全な操作(知見181と同じ理由)。`Row`が設定
+# されている場合は`{data_table}.remove({row})`を試みるが、実機確認
+# した実例はLINQ式(`uipath_expr`未対応)のため安全に`# TODO`へ倒れる。
+def _generate_remove_data_row(node: RemoveDataRowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_remove_data_row_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_remove_data_row_body(node: RemoveDataRowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: RemoveDataRow with no DataTable captured"]
+    if node.row is not None and node.row_index is not None:
+        return [
+            f"{prefix}# TODO: RemoveDataRow with both Row and RowIndex set "
+            "— priority between the two not confirmed, refusing to guess"
+        ]
+    if node.row_index is not None:
+        todo: list[str] = []
+        data_table = _render_value_or_todo(node.data_table, prefix, todo)
+        row_index = _render_value_or_todo(node.row_index, prefix, todo)
+        if todo:
+            return todo
+        # `RowIndex`はPythonのlistインデックスとして使うため整数が必要——
+        # `Literal`は知見2・5の規約で常に文字列として保持されるため、VBの
+        # `CInt`と同じ確認済みの変換経路(`round(_vb_cdbl(x))`、知見52・53)
+        # を経由して整数へ変換する(`_vb_num`は浮動小数点を返すため
+        # インデックスには使えない、素の文字列もインデックスには使えない)。
+        return [f"{prefix}del {data_table}[round({VB_CDBL_HELPER_NAME}({row_index}))]"]
+    if node.row is not None:
+        todo = []
+        data_table = _render_value_or_todo(node.data_table, prefix, todo)
+        row = _render_value_or_todo(node.row, prefix, todo)
+        if todo:
+            return todo
+        return [f"{prefix}{data_table}.remove({row})"]
+    return [f"{prefix}# TODO: RemoveDataRow with no Row/RowIndex captured"]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
