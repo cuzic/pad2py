@@ -37,6 +37,7 @@ from dump_daemon.uipath_dsl import (
     SwitchNode,
     TryCatchNode,
     TypeIntoNode,
+    UiElementExistsNode,
     UnknownActivityNode,
     VbExpr,
     WhileNode,
@@ -319,6 +320,25 @@ def test_select_item_selector_and_alter_if_disabled():
     assert node.delay_before is None
     assert node.delay_after is None
     assert node.continue_on_error is None
+
+
+def test_ui_element_exists_selector_and_output_binding():
+    """知見113: `ui:UiElementExists`(DisplayNameは「Element Exists」)。
+    実機確認済みの実タグ名は`ui:ElementExists`ではなく`ui:UiElementExists`
+    (公式ドキュメントの裏のCLR型名`UiPath.Core.Activities.
+    UiElementExists`とも一致)。"""
+    xml = (
+        f"<ui:UiElementExists {_UI_XMLNS} "
+        'DisplayName="Element Exists" Exists="[notepadOpened]">'
+        "<ui:UiElementExists.Target>"
+        "<ui:Target Selector=\"&lt;wnd title='Notepad' /&gt;\" />"
+        "</ui:UiElementExists.Target>"
+        "</ui:UiElementExists>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, UiElementExistsNode)
+    assert "Notepad" in node.selector
+    assert node.exists == VbExpr(text="notepadOpened")
 
 
 def test_invoke_workflow_file(main_wf):

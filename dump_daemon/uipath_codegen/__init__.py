@@ -71,6 +71,7 @@ from ..uipath_dsl.types import (
     SwitchNode,
     TryCatchNode,
     TypeIntoNode,
+    UiElementExistsNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -346,6 +347,8 @@ def _generate_node(
         return _generate_get_text(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
+    if isinstance(node, UiElementExistsNode):
+        return _generate_ui_element_exists(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
@@ -1336,6 +1339,46 @@ def _generate_select_item_body(node: SelectItemNode, indent: int) -> list[str]:
     lines.append(f"{prefix}{rendered.expr}.select({VB_CSTR_HELPER_NAME}({item}))")
     if delay_after is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_after}) / 1000.0)")
+    return lines
+
+
+# 知見113: `ui:UiElementExists`(DisplayName「Element Exists」)。公式
+# ドキュメント・3件の独立した実機保存済みXAMLのいずれにも`ContinueOnError`/
+# `DelayBefore`/`DelayMS`に相当する属性が存在しないため、`Click`等とは違い
+# これらのTODO分岐は無い(無い属性を推測で持たせるとでっち上げになる)。
+#
+# 「要素が存在するか(可視でなくても)を確認する、見つからなくても例外を
+# 投げない」という公式ドキュメントの説明は、`pywinauto`の
+# `WindowSpecification.exists()`(未解決の検索条件に対して呼べる、見つか
+# らなければ例外を投げずに`False`を返す標準アクセサ)の挙動そのものと
+# ほぼ1対1で一致する——`Click`/`Select Item`のような機構未確認の警告は
+# 不要なほど確信度が高いマッピング。
+def _generate_ui_element_exists(node: UiElementExistsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_ui_element_exists_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_ui_element_exists_body(node: UiElementExistsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Element Exists with no selector captured"]
+    if node.exists is None:
+        return [f"{prefix}# TODO: Element Exists with no output Exists captured"]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Element Exists selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.exists, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{target} = {rendered.expr}.exists()")
     return lines
 
 

@@ -5349,6 +5349,46 @@ PAD調査時に既に発見していた罠(`dump_daemon/pad_ui_helpers.py`の
 `tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に10件
 追加、全1214件通過。
 
+## 113. `ui:UiElementExists`(DisplayName「Element Exists」)を実機XAML(GitHub実例)+公式ドキュメントで確認し、実コード生成に対応——Tier A着手第4件、タグ名の誤認を実機複数件で訂正(VM不使用、知見100の手法を10回目として再適用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+5件目(`Click`→`TypeInto`→`GetText`→`SelectItem`→`Element Exists`)。
+
+**タグ名の訂正**: 最初に見つかった2件の実例(`gh api search/code`の
+`"<ui:ElementExists "`検索)は`ui:ElementExists`というタグ名だったが、
+1件は`TODO_SELECTOR_...`という明らかなプレースホルダ文字列を含む
+非Studio生成の合成テストフィクスチャ(サードパーティのXAML変換ツール
+`rasl-generator`のテストデータ)、もう1件は`.Target`ラッパーを持たない
+旧式の直列化(信頼度の低い学生課題リポジトリ)だった。再検索
+(`"ElementExists.Target"`)で見つかった3件の独立した実機リポジトリ
+(`SuneetPatil/IRCTC-tatkal-booking`・`PacktPublishing/...-Projects`・
+`allenlooplee/RPABook`)はいずれも真のタグ名が**`ui:UiElementExists`**
+だと一致して示しており、公式ドキュメント(`ui-element-exists`ページ)の
+裏のCLR型名`UiPath.Core.Activities.UiElementExists`とも一致した。
+最初の2件は実機Studio保存の確証が弱いため不採用とした。
+
+**属性構成**: 3件の実機XAMLいずれにも`ContinueOnError`/`DelayBefore`/
+`DelayMS`に相当する属性が一切現れず(`{x:Null}`すら無く完全に省略)、
+公式ドキュメントのプロパティ一覧にもこれらは載っていない——`Click`/
+`TypeInto`/`GetText`/`SelectItem`が共有する「Common」カテゴリの属性とは
+違い、この活動には本当に存在しないと判断し、捕捉対象に含めなかった
+(無い属性を推測で持たせるとでっち上げになる)。出力は`Exists`属性
+(Boolean変数のみ受け付けると公式ドキュメントで確認済み)。
+
+**実装**: 公式ドキュメントが「要素が存在するか(可視でなくても)を確認
+する」と説明しており、見つからなかった場合に例外を投げるかどうかは
+明記されていなかったが、`pywinauto`の`WindowSpecification.exists()`
+(未解決の検索条件に対して呼べる、見つからなければ例外を投げずに
+`False`を返す標準アクセサ)の挙動と概念的に一致する——`Click`/
+`SelectItem`で必要だった「機構未確認」の`# WARNING`すら不要なほど
+確信度の高いマッピングだった。
+
+`dump_daemon/uipath_dsl/types.py`に`UiElementExistsNode`、
+`xaml_tree.py`に`_parse_ui_element_exists`(`(UI_NS,
+"UiElementExists")`へディスパッチ登録)、`uipath_codegen/__init__.py`に
+`_generate_ui_element_exists`を追加。`tests/test_uipath_dsl.py`に1件・
+`tests/test_uipath_codegen.py`に5件追加、全1224件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -374,6 +374,36 @@ class SelectItemNode:
 
 
 @dataclass
+class UiElementExistsNode:
+    """`<ui:UiElementExists>`(知見113、DisplayNameは「Element Exists」)。
+    `selector`は`ui:UiElementExists.Target`配下の`ui:Target`要素の
+    `Selector`属性(`ClickNode`等と同じ構造)。`exists`は出力先
+    (`Exists`属性、Boolean変数のみ受け付けると公式ドキュメントで確認済み)。
+
+    `gh api search/code`で確認した3件の独立した実機保存済みXAML
+    (いずれも真のタグ名が`ui:ElementExists`ではなく`ui:UiElementExists`
+    であることを確認——公式ドキュメントの裏のCLR型名
+    `UiPath.Core.Activities.UiElementExists`とも一致する)はいずれも
+    `ContinueOnError`/`DelayBefore`/`DelayMS`に相当する属性が一切現れず
+    (`{x:Null}`すら無く完全に省略)、公式ドキュメントのプロパティ一覧にも
+    これらは載っていない——`Click`/`TypeInto`/`GetText`/`SelectItem`の
+    「Common」カテゴリの属性とは違い、この活動には本当に存在しないと
+    判断し、捕捉対象に含めない(無い属性を推測で持たせるとでっち上げに
+    なる)。
+
+    `ui:ElementExists`(`UiElementExists`抜き)という別名の実例も2件
+    見つかったが、1件は`TODO_SELECTOR_...`という明らかなプレースホルダ値を
+    含む非Studio生成(サードパーティ変換ツールの合成テストデータ)、もう
+    1件はStudioの`.Target`ラッパーを持たない旧式の直列化(信頼度が低い
+    学生課題リポジトリ)で、いずれも実機Studio保存の確証が弱いため採用
+    しなかった。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    exists: Expr = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -629,6 +659,7 @@ Node = (
     | TypeIntoNode
     | GetTextNode
     | SelectItemNode
+    | UiElementExistsNode
     | InvokeWorkflowFileNode
     | AppendLineNode
     | ReadTextFileNode

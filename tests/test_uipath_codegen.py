@@ -63,6 +63,7 @@ from dump_daemon.uipath_dsl import (
     TryCatchNode,
     CatchArm,
     TypeIntoNode,
+    UiElementExistsNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -1279,6 +1280,50 @@ def test_select_item_with_delay_before_and_delay_after_generates_time_sleep():
     assert len(sleeps) == 2
     assert "_vb_num('200')" in sleeps[0]
     assert "_vb_num('300')" in sleeps[1]
+    _compiles(code)
+
+
+_ELEMENT_EXISTS_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_ui_element_exists_with_known_selector_generates_exists_call():
+    wf = _wrap(
+        [UiElementExistsNode(selector=_ELEMENT_EXISTS_SELECTOR, exists=VbExpr(text="found"))]
+    )
+    code = generate_python(wf)
+    assert "found = " in code
+    assert ".exists()" in code
+    _compiles(code)
+
+
+def test_ui_element_exists_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([UiElementExistsNode(selector=None, display_name="Element Exists")])
+    code = generate_python(wf)
+    assert "# Element Exists" in code
+    assert "# TODO: Element Exists with no selector captured" in code
+    _compiles(code)
+
+
+def test_ui_element_exists_with_no_selector_is_todo():
+    wf = _wrap([UiElementExistsNode(selector=None, exists=VbExpr(text="x"))])
+    code = generate_python(wf)
+    assert "# TODO: Element Exists with no selector captured" in code
+    _compiles(code)
+
+
+def test_ui_element_exists_with_no_output_exists_is_todo():
+    wf = _wrap([UiElementExistsNode(selector=_ELEMENT_EXISTS_SELECTOR, exists=None)])
+    code = generate_python(wf)
+    assert "# TODO: Element Exists with no output Exists captured" in code
+    _compiles(code)
+
+
+def test_ui_element_exists_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [UiElementExistsNode(selector="<wnd idx='2' />", exists=VbExpr(text="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Element Exists selector had no mappable attributes" in code
     _compiles(code)
 
 

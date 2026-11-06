@@ -1279,3 +1279,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     `time.sleep()`として生成。回帰テスト追加(`tests/test_uipath_dsl.py`
     1件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全365件
     通過、リポジトリ全体で全1214件通過。
+71. **(完了、2026-11-06)** `ui:UiElementExists`(DisplayName「Element
+    Exists」)の実コード生成に新規対応(VM不使用、知見113——Tier A着手
+    第4件、知見100の手法を10回目として再適用): 最初に見つけた実例が
+    `ui:ElementExists`というタグ名だったが、信頼度の弱い2件(合成テスト
+    データ・旧式直列化)のみで裏付けが不十分だったため再検索し、3件の
+    独立した実機リポジトリで真のタグ名が`ui:UiElementExists`だと確定
+    (公式ドキュメントの裏のCLR型名とも一致)。`ContinueOnError`/
+    `DelayBefore`/`DelayMS`は実機3件・公式ドキュメントともに存在しない
+    と確認したため捕捉対象に含めず(無い属性のでっち上げを回避)。
+    「見つからなくても例外を投げず存在確認する」という挙動に`pywinauto`
+    の`WindowSpecification.exists()`が概念的に一致——`Click`等より確信度
+    の高いマッピングで`# WARNING`すら不要だった。回帰テスト追加
+    (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
+    UiPath関連テスト全371件通過、リポジトリ全体で全1224件通過。

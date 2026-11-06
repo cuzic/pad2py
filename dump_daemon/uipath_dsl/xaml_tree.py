@@ -51,6 +51,7 @@ from .types import (
     SwitchNode,
     TryCatchNode,
     TypeIntoNode,
+    UiElementExistsNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -486,6 +487,21 @@ def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     )
 
 
+def _parse_ui_element_exists(elem: etree._Element) -> UiElementExistsNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return UiElementExistsNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        exists=_attr_expr(elem, "Exists"),
+    )
+
+
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -840,6 +856,7 @@ _DISPATCH = {
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "SelectItem"): _parse_select_item,
+    (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,
