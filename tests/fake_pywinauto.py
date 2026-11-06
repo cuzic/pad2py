@@ -7,23 +7,24 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 確認する用途に限定する(でっち上げ禁止の方針はここでも守る: フェイクが知らない呼び出し
 形は`AttributeError`で失敗させ、黙ってでっち上げた値を返さない)。
 
-使い方:
+使い方(`fake_pywinauto_desktop()`経由、推奨):
     registry = FakeRegistry()
     registry.register_window(title="Untitled - Notepad")
-    import pywinauto
-    pywinauto.Desktop = make_fake_desktop(registry)
-    exec(code, namespace)  # 生成コードの `from pywinauto import Desktop` がこのフェイクを拾う
+    with fake_pywinauto_desktop(registry):
+        exec(code, namespace)  # 生成コードの`from pywinauto import Desktop`がこのフェイクを拾う
     assert registry.calls == [("click_input", [...], {})]
 
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
-`.type_keys()`/`.wait()`/`.wait_not()`)のみ——新しい呼び出し形が出てきたら、その都度
+`.close()`/`.type_keys()`/`.wait()`/`.wait_not()`)のみ——新しい呼び出し形が出てきたら、その都度
 ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
 `AttributeError`で気づけるようにする)。
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Iterator
 
 
 class FakeElementNotFoundError(Exception):
@@ -68,6 +69,9 @@ class FakeControl:
 
     def set_focus(self) -> None:
         self._registry.record("set_focus", self._full_path(), {})
+
+    def close(self) -> None:
+        self._registry.record("close", self._full_path(), {})
 
     def type_keys(self, keys: str, **kwargs: object) -> None:
         self._registry.record("type_keys", self._full_path(), {"keys": keys, **kwargs})
@@ -144,3 +148,25 @@ def make_fake_desktop(registry: FakeRegistry):
         return _FakeDesktopHandle(registry)
 
     return fake_desktop
+
+
+@contextmanager
+def fake_pywinauto_desktop(registry: FakeRegistry | None = None) -> Iterator[FakeRegistry]:
+    """`pywinauto.Desktop`を(省略時は新規作成した)`registry`に基づくフェイクへ差し替える
+    (ブロックを抜けたら元の状態に戻す)。`pywinauto`パッケージ自体はLinuxでも`import`
+    できるが`Desktop`属性(`pywinauto.application`経由、Windows専用)は無いため、
+    `tests/fake_win32.py`の`sys.modules`注入方式とは違い属性の差し替えで対応できる。
+    """
+    import pywinauto
+
+    reg = registry if registry is not None else FakeRegistry()
+    had_desktop = hasattr(pywinauto, "Desktop")
+    original_desktop = getattr(pywinauto, "Desktop", None)
+    pywinauto.Desktop = make_fake_desktop(reg)
+    try:
+        yield reg
+    finally:
+        if had_desktop:
+            pywinauto.Desktop = original_desktop
+        else:
+            del pywinauto.Desktop

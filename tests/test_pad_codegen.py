@@ -437,9 +437,7 @@ def test_generate_python_if_window_modes_evaluate_correctly_against_fake_pywinau
     # THENブロックの中身が無いため)で、`exec()`しても分岐の実際の真偽は観測できない。
     # そこで生成コードを`exec()`した後の名前空間で条件式自体を`eval()`し、フェイクの
     # ウィンドウ状態(存在/フォーカス)を変えたときに正しい真偽値になることを検証する。
-    import pywinauto
-
-    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
 
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
         encoding="utf-8"
@@ -462,18 +460,10 @@ def test_generate_python_if_window_modes_evaluate_correctly_against_fake_pywinau
     if window_exists:
         registry.register_window(title="Untitled - Notepad")
         registry.set_active([{"title": "Untitled - Notepad"}], window_active)
-    had_desktop = hasattr(pywinauto, "Desktop")
-    original_desktop = getattr(pywinauto, "Desktop", None)
-    pywinauto.Desktop = make_fake_desktop(registry)
-    try:
+    with fake_pywinauto_desktop(registry):
         namespace: dict[str, object] = {}
         exec(code, namespace)
         assert eval(condition_source, namespace) is expected_result
-    finally:
-        if had_desktop:
-            pywinauto.Desktop = original_desktop
-        else:
-            del pywinauto.Desktop
 
 
 @pytest.mark.parametrize(
@@ -679,9 +669,7 @@ def test_generate_python_from_move_window_actually_moves_against_fake_win32() ->
     # 検査していなかった——`tests/fake_pywinauto.py`+`tests/fake_win32.py`を組み合わせて
     # 実際に`exec()`し、`win32gui.MoveWindow()`が正しい引数(既存の`GetWindowRect()`から
     # 幅/高さを保持しつつX/Yだけ更新)で呼ばれることを検証する。
-    import pywinauto
-
-    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
     from fake_win32 import FakeWin32Registry, fake_win32_modules
 
     tree = build_block_tree(parse_dsl(MOVE_WINDOW_DSL))
@@ -693,17 +681,8 @@ def test_generate_python_from_move_window_actually_moves_against_fake_win32() ->
     win32_registry = FakeWin32Registry()
     win32_registry.set_rect(0, 10, 20, 810, 620)  # 既存の幅800・高さ600を保持する想定
 
-    had_desktop = hasattr(pywinauto, "Desktop")
-    original_desktop = getattr(pywinauto, "Desktop", None)
-    pywinauto.Desktop = make_fake_desktop(ui_registry)
-    try:
-        with fake_win32_modules(win32_registry):
-            exec(code, {})
-    finally:
-        if had_desktop:
-            pywinauto.Desktop = original_desktop
-        else:
-            del pywinauto.Desktop
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
 
     assert win32_registry.calls == [("MoveWindow", 0, 100, 50, 800, 600, True)]
 
@@ -733,6 +712,14 @@ def test_generate_python_maps_focus_window_to_pywinauto_set_focus() -> None:
     compile(code, "<generated>", "exec")
     assert "Desktop(backend='uia').window(title='Notepad').set_focus()" in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b): 文字列検査に加え、実際に`exec()`して
+    # `.set_focus()`が正しいセレクタで呼ばれたことまで検証する。
+    from fake_pywinauto import fake_pywinauto_desktop
+
+    with fake_pywinauto_desktop() as registry:
+        exec(code, {})
+    assert registry.calls == [("set_focus", [{"title": "Notepad"}], {})]
+
 
 def test_generate_python_maps_close_window_to_pywinauto_close() -> None:
     # 他のByTitleClass系アクションと同じパターンだと確認できている(action_id自体は実機未確認)。
@@ -741,6 +728,12 @@ def test_generate_python_maps_close_window_to_pywinauto_close() -> None:
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "Desktop(backend='uia').window(title='Notepad').close()" in code
+
+    from fake_pywinauto import fake_pywinauto_desktop
+
+    with fake_pywinauto_desktop() as registry:
+        exec(code, {})
+    assert registry.calls == [("close", [{"title": "Notepad"}], {})]
 
 
 def test_generate_python_leaves_focus_window_as_todo_when_class_is_used() -> None:
@@ -1029,9 +1022,7 @@ def test_generate_python_from_click_click_actually_clicks_against_fake_pywinauto
     # 呼び出し列の形だけなので、この原則とは無関係に安全)。
     import os
 
-    import pywinauto
-
-    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
 
     text = (
         FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
@@ -1043,24 +1034,17 @@ def test_generate_python_from_click_click_actually_clicks_against_fake_pywinauto
 
     registry = FakeRegistry()
     registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
-    had_desktop = hasattr(pywinauto, "Desktop")
-    original_desktop = getattr(pywinauto, "Desktop", None)
-    pywinauto.Desktop = make_fake_desktop(registry)
     # このフィクスチャは`Scripting.RunPythonScript`でハードコードされたWindowsパス
     # (`C:\Users\...`)へのファイル書き込みも含む(知見14等のループ検証用の副産物)。
     # Linux上では`\`がパス区切りとして解釈されず、cwdに奇妙な名前のファイルが
     # 作られてしまうため、一時ディレクトリへ退避してから`exec()`する。
     original_cwd = Path.cwd()
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, fake_pywinauto_desktop(registry):
         try:
             os.chdir(tmp)
             exec(code, {})
         finally:
             os.chdir(original_cwd)
-            if had_desktop:
-                pywinauto.Desktop = original_desktop
-            else:
-                del pywinauto.Desktop
 
     # looptest系フィクスチャ(ループ本体に同じクリックが複数回出現する)なので、
     # 「少なくとも1回、正しいセレクタ・正しい操作で呼ばれた」ことを検証する。
@@ -1606,26 +1590,15 @@ def test_generate_python_from_set_window_visibility_control_based_converts() -> 
     # design/common_rpa_framework_roadmap.md 層7(b)(c): 文字列検査に加えて、実際に
     # `exec()`してフェイク越しに`win32gui.ShowWindow(..., win32con.SW_HIDE)`が呼ばれる
     # ことまで検証する。
-    import pywinauto
-
-    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
     from fake_win32 import FakeWin32Registry, fake_win32_modules
 
     ui_registry = FakeRegistry()
     ui_registry.register_window(title="Untitled - Notepad")
     win32_registry = FakeWin32Registry()
 
-    had_desktop = hasattr(pywinauto, "Desktop")
-    original_desktop = getattr(pywinauto, "Desktop", None)
-    pywinauto.Desktop = make_fake_desktop(ui_registry)
-    try:
-        with fake_win32_modules(win32_registry):
-            exec(code, {})
-    finally:
-        if had_desktop:
-            pywinauto.Desktop = original_desktop
-        else:
-            del pywinauto.Desktop
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
 
     assert ("ShowWindow", 0, 0) in win32_registry.calls  # handle=0(フェイク既定), SW_HIDE=0
 

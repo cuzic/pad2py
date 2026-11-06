@@ -43,11 +43,13 @@ def test_click_input_and_set_focus_are_recorded() -> None:
     window.click_input()
     window.set_focus()
     window.type_keys("hello")
+    window.close()
 
     assert registry.calls == [
         ("click_input", [{"title": "Notepad"}], {}),
         ("set_focus", [{"title": "Notepad"}], {}),
         ("type_keys", [{"title": "Notepad"}], {"keys": "hello"}),
+        ("close", [{"title": "Notepad"}], {}),
     ]
 
 
