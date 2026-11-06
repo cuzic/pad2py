@@ -22,6 +22,7 @@ from dump_daemon.uipath_dsl import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseTabNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -956,6 +957,26 @@ def test_kill_process_properties():
     assert node.process is None
     assert node.applies_to is None
     assert node.continue_on_error is None
+
+
+def test_close_tab_properties():
+    """知見170: `ui:CloseTab`(GitHub code searchで782件ヒット)。
+    `Target`/`Selector`を一切持たず、唯一の属性`Browser`(`UiBrowser`
+    型変数参照)が`{x:Null}`の場合(ほとんどのREFramework実例)と
+    動的VB式(`[firefox]`、`piyushagarwal08/JU-Notes`)の両方を確認
+    済み。"""
+    xml = f'<ui:CloseTab {_UI_XMLNS} Browser="{{x:Null}}" DisplayName="Close Tab" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseTabNode)
+    assert node.browser is None
+    assert node.display_name == "Close Tab"
+
+
+def test_close_tab_with_browser_variable_reference():
+    xml = f'<ui:CloseTab {_UI_XMLNS} Browser="[firefox]" DisplayName="Close Tab" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseTabNode)
+    assert node.browser == VbExpr(text="firefox")
 
 
 def test_log_message_properties():

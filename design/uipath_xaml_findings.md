@@ -8042,6 +8042,47 @@ process`/`_generate_kill_process_body`(`Process`/`AppliesTo`/
 test_uipath_codegen.py`6件)、UiPath関連テスト全694件通過、
 リポジトリ全体で全1734件通過。
 
+## 170. `ui:CloseTab`(GitHub code searchで782件ヒット)を新規実装——pywinautoの`keyboard.send_keys()`(対象無しのグローバル送信)を初めて実際に活用、知見152が残していた未対応経路を解消
+
+知見169の`ui:KillProcess`調査の延長で、OpenApplication/OpenBrowserの
+対になる「閉じる」系活動を調査し、`ui:CloseTab`(GitHub code search
+で782件ヒット)を実装した。実機3件(`allenlooplee/RPABook`・
+`PacktPublishing/Robotic-Process-Automation-Projects`・
+`piyushagarwal08/JU-Notes`)で構造を確認した結果、`Target`/
+`Selector`を一切持たない、唯一の属性は`Browser`(`UiBrowser`型変数
+参照——`OpenBrowser`の`UiBrowser`出力バインディング(知見168)や
+`BrowserScope`の`UiBrowser`属性(知見161)と同種)のみ。実機確認した
+値は`{x:Null}`(ほとんどのREFramework実例、`BrowserScope`の内側で
+使われ「現在アタッチ中のブラウザの、現在アクティブなタブ」を暗黙に
+指す)と、動的VB式(`[browserCrunchBase]`/`[firefox]`)の両方。
+
+`Browser`が`{x:Null}`の場合、意味論は「現在フォーカス中のタブ/
+ウィンドウを閉じる」になり、主要ブラウザ(Chrome/Firefox/Edge/IE)
+共通の標準キーボードショートカット`Ctrl+W`で実現できる——これは
+知見152の`ui:SendHotkey`で「`Target`が省略された自己終了タグ
+(`AI-Dep/AI-Antigravity`の実機XAMLで確認、現在フォーカス中のウィン
+ドウへグローバルに送信する意味論と推定)」として**未対応のまま
+残していた経路**と全く同じもので、今回`ui:CloseTab`の実装を通じて
+初めて実際に実装することになった——pywinautoの`keyboard.send_keys()`
+(モジュールレベルの関数、要素を指定せず現在フォーカス中のものへ
+キーを送る確認済み標準API、`Click`/`TypeInto`/`SendHotkey`が使う
+要素単位の`.type_keys()`メソッドとは別の経路)がこのケースに
+ちょうど対応する。`Browser`が変数参照の場合は(`UiBrowser`変数自体
+が知見154・161・168で繰り返し確認済みの未モデル化のため)`# TODO`
+へ倒す。
+
+`dump_daemon/uipath_dsl/types.py`に`CloseTabNode(browser, display_
+name)`、`xaml_tree.py`に`_parse_close_tab`+`(UI_NS, "CloseTab")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`に`_generate_close_tab`
+/`_generate_close_tab_body`(`Browser`が変数参照の場合は`# TODO`、
+それ以外は`send_keys('^w')`)を追加。`from pywinauto.keyboard import
+send_keys`の`import`検出条件を`_collect_imports`に追加。実機XAML
+(`piyushagarwal08/JU-Notes`の`SHA1_Close.xaml`)で`generate_python()`
++`compile()`を実行し、`from pywinauto.keyboard import send_keys`+
+`send_keys('^w')`が正しく生成されることを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+UiPath関連テスト全699件通過、リポジトリ全体で全1739件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

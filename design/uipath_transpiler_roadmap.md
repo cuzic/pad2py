@@ -2192,3 +2192,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      正しく生成されることを確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件)、
      UiPath関連テスト全694件通過、リポジトリ全体で全1734件通過。
+
+128. **(完了、2026-11-06)** `ui:CloseTab`(GitHub code searchで782件
+     ヒット)を新規実装(知見170): `Target`/`Selector`を一切持たず、
+     唯一の属性`Browser`(`UiBrowser`型変数参照)が`{x:Null}`の場合
+     (ほとんどのREFramework実例)は「現在フォーカス中のタブ/
+     ウィンドウを閉じる」という意味論になり、主要ブラウザ共通の標準
+     キーボードショートカット`Ctrl+W`で実現できる——これは知見152の
+     `ui:SendHotkey`で「`Target`省略(グローバル送信)」として未対応
+     のまま残していた経路と同じもので、pywinautoの`keyboard.send_
+     keys()`(モジュールレベルの対象無しグローバル送信、確認済み標準
+     API)を初めて実際に実装した。`Browser`が変数参照の場合は
+     (`UiBrowser`変数自体が未モデル化のため)`# TODO`へ倒す。実機XAML
+     で`send_keys('^w')`の生成を確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+     UiPath関連テスト全699件通過、リポジトリ全体で全1739件通過。

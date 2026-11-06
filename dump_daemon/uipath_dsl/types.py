@@ -490,6 +490,35 @@ class KillProcessNode:
 
 
 @dataclass
+class CloseTabNode:
+    """`<ui:CloseTab Browser="..." />`(知見170、GitHub code searchで
+    782件ヒット)。`Target`/`Selector`を一切持たない、唯一の属性は
+    `Browser`(`UiBrowser`型変数への参照、`OpenBrowser`の`UiBrowser`
+    出力バインディング(知見168)や`BrowserScope`の`UiBrowser`属性と
+    同種)。実機確認した値は`{x:Null}`(未設定——`BrowserScope`
+    (知見161)の内側で使われ「現在アタッチ中のブラウザの、現在
+    アクティブなタブ」を暗黙に指す、REFramework標準の使い方)と、
+    動的VB式(`[browserCrunchBase]`/`[firefox]`、`OpenBrowser`の
+    `UiBrowser`出力を参照する実例)の両方を確認済み。
+
+    `Browser`が`{x:Null}`(ほとんどのREFramework実例)の場合のみ安全に
+    実装する——`UiBrowser`変数参照自体を本トランスパイラはまだ
+    モデル化していない(知見154・161・168で繰り返し確認済みの既知の
+    限界)ため、変数参照時は`# TODO`へ倒す。`{x:Null}`の場合は
+    「現在フォーカス中のタブ/ウィンドウを閉じる」という意味論になり、
+    主要ブラウザ(Chrome/Firefox/Edge/IE)共通の標準キーボード
+    ショートカット`Ctrl+W`で実現できる——`SendHotkey`(知見152)で
+    「`Target`が省略された自己終了タグ(現在フォーカス中のウィンドウ
+    へグローバルに送信する意味論)」として未対応のまま残していた
+    ケースと同じ経路(pywinautoの`keyboard.send_keys()`、対象を
+    指定しないグローバルなキー送信の確認済み標準API)を初めて実際に
+    実装する。"""
+
+    browser: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1509,6 +1538,7 @@ Node = (
     | CheckNode
     | HighlightNode
     | KillProcessNode
+    | CloseTabNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode

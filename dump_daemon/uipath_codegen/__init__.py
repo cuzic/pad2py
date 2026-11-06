@@ -67,6 +67,7 @@ from ..uipath_dsl.types import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseTabNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -259,6 +260,10 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import pyperclip")
     if any("Desktop(" in line for line in body):
         imports.append("from pywinauto import Desktop")
+    # `send_keys`(`CloseTab`→`send_keys('^w')`変換先、知見170——対象を
+    # 指定しないグローバルなキー送信)も同様。
+    if any("send_keys(" in line for line in body):
+        imports.append("from pywinauto.keyboard import send_keys")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -472,6 +477,8 @@ def _generate_node(
         return _generate_highlight(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
+    if isinstance(node, CloseTabNode):
+        return _generate_close_tab(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1562,6 +1569,32 @@ def _generate_kill_process_body(node: KillProcessNode, indent: int) -> list[str]
         f'"taskkill", "/IM", f"{{{VB_CSTR_HELPER_NAME}({process_name})}}.exe", "/F"'
         "])"
     ]
+
+
+# 知見170: `ui:CloseTab`(GitHub code searchで782件ヒット)。`Target`/
+# `Selector`を一切持たず、唯一の属性`Browser`(`UiBrowser`型変数参照)が
+# `{x:Null}`(ほとんどのREFramework実例)の場合は「現在フォーカス中の
+# タブ/ウィンドウを閉じる」という意味論になり、主要ブラウザ共通の標準
+# キーボードショートカット`Ctrl+W`で実現できる——pywinautoの`keyboard.
+# send_keys()`(対象を指定しないグローバルなキー送信の確認済み標準API、
+# `SendHotkey`の`Target`省略ケース(知見152)で未対応のまま残っていた
+# 経路を初めて実際に実装する)を使う。`Browser`が変数参照の場合は
+# (`UiBrowser`変数自体が未モデル化のため)`# TODO`へ倒す。
+def _generate_close_tab(node: CloseTabNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_close_tab_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_close_tab_body(node: CloseTabNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.browser is not None:
+        return [
+            f"{prefix}# TODO: CloseTab with Browser set "
+            f"({_describe_expr_for_comment(node.browser)}) — UiBrowser "
+            "variable reference not modeled, refusing to guess"
+        ]
+    return [f"{prefix}send_keys('^w')"]
 
 
 # `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する

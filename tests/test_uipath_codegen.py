@@ -43,6 +43,7 @@ from dump_daemon.uipath_dsl import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseTabNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -2020,6 +2021,38 @@ def test_kill_process_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: KillProcess with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_close_tab_sends_ctrl_w_via_global_send_keys():
+    """知見170: `ui:CloseTab`(GitHub code searchで782件ヒット)。
+    主要ブラウザ共通の標準キーボードショートカット`Ctrl+W`を
+    pywinautoの`keyboard.send_keys()`(対象を指定しないグローバルな
+    キー送信)で実現する。"""
+    wf = _wrap([CloseTabNode()])
+    code = generate_python(wf)
+    assert "send_keys('^w')" in code
+    assert "from pywinauto.keyboard import send_keys" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_close_tab_display_name_becomes_a_comment():
+    wf = _wrap([CloseTabNode(display_name="Close Tab")])
+    code = generate_python(wf)
+    assert "# Close Tab" in code
+    assert "send_keys('^w')" in code
+    _compiles(code)
+
+
+def test_close_tab_with_browser_variable_reference_is_todo_not_guessed():
+    """知見170: `Browser`が`UiBrowser`型変数への参照(`piyushagarwal08/
+    JU-Notes`の実機XAMLで確認済みの`[firefox]`)の場合は、変数自体が
+    未モデル化のためでっち上げず`# TODO`へ倒す。"""
+    wf = _wrap([CloseTabNode(browser=VbExpr(text="firefox"))])
+    code = generate_python(wf)
+    assert "# TODO: CloseTab with Browser set" in code
+    assert "send_keys" not in code
     _compiles(code)
 
 

@@ -27,6 +27,7 @@ from .types import (
     CatchArm,
     CheckNode,
     ClickNode,
+    CloseTabNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -652,6 +653,13 @@ def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
         process=_attr_expr(elem, "Process"),
         applies_to=_attr_expr(elem, "AppliesTo"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
+def _parse_close_tab(elem: etree._Element) -> CloseTabNode:
+    return CloseTabNode(
+        browser=_attr_expr(elem, "Browser"),
+        display_name=_attr(elem, "DisplayName"),
     )
 
 
@@ -1543,6 +1551,7 @@ _DISPATCH = {
     (UI_NS, "Check"): _parse_check,
     (UI_NS, "Highlight"): _parse_highlight,
     (UI_NS, "KillProcess"): _parse_kill_process,
+    (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "SetFocus"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,
