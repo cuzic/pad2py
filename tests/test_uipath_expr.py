@@ -14,6 +14,7 @@ from dump_daemon.uipath_expr import (
     FuncCall,
     Ident,
     InterpolatedString,
+    NewObject,
     NothingLiteral,
     NumberLiteral,
     Paren,
@@ -309,3 +310,33 @@ def test_new_array_constructor_syntax_is_same_array_literal_as_brace_form():
 def test_new_array_constructor_syntax_with_string_type():
     node, _ = parse_vb_expr('New String() {"a", "b"}')
     assert node == ArrayLiteral(items=(StringLiteral(value="a"), StringLiteral(value="b")))
+
+
+def test_new_object_constructor_syntax_parses():
+    """知見148: `New ClassName(arg)`というVB.NETの一般的なオブジェクト
+    構築構文(`Manyakarthik/210701152-CS19P21-ARPA`の`Throw.Exception`
+    属性`[New Exception("...")]`で発見)——知見125の`New Integer()
+    {...}`配列構築構文とは別の構文領域。空括弧(`New Integer()`の配列形)
+    とは、対応する子要素の有無(`{...}`の有無ではなく引数の有無)で文法
+    上区別される——本テストはその区別に曖昧性が無いことも確認する。"""
+    node, rendered = parse_vb_expr('New Exception("boom")')
+    assert node == NewObject(class_name="Exception", args=(StringLiteral(value="boom"),))
+    assert rendered == 'New Exception("boom")'
+
+
+def test_new_object_constructor_syntax_with_multiple_args_parses():
+    node, _ = parse_vb_expr('New Exception("boom", innerEx)')
+    assert node == NewObject(
+        class_name="Exception", args=(StringLiteral(value="boom"), Ident(name="innerEx"))
+    )
+
+
+def test_new_array_and_new_object_syntax_coexist_without_ambiguity():
+    """知見148: 空括弧+`{...}`(配列構築、知見125)と非空括弧(オブジェクト
+    構築、知見148)が同じ文法内で曖昧性無く共存することを確認する
+    ——いずれも`_NEW IDENT "("`まで共通だが、直後が`")" "{"`(配列)か
+    `expr`(オブジェクト)かでLALR文法上一意に分岐する。"""
+    array_node, _ = parse_vb_expr("New Integer() {1, 2, 3}")
+    assert isinstance(array_node, ArrayLiteral)
+    object_node, _ = parse_vb_expr('New Exception("boom")')
+    assert isinstance(object_node, NewObject)

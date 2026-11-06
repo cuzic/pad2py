@@ -20,6 +20,7 @@ from dump_daemon.uipath_expr import (
     FuncCall,
     Ident,
     InterpolatedString,
+    NewObject,
     NothingLiteral,
     NumberLiteral,
     Paren,
@@ -508,6 +509,8 @@ def _render_node(node: ExprNode) -> str:
     if isinstance(node, ArrayLiteral):
         items = ", ".join(_render_node(i) for i in node.items)
         return f"[{items}]"
+    if isinstance(node, NewObject):
+        return _render_new_object(node)
     if isinstance(node, InterpolatedString):
         return _render_interpolated_string(node.raw)
     if isinstance(node, Paren):
@@ -909,6 +912,32 @@ def _vb_cbool_of_string_literal(text: str) -> bool:
             f"CBool({text!r}): not 'True'/'False' or numeric — VB would raise "
             "a type-mismatch exception at runtime, refusing to guess the result"
         ) from None
+
+
+# 知見148: `New ClassName(arg)`(`Throw.Exception`属性で発見、
+# `Manyakarthik/210701152-CS19P21-ARPA`)で確認済みの、安全にPython組込み
+# 例外へ対応できるクラス名(完全修飾名・短縮形いずれも小文字化して比較)。
+# いずれも`Exception(message)`と同じ1引数コンストラクタ形のみ実機確認済み
+# ——他のクラス名(カスタム例外型等)は意味論を推測できないため対象外。
+_NEW_OBJECT_CLASSES = {
+    "exception",
+    "system.exception",
+    "applicationexception",
+    "system.applicationexception",
+}
+
+
+def _render_new_object(node: NewObject) -> str:
+    key = node.class_name.lower()
+    if key in _NEW_OBJECT_CLASSES and len(node.args) == 1:
+        # Pythonの組込み`Exception`も.NETの`Exception`/`ApplicationException`
+        # と同じ「1引数=メッセージ文字列」のコンストラクタ形を持つため、
+        # 直接対応する。
+        return f"Exception({_render_node(node.args[0])})"
+    raise NotImplementedError(
+        f"New {node.class_name}(...) is not a confirmed-safe exception "
+        "constructor — refusing to guess the semantics of an unconfirmed class"
+    )
 
 
 def _render_func_call(node: FuncCall) -> str:

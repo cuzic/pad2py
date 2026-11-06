@@ -89,6 +89,7 @@ from ..uipath_dsl.types import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    ThrowNode,
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
@@ -460,6 +461,8 @@ def _generate_node(
         return _generate_comment(node, indent)
     if isinstance(node, WriteLineNode):
         return _generate_write_line(node, indent)
+    if isinstance(node, ThrowNode):
+        return _generate_throw(node, indent)
     if isinstance(node, LogMessageNode):
         return _generate_log_message(node, indent)
     if isinstance(
@@ -2111,6 +2114,33 @@ def _generate_write_line_body(node: WriteLineNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}print({VB_CSTR_HELPER_NAME}({text}))"]
+
+
+# 知見148: `Throw`(.NET Workflow Foundation本体の標準活動、知見147の
+# `WriteLine`と同じくUiPath独自ではない)。`Exception`属性は実機で`New
+# ClassName(arg)`構文(知見148で新規対応、`render.py`の`_NEW_OBJECT_
+# CLASSES`)が使われていた——`_render_value_or_todo`(失敗時に例外無く
+# `"None"`を返す)は使わない。`raise None`は構文的には有効だが実行時に
+# `TypeError`になり、知見136・137で確立した「代入先が不明な文は全体を
+# 倒す」という方針と同じ理由で、レンダリング失敗時は`raise`文自体を
+# 生成せず`# TODO`へ倒す(`raise`しないことで本来即座に停止するはずの
+# 制御フローが継続してしまう既知の限界だが、架空の例外をでっち上げる
+# よりは安全)。
+def _generate_throw(node: ThrowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_throw_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_throw_body(node: ThrowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.exception is None:
+        return [f"{prefix}# TODO: Throw with no Exception captured"]
+    try:
+        exc = render_expr(node.exception)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    return [f"{prefix}raise {exc}"]
 
 
 # 知見119: `ui:LogMessage`。実機確認済みの`Level`は`"Info"`/`"Error"`のみ

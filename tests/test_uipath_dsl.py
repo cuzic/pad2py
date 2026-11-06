@@ -52,6 +52,7 @@ from dump_daemon.uipath_dsl import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    ThrowNode,
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
@@ -570,6 +571,21 @@ def test_write_line_properties():
     assert isinstance(node, WriteLineNode)
     assert node.text == VbExpr(text='"hi"')
     assert node.display_name == "Print it"
+
+
+def test_throw_properties():
+    """知見148: `Throw`(.NET Workflow Foundation本体の標準活動、
+    `WriteLine`と同じ`WF_NS`)。`Exception`属性は実機で`[New Exception(
+    "message")]`という、知見148で新規対応した`New ClassName(arg)`構文が
+    使われていた(`Manyakarthik/210701152-CS19P21-ARPA`)。"""
+    xml = (
+        f"<Throw {_UI_XMLNS} DisplayName=\"Boom\" "
+        'Exception="[New Exception(&quot;boom&quot;)]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ThrowNode)
+    assert node.exception == VbExpr(text='New Exception("boom")')
+    assert node.display_name == "Boom"
 
 
 def test_log_message_properties():

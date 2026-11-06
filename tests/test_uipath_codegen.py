@@ -78,6 +78,7 @@ from dump_daemon.uipath_dsl import (
     SetToClipboardNode,
     SwitchArm,
     SwitchNode,
+    ThrowNode,
     TryCatchNode,
     CatchArm,
     TypeIntoNode,
@@ -3650,6 +3651,45 @@ def test_write_line_with_no_text_is_todo_not_guessed():
     wf = _wrap([WriteLineNode(text=None)])
     code = generate_python(wf)
     assert "# TODO: Write Line with no Text captured" in code
+    _compiles(code)
+
+
+def test_throw_new_exception_renders_as_raise():
+    """知見148: `Throw`(`Manyakarthik/210701152-CS19P21-ARPA`の実機
+    XAML`Throw.Exception="[New Exception(\"...\")]"`で発見)。確認済みの
+    `New Exception(message)`構文はPython組込みの`Exception(message)`へ
+    直接対応する。"""
+    wf = _wrap([ThrowNode(exception=VbExpr(text='New Exception("boom")'))])
+    code = generate_python(wf)
+    assert "raise Exception('boom')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_throw_display_name_becomes_a_comment():
+    wf = _wrap(
+        [ThrowNode(exception=VbExpr(text='New Exception("boom")'), display_name="Boom")]
+    )
+    code = generate_python(wf)
+    assert "# Boom" in code
+    _compiles(code)
+
+
+def test_throw_with_no_exception_is_todo_not_guessed():
+    wf = _wrap([ThrowNode(exception=None)])
+    code = generate_python(wf)
+    assert "# TODO: Throw with no Exception captured" in code
+    _compiles(code)
+
+
+def test_throw_with_unconfirmed_exception_class_is_todo_not_guessed():
+    """知見148: 未確認のクラス名(カスタム例外型等)はでっち上げず
+    `# TODO`へ倒す——`raise`文自体を生成せず、制御フローが継続してしまう
+    既知の限界を受け入れる(架空の例外をでっち上げるよりは安全)。"""
+    wf = _wrap([ThrowNode(exception=VbExpr(text='New CustomException("boom")'))])
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression:" in code
+    assert "raise" not in code
     _compiles(code)
 
 

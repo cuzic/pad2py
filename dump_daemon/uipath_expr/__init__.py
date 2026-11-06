@@ -129,6 +129,7 @@ comp_op: EQ | NE | LE | GE | LT | GT | IS | ISNOT
      | "(" expr ")"          -> paren
      | "{" arglist "}"       -> array_lit
      | _NEW IDENT "(" ")" "{" arglist "}" -> new_array_lit
+     | _NEW IDENT "(" expr ("," expr)* ")" -> new_object
 
 arglist: [expr ("," expr)*]
 
@@ -280,6 +281,24 @@ class ArrayLiteral:
     items: tuple["ExprNode", ...]
 
 
+@dataclass(frozen=True)
+class NewObject:
+    """知見148: `New ClassName(arg1, arg2, ...)`というVB.NETの一般的な
+    オブジェクト構築構文(`New Exception("message")`、`Manyakarthik/
+    210701152-CS19P21-ARPA`の`Throw.Exception`属性で発見)——知見125の
+    `New Integer() {...}`配列構築構文とは別の、未確認だった構文領域。
+    `class_name`は完全修飾でない場合もある生のクラス名の文字列
+    (ドット区切りの完全修飾名もそのまま保持、分解しない)。少なくとも
+    1個の引数を要求する(`uipath_expr`文法上、引数無し`New X()`は
+    知見125の配列構築構文の空括弧部分と構文的に区別できないため——
+    実機確認済みの範囲でも常に1個以上の引数を持つため実害は無い)。
+    どのクラス名が安全に変換できるかは`uipath_codegen`側の確認済み
+    許可リストに委ねる(でっち上げた任意クラスの変換はしない)。"""
+
+    class_name: str
+    args: tuple["ExprNode", ...]
+
+
 ExprNode = Union[
     BinOp,
     UnaryOp,
@@ -293,6 +312,7 @@ ExprNode = Union[
     BoolLiteral,
     NothingLiteral,
     ArrayLiteral,
+    NewObject,
 ]
 
 
@@ -353,6 +373,11 @@ class _ExprTransformer(Transformer):
         でっち上げた型変換ロジックは追加しない。"""
         _type_name, items = children
         return ArrayLiteral(items=tuple(items))
+
+    def new_object(self, children: list) -> NewObject:
+        """知見148: `New ClassName(arg1, arg2, ...)`。"""
+        class_name_tok, *args = children
+        return NewObject(class_name=str(class_name_tok), args=tuple(args))
 
     def func_call(self, children: list) -> FuncCall:
         name_tok, args = children
@@ -482,6 +507,9 @@ def render_expr(node: ExprNode) -> str:
     if isinstance(node, ArrayLiteral):
         items = ", ".join(render_expr(i) for i in node.items)
         return "{" + items + "}"
+    if isinstance(node, NewObject):
+        args = ", ".join(render_expr(a) for a in node.args)
+        return f"New {node.class_name}({args})"
     if isinstance(node, Paren):
         return f"({render_expr(node.inner)})"
     if isinstance(node, UnaryOp):

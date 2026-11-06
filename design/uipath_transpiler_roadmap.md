@@ -1855,3 +1855,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      見送り。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`3件)、UiPath関連テスト全558件通過、
      リポジトリ全体で全1524件通過。
+
+106. **(完了、2026-11-06)** `Throw`(.NET Workflow Foundation本体の
+     基本活動)を新規実装、VB.NETの一般的なオブジェクト構築構文`New
+     ClassName(arg)`を新規対応(知見148——知見147の直後に見つけた関連
+     する見落とし): `Manyakarthik/210701152-CS19P21-ARPA`の実機XAML
+     で`Throw.Exception="[New Exception(\"...\")]"`を発見——知見122で
+     発見し知見125で配列構築のみ解決していた「VB.NETの`New`構文」の
+     より一般的な**オブジェクト構築**形が初めて実機確認された。
+     `uipath_expr`に`_NEW IDENT "(" expr ("," expr)* ")" -> new_object`
+     を追加(括弧が空かどうかで知見125の配列構築規則と構文上一意に
+     分岐、最低1引数を要求してLALR上の曖昧性を回避)。`render.py`に
+     `_NEW_OBJECT_CLASSES`(`Exception`/`ApplicationException`)という
+     確認済み許可リストを新設し、1引数=メッセージ文字列の形をPython
+     組込み`Exception(message)`へ対応——未確認クラス名は明示的に
+     decline。`Throw`活動自体は、知見136・137と同じ理由で`raise None`
+     になりうる`_render_value_or_todo`を使わず、レンダリング失敗時は
+     `raise`文自体を生成せず`# TODO`へ倒す(既知の限界として記録)。
+     回帰テスト追加(`tests/test_uipath_expr.py`3件・`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
+     UiPath関連テスト全566件通過、リポジトリ全体で全1544件通過。

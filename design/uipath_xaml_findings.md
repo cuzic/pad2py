@@ -6996,6 +6996,52 @@ write_line_body`を追加。`tests/test_uipath_dsl.py`に1件・`tests/
 test_uipath_codegen.py`に3件追加、UiPath関連テスト全558件通過、
 リポジトリ全体で全1524件通過。
 
+## 148. `Throw`(.NET Workflow Foundation本体の基本活動)を新規実装、VB.NETの一般的なオブジェクト構築構文`New ClassName(arg)`を新規対応(知見147の直後に見つけた関連する見落とし、VM不使用)
+
+知見147で`WriteLine`の見落としを発見・実装した直後、同じ.NET Workflow
+Foundation本体の基本活動である`Throw`(`System.Activities.Statements.
+Throw`、例外を明示的に発生させる活動)も同様に未実装だったことに気づき
+(`Manyakarthik/210701152-CS19P21-ARPA`の実機XAML`Throw/4-Exception`で
+確認)、合わせて実装した。
+
+**新しい構文領域: `New ClassName(arg)`**。`Throw.Exception`属性の実機
+値は`[New Exception("First number or Second number is zero")]`——
+知見122で発見し知見125で`New Integer() {...}`(配列構築)のみ解決して
+いた「VB.NETの`New`構文」のうち、より一般的な**オブジェクト構築**の
+形がここで初めて実機確認された。`uipath_expr`文法に`_NEW IDENT "("
+expr ("," expr)* ")" -> new_object`という新しい規則を追加——知見125の
+配列構築規則(`_NEW IDENT "(" ")" "{" arglist "}"`、括弧は必ず空)とは
+「括弧が空かどうか」で構文上一意に分岐するため、最低1個の引数を要求
+する設計で曖昧性を回避した(実機確認済みの範囲でも常に1個以上の引数を
+持つため実害は無い)。新しいASTノード`NewObject(class_name, args)`を
+`uipath_expr`に追加。
+
+**コード生成側の確認済み許可リスト**: `render.py`に`_NEW_OBJECT_
+CLASSES`(`exception`/`applicationexception`、完全修飾名含む)を新設
+——いずれも「1引数=メッセージ文字列」というPython組込み`Exception`と
+同じコンストラクタ形を持つため`Exception(message)`へ直接対応する。
+未確認のクラス名(カスタム例外型等)は意味論を推測できないため
+`NotImplementedError`で明示的に declineする——でっち上げた任意クラスの
+変換はしない。
+
+**`Throw`活動自体の実装**: `Exception`属性を`Expr`として保持し、
+レンダリングに成功した場合のみ`raise {expr}`文を生成する。知見136・
+137で確立した「代入先が不明な文は全体を# TODOへ倒す」という方針と
+同じ理由で、`_render_value_or_todo`(失敗時に例外無く`"None"`を返す)
+は使わない——`raise None`は構文的には有効だが実行時に`TypeError`に
+なるため、レンダリング失敗時は`raise`文自体を生成せず`# TODO`へ倒す
+(既知の限界: 本来即座に停止するはずの制御フローが、生成コードでは
+継続してしまう——架空の例外をでっち上げるよりは安全と判断した)。
+
+`dump_daemon/uipath_expr/__init__.py`に`NewObject`+`new_object`文法
+規則+transformer。`dump_daemon/uipath_codegen/render.py`に`_render_
+new_object`+`_NEW_OBJECT_CLASSES`。`dump_daemon/uipath_dsl/types.py`
+に`ThrowNode`、`xaml_tree.py`に`_parse_throw`+`(WF_NS, "Throw")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`に`_generate_throw`/
+`_generate_throw_body`を追加。`tests/test_uipath_expr.py`に3件・
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に4件
+追加、UiPath関連テスト全566件通過、リポジトリ全体で全1544件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

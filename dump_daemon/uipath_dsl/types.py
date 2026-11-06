@@ -660,6 +660,24 @@ class WriteLineNode:
 
 
 @dataclass
+class ThrowNode:
+    """`<Throw Exception="..." />`(知見148、`System.Activities.
+    Statements.Throw`——`WriteLine`(知見147)と同じ.NET Workflow
+    Foundation本体の標準活動、UiPath独自ではない)。`Exception`属性は
+    実機で`[New Exception("message")]`という、知見148で新規対応した
+    `New ClassName(arg)`構文が使われていた(`Manyakarthik/
+    210701152-CS19P21-ARPA`)。`Exception`は`Expr`として保持し、確認済み
+    の安全なクラス名(`render.py`の`_NEW_OBJECT_CLASSES`)の場合のみ
+    Pythonの`raise`文へ変換する——未確認のクラス名の場合は`# TODO`へ
+    倒す(`raise`しないことで本来即座に停止するはずの制御フローが継続
+    してしまう既知の限界だが、架空の例外クラスをでっち上げるよりは
+    安全)。"""
+
+    exception: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class LogMessageNode:
     """`<ui:LogMessage Level="..." Message="..." />`(知見119、
     `UiPath.System.Activities`、`PacktPublishing/
@@ -1071,6 +1089,7 @@ Node = (
     | SetToClipboardNode
     | CommentNode
     | WriteLineNode
+    | ThrowNode
     | LogMessageNode
     | ExcelReadCellNode
     | ExcelWriteCellNode

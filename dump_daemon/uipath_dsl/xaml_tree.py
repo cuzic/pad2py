@@ -65,6 +65,7 @@ from .types import (
     SetToClipboardNode,
     SwitchArm,
     SwitchNode,
+    ThrowNode,
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
@@ -781,6 +782,13 @@ def _parse_write_line(elem: etree._Element) -> WriteLineNode:
     )
 
 
+def _parse_throw(elem: etree._Element) -> ThrowNode:
+    return ThrowNode(
+        exception=_attr_expr(elem, "Exception"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _LOG_LEVEL_ENUM_PREFIX = "UiPath.Core.Activities.LogLevel."
 
 
@@ -1231,6 +1239,7 @@ _DISPATCH = {
     (WF_NS, "Switch"): _parse_switch,
     (WF_NS, "Parallel"): _parse_parallel,
     (WF_NS, "WriteLine"): _parse_write_line,
+    (WF_NS, "Throw"): _parse_throw,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
