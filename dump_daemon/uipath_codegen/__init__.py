@@ -271,6 +271,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見130)も同様。
     if any("base64.b64encode(" in line for line in body):
         imports.append("import base64")
+    # `datetime`(`File.GetLastWriteTime`→`datetime.datetime.
+    # fromtimestamp(...)`変換先、知見142)も同様。
+    if any("datetime.datetime.fromtimestamp(" in line for line in body):
+        imports.append("import datetime")
     # `glob`(`Directory.GetFiles`の2引数searchPattern形→`glob.glob(...)`
     # 変換先、知見134)も同様。
     if any("glob.glob(" in line for line in body):

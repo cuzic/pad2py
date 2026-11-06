@@ -918,6 +918,18 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("File.ReadAllBytes expects exactly 1 argument")
         return f"open({args[0]}, 'rb').read()"
+    if key == "file.getlastwritetime":
+        # 知見142: `System.IO.File.GetLastWriteTime(path)`
+        # (`CarmenTheodoraCraciun/DailyMealWithGroceryList`の実機XAML
+        # `File.GetLastWriteTime("./recepies.json")`で発見)。1引数の
+        # 確認済み形のみ、ファイルの最終更新時刻(ローカル時刻、.NETの
+        # 既定動作)を`datetime.datetime`として返す`datetime.
+        # fromtimestamp(os.path.getmtime(path))`へ対応する——
+        # `os.path.getmtime`もローカルのタイムゾーンでの秒数を返すため
+        # 変換先の意味論が一致する。
+        if len(args) != 1:
+            raise NotImplementedError("File.GetLastWriteTime expects exactly 1 argument")
+        return f"datetime.datetime.fromtimestamp(os.path.getmtime({args[0]}))"
     if key == "convert.tobase64string":
         # 知見130: `System.Convert.ToBase64String(Byte())`(同上の実機
         # XAML`convert.ToBase64String(...)`で発見)。1引数の確認済み形の

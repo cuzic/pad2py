@@ -295,6 +295,20 @@ def test_file_readallbytes_renders_as_open_read():
     _compiles(code)
 
 
+def test_file_getlastwritetime_renders_as_datetime_fromtimestamp():
+    """知見142: `File.GetLastWriteTime(path)`(`CarmenTheodoraCraciun/
+    DailyMealWithGroceryList`の実機XAML`File.GetLastWriteTime(
+    "./recepies.json")`で発見)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="File.GetLastWriteTime(y)"))]
+    )
+    code = generate_python(wf)
+    assert "x = datetime.datetime.fromtimestamp(os.path.getmtime(y))" in code
+    assert "import datetime" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_convert_tobase64string_renders_as_base64_b64encode():
     """知見130: `Convert.ToBase64String(bytes)`(同上の実機XAML
     `convert.ToBase64String(...)`で発見)。"""

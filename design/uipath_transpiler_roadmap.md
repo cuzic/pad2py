@@ -1757,3 +1757,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     (バグ修正と重複排除を同時に行う、知見133と同種のパターン)。回帰
     テスト追加(`tests/test_uipath_codegen.py`2件)、UiPath関連テスト
     全538件通過、リポジトリ全体で全1469件通過。
+
+100. **(完了、2026-11-06)** `File.GetLastWriteTime`を新規実装、
+     `DateTime`演算+`TimeSpan.Days`の連鎖は複数の未解決ギャップの組み
+     合わせと判明し見送り(知見142): `File.GetLastWriteTime(path)`を
+     `datetime.datetime.fromtimestamp(os.path.getmtime(path))`へ対応。
+     同じ実機XAMLの`(Now - lastModifeRecepies).Days > 14`は(1)修飾無し
+     `Now`の素通し・(2)`DateTime`減算の型推論非対応・(3)結果の`.Days`
+     という3つの別々の未解決ギャップの連鎖と判明——単発の静的メソッド
+     とは規模が違うため、でっち上げず3つ組の課題として見送り記録した
+     (将来`DateTime`演算を本格対応する際にまとめて設計する価値あり)。
+     新規24リポジトリの検証で構文エラーは0件。回帰テスト追加
+     (`tests/test_uipath_codegen.py`1件)、UiPath関連テスト全539件
+     通過、リポジトリ全体で全1470件通過。

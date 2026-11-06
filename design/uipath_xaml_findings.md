@@ -6758,6 +6758,40 @@ child_display_name`共有ヘルパー)にも同じ無防備な埋め込みがあ
 統合。`tests/test_uipath_codegen.py`に2件追加、UiPath関連テスト
 全538件通過、リポジトリ全体で全1469件通過。
 
+## 142. `File.GetLastWriteTime`を新規実装、`DateTime`演算+`TimeSpan.Days`の連鎖は複数の未解決ギャップの組み合わせと判明し見送り(未使用の新規24リポジトリでの実機検証、`compile()`標準化を継続、VM不使用)
+
+知見117〜141の手法を未使用の新規24リポジトリへ適用した。`compile()`
+検証でも構文エラーは0件。
+
+**解決: `File.GetLastWriteTime(path)`**(`CarmenTheodoraCraciun/
+DailyMealWithGroceryList`の実機XAML`File.GetLastWriteTime(
+"./recepies.json")`で発見、ファイル更新チェック用のキャッシュ鮮度
+判定パターン)。1引数の確認済み形のみ、`datetime.datetime.
+fromtimestamp(os.path.getmtime(path))`へ対応——.NETの`File.
+GetLastWriteTime`・Pythonの`os.path.getmtime`はいずれもファイル
+システムのローカル時刻を返す点で意味論が一致する。
+
+**見送り(複数の未解決ギャップの組み合わせと判明)**: 同じ実機XAMLの
+`If`条件`(Now - lastModifeRecepies).Days > 14`は、以下の3つの別々の
+未解決ギャップが連鎖した複合ケースだと判明した——(1)VB.NETの
+`Now`(`Microsoft.VisualBasic.DateAndTime.Now`の修飾無し短縮形、
+`Imports Microsoft.VisualBasic`相当の暗黙インポート)が現在`Ident`の
+素通し経路でそのまま`"Now"`という未定義識別子として出力されてしまう
+(既存の既知の限界)、(2)`DateTime - DateTime`の減算が`TimeSpan`を
+返すという.NET側の型推論を、本トランスパイラの二項演算子レンダリング
+(`_render_bin_op`)は一切型情報を持たずに処理するため対応できない、
+(3)その結果(`TimeSpan`)の`.Days`プロパティ(Pythonの`timedelta.
+days`に対応するはず)——この3つが揃わないと意味のある変換にならない
+ため、`File.GetLastWriteTime`のような単発の静的メソッドとは違う規模の
+作業になる。今回は`.Days`単体をでっち上げで対応せず、3つ組の課題として
+見送り記録する(将来`DateTime`演算を本格的に対応する際にまとめて
+設計する価値がある)。
+
+`dump_daemon/uipath_codegen/render.py`に`file.getlastwritetime`分岐を
+追加。`dump_daemon/uipath_codegen/__init__.py`の`_collect_imports`に
+`datetime`検出を追加。`tests/test_uipath_codegen.py`に1件追加、
+UiPath関連テスト全539件通過、リポジトリ全体で全1470件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
