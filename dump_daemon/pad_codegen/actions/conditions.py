@@ -29,6 +29,16 @@ _EXISTENCE_CHECKS: dict[str, tuple[str, str, bool]] = {
     "Folder.IfFolderExists.DoesNotExist": ("Path", "folder_actions.if_folder_exists", True),
 }
 
+# design/dsl_format_findings.md 知見188(decompile確認済み): `IfService`列挙値自体が
+# Win32標準の`SERVICE_STATE`定数(`SERVICE_STOPPED`=1/`SERVICE_RUNNING`=4/
+# `SERVICE_PAUSED`=7)そのもの。`services_actions.get_service_status()`の戻り値と
+# 直接比較するだけで済む(`IsInstalled`/`IsNotInstalled`は別経路の`is_service_installed()`)。
+_SERVICE_STATUS_CHECKS: dict[str, int] = {
+    "Services.IfService.IsRunning": 4,
+    "Services.IfService.IsStopped": 1,
+    "Services.IfService.IsPaused": 7,
+}
+
 
 def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx: CodegenContext) -> str | None:
     """`UIAutomation.IfWindow.*`(`_generate_conditional()`のコメント参照)の条件式を
@@ -52,6 +62,20 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
             return None
         call = f"{func_expr}({rendered})"
         return f"not {call}" if negate else call
+
+    status_check = _SERVICE_STATUS_CHECKS.get(header.action_id)
+    if status_check is not None:
+        service = safe_render(header.params.get("Service"))
+        if service is None:
+            return None
+        return f"services_actions.get_service_status({service}) == {status_check}"
+
+    if header.action_id in ("Services.IfService.IsInstalled", "Services.IfService.IsNotInstalled"):
+        service = safe_render(header.params.get("Service"))
+        if service is None:
+            return None
+        call = f"services_actions.is_service_installed({service})"
+        return f"not {call}" if header.action_id == "Services.IfService.IsNotInstalled" else call
 
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None

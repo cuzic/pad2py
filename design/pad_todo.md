@@ -201,8 +201,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、
     `ServiceController.Start()`/`.Stop()`/`.Pause()`/`.Continue()`)を発見・実装した。
     pywin32の`win32serviceutil`(既存の依存関係)が同じWin32 SCM APIを呼ぶため1対1対応。
-    `IfServiceAction`の新発見3兄弟セレクタ(`IsInstalled`/`IsNotInstalled`/`IsPaused`)は
-    汎用パーサー側の対応で足りる見込みのため追加コード変更は無し(次回実機確認が望ましい)。
+    ✅ **自己訂正・結線完了(知見188)**: 知見187時点で「`IfServiceAction`の新発見3兄弟
+    セレクタ(`IsInstalled`/`IsNotInstalled`/`IsPaused`)は汎用パーサー側の対応で足りる」と
+    書いたのは**確認不足の誤り**だった——実際には既存の`IsRunning`/`IsStopped`含め全て
+    `NotImplementedError`/TODOのまま未結線と判明。`IfService`/`WaitForService`列挙値
+    自体がWin32標準の`SERVICE_STATE`定数(`IsRunning`=4/`IsStopped`=1/`IsPaused`=7)
+    そのものとdecompileで確定し、`services_actions.get_service_status()`/
+    `is_service_installed()`を追加して`Services.IfService.*`(5値全て)・
+    `Services.WaitForService.*`(3値全て、タイムアウト指定無しの場合のみ)を正式に結線した。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

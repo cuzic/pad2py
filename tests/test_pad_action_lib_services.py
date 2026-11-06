@@ -149,3 +149,57 @@ def test_start_service_wraps_import_failure() -> None:
         mp.setattr(builtins, "__import__", _blocked_import)
         with pytest.raises(sa.StartServiceError):
             sa.start_service("Spooler")
+
+
+def test_get_service_status_returns_raw_state_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_win32serviceutil = types.ModuleType("win32serviceutil")
+    fake_win32serviceutil.QueryServiceStatus = lambda name: (16, sa.SERVICE_RUNNING, 0, 0, 0, 0, 0)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "win32serviceutil", fake_win32serviceutil)
+
+    assert sa.get_service_status("Spooler") == sa.SERVICE_RUNNING
+
+
+def test_get_service_status_wraps_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_winerror(monkeypatch)
+    fake_win32serviceutil = types.ModuleType("win32serviceutil")
+
+    def _raise(name: str) -> None:
+        raise _FakeServiceError(1060)
+
+    fake_win32serviceutil.QueryServiceStatus = _raise  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "win32serviceutil", fake_win32serviceutil)
+
+    with pytest.raises(sa.ServiceNotFoundError):
+        sa.get_service_status("NoSuchService")
+
+
+def test_get_service_status_wraps_unknown_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_winerror(monkeypatch)
+    fake_win32serviceutil = types.ModuleType("win32serviceutil")
+
+    def _raise(name: str) -> None:
+        raise _FakeServiceError(5)
+
+    fake_win32serviceutil.QueryServiceStatus = _raise  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "win32serviceutil", fake_win32serviceutil)
+
+    with pytest.raises(sa.RetrieveStatusForServiceError):
+        sa.get_service_status("Spooler")
+
+
+def test_is_service_installed_matches_by_display_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_win32service = types.ModuleType("win32service")
+    fake_win32service.SC_MANAGER_ENUMERATE_SERVICE = 4  # type: ignore[attr-defined]
+    fake_win32service.SERVICE_WIN32 = 0x30  # type: ignore[attr-defined]
+    fake_win32service.SERVICE_STATE_ALL = 3  # type: ignore[attr-defined]
+    fake_win32service.OpenSCManager = lambda *a: object()  # type: ignore[attr-defined]
+    fake_win32service.CloseServiceHandle = lambda h: None  # type: ignore[attr-defined]
+    fake_win32service.EnumServicesStatus = lambda hscm, t, s: [  # type: ignore[attr-defined]
+        ("Spooler", "Print Spooler", (0, 0, 0, 0, 0, 0, 0)),
+        ("WSearch", "Windows Search", (0, 0, 0, 0, 0, 0, 0)),
+    ]
+    monkeypatch.setitem(sys.modules, "win32service", fake_win32service)
+
+    assert sa.is_service_installed("Print Spooler") is True
+    assert sa.is_service_installed("Spooler") is False
+    assert sa.is_service_installed("Nonexistent") is False

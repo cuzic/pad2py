@@ -22,6 +22,16 @@ _WAIT_CRITERIA_EXPR = {
     "active": "({sel}.exists() and {sel}.wrapper_object().is_active())",
 }
 
+# design/dsl_format_findings.md 知見188(decompile確認済み): `Services.WaitForService.*`は
+# `IfService`と同じWin32標準`SERVICE_STATE`定数での状態比較(`services_actions.
+# get_service_status()`)を無期限ポーリングするだけ(`CheckServiceActionBase`を共有、
+# `IfService`と全く同じ照合ロジック)。
+_WAIT_FOR_SERVICE_STATUS: dict[str, int] = {
+    "Services.WaitForService.Started": 4,
+    "Services.WaitForService.Stopped": 1,
+    "Services.WaitForService.Paused": 7,
+}
+
 def generate(node: WaitActionRecord, indent: int, ctx: CodegenContext) -> list[str]:
     """`WaitActionRecord`(design/dsl_format_findings.md 知見50で実機確認した
     `WAIT (<ActionId> ...) FOR <秒数>`構文) → pywinautoの`.wait()`/`.wait_not()`(タイムアウト
@@ -56,6 +66,14 @@ def generate(node: WaitActionRecord, indent: int, ctx: CodegenContext) -> list[s
             negate = "not " if node.action_id == "File.WaitForFile.Created" else ""
             return [
                 f"{prefix}while {negate}file_actions.if_file_exists({render_value(path)}):",
+                f"{prefix}{INDENT}time.sleep(0.05)",
+            ]
+    status_target = _WAIT_FOR_SERVICE_STATUS.get(node.action_id)
+    if status_target is not None and node.timeout_seconds is None:
+        service = node.params.get("Service")
+        if isinstance(service, str):
+            return [
+                f"{prefix}while services_actions.get_service_status({render_value(service)}) != {status_target}:",
                 f"{prefix}{INDENT}time.sleep(0.05)",
             ]
     target = _WAIT_ACTION_TARGETS.get(node.action_id)

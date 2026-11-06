@@ -651,23 +651,25 @@ def test_generate_python_from_real_if_window_contains_element_whole_subflow_capt
         generate_python(tree)
 
 
-def test_generate_python_from_real_if_service_capture_raises() -> None:
-    # design/dsl_format_findings.md 知見54の追記: 「If service」(Services.*名前空間)も
-    # 同じNotImplementedErrorフォールバックをそのまま再利用でき、コード変更は不要だった。
+def test_generate_python_from_real_if_service_capture_converts() -> None:
+    # design/dsl_format_findings.md 知見188: 知見187執筆時に「既存の汎用パーサーで対応できる
+    # 見込み」と書いたが実際には未結線(NotImplementedErrorへ落ちていた)と判明し、
+    # IfService列挙値がWin32標準のSERVICE_STATE定数そのものと確定して正式に結線した
+    # ——以前はNotImplementedErrorだったが、現在は実コードを生成する。
     dsl = "IF (Services.IfService.IsRunning Service: $'''Spooler''') THEN\nEND"
     tree = build_block_tree(parse_dsl(dsl))
-    with pytest.raises(NotImplementedError, match="Services.IfService.IsRunning"):
-        generate_python(tree)
+    code = generate_python(tree)
+    assert "if services_actions.get_service_status('Spooler') == 4:" in code
 
 
-def test_generate_python_renders_wait_for_service_as_todo() -> None:
-    # design/dsl_format_findings.md 知見50の追記: 「Wait for service」も知見50の
-    # _generate_wait_action()のTODOフォールバックをそのまま再利用でき、コード変更は不要だった。
+def test_generate_python_renders_wait_for_service_as_polling_loop_real_capture() -> None:
+    # design/dsl_format_findings.md 知見188: 知見50当時はTODOのままだったが、現在は
+    # IfServiceと同じWin32標準SERVICE_STATE定数比較の無期限ポーリングへ結線されている。
     dsl = "WAIT (Services.WaitForService.Started Service: $'''Spooler''')"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
-    assert "# TODO: map PAD wait action: Services.WaitForService.Started (timeout: none)" in code
+    assert "while services_actions.get_service_status('Spooler') != 4:" in code
 
 
 def test_generate_python_from_real_wait_for_window_become_focused_whole_subflow_capture_compiles() -> None:
@@ -5768,3 +5770,59 @@ def test_generate_python_keeps_services_action_unknown_as_todo() -> None:
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Services.SomeUnknownAction" in code
+
+
+@pytest.mark.parametrize(
+    "action_id,expected_code",
+    [
+        ("Services.IfService.IsRunning", 4),
+        ("Services.IfService.IsStopped", 1),
+        ("Services.IfService.IsPaused", 7),
+    ],
+)
+def test_generate_python_renders_if_service_status_checks(action_id: str, expected_code: int) -> None:
+    # design/dsl_format_findings.md 知見188: IfService列挙値自体がWin32標準のSERVICE_STATE
+    # 定数そのものと確定(decompile確認済み)——これまでTODOへ落ちていたのを修正。
+    dsl = f"""IF ({action_id} Service: $'''Spooler''') THEN
+    SET X TO 1
+END"""
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO" not in code
+    assert f"if services_actions.get_service_status('Spooler') == {expected_code}:" in code
+
+
+@pytest.mark.parametrize(
+    "action_id,negated",
+    [
+        ("Services.IfService.IsInstalled", False),
+        ("Services.IfService.IsNotInstalled", True),
+    ],
+)
+def test_generate_python_renders_if_service_installed_checks(action_id: str, negated: bool) -> None:
+    dsl = f"""IF ({action_id} Service: $'''Print Spooler''') THEN
+    SET X TO 1
+END"""
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO" not in code
+    call = "services_actions.is_service_installed('Print Spooler')"
+    expected = f"if not {call}:" if negated else f"if {call}:"
+    assert expected in code
+
+
+@pytest.mark.parametrize(
+    "action_id,expected_code",
+    [
+        ("Services.WaitForService.Started", 4),
+        ("Services.WaitForService.Stopped", 1),
+        ("Services.WaitForService.Paused", 7),
+    ],
+)
+def test_generate_python_renders_wait_for_service_as_polling_loop(action_id: str, expected_code: int) -> None:
+    dsl = f"WAIT ({action_id} Service: $'''Spooler''')"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO" not in code
+    assert f"while services_actions.get_service_status('Spooler') != {expected_code}:" in code
+    assert "time.sleep(0.05)" in code
