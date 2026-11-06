@@ -2,8 +2,10 @@
 ツールの資産化」の第一版。
 
 使い方:
-    uv run python3 -m tools.pad_selector_audit --module Excel \\
-        --dump tools/selector_dumps/Excel.txt
+    uv run python3 -m tools.pad_selector_audit --module Excel
+
+(`--dump`省略時は`tools/selector_dumps/<module>.txt`、`KNOWN_ID_OVERRIDES`に無い
+モジュールの新規dumpを使う場合は`--dump <path>`で明示する。)
 
 `--dump`は`pad2py-audit-<module>-selectors`系のclipwire target(VM上で
 `ActionSelectorBase`派生の全型を列挙するPowerShellスクリプト、知見139以降の
@@ -52,6 +54,71 @@ from pathlib import Path
 #: 2〜3セグメント)に一致する文字列リテラルをaction_idとみなす。
 _ACTION_ID_LITERAL_RE = re.compile(r"^[A-Z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*){1,2}$")
 
+#: 知見160で、既存の実機DSLキャプチャ確認済みの結線(`pad_codegen/actions/*.py`)から
+#: 逆算して導出した`[Action(Id=...)]`上書きの既知テーブル——新たな推測は含まない
+#: (でっち上げない)。`--id-override`で追加・上書きできる。ほとんどの`...Action`/
+#: `...Base`接尾辞付きクラス名は接尾辞を取り除くだけだが、`Cmd.OpenCmdSession`→`Open`・
+#: `Database.OpenConnection`→`Connect`・`Text.ReplaceTextAction`→`Replace`のような
+#: 任意の命名も実在する(知見160参照)。
+KNOWN_ID_OVERRIDES: dict[str, dict[str, str]] = {
+    "Database": {"OpenConnection": "Connect"},
+    "Text": {
+        "ConvertDateTimeToTextAction": "ConvertDateTimeToText",
+        "ConvertTextToDateTimeAction": "ConvertTextToDateTime",
+        "CropTextAction": "CropText",
+        "GetSubtextAction": "GetSubtext",
+        "JoinTextAction": "JoinText",
+        "ParseTextAction": "ParseText",
+        "ReplaceTextAction": "Replace",
+        "SplitTextAction": "SplitText",
+    },
+    "Cryptography": {
+        "DecryptTextAction": "DecryptText",
+        "DecryptToFileAction": "DecryptToFile",
+        "EncryptFromFileAction": "EncryptFromFile",
+        "EncryptTextAction": "EncryptText",
+    },
+    "File": {
+        "IfFileAction": "IfFile",
+        "ReadFromCSVFileAction": "ReadFromCSVFile",
+        "ReadTextFromFileAction": "ReadTextFromFile",
+        "RenameFilesAction": "RenameFiles",
+        "WaitForFileAction": "WaitForFile",
+        "WriteToCSVFileAction": "WriteToCSVFile",
+    },
+    "Folder": {"IfFolderExistsAction": "IfFolderExists"},
+    "Variables": {
+        "AddColumnToDataTableAction": "AddColumnToDataTable",
+        "ConvertDataTableToCSVAction": "ConvertDataTableToCSV",
+        "DeleteColumnFromDataTableAction": "DeleteColumnFromDataTable",
+        "GenerateDataTableFromCSVAction": "GenerateDataTableFromCSV",
+        "SortDataTableAction": "SortDataTable",
+        "SortListBase": "SortList",
+    },
+    "Cmd": {"OpenCmdSession": "Open"},
+    "Web": {
+        "InvokeSoapServiceAction": "InvokeSoapService",
+        "InvokeWebServiceBase": "InvokeWebService",
+    },
+    "Pdf": {
+        "ExtractImagesFromPDFAction": "ExtractImagesFromPDF",
+        "ExtractTablesFromPDFAction": "ExtractTablesFromPDF",
+        "ExtractTextFromPDFAction": "ExtractTextFromPDF",
+    },
+    "UIAutomation": {
+        "ClickElementInWindow": "Click",
+        "CloseWindowBase": "CloseWindow",
+        "FocusWindowBase": "FocusWindow",
+        "GetWindowBase": "GetWindow",
+        "MoveWindowBase": "MoveWindow",
+        "ResizeWindowBase": "ResizeWindow",
+        "SetWindowStateBase": "SetWindowState",
+        "SetWindowVisibilityBase": "SetWindowVisibility",
+        "WaitForWindowAction": "WaitForWindow",
+        "WaitForWindowContentAction": "WaitForWindowContent",
+    },
+}
+
 
 def extract_wired_action_ids(py_path: Path) -> set[str]:
     """`py_path`中の全ての文字列リテラルから、action_idの形をしたものを抜き出す。
@@ -96,15 +163,22 @@ def audit(
     actions_py: Path,
     dump_file: Path,
     id_overrides: dict[str, str] | None = None,
+    *,
+    use_known_overrides: bool = True,
 ) -> list[str]:
     """`dump_file`中の各セレクタについて、`<module>.<middle>.<ActionName>`が
     `actions_py`に結線されているかを確認し、結線されていないものを返す。
+
+    `use_known_overrides`(既定True)で`KNOWN_ID_OVERRIDES`の値を自動的に適用する
+    ——`id_overrides`で指定した値はこれを上書きする。単体テストで既知テーブルの
+    影響を受けない埋め込みフィクスチャを検証したい場合は`False`を渡す。
     """
-    id_overrides = id_overrides or {}
+    merged_overrides = dict(KNOWN_ID_OVERRIDES.get(module, {})) if use_known_overrides else {}
+    merged_overrides.update(id_overrides or {})
     wired = extract_wired_action_ids(actions_py)
     missing: list[str] = []
     for base_class, _selector_class, action_name in parse_selector_dump(dump_file):
-        middle = id_overrides.get(base_class, base_class)
+        middle = merged_overrides.get(base_class, base_class)
         candidate = f"{module}.{middle}.{action_name}"
         if candidate not in wired:
             missing.append(candidate)
@@ -113,6 +187,10 @@ def audit(
 
 def _default_actions_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "dump_daemon" / "pad_codegen" / "actions"
+
+
+def _default_dump_path(module: str) -> Path:
+    return Path(__file__).resolve().parent / "selector_dumps" / f"{module}.txt"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -128,20 +206,36 @@ def main(argv: list[str] | None = None) -> int:
             "複数ファイル(例: File.*はfile.py/conditions.py/wait.pyに分散)に跨ることがあるため)"
         ),
     )
-    parser.add_argument("--dump", type=Path, required=True, help="VMリフレクション出力ファイル")
+    parser.add_argument(
+        "--dump",
+        type=Path,
+        default=None,
+        help="VMリフレクション出力ファイル(省略時はtools/selector_dumps/<module>.txt)",
+    )
     parser.add_argument(
         "--id-override",
         action="append",
         default=[],
         metavar="BaseClassName=MiddleSegment",
-        help="[Action(Id=...)]によるクラス名からの上書き(複数指定可)",
+        help=(
+            "[Action(Id=...)]によるクラス名からの上書き(複数指定可、"
+            "KNOWN_ID_OVERRIDESの値をこれで上書きできる)"
+        ),
+    )
+    parser.add_argument(
+        "--no-known-overrides",
+        action="store_true",
+        help="KNOWN_ID_OVERRIDES(知見160で導出済みの既知テーブル)を適用しない",
     )
     args = parser.parse_args(argv)
 
     actions_py = args.actions_py or _default_actions_dir()
+    dump = args.dump or _default_dump_path(args.module)
     overrides = dict(pair.split("=", 1) for pair in args.id_override)
 
-    missing = audit(args.module, actions_py, args.dump, overrides)
+    missing = audit(
+        args.module, actions_py, dump, overrides, use_known_overrides=not args.no_known_overrides
+    )
     if missing:
         print(f"[{args.module}] 未結線候補 {len(missing)}件(スコープ外の既知の意図的除外を含む可能性あり):")
         for m in sorted(missing):

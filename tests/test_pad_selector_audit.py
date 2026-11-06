@@ -98,7 +98,7 @@ def test_audit_applies_id_override_for_action_attribute_id_mismatch() -> None:
             "dump.txt",
             "ExtractImagesFromPDFAction | ExtractImagesSelector | ActionName=ExtractImages\n",
         )
-        missing_without_override = audit("Pdf", actions_py, dump)
+        missing_without_override = audit("Pdf", actions_py, dump, use_known_overrides=False)
         missing_with_override = audit(
             "Pdf", actions_py, dump, {"ExtractImagesFromPDFAction": "ExtractImagesFromPDF"}
         )
