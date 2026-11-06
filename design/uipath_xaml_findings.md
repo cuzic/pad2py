@@ -6710,6 +6710,54 @@ __init__.py`の`_collect_imports`の`os`検出条件に`os.getcwd(`を追加。
 `tests/test_uipath_codegen.py`に2件追加、UiPath関連テスト全536件通過、
 リポジトリ全体で全1464件通過。
 
+## 141. 【重大バグ・第4の発生箇所】複数行のVB式テキストが`# TODO`コメントへそのまま埋め込まれ構文的に無効なPythonコードを生成していたバグを発見・修正、`display_name`コメント生成15箇所を共有ヘルパーへ統合(`compile()`標準化が初回で成果を出す、VM不使用)
+
+知見139で`compile()`を実機検証の標準手順として定着させた直後の本tick
+で、早速その効果が出た——未使用の新規15リポジトリの検証で
+`JFHaataja/HAMK-miniprojekti`の実機XAMLから生成したPythonコードが
+「タブとスペースの混在」という`compile()`時の構文エラーを起こすことを
+発見した。これは知見136〜138(代入先レンダリング失敗)とは**別の根本
+原因**を持つ、同じ「`# TODO`の個数や例外の有無だけでは生成コードの
+妥当性を保証できない」という教訓の第4の実例。
+
+**根本原因**: VB.NETは丸括弧内での改行(行継続)を許容する言語仕様
+——実機XAMLには`PdfText.Substring(\n\tPdfText.IndexOf("Duedate:") +
+9,\n(...)\n)`のような複数行にわたる式が実在した。この式の構文解析に
+失敗すると、`render.py`の`render_expr`が`NotImplementedError(f"VB
+expression failed to parse: {expr.text}")`を投げる——`expr.text`が
+複数行のままこの例外メッセージに含まれる。これを`uipath_codegen/
+__init__.py`の`_todo_value(prefix, expr_desc)`が単一行のf-stringへ
+無防備に埋め込んでいたため、改行以降が`#`の付かない生のテキスト行
+としてそのまま出力され、元のXAMLのインデント(タブ)がPythonコードの
+インデントに紛れ込んで構文エラーになっていた。同じ無防備な埋め込みが
+`_describe_expr_for_comment`の`VbExpr`分岐(`f"[{expr.text}]"`、`# TODO:
+unknown activity`等のコメント内で使われる)にも存在した。
+
+**修正**: `_todo_value`・`_describe_expr_for_comment`の`VbExpr`分岐の
+両方で、埋め込む前にテキストの改行を`\n`リテラル(視認可能な2文字)へ
+退避し、常に単一行のコメントであることを保証した。
+
+**ついでに発見・同時対応**: `display_name`(`DisplayName`属性)を
+`# {display_name}`コメントへ変換する処理(知見84の`_with_scope_
+child_display_name`共有ヘルパー)にも同じ無防備な埋め込みがあった
+(実機確認は無いが、`DisplayName`も理論上改行を含みうるため同じ防御を
+適用——これは「VB式のでっち上げ」ではなく単なる防御的なコメント
+安全化のため、確認済みの実需要を待たずに適用して問題ない)。さらに、
+`_with_scope_child_display_name`と**全く同じロジック**
+(`if node.display_name: return [f"{prefix}# {node.display_name}",
+*lines]; return lines`)が、ヘルパー自体を使わず15個の生成関数
+(`_generate_multiple_assign`/`_generate_click`/`_generate_type_into`/
+`_generate_database_connect`等)に個別にインライン複製されていたこと
+も発見した——全15箇所を共有ヘルパーの呼び出しへ統合し、修正を1箇所に
+まとめた(知見133の`_apply_chained_call`統合と同種の「バグ修正と重複
+排除を同時に行う」パターン)。
+
+`dump_daemon/uipath_codegen/__init__.py`の`_todo_value`・
+`_describe_expr_for_comment`・`_with_scope_child_display_name`を修正、
+15箇所のインライン重複を`_with_scope_child_display_name`呼び出しへ
+統合。`tests/test_uipath_codegen.py`に2件追加、UiPath関連テスト
+全538件通過、リポジトリ全体で全1469件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

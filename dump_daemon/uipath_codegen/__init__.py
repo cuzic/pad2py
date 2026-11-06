@@ -345,8 +345,21 @@ def _ensure_nonempty_suite(lines: list[str], indent: int) -> list[str]:
 def _todo_value(prefix: str, expr_desc: str) -> list[str]:
     """値が安全に変換できなかった場合の`# TODO`+プレースホルダ出力
     (`pad_codegen`の`SetVariableRecord`処理と同じ安全側フォールバック)。
-    呼び出し側が代入文等に組み込む。"""
-    return [f"{prefix}# TODO: unresolved VB expression: {expr_desc}"]
+    呼び出し側が代入文等に組み込む。
+
+    知見141: `expr_desc`(`NotImplementedError`のメッセージ)は、構文
+    解析に失敗した元のVB式テキストをそのまま含むことがある
+    (`render_expr`の`VbExpr`分岐、`"VB expression failed to parse: "
+    f"{expr.text}"`)——VB.NETは丸括弧内での改行(行継続)を許すため、
+    `expr.text`自体が複数行になりうる(`JFHaataja/HAMK-miniprojekti`
+    の実機XAML、複数行の`Substring(...)`式で発見)。これを単一行の
+    f-stringへ無防備に埋め込むと、改行以降が`#`の付かない生のテキスト
+    行としてそのまま出力され、タブ/スペース混在のインデントエラー等で
+    `compile()`時に構文エラーになる——`single_line`で改行を視認可能な
+    形(`\\n`リテラル)に退避し、常に単一行のコメントであることを保証する。
+    """
+    single_line = expr_desc.replace("\n", "\\n")
+    return [f"{prefix}# TODO: unresolved VB expression: {single_line}"]
 
 
 def _render_value_or_todo(expr, prefix: str, todo_lines: list[str]) -> str:
@@ -495,9 +508,7 @@ def _generate_multiple_assign(node: MultipleAssignNode, indent: int) -> list[str
     lines: list[str] = []
     for assignment in node.assignments:
         lines.extend(_generate_assign(assignment, indent))
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 # 知見107: `MessageBox`の`Buttons`(UiPath公式ドキュメントに列挙値の記載は
@@ -1126,9 +1137,7 @@ def _generate_click(node: ClickNode, indent: int) -> list[str]:
     コメントのみなので挙動は変えない)。"""
     prefix = INDENT * indent
     lines = _generate_click_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
@@ -1277,9 +1286,7 @@ def _literal_str(expr: Expr) -> str | None:
 def _generate_type_into(node: TypeIntoNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_type_into_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_type_into_body(node: TypeIntoNode, indent: int) -> list[str]:
@@ -1390,9 +1397,7 @@ def _generate_type_into_body(node: TypeIntoNode, indent: int) -> list[str]:
 def _generate_get_text(node: GetTextNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_get_text_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
@@ -1459,9 +1464,7 @@ def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
 def _generate_select_item(node: SelectItemNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_select_item_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_select_item_body(node: SelectItemNode, indent: int) -> list[str]:
@@ -1533,9 +1536,7 @@ def _generate_select_item_body(node: SelectItemNode, indent: int) -> list[str]:
 def _generate_ui_element_exists(node: UiElementExistsNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_ui_element_exists_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_ui_element_exists_body(node: UiElementExistsNode, indent: int) -> list[str]:
@@ -1584,9 +1585,7 @@ _SQLITE_PROVIDER_NAMES = {"system.data.sqlite", "sqlite"}
 def _generate_database_connect(node: DatabaseConnectNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_database_connect_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_database_connect_body(node: DatabaseConnectNode, indent: int) -> list[str]:
@@ -1632,9 +1631,7 @@ def _generate_database_connect_body(node: DatabaseConnectNode, indent: int) -> l
 def _generate_database_disconnect(node: DatabaseDisconnectNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_database_disconnect_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_database_disconnect_body(node: DatabaseDisconnectNode, indent: int) -> list[str]:
@@ -1694,9 +1691,7 @@ def _execute_query_family_todo(
 def _generate_execute_query(node: ExecuteQueryNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_execute_query_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_execute_query_body(node: ExecuteQueryNode, indent: int) -> list[str]:
@@ -1731,9 +1726,7 @@ def _generate_execute_query_body(node: ExecuteQueryNode, indent: int) -> list[st
 def _generate_execute_non_query(node: ExecuteNonQueryNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_execute_non_query_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_execute_non_query_body(node: ExecuteNonQueryNode, indent: int) -> list[str]:
@@ -1778,9 +1771,7 @@ def _generate_execute_non_query_body(node: ExecuteNonQueryNode, indent: int) -> 
 def _generate_copy_file(node: CopyFileNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_copy_file_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_copy_file_body(node: CopyFileNode, indent: int) -> list[str]:
@@ -1832,9 +1823,7 @@ def _generate_copy_file_body(node: CopyFileNode, indent: int) -> list[str]:
 def _generate_build_data_table(node: BuildDataTableNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_build_data_table_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_build_data_table_body(node: BuildDataTableNode, indent: int) -> list[str]:
@@ -1913,7 +1902,11 @@ def _with_scope_child_display_name(node: Node, lines: list[str], prefix: str) ->
     生成の場合も含め、どの活動かが分かるようコメントとして先頭に追記する。"""
     display_name = getattr(node, "display_name", None)
     if display_name:
-        return [f"{prefix}# {display_name}", *lines]
+        # 知見141: `display_name`(`DisplayName`属性)が万一改行を含む
+        # 場合でも単一行のコメントであることを保証する(`_todo_value`/
+        # `_describe_expr_for_comment`と同じ防御的な単一行化)。
+        single_line = display_name.replace("\n", "\\n")
+        return [f"{prefix}# {single_line}", *lines]
     return lines
 
 
@@ -2097,9 +2090,7 @@ _LOG_LEVEL_METHODS = {"Info": "info", "Error": "error"}
 def _generate_log_message(node: LogMessageNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_log_message_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_log_message_body(node: LogMessageNode, indent: int) -> list[str]:
@@ -2277,9 +2268,7 @@ _OUTLOOK_BOOL_VALUES = {"True": True, "False": False}
 def _generate_send_mail(node: SendMailNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_send_mail_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_send_mail_body(node: SendMailNode, indent: int) -> list[str]:
@@ -2451,9 +2440,7 @@ def _generate_get_outlook_mail_messages(
 ) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_get_outlook_mail_messages_body(node, indent)
-    if node.display_name:
-        return [f"{prefix}# {node.display_name}", *lines]
-    return lines
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 def _generate_get_outlook_mail_messages_body(
@@ -2578,7 +2565,12 @@ def _describe_expr_for_comment(expr: Expr) -> str:
     if isinstance(expr, Literal):
         return repr(expr.value)
     if isinstance(expr, VbExpr):
-        return f"[{expr.text}]"
+        # 知見141: `expr.text`はVB.NETの丸括弧内改行(行継続)により複数行
+        # になりうる(`_todo_value`と同じ根本原因)——`repr()`を経由する
+        # 他の分岐と違い生のテキストを直接埋め込むため、同じ単一行化
+        # 処理が必要。
+        single_line = expr.text.replace("\n", "\\n")
+        return f"[{single_line}]"
     return repr(expr)
 
 

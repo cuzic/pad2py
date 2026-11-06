@@ -138,6 +138,29 @@ def test_multiple_assign_generates_one_statement_per_assign_operation():
     _compiles(code)
 
 
+def test_display_name_with_embedded_newline_stays_single_line_comment():
+    """知見141: `display_name`(`DisplayName`属性)が万一改行を含む場合
+    でも単一行のコメントであることを保証する(`_todo_value`・
+    `_describe_expr_for_comment`と同じ防御的な単一行化を共有ヘルパー
+    `_with_scope_child_display_name`にも適用——知見84以来、15箇所の
+    重複した同一ロジックをこの共有ヘルパー呼び出しへ統合した際に
+    合わせて修正した)。"""
+    wf = _wrap(
+        [
+            MultipleAssignNode(
+                assignments=[AssignNode(target=VbExpr(text="x"), value=Literal(value="0"))],
+                display_name="Multiple Assign\nStep 2",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "\\n" in code
+    for line in code.splitlines():
+        if line.strip():
+            assert line.lstrip() == line.lstrip(" "), f"tab-indented line: {line!r}"
+    _compiles(code)
+
+
 def test_multiple_assign_with_no_operations_generates_no_statements():
     """空の`AssignOperations`(実機未確認だが構造上あり得る空リスト)でも
     でっち上げたプレースホルダ代入は生成しない——呼び出し元の`Sequence`
@@ -177,6 +200,36 @@ def test_assign_with_unrenderable_target_expression_is_todo_not_invalid_python()
     code = generate_python(wf)
     assert "# TODO: unresolved VB expression:" in code
     assert "None = " not in code
+    _compiles(code)
+
+
+def test_assign_with_multiline_unparseable_value_is_single_line_todo():
+    """知見141: VB.NETは丸括弧内の改行(行継続)を許すため、構文解析に
+    失敗した式のテキスト自体が複数行になりうる(`JFHaataja/
+    HAMK-miniprojekti`の実機XAML、複数行の`Substring(...)`式で発見)。
+    修正前は`NotImplementedError`のメッセージ(元のVB式テキストを含む)
+    をそのまま単一行のf-stringへ埋め込んでいたため、改行以降が`#`の
+    付かない生のテキスト行として出力され、`compile()`時にタブ/スペース
+    混在のインデントエラー等になっていた——`_todo_value`で改行を`\\n`
+    リテラルへ退避し、常に単一行のコメントであることを保証する。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"),
+                # `(Of T)`ジェネリック型引数構文(知見134で未対応と記録済み)
+                # は構文解析自体が失敗する(`tree=None`)——これを複数行に
+                # 分けて、元のVB式テキストが複数行のまま例外メッセージに
+                # 含まれる実例を再現する。
+                value=VbExpr(text='JsonConvert.DeserializeObject(Of T)(\n\tjsonString\n)'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression:" in code
+    assert "\\n" in code
+    for line in code.splitlines():
+        if line.strip():
+            assert line.lstrip() == line.lstrip(" "), f"tab-indented line: {line!r}"
     _compiles(code)
 
 
