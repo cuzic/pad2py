@@ -1738,6 +1738,19 @@ def test_generate_python_from_real_get_window_use_timeout_capture_converts_to_wi
     assert "AutomationWindow2 = Desktop(backend=\"uia\").window(title='Untitled - Notepad')" in code
     assert "# TODO: map PAD action: UIAutomation.GetWindow.GetUseTimeout" not in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b): codegen_coverage.pyの自動走査では
+    # 常に[OK]扱いだったが、この実機キャプチャ(whole-subflow)に対する実exec検証は
+    # 一度も存在しなかった。
+    from fake_pywinauto import FakeControl, FakeRegistry, fake_pywinauto_desktop
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    namespace: dict[str, object] = {}
+    with fake_pywinauto_desktop(registry):
+        exec(code, namespace)
+    assert isinstance(namespace["AutomationWindow2"], FakeControl)
+    assert namespace["AutomationWindow2"].criteria == {"title": "Untitled - Notepad"}
+
 
 def test_generate_python_from_get_window_get_selector_without_timeout_converts() -> None:
     # design/dsl_format_findings.md 知見117(decompile確認済み): `.Get`は`.GetUseTimeout`

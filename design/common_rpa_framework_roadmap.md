@@ -261,6 +261,10 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   テストされておらず、`ToClose`はテスト自体が0件だった)。3件とも新規にexec検証
   テストを追加した——「`codegen_coverage.py`が`[OK]`と言っている」ことと
   「`test_pad_codegen.py`に対応する検証がある」ことは別の尺度だという教訓。
+  同じ観点で`UIAutomation.GetWindow.GetUseTimeout`(実機キャプチャ、whole-subflow)も
+  compile()のみだったためexec検証を追加した。`[OK]`扱いの`UIAutomation.*`全9ブランチ
+  (`Click.Click`/`CloseByInstanceOrHandle`/`GetUseTimeout`/`IfWindow.IsOpen`/
+  `WaitForWindow`系5件)を1件ずつ確認し、全てexec検証が揃ったことを確認した。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。
