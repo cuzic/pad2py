@@ -385,6 +385,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   結果の文字列表示を読む→全選択コピーで読み戻す、という往復だけなら十分だった)。
   `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
   ブランチ0/4→4/4、全体カバレッジ82%→83%)。
+- [ ] 🖥️ **新規発見(知見200)**: `Robin.Engine.dll`の`FunctionExpressionEvaluator`に、
+  既知の4関数(`Contains`/`NotContains`/`IsEmpty`/`IsNotEmpty`)以外に`ContainsKey`/
+  `Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`という未確認の関数が存在すると判明。
+  `EndsWith`/`StartsWith`は単純な文字列関数ではなく`DataRow`/`IList`型への多態的な
+  要素単位比較ロジックを持つ——標準`If`条件UI(またはそれ以外)から到達可能かどうか自体
+  未確認。知見75と同じクリップボード往復確認手法(ペースト→コピー読み取り、RDP不要)を
+  次回VM作業時に適用し到達可能性を調べる。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
   🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
   `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、
