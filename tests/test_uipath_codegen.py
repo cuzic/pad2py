@@ -44,6 +44,7 @@ from dump_daemon.uipath_dsl import (
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
+    DelayNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelReadCellNode,
@@ -3765,6 +3766,68 @@ def test_terminate_workflow_with_reason_and_exception_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: TerminateWorkflow with both Reason and Exception set" in code
     assert "raise SystemExit" not in code
+    _compiles(code)
+
+
+def test_delay_literal_timespan_renders_as_time_sleep():
+    """知見151: `ui:Delay`(GitHub code searchで10000件超ヒットする最
+    頻出活動)。実機確認済みのTimeSpanリテラル書式(`"HH:MM:SS[.fff]"`)
+    のみ秒数へ変換し`time.sleep()`を生成する。"""
+    wf = _wrap([DelayNode(duration=Literal(value="00:00:01"))])
+    code = generate_python(wf)
+    assert "time.sleep(1.0)" in code
+    assert "import time" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_delay_literal_timespan_with_fractional_seconds():
+    wf = _wrap([DelayNode(duration=Literal(value="00:00:00.500"))])
+    code = generate_python(wf)
+    assert "time.sleep(0.5)" in code
+    _compiles(code)
+
+
+def test_delay_literal_timespan_with_minutes_and_hours():
+    wf = _wrap([DelayNode(duration=Literal(value="01:02:03"))])
+    code = generate_python(wf)
+    assert "time.sleep(3723.0)" in code
+    _compiles(code)
+
+
+def test_delay_display_name_becomes_a_comment():
+    wf = _wrap([DelayNode(duration=Literal(value="00:00:01"), display_name="Wait")])
+    code = generate_python(wf)
+    assert "# Wait" in code
+    assert "time.sleep(1.0)" in code
+    _compiles(code)
+
+
+def test_delay_with_no_duration_is_todo_not_guessed():
+    wf = _wrap([DelayNode(duration=None)])
+    code = generate_python(wf)
+    assert "# TODO: Delay with no Duration captured" in code
+    _compiles(code)
+
+
+def test_delay_with_dynamic_expression_is_todo_not_guessed():
+    """知見151: `Duration`が動的なVB式(`[...]`角括弧付き)の場合は、
+    TimeSpanを返す任意の式が秒数へどう変換されるべきか未確認のため
+    でっち上げず`# TODO`へ倒す。"""
+    wf = _wrap([DelayNode(duration=VbExpr(text="someTimeSpan"))])
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression:" in code
+    assert "time.sleep" not in code
+    _compiles(code)
+
+
+def test_delay_with_unconfirmed_timespan_format_is_todo_not_guessed():
+    """知見151: 日数プレフィックス等、実機で未確認の書式は推測せず
+    `# TODO`へ倒す。"""
+    wf = _wrap([DelayNode(duration=Literal(value="1.00:00:00"))])
+    code = generate_python(wf)
+    assert "# TODO: Delay Duration" in code
+    assert "time.sleep" not in code
     _compiles(code)
 
 

@@ -23,6 +23,7 @@ from dump_daemon.uipath_dsl import (
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
+    DelayNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
@@ -615,6 +616,18 @@ def test_terminate_workflow_properties():
     assert node.reason == VbExpr(text='"fatal"')
     assert node.exception == VbExpr(text="exception")
     assert node.display_name == "Stop"
+
+
+def test_delay_properties():
+    """知見151: `ui:Delay`(UiPath独自の待機活動——GitHub code searchで
+    10000件超ヒットする最頻出活動の1つ)。`Duration`属性は実機確認した
+    全件(`AI-Dep/AI-Antigravity`・`UiPath/skills`)で`[...]`角括弧の無い
+    生の.NET TimeSpanリテラル(`"00:00:01"`等)だった。"""
+    xml = f'<ui:Delay {_UI_XMLNS} DisplayName="Wait" Duration="00:00:00.500" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DelayNode)
+    assert node.duration == Literal(value="00:00:00.500")
+    assert node.display_name == "Wait"
 
 
 def test_log_message_properties():

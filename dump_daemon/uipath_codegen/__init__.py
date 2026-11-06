@@ -38,6 +38,7 @@ API呼び出しをでっち上げず`# TODO`コメントに倒す)を踏襲す�
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from openpyxl.utils import column_index_from_string
@@ -54,6 +55,7 @@ from ..uipath_dsl.types import (
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
+    DelayNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
@@ -461,6 +463,8 @@ def _generate_node(
         return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, CommentNode):
         return _generate_comment(node, indent)
+    if isinstance(node, DelayNode):
+        return _generate_delay(node, indent)
     if isinstance(node, WriteLineNode):
         return _generate_write_line(node, indent)
     if isinstance(node, ThrowNode):
@@ -2099,6 +2103,52 @@ def _generate_comment(node: CommentNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = node.text.splitlines() or [""]
     return [f"{prefix}# {line}" for line in lines]
+
+
+# 知見151: 実機XAMLで確認済みの.NET TimeSpanリテラル書式
+# (`"HH:MM:SS"`/`"HH:MM:SS.fffffff"`)のみを秒数に変換する——それ以外の
+# 書式(日数プレフィックス等、未確認)は`None`を返し呼び出し側で`# TODO`
+# へ倒す。
+_TIMESPAN_LITERAL_RE = re.compile(r"^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$")
+
+
+def _parse_timespan_literal_seconds(text: str) -> float | None:
+    match = _TIMESPAN_LITERAL_RE.match(text.strip())
+    if match is None:
+        return None
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+# 知見151: `ui:Delay`(UiPath独自の待機活動——GitHub code searchで
+# 10000件超ヒットする最頻出活動の1つにも関わらず、これまで完全に未実装
+# だった)。`Duration`属性は実機確認した全件で`[...]`角括弧の無い生の
+# TimeSpanリテラルだった(`Click`の`DelayBefore`、知見106とは異なる
+# 書式)——`Literal`の場合のみ秒数に変換して`time.sleep()`へ変換し、
+# `VbExpr`(動的式)の場合は未確認のため`# TODO`へ倒す。
+def _generate_delay(node: DelayNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_delay_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_delay_body(node: DelayNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.duration is None:
+        return [f"{prefix}# TODO: Delay with no Duration captured"]
+    if not isinstance(node.duration, Literal):
+        return _todo_value(
+            prefix,
+            "Delay.Duration is a dynamic VB expression, not a confirmed-safe "
+            "literal TimeSpan — refusing to guess the semantics",
+        )
+    seconds = _parse_timespan_literal_seconds(node.duration.value)
+    if seconds is None:
+        return [
+            f"{prefix}# TODO: Delay Duration {node.duration.value!r} is not a "
+            "confirmed TimeSpan literal format (HH:MM:SS[.fff])"
+        ]
+    return [f"{prefix}time.sleep({seconds!r})"]
 
 
 # 知見147: `WriteLine`(.NET Workflow Foundation本体の標準活動、UiPath

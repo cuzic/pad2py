@@ -7110,6 +7110,58 @@ BusinessRuleException(...)`も検出し、知見148の方針通り別途`# TODO`
 1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全574件
 通過、リポジトリ全体で全1567件通過。
 
+## 151. `ui:Delay`(UiPath独自の最頻出活動の1つ)が完全に未実装だったことを発見・実装(GitHub code searchで10000件超ヒット)
+
+知見147〜150で「.NET Workflow Foundation本体の基本活動の見落とし」
+という系統的な欠落パターンを見つけたのに続いて、同じ観点でUiPath
+独自活動側も棚卸ししたところ、`ui:Delay`(指定時間だけ待機する、
+RPAワークフローでは非常に高頻度に使われる最も基本的な活動の1つ)が
+完全に未実装のまま残っていたことを発見した。GitHub code search
+(`"ui:Delay Duration=" extension:xaml`)で確認すると、`"Delay"
+extension:xaml uipath`全体では10192件・`ui:Delay`に限定しても
+数千件規模のヒットがあり、`While`/`DoWhile`(知見14)と同程度か
+それ以上の最頻出活動であるにも関わらず、今まで一度も実装されて
+いなかった。
+
+実機で3件(`AI-Dep/AI-Antigravity`の`FA_CS_Asset_Entry.xaml`、
+`UiPath/skills`公式リポジトリの`PerfBot/Main.xaml`・
+`mail-delete-outlook-mail-stale-reference/process/Main.xaml`)を
+ダウンロードして`Duration`属性の形式を確認したところ、全件で
+`[...]`角括弧の無い生の.NET TimeSpan書式リテラル(`"00:00:01"`・
+`"00:00:00.500"`・`"00:00:30"`・`"00:00:00.5000000"`)だった——
+`Click`の`DelayBefore`(知見106、ミリ秒単位の数値)とは異なる書式
+であることを確認(両者を混同しないよう別のパース関数とした)。
+GitHub code search(`"ui:Delay" "TimeSpan" extension:xaml`)では
+動的なTimeSpan式(`[TimeSpan.FromSeconds(...)]`等)の実例は見つから
+なかった——Studioの`Delay`活動プロパティパネルが`Duration`を固定値
+ピッカーとして提示する(VB式入力欄ではない)実装上の性質と整合する。
+
+Pythonの`time.sleep(秒数)`が直接対応する——ブロッキングやユーザーの
+選択を伴わない単純な待機のため「でっち上げ」の懸念が無い。
+`Duration`が`Literal`(生のTimeSpanリテラル)の場合のみ、専用の正規表現
+(`^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$`、実機確認した`HH:MM:SS[.fff]`
+書式のみ)で秒数へ変換する。`Duration`が`VbExpr`(角括弧付きの動的式)
+の場合、または正規表現にマッチしない未確認の書式(日数プレフィックス
+付き等)の場合は、知見148〜150と同じ「でっち上げるよりは安全」の
+方針で`# TODO`へ倒す。
+
+`dump_daemon/uipath_dsl/types.py`に`DelayNode(duration, display_name)`、
+`xaml_tree.py`に`_parse_delay`+`(UI_NS, "Delay")`の`_DISPATCH`登録、
+`uipath_codegen/__init__.py`に`_parse_timespan_literal_seconds`
+(正規表現ベースのTimeSpan→秒数変換)・`_generate_delay`/
+`_generate_delay_body`を追加(`time`モジュールのimportは知見106の
+`time.sleep(`検出条件を再利用、新規import検出コードは不要)。
+ダウンロード済みの3件の実機XAMLで`generate_python()`+`compile()`を
+実行し、直接到達可能な1件(`PerfBot/Main.xaml`)で`time.sleep(30.0)`
+が正しく生成されることを確認——残り2件の`ui:Delay`呼び出しは、それ
+ぞれ未実装の別活動(基本WF版`ForEach`・`ui:AttachWindow`)の子として
+ネストされており到達不能だったため、今回のスコープ外の既存の別課題
+として確認のみ行った(今回の実装自体には影響無し)。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件、
+リテラル秒数・小数秒・時分秒複合・DisplayName・Duration未設定・
+動的式declin・未確認書式declineの6パターンを個別にテスト)、UiPath
+関連テスト全582件通過、リポジトリ全体で全1586件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

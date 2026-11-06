@@ -1899,3 +1899,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      上げるよりは安全)。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全574件
      通過、リポジトリ全体で全1567件通過。
+
+109. **(完了、2026-11-06)** `ui:Delay`(UiPath独自の待機活動、GitHub
+     code searchで10000件超ヒットする最頻出活動の1つ)を新規実装
+     (知見151——知見147〜150の.NET WF本体活動の棚卸しに続く、UiPath
+     独自活動側の棚卸しで発見): `Click`の`DelayBefore`(知見106、
+     ミリ秒の数値)とは異なり、`Duration`属性は実機確認した全件で
+     `[...]`角括弧の無い生の.NET TimeSpanリテラル(`"HH:MM:SS[.fff]"`)
+     だった。専用の正規表現でTimeSpanリテラルを秒数に変換し
+     `time.sleep(秒数)`へ変換する——`Duration`が動的なVB式の場合、
+     または未確認の書式の場合は`# TODO`へ倒す(でっち上げるよりは
+     安全)。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`6件)、UiPath関連テスト全582件通過、
+     リポジトリ全体で全1586件通過。

@@ -27,6 +27,7 @@ from .types import (
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
+    DelayNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
@@ -777,6 +778,13 @@ def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
 
+def _parse_delay(elem: etree._Element) -> DelayNode:
+    return DelayNode(
+        duration=_attr_expr(elem, "Duration"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_write_line(elem: etree._Element) -> WriteLineNode:
     return WriteLineNode(
         text=_attr_expr(elem, "Text"),
@@ -1256,6 +1264,7 @@ _DISPATCH = {
     (WF_NS, "Throw"): _parse_throw,
     (WF_NS, "Rethrow"): _parse_rethrow,
     (WF_NS, "TerminateWorkflow"): _parse_terminate_workflow,
+    (UI_NS, "Delay"): _parse_delay,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,

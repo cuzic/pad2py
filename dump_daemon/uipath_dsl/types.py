@@ -643,6 +643,25 @@ class CommentNode:
 
 
 @dataclass
+class DelayNode:
+    """`<ui:Delay Duration="..." />`(知見151、UiPath独自の待機活動
+    ——GitHub code search(`"ui:Delay Duration=" extension:xaml`)で
+    10000件超ヒットする最頻出活動の1つにも関わらず、これまで完全に
+    未実装だった)。`Duration`属性は実機確認した全件(`AI-Dep/
+    AI-Antigravity`・`UiPath/skills`の複数XAML)で`[...]`角括弧の無い
+    生の.NET TimeSpan書式リテラル(`"00:00:01"`/`"00:00:00.500"`等の
+    `"HH:MM:SS[.fffffff]"`)だった——`Click`の`DelayBefore`(知見106、
+    ミリ秒単位の数値)とは異なる書式。`Duration`は`Expr`として保持し、
+    `Literal`(生のTimeSpanリテラル)の場合のみ秒数に変換して
+    `time.sleep(秒数)`へ変換する——`VbExpr`(角括弧付きの動的式)の
+    場合は、TimeSpanを返す任意の式が秒数へどう変換されるべきか未確認
+    のため`# TODO`へ倒す(でっち上げるよりは安全)。"""
+
+    duration: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class WriteLineNode:
     """`<WriteLine Text="..." />`(知見147、`System.Activities.
     Statements.WriteLine`——UiPath独自活動ではなく.NET Workflow
@@ -1122,6 +1141,7 @@ Node = (
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode
+    | DelayNode
     | WriteLineNode
     | ThrowNode
     | RethrowNode
