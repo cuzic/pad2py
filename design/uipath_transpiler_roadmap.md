@@ -1539,3 +1539,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     Machineルートは既存のv1スコープ外判断を再確認。回帰テスト追加
     (`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全507件通過、
     リポジトリ全体で全1403件通過。
+
+86. **(完了、2026-11-06)** 新しい実機データ源「`marcelocruzrpa/
+    uipath-ai-skills`のground-truthコーパス」を発見、既存のDatabase/
+    WebAPI実装の既定値(`{x:Null}`)耐性を確認(知見128、コード変更無し):
+    UiPathパッケージ名・バージョンごとに504件の単体活動`.xaml`参照
+    フィクスチャ(`<Activity x:Class>`直下に活動1つの最小形)を発見。
+    値がほぼ全て`{x:Null}`デフォルトのため実装の根拠にはならないが、
+    既存実装(`DatabaseConnect`等・`HttpClient`)が極端な既定値入力でも
+    クラッシュしないことを確認。属性名が確認できた新規未実装11活動
+    (`BulkInsert`/`BulkUpdate`/`InsertDataTable`/`DatabaseTransaction`/
+    `SerializeJson`/`DeserializeJson`系/`ExecuteXPath`/`GetNodes`系/
+    `NetHttpRequest`)を実データ待ちの実装候補として`design/
+    uipath_feature_catalog.md`に記録。`UiPath.Excel/Mail/System/
+    Testing/UIAutomation.Activities`(400件超)は未検証、継続価値あり。

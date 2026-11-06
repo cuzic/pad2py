@@ -245,3 +245,34 @@ resolverの新設が必要なケース。今回は見送ったが、同種のDat
 型として束縛されたか」という変数スコープ情報を新たに通す仕組みが必要
 ——`AddDataRow`と同じ「cross-node/スコープ resolverの新設が必要」な
 ケースとして一緒に設計を検討する価値がある。
+
+**新しい参照データ源: `marcelocruzrpa/uipath-ai-skills`のground-truth
+コーパス(知見128で発見、2026-11-06)**: `uipath-core/references/
+studio-ground-truth/`配下に、UiPathパッケージ名・バージョンごとに
+整理された504件の単体活動`.xaml`参照フィクスチャがある
+(`UiPath.Database.Activities/2.0`(10件)・`UiPath.Excel.
+Activities/3.4`(117件、未検証)・`UiPath.Mail.Activities/2.8`
+(45件、未検証)・`UiPath.PDF.Activities/3.25`(12件)・`UiPath.
+Persistence.Activities/1.4`(10件)・`UiPath.System.
+Activities/25.10・26.2`(199件、未検証)・`UiPath.Testing.
+Activities/25.10`(23件)・`UiPath.UIAutomation.Activities/25.10`
+(76件、未検証)・`UiPath.WebAPI.Activities/2.4`(12件))。各ファイルは
+`<Activity x:Class="...">`直下に活動1つだけの最小形
+(`parse_workflow_file`が要求する`Sequence`/`Flowchart`ラッパー無し
+——`parse_activity()`+`_generate_node()`を直接呼ぶ必要がある)。
+値はほぼ全て未設定(`{x:Null}`)のデフォルトのみのため、新しい値の
+変換ロジックを実装する根拠にはならない(属性**名**の一覧としては
+権威的で有用)——このコーパス単独で活動を実装せず、別途実機
+`Main.xaml`で非デフォルト値の使用例を見つけてから組み合わせて使う。
+検証済み: `UiPath.Database.Activities`10件+`UiPath.WebAPI.
+Activities`の`HttpClient`/`SerializeJson`/`DeserializeJsonArray`
+(既存実装の既定値耐性を確認、クラッシュ無し)。未検証(今後のtick候補、
+残り約430件): `UiPath.Excel`/`Mail`/`System`/`Testing`/
+`UIAutomation.Activities`。
+
+このコーパスで属性名を確認した新規未実装活動11件(実データ待ち):
+`BulkInsert`/`BulkUpdate`/`InsertDataTable`/`DatabaseTransaction`
+(`UiPath.Database.Activities`)、`SerializeJson`/`DeserializeJson`/
+`DeserializeJsonArray`/`DeserializeXml`/`ExecuteXPath`/`GetNodes`/
+`GetXMLNodes`/`GetXMLNodeAttributes`/`NetHttpRequest`
+(`UiPath.WebAPI.Activities`)。

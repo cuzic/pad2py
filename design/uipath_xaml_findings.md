@@ -6141,6 +6141,54 @@ v1スコープ外の判断(Phase 1)を想定通り再確認しただけ。
 test_uipath_codegen.py`に4件追加、UiPath関連テスト全507件通過、
 リポジトリ全体で全1403件通過。
 
+## 128. 新しい実機データ源「`marcelocruzrpa/uipath-ai-skills`のground-truthコーパス」を発見——既存実装(Database/WebAPI)の既定値(`{x:Null}`)耐性を確認、新規未実装活動11件を棚上げ記録(コード変更無し、VM不使用)
+
+知見117〜127の実機検証を拡張中に、`marcelocruzrpa/uipath-ai-skills`
+リポジトリの`uipath-core/references/studio-ground-truth/`配下に、
+UiPathパッケージ名・バージョンごとに整理された504件の`.xaml`参照
+フィクスチャ(`UiPath.Database.Activities/2.0`・`UiPath.Excel.
+Activities/3.4`(117件)・`UiPath.Mail.Activities/2.8`(45件)・
+`UiPath.PDF.Activities/3.25`・`UiPath.Persistence.Activities/1.4`・
+`UiPath.System.Activities/25.10・26.2`(199件)・`UiPath.Testing.
+Activities/25.10`・`UiPath.UIAutomation.Activities/25.10`(76件)・
+`UiPath.WebAPI.Activities/2.4`)を発見した——Studioから各活動を単体で
+エクスポートしたと見られる`<Activity x:Class="...">`直下に活動1つだけ
+を置く最小形(例: `<ui:DatabaseConnect DatabaseConnection="{x:Null}" />`)。
+これまで集めてきた「実際のワークフロー(`Main.xaml`)」とは違う種類の
+データ源——個々の活動の**完全な属性一覧**(デフォルト値込み)を
+一括で確認できる点が貴重だが、値そのものはほぼ全て未設定
+(`{x:Null}`)のデフォルトのみで、「実際に使われた値」の実例としては
+弱い(`confirmed-safe-only`方針上、これだけでは新しい値の変換ロジックを
+実装する根拠にはならない)。
+
+**検証(コード変更無し)**: `UiPath.Database.Activities/2.0`の10件+
+`UiPath.WebAPI.Activities/2.4`の`HttpClient`/`SerializeJson`/
+`DeserializeJsonArray`を、`parse_activity()`+`_generate_node()`へ直接
+(`Sequence`ラッパー無しで単体活動として)通し、既存実装
+(`DatabaseConnect`/`DatabaseDisconnect`/`ExecuteQuery`/
+`ExecuteNonQuery`、知見114/`HttpClient`、知見114)がこの「ほぼ全属性が
+`{x:Null}`」という極端な既定値入力でもクラッシュしないことを確認した
+——`DatabaseConnection="{x:Null}"`(出力先未束縛)は想定通り`# TODO`、
+`HttpClient`の既定値一式(`Method="GET"`・`AcceptFormat="ANY"`・
+`TimeoutMS="6000"`等)は`requests.request('GET', None, timeout=6.0)`を
+正しく生成した(既存実装の防御的健全性の追加確認、新しい発見では無い)。
+
+**新規未実装の棚上げ(将来の実装候補、実データ待ち)**: このコーパスで
+初めて正確な属性名を確認した未実装活動11件——`BulkInsert`/
+`BulkUpdate`/`InsertDataTable`/`DatabaseTransaction`
+(`UiPath.Database.Activities`)、`SerializeJson`/`DeserializeJson`/
+`DeserializeJsonArray`/`DeserializeXml`/`ExecuteXPath`/`GetNodes`/
+`GetXMLNodes`/`GetXMLNodeAttributes`/`NetHttpRequest`
+(`UiPath.WebAPI.Activities`)。属性名自体は権威的(UiPathパッケージ
+本体からのエクスポート)だが、値が全て`{x:Null}`のため実際の使用パターン
+(例: `SerializeJson`の`Settings`に何が入るか)は未確認——実装には
+別途、非デフォルト値を持つ実機`Main.xaml`での使用例が必要(今回は
+値の実例が無いため実装を見送る、でっち上げ回避)。`design/
+uipath_feature_catalog.md`に参照ポインタとして記録した。
+`UiPath.Excel.Activities`/`UiPath.Mail.Activities`/`UiPath.System.
+Activities`/`UiPath.Testing.Activities`/`UiPath.UIAutomation.
+Activities`(合計400件超)はまだ未検証——今後のtickで継続する価値がある。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
