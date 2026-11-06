@@ -111,6 +111,33 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{node.output_var} = xml_actions.get_xml_element_attribute({doc}, {xpath}, {attribute})"
         ]
 
+    _ATTRIBUTE_VALUE_TYPE_SELECTORS = {
+        "XML.GetXmlElementAttribute.GetElementAttributeAsNumeric": ("Numeric", "NumericValue"),
+        "XML.GetXmlElementAttribute.GetElementAttributeAsBoolean": ("Boolean", "BooleanValue"),
+        "XML.GetXmlElementAttribute.GetElementAttributeAsDateTime": ("DateTime", "DateTimeValue"),
+    }
+    if action_id in _ATTRIBUTE_VALUE_TYPE_SELECTORS:
+        # 知見139・149: `GetElementAttribute`の兄弟セレクタ。VM上で`GetXmlElementAttribute`
+        # クラスが`TextValue`/`NumericValue`/`DateTimeValue`/`BooleanValue`という
+        # モードごとに別々の出力プロパティを持つと確認し(`GetElementValue`とは異なる
+        # 構造)、`ValueType`列挙値(`Text`/`Numeric`/`DateTime`/`Boolean`)が
+        # `GetElementValue`と共通の型だと確認した。既存の`get_xml_element_value()`の
+        # 変換ロジックを`_convert_xml_text_value()`として共通化し、
+        # `get_xml_element_attribute()`にも`value_type`引数を追加して対応した。
+        doc = safe_render(p.get("Document"))
+        xpath = safe_render(p.get("XPathQuery"))
+        attribute = safe_render(p.get("AttributeName"))
+        if doc is None or xpath is None or attribute is None:
+            return None
+        value_type, output_name = _ATTRIBUTE_VALUE_TYPE_SELECTORS[action_id]
+        output_var = node.output_vars.get(output_name)
+        if not output_var:
+            return None
+        return [
+            f"{prefix}{output_var} = xml_actions.get_xml_element_attribute("
+            f"{doc}, {xpath}, {attribute}, value_type={value_type!r})"
+        ]
+
     if action_id == "XML.ExecuteXPathQuery.ExecuteXPath":
         doc = safe_render(p.get("XmlDocument"))
         xpath = safe_render(p.get("XPathQuery"))

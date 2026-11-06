@@ -2544,3 +2544,11 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 VM上で`DateTimeConversionFormat`列挙値(`Standard`/`Custom`)を確認し、既存の`format_type`パラメータの文字列と完全一致することも確認した。両セレクタとも「セレクタ自体がモードを固定する」パターン(`FromCustomDateTime`→`format_type='Custom'`固定、`ToDateTimeCustomFormat`→`date_is_in_custom_format=True`固定)で安全に結線できた。
 
 テストは`tests/test_pad_codegen.py`に1件追加し、Text→DateTime→Textの往復を実際に`exec()`して(`"2026-11-05"`→`datetime(2026,11,5)`→`"2026/11/05"`)検証した。これで知見142で見送った項目は全て解消し、Text.Actions.dllの23セレクタ全件(鍵無しの`RecognizeEntitiesInText`を除く)が結線完了した。
+
+## 149. 知見140で見送ったXML.Actions.dllの`GetElementAttribute`型変換系3件も結線完了——`get_xml_element_attribute()`に`value_type`を新規実装
+
+知見140で「`get_xml_element_attribute()`に`value_type`引数が無く新規実装が必要」として見送っていた`GetElementAttributeAsNumeric`/`AsBoolean`/`AsDateTime`を実装した。VM上で`GetXmlElementAttribute`クラスのプロパティを確認したところ、`ValueType`列挙値(`Text`/`Numeric`/`DateTime`/`Boolean`)は`GetElementValue`と共通の型だが、出力の構造が異なると判明した——`GetElementValue`は単一の`Subtext`出力をそのまま型変換するのに対し、`GetElementAttribute`は`TextValue`/`NumericValue`/`DateTimeValue`/`BooleanValue`という**モードごとに別々の出力プロパティ**を持つ。
+
+既存の`get_xml_element_value()`の型変換ロジック(`Decimal`/`dateutil_parser`/真偽値判定)を`_convert_xml_text_value()`として共通化し、`get_xml_element_attribute()`に`value_type: str = "Text"`引数を追加して(既定値は従来の文字列そのままの挙動を保つ)両関数で再利用した。
+
+テストは`tests/test_pad_codegen.py`に3パターンのparametrizeテストを追加し、実際に`exec()`してXML属性値から型変換済みの値が出力変数に入ることまで検証した。これでXML.Actions.dllの12セレクタ全件が結線完了した。

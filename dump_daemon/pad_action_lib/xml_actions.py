@@ -88,10 +88,7 @@ def write_xml_to_file(path: str, xml: str, format_xml: bool = True, indentation:
     Path(path).write_text(text, encoding="utf-8")  # 常に上書き
 
 
-def get_xml_element_value(xml: str, xpath_query: str, value_type: str = "Text") -> object:
-    root = _parse_xml(xml)
-    element = _get_single_element(root, xpath_query)
-    text = element.text or ""
+def _convert_xml_text_value(text: str, value_type: str) -> object:
     try:
         if value_type == "Text":
             return text
@@ -106,6 +103,13 @@ def get_xml_element_value(xml: str, xpath_query: str, value_type: str = "Text") 
     raise ValueError(f"Unknown ValueType: {value_type!r}")
 
 
+def get_xml_element_value(xml: str, xpath_query: str, value_type: str = "Text") -> object:
+    root = _parse_xml(xml)
+    element = _get_single_element(root, xpath_query)
+    text = element.text or ""
+    return _convert_xml_text_value(text, value_type)
+
+
 def set_xml_element_value(xml: str, xpath_query: str, value: object) -> str:
     root = _parse_xml(xml)
     element = _get_single_element(root, xpath_query)
@@ -116,12 +120,12 @@ def set_xml_element_value(xml: str, xpath_query: str, value: object) -> str:
     return etree.tostring(root, encoding="unicode")
 
 
-def get_xml_element_attribute(xml: str, xpath_query: str, attribute_name: str) -> str:
+def get_xml_element_attribute(xml: str, xpath_query: str, attribute_name: str, value_type: str = "Text") -> object:
     root = _parse_xml(xml)
     element = _get_single_element(root, xpath_query)
     if attribute_name not in element.attrib:
         raise AttributeNotFoundError(attribute_name)
-    return element.attrib[attribute_name]
+    return _convert_xml_text_value(element.attrib[attribute_name], value_type)
 
 
 def set_xml_element_attribute(xml: str, xpath_query: str, attribute_name: str, value: object) -> str:

@@ -3825,6 +3825,43 @@ def test_generate_python_from_get_xml_element_value_as_typed_converts(mode: str,
         assert namespace["N"] == expected
 
 
+@pytest.mark.parametrize(
+    ("mode", "output_name", "xml_value", "expected"),
+    [
+        ("Numeric", "NumericValue", "42", 42),
+        ("Boolean", "BooleanValue", "true", True),
+        ("DateTime", "DateTimeValue", "2026-01-02", datetime(2026, 1, 2)),
+    ],
+)
+def test_generate_python_from_get_xml_element_attribute_as_typed_converts(
+    mode: str, output_name: str, xml_value: str, expected: object
+) -> None:
+    # design/dsl_format_findings.md 知見139・149: `ActionSelectorBase`一括列挙監査を
+    # XML.Actions.dllに適用して発見した`GetElementAttribute`の兄弟セレクタ
+    # (`GetElementAttributeAsNumeric`/`AsBoolean`/`AsDateTime`)。VM上で
+    # `GetXmlElementAttribute`クラスが`TextValue`/`NumericValue`/`DateTimeValue`/
+    # `BooleanValue`というモードごとに別々の出力プロパティを持つと確認し、
+    # `get_xml_element_attribute()`に`value_type`引数を新規追加して対応した。
+    from decimal import Decimal
+
+    dsl = (
+        f"SET Doc TO $'''<r v=\"{xml_value}\"/>'''\n"
+        f"XML.GetXmlElementAttribute.GetElementAttributeAs{mode} Document: Doc XPathQuery: $'''/r''' "
+        f"AttributeName: $'''v''' {output_name}=> N"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"value_type={mode!r}" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    if mode == "Numeric":
+        assert namespace["N"] == Decimal(expected)
+    else:
+        assert namespace["N"] == expected
+
+
 def test_generate_python_from_execute_xpath_and_get_first_value_only_converts() -> None:
     # design/dsl_format_findings.md 知見139: `ExecuteXPath`の兄弟セレクタ。
     dsl = (

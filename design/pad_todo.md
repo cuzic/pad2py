@@ -418,14 +418,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     `Cryptography.Actions.dll`にも監査を適用し、未結線セレクタの全量をVM上のリフレクション
     (知見139と同じ手法)で確認完了——**結線作業自体はまだ未着手**(次のtickの対象として
     記録する):
-    - [x] `XML.Actions.dll`(12セレクタ)。
+    - [x] `XML.Actions.dll`(12セレクタ、全件結線完了)。
       ✅ **決着(知見140)**: `GetElementValueAsNumeric`/`AsBoolean`/`AsDateTime`・
       `ExecuteXPathAndGetFirstValueOnly`・`WriteToFile`(非フォーマット)の5件を
       新規結線完了(既存の`get_xml_element_value()`/`execute_xpath_query()`/
       `write_xml_to_file()`が元々対応する引数を持っていたため、呼び分けのみ)。
-      - [ ] 💻🖥️ **残課題**: `GetElementAttribute`の`AsNumeric`/`AsBoolean`/
-        `AsDateTime`3兄弟は`get_xml_element_attribute()`に`value_type`引数が
-        無く、新規実装(+実機でのValueType列挙値確認)が必要なため見送った。
+      ✅ **決着(知見149)**: `GetElementAttribute`の`AsNumeric`/`AsBoolean`/
+      `AsDateTime`3兄弟も新規結線完了——`get_xml_element_attribute()`に
+      `value_type`引数を新規実装し(`get_xml_element_value()`と変換ロジックを
+      共通化)、VM確認済みの`ValueType`列挙値で対応した。
     - [x] `Cmd.Actions.dll`(4セレクタ)。
       ✅ **決着(知見141)**: `Open`二重発見は単に`Open`/`OpenWithCodePage`が同じ
       `OpenCmdSession`クラスの兄弟セレクタだったと判明(既存結線は前者のみ)。
