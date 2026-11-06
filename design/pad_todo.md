@@ -385,21 +385,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   結果の文字列表示を読む→全選択コピーで読み戻す、という往復だけなら十分だった)。
   `pad_codegen`側はこの4関数をPythonの`in`/`not in`/真偽値判定に結線済み(condition_function_call
   ブランチ0/4→4/4、全体カバレッジ82%→83%)。
-- [ ] 🖥️ **新規発見(知見200)**: `Robin.Engine.dll`の`FunctionExpressionEvaluator`に、
-  既知の4関数(`Contains`/`NotContains`/`IsEmpty`/`IsNotEmpty`)以外に`ContainsKey`/
-  `Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`という未確認の関数が存在すると判明。
-  `EndsWith`/`StartsWith`は単純な文字列関数ではなく`DataRow`/`IList`型への多態的な
-  要素単位比較ロジックを持つ——標準`If`条件UI(またはそれ以外)から到達可能かどうか自体
-  未確認。知見75と同じクリップボード往復確認手法(ペースト→コピー読み取り)を試行した
-  (知見202)が、`query user`が「Active」・idle time一桁秒を示す状態でも`type_keys()`
-  ペーストが再現性よく無効化され、到達可能性は依然未確認のまま。**知見203で判明**:
-  ユーザーが実際にRDP接続した状態で再試行してもなお失敗し、真の原因は「RDP接続の
-  有無」ではなく`clipwire`(clipd)プロセス自身が対話的デスクトップ(ウィンドウ
-  ステーション)に紐付いていないことだと確定した(`click_input()`が明示的に
-  `"There is no active desktop..."`を返した)。`clipwire exec`経由で起動する限り
-  `type_keys()`/`click_input()`等の`SendInput`系操作は原理的に成功しない——
-  ユーザーがWindows側でclipd自身を対話的セッション内から再起動するまで、この項目
-  および他の全🖥️(RDP必須)項目は一律凍結される。
+- [x] 🖥️ **新規発見(知見200)、到達可能性は知見204で決着**: `Robin.Engine.dll`の
+  `FunctionExpressionEvaluator`に、既知の4関数(`Contains`/`NotContains`/`IsEmpty`/
+  `IsNotEmpty`)以外に`ContainsKey`/`Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`
+  という未確認の関数が存在すると判明していた。知見202/203の`clipd`非対話的ウィンドウ
+  ステーション問題(ユーザーによるパスワードリセット・RDP接続・clipd再起動で解消)を
+  経て、知見75の往復手法で6関数全ての到達可能性を実機確定した: `EndsWith`/
+  `StartsWith`/`IsBlank`は標準If条件UIから**到達可能**(`"Has error"`無し)、
+  `ContainsKey`/`Count`/`Blank`は**到達不能**(`"Has error"`)。ただし到達可能な3関数の
+  **真偽値の意味論(EndsWith/StartsWithのDataRow/IList多態性、IsBlankとIsEmptyの
+  異同)は未確認のまま**——知見81の「Run実行+ファイル書き出し」手法での追加確認が
+  必要なため、`pad_codegen`への結線はまだ行っていない(詳細は知見204)。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
   🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
   `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、

@@ -3228,3 +3228,42 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 `clipwire exec`経由で起動する子プロセス(今回の`powershell.exe`→`python.exe`)は`clipwire.exe`自身のウィンドウステーションをそのまま継承するため、**`clipwire`経由で起動する限り、何をどう工夫しても`SendInput`系の入力合成(`type_keys()`/`click_input()`/`pyautogui`)は原理的に成功しない**——「RDPを繋いだかどうか」はこの問題と無関係だった。一方`.invoke()`(UIA InvokePattern、ボタンクリック等)は`SendInput`を経由しないため今回も問題なく機能した(知見75・知見199・知見202と整合)。
 
 **今後の指針(ユーザーへの申し送り)**: この問題を解決するには、`clipwire`(clipd)プロセス自身を対話的デスクトップに紐付いた状態で再起動する必要がある——例えばユーザー自身がRDPで接続した状態で、スタートメニュー/エクスプローラー経由で`clipwire.exe`(またはそのサービス本体)を手動で起動し直す、タスクスケジューラの設定で「ユーザーがログオンしているときのみ実行」かつ対話的トークンを使う設定に変更する、等。`clipwire exec`経由の自動操作だけでこれを直すことはできない(自分自身が同じ非対話的ウィンドウステーションの子孫になるため)。これにより、知見200の6関数の到達可能性調査・`VariableTrailer`動的セレクタ構築等、残っている全ての🖥️(RDP必須)項目が、ユーザーによるclipd再起動が行われるまで一律に凍結されることが判明した——`pad_todo.md`にこの新しい前提条件を記録する。
+
+## 204. ユーザーによるclipd再起動後、知見200の6関数の到達可能性調査を知見75の往復手法で完全決着——`EndsWith`/`StartsWith`/`IsBlank`は到達可能、`ContainsKey`/`Count`/`Blank`は到達不能と確定(VM実機・round-trip確認済み)
+
+知見203でのパスワードリセット・ユーザーによるRDP接続・`clipwire`(clipd)自身の再起動を経て、`mouse.move()`/`keyboard.send_keys()`が実際に成功する状態(「active desktop」確認OK)になった。この状態を使い、知見200で保留していた6関数(`ContainsKey`/`Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`)の到達可能性を知見75のペースト往復手法で検証した。
+
+**副産物のトラブルシューティング**: 検証の途中、1つ目のプローブフローが`"Getting things ready..."`のまま永久に固まる現象に遭遇した(desktop accessが一時的に失われていた形跡と関連する可能性があるが未確定)。`PAD.*`プロセスを一括で強制再起動して復旧を試みたところ、**PAD自体がサインアウトされてしまった**(`design/robin_language_source_findings.md`/メモリ`pad2py_pad_signin_boundary`が記録する「VM再起動でサインアウトされる」現象と同じ症状が、VM再起動無し・`PAD.*`プロセスツリーの強制再起動だけでも起きると新たに確認——詳細は該当メモリファイルに追記)。ユーザー本人に再サインインしてもらい、検証を再開した。
+
+**検証DSL**(`tests/fixtures`には未保存、synthetic):
+```
+SET Var1 TO $'''hello'''
+SET Var2 TO $'''ell'''
+IF ContainsKey(Var1, Var2) THEN
+END
+IF Count(Var1) THEN
+END
+IF EndsWith(Var1, Var2) THEN
+END
+IF StartsWith(Var1, Var2) THEN
+END
+IF Blank(Var1) THEN
+END
+IF IsBlank(Var1) THEN
+END
+```
+
+**結果**(デザイナー上の自然文表示・`"Has error"`の有無で判定、知見75と同じ対照実験の考え方):
+
+| 関数 | デザイナー表示 | 判定 |
+| --- | --- | --- |
+| `ContainsKey(a, b)` | `"If Var1 Var2 then, Has error"`(関数名部分が欠落) | **到達不能** |
+| `Count(a)` | `"If Var1 then, Has error"` | **到達不能** |
+| `EndsWith(a, b)` | `"If Var1 Ends with Var2 then"`(エラー無し) | **到達可能** |
+| `StartsWith(a, b)` | `"If Var1 Starts with Var2 then"`(エラー無し) | **到達可能** |
+| `Blank(a)` | `"If Var1 <Blank> then, Has error"` | **到達不能** |
+| `IsBlank(a)` | `"If Var1 Is blank then"`(エラー無し) | **到達可能** |
+
+ペースト前のクリップボード内容と、Actionsリスト全選択(Ctrl+A)+コピー(Ctrl+C)で読み戻した内容がバイト単位で完全一致することも確認済み(知見75の往復確認基準を満たす)。プローブフローは`.invoke()`で「Don't save」まで含めてクリーンに後始終処理した。
+
+**確定した到達可能性(意味論はまだ未確認)**: `EndsWith`/`StartsWith`/`IsBlank`は実在する標準If条件関数であり、`pad_codegen`への結線候補になる。ただし知見200が指摘した「`EndsWith`/`StartsWith`はDataRow/IList型への多態的な要素単位比較ロジックを持つ可能性がある」という懸念、および`IsBlank`が既知の`IsEmpty`(知見75で確定済み、`not a`)と意味論的に同一か別物か(.NETの`String.IsNullOrEmpty`と`String.IsNullOrWhiteSpace`の違いに相当する可能性がある)は、今回の到達可能性テスト(関数名が認識されるかどうかの二値判定)だけでは決着しない——実際の真偽値の挙動は未確認のまま。`pad_codegen`へ結線するには、知見81の「Run実行+ファイル書き出し」手法で実際の真偽値を実機確認する追加の作業が必要(でっち上げずに安全側で保留、次のVM作業機会の候補として記録)。
