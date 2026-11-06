@@ -6522,6 +6522,54 @@ cell_expression`に`node.display_name == "Write Cell"`の検証を追加
 加えただけ)。`tests/test_uipath_codegen.py`に1件追加、UiPath関連
 テスト全528件通過、リポジトリ全体で全1446件通過。
 
+## 136. 【重大バグ】`Assign`/`MultipleAssign`の`.To`がC#式言語形(`<CSharpReference>`)等の未対応ネスト要素を持つ場合、構文的に無効なPythonコードを生成していたバグを発見・修正(未使用の新規13リポジトリでの実機検証、VM不使用)
+
+知見117〜135の手法を未使用の新規13リポジトリへ適用する過程で、
+`ShonHarsh/Wordle-Default-Word-Engine`の実機XAMLから生成したPythonコード
+に`'\n                  ' = 'Wordle-Default-Word-Engine.Main.
+OperationCompleted;'`という、**文字列リテラルへの代入**という構文的に
+無効なコードが混入していることを発見した——`generate_python()`自体は
+例外無く完走していたため、`# TODO`の個数だけを見る通常の検証手順では
+検出できなかった(今回`compile()`で実際にコンパイルを試して初めて
+発覚——このバグはいつから存在していたか不明で、過去のtickで生成した
+コードが同じ理由で無効になっていたケースを遡って検出する手段は無い)。
+
+**根本原因**: `xaml_tree.py`の`_argument_text(prop_elem)`
+(`Assign`/`MultipleAssign`の`.To`/`.Value`で共通使用)は、`<Assign.To>`
+直下の`OutArgument`/`InArgument`要素自身の`.text`を返す——通常は
+`<OutArgument>[result]</OutArgument>`のように直接テキストを持つが、
+知見129で発見したC#式言語形では`<OutArgument><CSharpReference>
+message</CSharpReference></OutArgument>`のようにテキストの代わりに
+ネストした子要素を持つ。この場合`.text`(lxml)は「開始タグ直後から
+最初の子要素タグ直前まで」のテキスト、つまりネスト要素前の改行+
+インデントの**空白のみ**を返す——`_argument_text`はこれを無条件に
+返していたため、`_parse_expr`が角括弧記法に一致しないその空白文字列を
+そのまま`Literal(value='\n    ')`として採用し、最終的にコード生成側が
+これを代入先(`target`)としてそのまま埋め込んでいた。
+
+**修正**: `_argument_text`に「子要素の`.text`が空白のみ、かつその子
+要素自身がさらに子要素を持つ(=ネストした未対応の要素形)」場合は
+`None`を返すガードを追加——でっち上げた空白文字列を使わず、呼び出し元
+の既存の`# TODO`フォールバックに委ねる。さらに`_generate_assign`
+(`node.target is None`)自体にも**別の**潜在バグがあったことを同時に
+発見した——`_render_value_or_todo(None, ...)`は例外を投げずに素の文字列
+`"None"`を返す仕様(`render_expr(None) == "None"`)のため、これを放置
+すると今度は`None = value`という**別の**構文的に無効なコードを生成して
+しまう。`node.target is None`を明示チェックし、代入文を一切生成せず
+`# TODO: Assign with no target (To) captured`へ倒すよう修正した——
+2つの異なる経路で同じ「無効なPythonコード生成」という結果に至っていた
+ため、両方を塞いだ。
+
+**教訓**: `# TODO`の個数や例外の有無だけでは「生成されたコードが実際に
+有効なPythonか」を保証できない——`_compiles()`(テストスイートでは
+既に徹底されている)のような実際のコンパイル検証を、今後の実機検証
+バッチでも(テストに限らず)一次チェックとして併用する価値がある。
+
+`dump_daemon/uipath_dsl/xaml_tree.py`の`_argument_text`・
+`dump_daemon/uipath_codegen/__init__.py`の`_generate_assign`を修正。
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に1件
+追加、UiPath関連テスト全530件通過、リポジトリ全体で全1454件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

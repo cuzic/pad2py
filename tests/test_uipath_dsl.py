@@ -703,6 +703,43 @@ def test_multiple_assign_operations():
     )
 
 
+def test_multiple_assign_to_with_nested_csharp_reference_is_none_not_whitespace():
+    """知見136: `.To`が`<CSharpReference>`(知見129のC#式言語形)を
+    ネストして持つ場合、`OutArgument`自身の`.text`はタグ間の空白
+    (改行+インデント)のみ——これを無視せずそのまま使うと`AssignNode.
+    target`が空白文字列の`Literal`になり、`'\n    ' = value`という
+    構文的に無効なPythonコードを生成してしまっていた(`ShonHarsh/
+    Wordle-Default-Word-Engine`の実機XAMLで発見)。`target`は`None`に
+    なるべき(未対応のC#式言語形として、でっち上げた空白文字列を使わず
+    `# TODO`へ委ねる)。"""
+    xml = (
+        '<ui:MultipleAssign '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System" '
+        'xmlns:mv="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'DisplayName="Multiple Assign">'
+        "<ui:MultipleAssign.AssignOperations>"
+        '<scg:List x:TypeArguments="ui:AssignOperation" Capacity="4">'
+        "<ui:AssignOperation>"
+        "<ui:AssignOperation.To>"
+        '<OutArgument x:TypeArguments="x:String">\n'
+        '  <CSharpReference x:TypeArguments="x:String">message</CSharpReference>\n'
+        "</OutArgument>"
+        "</ui:AssignOperation.To>"
+        "<ui:AssignOperation.Value>"
+        '<InArgument x:TypeArguments="x:String">done</InArgument>'
+        "</ui:AssignOperation.Value>"
+        "</ui:AssignOperation>"
+        "</scg:List>"
+        "</ui:MultipleAssign.AssignOperations>"
+        "</ui:MultipleAssign>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MultipleAssignNode)
+    assert node.assignments[0].target is None
+
+
 def test_while_and_do_while(main_wf):
     while_node = main_wf.root.body[10]
     assert isinstance(while_node, WhileNode)

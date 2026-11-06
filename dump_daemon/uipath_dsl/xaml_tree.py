@@ -251,13 +251,28 @@ def _argument_text(prop_elem: etree._Element | None) -> str | None:
     """`<Assign.To><OutArgument ...>[result]</OutArgument></Assign.To>`の
     ように、プロパティ要素(`Assign.To`)自身ではなく**その子の`OutArgument`/
     `InArgument`要素**がテキストを持つ(プロパティ要素自身の`.text`は
-    タグ間の空白のみ)。この子要素を見つけてその`.text`を返す。"""
+    タグ間の空白のみ)。この子要素を見つけてその`.text`を返す。
+
+    知見136: `OutArgument`/`InArgument`要素自身がテキストを持たず、
+    代わりに`<CSharpReference>`/`<CSharpValue>`(知見129のC#式言語形)
+    等のネストした子要素を持つ場合、`.text`はそのネスト要素の開始タグ
+    直前の空白(改行+インデント)のみを返す——これを無視せずそのまま
+    `Literal`の値として使うと、`'\n    ' = value`のような構文的に無効な
+    Pythonコードを生成してしまう実害を`ShonHarsh/
+    Wordle-Default-Word-Engine`の実機XAMLで発見した。テキストが空白のみ
+    かつネストした子要素が存在する場合は、未対応の形として`None`を返し
+    ——でっち上げた空白文字列を使わず、呼び出し元の既存の
+    `# TODO`フォールバックに委ねる。"""
     if prop_elem is None:
         return None
     children = _direct_children(prop_elem)
     if not children:
         return None
-    return children[0].text
+    arg_elem = children[0]
+    text = arg_elem.text
+    if text is not None and text.strip() == "" and _direct_children(arg_elem):
+        return None
+    return text
 
 
 def _parse_assign(elem: etree._Element) -> AssignNode:

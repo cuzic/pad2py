@@ -456,7 +456,17 @@ def _generate_node(
 
 
 def _generate_assign(node: AssignNode, indent: int) -> list[str]:
+    """知見136: `node.target is None`(`.To`が未捕捉、例: C#式言語形の
+    `<CSharpReference>`等、知見129の未対応プロパティ要素形)の場合、
+    `_render_value_or_todo(None, ...)`は例外を投げずに素の文字列`"None"`
+    を返すため、これを放置すると`None = value`という**構文的に無効**な
+    Pythonコードを生成してしまう——`target`が有効な代入先かどうかを
+    事前に明示チェックし、無い場合は代入文を一切生成せず`# TODO`へ
+    倒す(`value`側の未確定、知見107等と同じ「でっち上げ回避」方針)。
+    """
     prefix = INDENT * indent
+    if node.target is None:
+        return [f"{prefix}# TODO: Assign with no target (To) captured"]
     todo: list[str] = []
     target = _render_value_or_todo(node.target, prefix, todo)
     value = _render_value_or_todo(node.value, prefix, todo)

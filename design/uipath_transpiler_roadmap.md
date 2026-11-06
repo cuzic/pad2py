@@ -1665,3 +1665,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     ノーリスクな後片付け。回帰テスト追加(既存テストへの検証追加1件・
     `tests/test_uipath_codegen.py`1件)、UiPath関連テスト全528件通過、
     リポジトリ全体で全1446件通過。
+
+94. **(完了・重大バグ修正、2026-11-06)** `Assign`/`MultipleAssign`の
+    `.To`がC#式言語形(`<CSharpReference>`)等の未対応ネスト要素を持つ
+    場合、構文的に無効なPythonコード(文字列リテラルへの代入)を生成
+    していたバグを発見・修正(知見136): `generate_python()`自体は例外
+    無く完走していたため`# TODO`の個数だけを見る通常検証では検出
+    できず、今回`compile()`で実際にコンパイルして初めて発覚。根本原因
+    は`_argument_text`が、ネスト要素前の空白のみの`.text`を無条件に
+    返していたこと——「空白のみ+ネストした子要素あり」の場合に`None`
+    を返すガードを追加した。同時に`_generate_assign`の別の潜在バグ
+    (`node.target is None`の場合、`render_expr(None)`が例外無く
+    `"None"`を返すため`None = value`という別の無効コードを生成してい
+    た)も発見・修正——`target is None`を明示チェックし`# TODO`へ倒す。
+    教訓として、`# TODO`の個数や例外の有無だけでは生成コードの妥当性を
+    保証できないため、今後の実機検証でも`compile()`検証を一次チェック
+    として併用する価値を記録した。回帰テスト追加(`tests/
+    test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`1件)、
+    UiPath関連テスト全530件通過、リポジトリ全体で全1454件通過。

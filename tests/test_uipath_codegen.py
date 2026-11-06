@@ -148,6 +148,20 @@ def test_multiple_assign_with_no_operations_generates_no_statements():
     _compiles(code)
 
 
+def test_assign_with_no_target_is_todo_not_invalid_python():
+    """知見136: `node.target is None`(`.To`が未捕捉——`ShonHarsh/
+    Wordle-Default-Word-Engine`の実機XAMLで発見した、C#式言語形の
+    `<CSharpReference>`のように`.To`がネストした未対応の要素形を持つ
+    場合に実際に起こる)を放置すると、修正前は`None = value`という
+    **構文的に無効**なPythonコードを生成していた(`_render_value_or_todo
+    (None, ...)`が例外無しで素の文字列`"None"`を返すため)。"""
+    wf = _wrap([AssignNode(target=None, value=Literal(value="x"))])
+    code = generate_python(wf)
+    assert "# TODO: Assign with no target (To) captured" in code
+    assert "None = " not in code
+    _compiles(code)
+
+
 @pytest.mark.parametrize("type_str", ["OutArgument(x:String)", "InOutArgument(x:String)"])
 def test_workflow_out_or_inout_argument_warns_about_unsupported_byref_writeback(
     type_str: str,
