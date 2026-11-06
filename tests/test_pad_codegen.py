@@ -562,6 +562,44 @@ def test_generate_python_converts_if_window_by_title_class_modes(mode: str, expe
     assert "NotImplementedError" not in code
 
 
+@pytest.mark.parametrize(
+    ("mode", "window_exists", "window_active", "expected_result"),
+    [
+        ("IsOpenByTitleClass", True, True, True),
+        ("IsOpenByTitleClass", False, False, False),
+        ("IsNotOpenByTitleClass", True, True, False),
+        ("IsNotOpenByTitleClass", False, False, True),
+        ("IsFocusedByTitleClass", True, True, True),
+        ("IsFocusedByTitleClass", True, False, False),
+        ("IsFocusedByTitleClass", False, False, False),
+        ("IsNotFocusedByTitleClass", True, True, False),
+        ("IsNotFocusedByTitleClass", True, False, True),
+        ("IsNotFocusedByTitleClass", False, False, True),
+    ],
+)
+def test_generate_python_if_window_by_title_class_modes_evaluate_correctly(
+    mode: str, window_exists: bool, window_active: bool, expected_result: bool
+) -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: `Title`+`Class`ベースの兄弟
+    # セレクタ4モードも、Control/WindowInstanceベースと同じ10パターンで真偽値まで検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    dsl = f"IF (UIAutomation.IfWindow.{mode} Title: $'''Notepad''' Class: $'''''') THEN\nSET X TO 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    if_line = next(line for line in code.splitlines() if line.startswith("if "))
+    condition_source = if_line.removeprefix("if ").removesuffix(":")
+
+    registry = FakeRegistry()
+    if window_exists:
+        registry.register_window(title="Notepad")
+        registry.set_active([{"title": "Notepad"}], window_active)
+    with fake_pywinauto_desktop(registry):
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert eval(condition_source, namespace) is expected_result
+
+
 def test_generate_python_from_real_if_window_contains_element_whole_subflow_capture_raises() -> None:
     # design/dsl_format_findings.md 知見54の追記: 「If window contains element」も知見54の
     # IfActionRecord/_generate_conditional()のNotImplementedErrorフォールバックをそのまま

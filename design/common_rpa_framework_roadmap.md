@@ -211,6 +211,9 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   `Window: appmask[...]`(Control/リポジトリ経由)の経路しか真偽値まで検証していなかった
   ——`WindowInstance`変数ベースの兄弟セレクタ(`IsOpenByInstanceOrHandle`等)4モードにも
   同じ10パターン(ウィンドウ存在/フォーカス状態×期待値)の`eval()`検証を追加した。
+  続けて`Title`+`Class`ベースの兄弟セレクタ(`IsOpenByTitleClass`等)4モードにも同じ
+  10パターンを追加し、`IfWindow`の3系統(Control/WindowInstance/TitleClass)全てで
+  真偽値レベルの検証が揃った。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。
