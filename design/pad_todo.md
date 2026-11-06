@@ -757,10 +757,23 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
   APIいずれでも忠実に再現不能なため)は`NotImplementedError`のまま意図的に未実装。
   同tick内の追補で`Display.SelectFolder`(`SelectFolderDialog`、フラットなaction、
   標準`FolderBrowserDialog`→`tkinter.filedialog.askdirectory()`で1対1対応)も実装・
-  結線済み。残る兄弟アクション(`InputDialog`・`SelectDateDialog`・`SelectFileDialog`・
-  `SelectFromListDialog`・`ShowCustomDialog`、いずれもファイルフィルタ文字列のパース・
-  パスワード/複数行入力・JSON Adaptive Card等でより複雑)と、新規発見した
-  `Microsoft.Flow.RPA.Desktop.Modules.System.Actions.dll`は未調査のまま次回以降に残す。
+  結線済み。残る兄弟アクションは知見186で個別精査し、今回は全て見送った:
+  - `InputDialog`: **`action_id`自体が未確定**(`Name`/`Id`属性どちらも無いフラットな
+    action——知見162/179で確認済みの「`Id`無ければ`Name`がEffectiveId」ルールの対象外で、
+    「どちらも無ければクラス名がEffectiveId」というフォールバックは未確認)。次にVMが
+    空いたタイミングでaction_idをリフレクション確認するのが最優先(ロジック自体は
+    `FormInputDialog`を機械的に翻訳できる見込みで労力は小さい)。
+  - `SelectFileDialog`: action_id自体は確定可能だが`CheckIfFileExists=False`(既定値)の
+    意味論を`tkinter.filedialog`で忠実に再現できるか未確認、生の`comdlg32.
+    GetOpenFileNameW`構造体を実機未確認で実装するのはリスクが高いため見送り。
+  - `SelectFromListDialog`: `LimitToList`/`AllowMultiple`/`PreSelectItemsWithPlus`/
+    `AllowEmpty`が複雑に絡み合い、単一の標準ウィジェットに対応しない(独自UI構築が必要)。
+  - `SelectDateDialog`: カレンダーピッカーが標準ライブラリに無く、新規の
+    サードパーティ依存(`tkcalendar`等)が必要。
+  - `ShowCustomDialog`: JSON Adaptive Cardレンダリングで本プロジェクトの対象範囲外。
+
+  新規発見した`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.dll`は未調査のまま
+  次回以降に残す。
 - [ ] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
   (SMTP送受信)・`Outlook`(ライブCOM経由)・`FTP`/`SFTP`・`Printer`・`Registry`・
   `Remote Desktop`(`UseDesktop`等の一部のみ既知)・`Terminal`(VT)・`System`/`Run application`
