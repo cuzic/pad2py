@@ -48,7 +48,12 @@ def test_text_variables_batch1_all_actions_convert_without_todo() -> None:
     assert "_crop_result = text_actions.crop_text('sample', mode='GetTextBeforeFlag', " in code
     assert "CroppedText = _crop_result.cropped_text" in code
     assert "IsFlagFound = _crop_result.is_flag_found" in code
-    assert "Subtext = text_actions.get_subtext('sample', start_index='AtSpecificCharacter', " in code
+    # 知見142: 実機の`SubtextStartIndex`/`SubtextLength`列挙値はVM上のリフレクションで
+    # `StartOfText`/`CharacterPosition`・`EndOfText`/`NumberOfChars`と確定(以前の
+    # 'AtSpecificCharacter'/'SpecificLength'という文字列は実在しない名前だった——
+    # get_subtext()の判定が`== "StartOfText"`の等値チェックのみだったため、たまたま
+    # 挙動には影響していなかった)。
+    assert "Subtext = text_actions.get_subtext('sample', start_index='CharacterPosition', " in code
     assert "TextList = text_actions.split_text('sample', standard_delimiter='Space', delimiter_times=1)" in code
     assert "TextAsNumber = text_actions.text_to_number('sample')" in code
     assert "FormattedNumber = text_actions.number_to_text('sample', decimal_places=2, " in code

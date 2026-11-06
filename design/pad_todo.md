@@ -435,11 +435,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
         `encoding`引数をPythonデコード用途と`chcp`コマンド引数用途の両方に
         再利用している設計自体も、実機の`chcp`呼び出し形式との整合性が
         未検証という留保事項が新たに判明した。
-    - `Text.Actions.dll`(23セレクタ): `DateTimeToText`系2・`ToDateTime`系2・
-      `CropText`系3(Before/After/BetweenFlags)・`GetText`/`GetSubtext`系3・
-      `JoinText`系3・`Parse`系4(通常/Regex×先頭のみ/全件)・`ReplaceText`系2・
-      `SplitText`系3。既存結線(`Text.ParseText.ParseForFirstOccurrence`/`Replace.
-      ReplaceText`等、知見66)との重複有無を要確認。
+    - [~] `Text.Actions.dll`(23セレクタ)。
+      ✅ **決着(知見142)**: `GetSubtext`系3(`GetText`/`GetSubtextFromStartTo`/
+      `GetSubtextFrom`)・`CropText`系2(`CropTextAfterFlag`/`CropTextBetweenFlags`)・
+      `JoinText`系2・`SplitText`系2・`ParseText`系3(`Parse`/`RegexParse`/
+      `RegexParseForFirstOccurrence`)・`ReplaceText`系1(`ReplaceTextWithRegex`)の
+      合計13件を新規結線完了。副産物として既存`GetSubtext`結線が実在しない列挙値名
+      (`'AtSpecificCharacter'`/`'SpecificLength'`)を使っていた潜在的な不整合も発見・
+      修正した(偶然挙動には影響していなかった)。
+      - [ ] 💻🖥️ **残課題**: `DateTimeToText`系2(`FromCustomDateTime`)・`ToDateTime`系2
+        (`ToDateTimeCustomFormat`)は`CustomFormat`文字列(.NET書式→Python strftime変換)
+        の対応検証が必要なため見送った(`dotnet_format_to_strftime()`は既に実装済み、
+        `datetime_to_text()`/`text_to_datetime()`が`custom_format`引数を受け付けるかの
+        確認が次の作業)。
     - `Cryptography.Actions.dll`(今回はAES暗号/復号の16セレクタのみ、Salt/IV組み合わせ
       4パターン×Encrypt/Decrypt×Text/File=16件): 既存結線(知見111、鍵無しの
       `HashText`/`HashFromFile`のみ)とは別の、`EncryptTextWithAES`等AES専用セレクタ群。

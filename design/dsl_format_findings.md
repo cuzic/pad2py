@@ -2475,3 +2475,18 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 - `OpenCmdSession`クラス: `ChangeCodePage: Boolean`/`Encoding: Encoding`(単純な文字列ではなく専用の`Encoding`型)——既存の`open_cmd_session(encoding: str = "utf-8")`はこの1つの文字列引数をPythonの`subprocess`テキストデコードと`chcp {encoding}`コマンド引数の両方に再利用しているが、PAD実機の`Encoding`列挙値がどう直列化されるか(コードページ番号かコーデック名か)・既存の`chcp {encoding}`という呼び出し自体がPADの実際の挙動と一致するかはいずれも実機未確認——新規結線は見送った(既存の`change_code_page`/`encoding`引数自体の設計もこの観点で再検証が必要という留保事項が新たに判明した)。
 
 テストは`tests/test_pad_codegen.py`に`ReadAndSplit`の1件を追加した(`CmdSession`はLinux上で`cmd.exe`を起動できないため、`Session`変数へ注入したフェイクオブジェクトで`.read(split_output_and_error=True)`の呼び出しを検証)。
+
+## 142. 知見139のText.Actions.dll分を結線完了——13件を新規結線、既存`GetSubtext`の列挙値文字列の誤りも発見・修正
+
+知見139でText.Actions.dllの未結線セレクタ(23セレクタ中13件)を確認済みだったが結線は未着手だった。VM上で各セレクタの所属クラスのプロパティと関連する列挙型(`SubtextStartIndex`/`SubtextLength`/`JoinTextDelimiter`/`SplitTextDelimiter`/`CropTextMode`/`StandardDelimiter`)のメンバー名を直接確認し、以下13件を新規結線した——全て`pad_action_lib.text_actions`側の既存実装(`get_subtext()`/`crop_text()`/`join_text()`/`split_text()`/`parse_text()`/`replace_text()`が元から持っていた引数)を呼び分けるだけで済んだ:
+
+- `GetSubtextAction`(1クラスで4つの兄弟セレクタ、既存`GetSubtext`含む): `GetText`(StartOfText×EndOfText)・`GetSubtextFromStartTo`(StartOfText×NumberOfChars)・`GetSubtextFrom`(CharacterPosition×EndOfText)。
+- `CropTextAction`: `CropTextAfterFlag`(`mode='GetTextAfterFlag'`)・`CropTextBetweenFlags`(`mode='GetTextBetweenFlags'`、`FromFlag`/`ToFlag`両方使用)。
+- `JoinTextAction`: `JoinWithDelimiter`(`delimiter_type='Standard'`)・`JoinWithCustomDelimiter`(`delimiter_type='Custom'`)。
+- `SplitTextAction`: `SplitWithDelimiter`(`delimiter_type='Custom'`)・`SplitAtNumberOfCharacters`(`delimiter_type='NumberOfCharacters'`)。
+- `ParseTextAction`: `Parse`(`is_regex=False, first_occurrence_only=False`、`Matches`/`OccurrencePositions`リスト出力)・`RegexParse`(`is_regex=True, first_occurrence_only=False`)・`RegexParseForFirstOccurrence`(`is_regex=True, first_occurrence_only=True`)。
+- `ReplaceTextAction`: `ReplaceTextWithRegex`(`is_regex=True`)。
+
+**既存バグの発見・修正**: VM上で`SubtextStartIndex`/`SubtextLength`の実際の列挙値を確認したところ、`StartOfText`/`CharacterPosition`・`EndOfText`/`NumberOfChars`だと判明した——既存の`Text.GetSubtext.GetSubtext`結線が使っていた`"AtSpecificCharacter"`/`"SpecificLength"`という文字列はこれと**一致していなかった**(実在しない列挙値名だった)。幸い`get_subtext()`の分岐ロジックが`== "StartOfText"`/`== "EndOfText"`という等値判定のみ(どちらにも一致しなければ無条件に「カスタム」側へ進む)だったため、間違った文字列でも偶然挙動には影響していなかった——正しい列挙値名に修正した(`tests/test_pad_codegen_tier1_actions.py`の対応するアサーションも合わせて更新)。
+
+テストは`tests/test_pad_codegen.py`に13件追加し、全て実際に`exec()`して出力値まで検証した。

@@ -23,6 +23,20 @@ tier1_text_variables_batch1.txt`・`tier1_text_variables_batch4.txt`から確認
 (実機キャプチャで両方が現れている)ことから「特定位置から指定文字数」モードが
 選ばれていたと判断し、`pad_action_lib.text_actions.get_subtext()`の`"StartOfText"`/
 `"EndOfText"`以外の任意の文字列で"カスタム"分岐を選ぶ既定動作を使って変換する。
+
+知見139・142(`ActionSelectorBase`一括列挙監査をText.Actions.dllに適用、VM上で
+`GetSubtextAction`クラスのプロパティ・`SubtextStartIndex`/`SubtextLength`列挙値を
+直接確認): 実際の列挙値は`StartOfText`/`CharacterPosition`(`StartIndex`)・
+`EndOfText`/`NumberOfChars`(`Length`)——上記の既存`GetSubtext`結線が使っていた
+`"AtSpecificCharacter"`/`"SpecificLength"`という文字列はこの正式な列挙値名と**一致
+していなかった**(`get_subtext()`の分岐が`== "StartOfText"`/`== "EndOfText"`の
+等値判定だけで、他の文字列は全て「カスタム」側として扱われるため、たまたま挙動には
+影響していなかった)。正しい列挙値名に修正し、`StartIndex`×`Length`の4通りの組み合わせ
+(`GetSubtextAction`は1クラスで4つの兄弟セレクタ全てを提供する)として
+`GetText`(StartOfText×EndOfText、全文そのまま)・`GetSubtextFromStartTo`
+(StartOfText×NumberOfChars、先頭からN文字)・`GetSubtextFrom`(CharacterPosition×
+EndOfText、指定位置から末尾まで)・`GetSubtext`(既存、CharacterPosition×NumberOfChars)
+を結線した。
 """
 from __future__ import annotations
 
@@ -87,24 +101,84 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [
             f"{prefix}{node.output_var} = text_actions.get_subtext({text}, "
-            f"start_index='AtSpecificCharacter', character_position={character_position}, "
-            f"length='SpecificLength', number_of_chars={number_of_chars})"
+            f"start_index='CharacterPosition', character_position={character_position}, "
+            f"length='NumberOfChars', number_of_chars={number_of_chars})"
         ]
 
-    if action_id == "Text.CropText.CropTextBeforeFlag":
+    if action_id == "Text.GetSubtext.GetText":
+        # 知見142: `GetSubtextAction`の兄弟セレクタ(StartOfText×EndOfText、全文そのまま)。
         text = safe_render(p.get("Text"))
+        if text is None or not node.output_var:
+            return None
+        return [f"{prefix}{node.output_var} = text_actions.get_subtext({text})"]
+
+    if action_id == "Text.GetSubtext.GetSubtextFromStartTo":
+        # 知見142: StartOfText×NumberOfChars(先頭からN文字)。
+        text = safe_render(p.get("Text"))
+        number_of_chars = safe_render(p.get("NumberOfChars"))
+        if text is None or number_of_chars is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.get_subtext({text}, "
+            f"length='NumberOfChars', number_of_chars={number_of_chars})"
+        ]
+
+    if action_id == "Text.GetSubtext.GetSubtextFrom":
+        # 知見142: CharacterPosition×EndOfText(指定位置から末尾まで)。
+        text = safe_render(p.get("Text"))
+        character_position = safe_render(p.get("CharacterPosition"))
+        if text is None or character_position is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.get_subtext({text}, "
+            f"start_index='CharacterPosition', character_position={character_position})"
+        ]
+
+    _CROP_TEXT_MODES = {
+        "Text.CropText.CropTextBeforeFlag": "GetTextBeforeFlag",
+        "Text.CropText.CropTextAfterFlag": "GetTextAfterFlag",
+    }
+    if action_id in _CROP_TEXT_MODES:
+        # 知見139・142: `CropTextAction`クラスの兄弟セレクタ(`CropTextMode`列挙値は
+        # `GetTextBeforeFlag`/`GetTextAfterFlag`/`GetTextBetweenFlags`で、既存の
+        # `crop_text()`の`mode`引数と文字列が完全一致すると実機のリフレクションで確認済み)。
+        text = safe_render(p.get("Text"))
+        from_flag = safe_render(p.get("ToFlag"))
+        ignore_case = safe_render(p.get("IgnoreCase"))
+        cropped_var = node.output_vars.get("CroppedText")
+        found_var = node.output_vars.get("IsFlagFound")
+        if text is None or from_flag is None or ignore_case is None:
+            return None
+        if not cropped_var and not found_var:
+            return None
+        mode = _CROP_TEXT_MODES[action_id]
+        tmp = "_crop_result"
+        lines = [
+            f"{prefix}{tmp} = text_actions.crop_text({text}, mode={mode!r}, "
+            f"from_flag={from_flag}, ignore_case={ignore_case})"
+        ]
+        if cropped_var:
+            lines.append(f"{prefix}{cropped_var} = {tmp}.cropped_text")
+        if found_var:
+            lines.append(f"{prefix}{found_var} = {tmp}.is_flag_found")
+        return lines
+
+    if action_id == "Text.CropText.CropTextBetweenFlags":
+        # 知見142: `GetTextBetweenFlags`モード(`FromFlag`/`ToFlag`両方を使う)。
+        text = safe_render(p.get("Text"))
+        from_flag = safe_render(p.get("FromFlag"))
         to_flag = safe_render(p.get("ToFlag"))
         ignore_case = safe_render(p.get("IgnoreCase"))
         cropped_var = node.output_vars.get("CroppedText")
         found_var = node.output_vars.get("IsFlagFound")
-        if text is None or to_flag is None or ignore_case is None:
+        if text is None or from_flag is None or to_flag is None or ignore_case is None:
             return None
         if not cropped_var and not found_var:
             return None
         tmp = "_crop_result"
         lines = [
-            f"{prefix}{tmp} = text_actions.crop_text({text}, mode='GetTextBeforeFlag', "
-            f"from_flag={to_flag}, ignore_case={ignore_case})"
+            f"{prefix}{tmp} = text_actions.crop_text({text}, mode='GetTextBetweenFlags', "
+            f"from_flag={from_flag}, to_flag={to_flag}, ignore_case={ignore_case})"
         ]
         if cropped_var:
             lines.append(f"{prefix}{cropped_var} = {tmp}.cropped_text")
@@ -141,6 +215,34 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}{node.output_var} = text_actions.join_text({items})"]
 
+    if action_id == "Text.JoinText.JoinWithDelimiter":
+        # 知見139・142: `JoinTextAction`の兄弟セレクタ(`DelimiterType=Standard`、
+        # `JoinTextDelimiter`列挙値`None`/`Standard`/`Custom`は既存の
+        # `_resolve_delimiter()`と文字列完全一致と実機確認済み)。
+        items = safe_render(p.get("List"))
+        standard_delimiter = enum_last(p.get("StandardDelimiter"))
+        delimiter_times = safe_render(p.get("DelimiterTimes"))
+        if items is None or standard_delimiter is None or delimiter_times is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.join_text({items}, "
+            f"delimiter_type='Standard', standard_delimiter={standard_delimiter!r}, "
+            f"delimiter_times={delimiter_times})"
+        ]
+
+    if action_id == "Text.JoinText.JoinWithCustomDelimiter":
+        # 知見142: `DelimiterType=Custom`。
+        items = safe_render(p.get("List"))
+        custom_delimiter = safe_render(p.get("CustomDelimiter"))
+        delimiter_times = safe_render(p.get("DelimiterTimes"))
+        if items is None or custom_delimiter is None or delimiter_times is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.join_text({items}, "
+            f"delimiter_type='Custom', custom_delimiter={custom_delimiter}, "
+            f"delimiter_times={delimiter_times})"
+        ]
+
     if action_id == "Text.Pad":
         text = safe_render(p.get("Text"))
         pad_position = enum_last(p.get("PadPosition"))
@@ -172,6 +274,61 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{position_var} = {tmp}.occurrence_position",
         ]
 
+    _PARSE_TEXT_ALL_MATCHES = {
+        "Text.ParseText.Parse": False,
+        "Text.ParseText.RegexParse": True,
+    }
+    if action_id in _PARSE_TEXT_ALL_MATCHES:
+        # 知見139・142: `ParseTextAction`の兄弟セレクタ(`FirstOccurrenceOnly=False`、
+        # 複数マッチを`Matches`/`OccurrencePositions`(いずれもリスト)へ出力する)。
+        # 既存の`parse_text()`が`is_regex`/`first_occurrence_only`を既に実装済み。
+        text = safe_render(p.get("Text"))
+        text_to_find = safe_render(p.get("TextToFind"))
+        starting_position = safe_render(p.get("StartingPosition"))
+        ignore_case = safe_render(p.get("IgnoreCase"))
+        matches_var = node.output_vars.get("Matches")
+        positions_var = node.output_vars.get("OccurrencePositions")
+        if text is None or text_to_find is None or starting_position is None or ignore_case is None:
+            return None
+        if not matches_var and not positions_var:
+            return None
+        is_regex = _PARSE_TEXT_ALL_MATCHES[action_id]
+        tmp = "_parse_result"
+        lines = [
+            f"{prefix}{tmp} = text_actions.parse_text({text}, {text_to_find}, "
+            f"is_regex={is_regex}, first_occurrence_only=False, ignore_case={ignore_case}, "
+            f"starting_position={starting_position})"
+        ]
+        if matches_var:
+            lines.append(f"{prefix}{matches_var} = {tmp}.matches")
+        if positions_var:
+            lines.append(f"{prefix}{positions_var} = {tmp}.occurrence_positions")
+        return lines
+
+    if action_id == "Text.ParseText.RegexParseForFirstOccurrence":
+        # 知見142: `IsRegEx=True`×`FirstOccurrenceOnly=True`(既存の
+        # `ParseForFirstOccurrence`のRegex版)。
+        text = safe_render(p.get("Text"))
+        text_to_find = safe_render(p.get("TextToFind"))
+        starting_position = safe_render(p.get("StartingPosition"))
+        ignore_case = safe_render(p.get("IgnoreCase"))
+        match_var = node.output_vars.get("Match")
+        position_var = node.output_vars.get("OccurrencePosition")
+        if text is None or text_to_find is None or starting_position is None or ignore_case is None:
+            return None
+        if not match_var and not position_var:
+            return None
+        tmp = "_parse_result"
+        lines = [
+            f"{prefix}{tmp} = text_actions.parse_text({text}, {text_to_find}, "
+            f"is_regex=True, ignore_case={ignore_case}, starting_position={starting_position})"
+        ]
+        if match_var:
+            lines.append(f"{prefix}{match_var} = {tmp}.match")
+        if position_var:
+            lines.append(f"{prefix}{position_var} = {tmp}.occurrence_position")
+        return lines
+
     if action_id == "Text.Replace.ReplaceText":
         text = safe_render(p.get("Text"))
         text_to_find = safe_render(p.get("TextToFind"))
@@ -187,6 +344,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}{node.output_var} = text_actions.replace_text({text}, {text_to_find}, {replace_with}, "
             f"ignore_case={ignore_case}, activate_escape_sequences={activate_escape}, "
             f"comparison_type={comparison_type!r})"
+        ]
+
+    if action_id == "Text.Replace.ReplaceTextWithRegex":
+        # 知見139・142: `ReplaceTextAction`の兄弟セレクタ(`IsRegEx=True`、既存の
+        # `replace_text()`の`is_regex`引数がそのまま対応できる)。
+        text = safe_render(p.get("Text"))
+        text_to_find = safe_render(p.get("TextToFind"))
+        replace_with = safe_render(p.get("ReplaceWith"))
+        ignore_case = safe_render(p.get("IgnoreCase"))
+        activate_escape = safe_render(p.get("ActivateEscapeSequences"))
+        if None in (text, text_to_find, replace_with, ignore_case, activate_escape):
+            return None
+        if not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.replace_text({text}, {text_to_find}, {replace_with}, "
+            f"is_regex=True, ignore_case={ignore_case}, activate_escape_sequences={activate_escape})"
         ]
 
     if action_id == "Text.Reverse":
@@ -206,6 +380,32 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}{node.output_var} = text_actions.split_text({text}, "
             f"standard_delimiter={standard_delimiter!r}, delimiter_times={delimiter_times})"
+        ]
+
+    if action_id == "Text.SplitText.SplitWithDelimiter":
+        # 知見139・142: `SplitTextAction`の兄弟セレクタ(`DelimiterType=Custom`、
+        # `SplitTextDelimiter`列挙値`Standard`/`Custom`/`NumberOfCharacters`は既存の
+        # `split_text()`の`delimiter_type`と文字列完全一致と実機確認済み)。
+        text = safe_render(p.get("Text"))
+        custom_delimiter = safe_render(p.get("CustomDelimiter"))
+        delimiter_times = safe_render(p.get("DelimiterTimes"))
+        if text is None or custom_delimiter is None or delimiter_times is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.split_text({text}, "
+            f"delimiter_type='Custom', custom_delimiter={custom_delimiter}, "
+            f"delimiter_times={delimiter_times})"
+        ]
+
+    if action_id == "Text.SplitText.SplitAtNumberOfCharacters":
+        # 知見142: `DelimiterType=NumberOfCharacters`(`SplitInterval`ごとに分割)。
+        text = safe_render(p.get("Text"))
+        split_interval = safe_render(p.get("SplitInterval"))
+        if text is None or split_interval is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.split_text({text}, "
+            f"delimiter_type='NumberOfCharacters', split_interval={split_interval})"
         ]
 
     if action_id == "Text.ToNumber":

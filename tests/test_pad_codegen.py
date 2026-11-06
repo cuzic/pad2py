@@ -3882,3 +3882,160 @@ def test_generate_python_from_write_xml_to_file_without_formatting_converts() ->
         assert "format_xml=False" in code
         exec(code, {})
         assert out_path.read_text(encoding="utf-8") == "<r><v>1</v></r>"
+
+
+@pytest.mark.parametrize(
+    ("action", "params", "expected"),
+    [
+        ("GetText", "", "hello"),
+        ("GetSubtextFromStartTo", " NumberOfChars: 3", "hel"),
+        ("GetSubtextFrom", " CharacterPosition: 2", "llo"),
+    ],
+)
+def test_generate_python_from_get_subtext_siblings_converts(action: str, params: str, expected: str) -> None:
+    # design/dsl_format_findings.md 知見139・142: `ActionSelectorBase`一括列挙監査を
+    # Text.Actions.dllに適用して発見した`GetSubtext`の兄弟セレクタ3件
+    # (`GetText`/`GetSubtextFromStartTo`/`GetSubtextFrom`)。既存の`get_subtext()`の
+    # `start_index`/`length`引数の組み合わせがそのまま対応できた。
+    dsl = f"Text.GetSubtext.{action} Text: $'''hello'''{params} Subtext=> S"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["S"] == expected
+
+
+def test_generate_python_from_crop_text_after_flag_converts() -> None:
+    dsl = "Text.CropText.CropTextAfterFlag Text: $'''a-b-c''' ToFlag: $'''-''' IgnoreCase: False CroppedText=> C IsFlagFound=> F"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["C"] == "b-c"
+    assert namespace["F"] is True
+
+
+def test_generate_python_from_crop_text_between_flags_converts() -> None:
+    dsl = (
+        "Text.CropText.CropTextBetweenFlags Text: $'''a[b]c''' FromFlag: $'''[''' ToFlag: $''']''' "
+        "IgnoreCase: False CroppedText=> C IsFlagFound=> F"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["C"] == "b"
+    assert namespace["F"] is True
+
+
+def test_generate_python_from_join_text_with_delimiter_converts() -> None:
+    dsl = (
+        "SET L TO List\n"
+        "Text.JoinText.JoinWithDelimiter List: L StandardDelimiter: Text.StandardDelimiter.Space "
+        "DelimiterTimes: 1 Result=> R"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {"List": ["a", "b", "c"]}
+    exec(code, namespace)
+    assert namespace["R"] == "a b c"
+
+
+def test_generate_python_from_join_text_with_custom_delimiter_converts() -> None:
+    dsl = "Text.JoinText.JoinWithCustomDelimiter List: L CustomDelimiter: $''', ''' DelimiterTimes: 1 Result=> R"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {"L": ["a", "b", "c"]}
+    exec(code, namespace)
+    assert namespace["R"] == "a, b, c"
+
+
+def test_generate_python_from_split_text_with_delimiter_converts() -> None:
+    dsl = "Text.SplitText.SplitWithDelimiter Text: $'''a,b,c''' CustomDelimiter: $''',''' DelimiterTimes: 1 Result=> R"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == ["a", "b", "c"]
+
+
+def test_generate_python_from_split_at_number_of_characters_converts() -> None:
+    dsl = "Text.SplitText.SplitAtNumberOfCharacters Text: $'''abcdef''' SplitInterval: 2 Result=> R"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == ["ab", "cd", "ef"]
+
+
+def test_generate_python_from_parse_text_all_matches_converts() -> None:
+    dsl = (
+        "Text.ParseText.Parse Text: $'''aXbXc''' TextToFind: $'''X''' StartingPosition: 0 "
+        "IgnoreCase: False Matches=> M OccurrencePositions=> P"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == ["X", "X"]
+    assert namespace["P"] == [1, 3]
+
+
+def test_generate_python_from_regex_parse_all_matches_converts() -> None:
+    dsl = (
+        "Text.ParseText.RegexParse Text: $'''a1b2''' TextToFind: $'''[0-9]''' StartingPosition: 0 "
+        "IgnoreCase: False Matches=> M OccurrencePositions=> P"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == ["1", "2"]
+    assert namespace["P"] == [1, 3]
+
+
+def test_generate_python_from_regex_parse_for_first_occurrence_converts() -> None:
+    dsl = (
+        "Text.ParseText.RegexParseForFirstOccurrence Text: $'''a1b2''' TextToFind: $'''[0-9]''' "
+        "StartingPosition: 0 IgnoreCase: False Match=> M OccurrencePosition=> P"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == "1"
+    assert namespace["P"] == 1
+
+
+def test_generate_python_from_replace_text_with_regex_converts() -> None:
+    dsl = (
+        "Text.Replace.ReplaceTextWithRegex Text: $'''a1b2''' TextToFind: $'''[0-9]''' ReplaceWith: $'''#''' "
+        "IgnoreCase: False ActivateEscapeSequences: False Result=> R"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == "a#b#"
