@@ -23,6 +23,7 @@ from .types import (
     BuildDataTableNode,
     CatchArm,
     ClickNode,
+    CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
@@ -30,6 +31,7 @@ from .types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -48,6 +50,7 @@ from .types import (
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
+    LogMessageNode,
     MessageBoxNode,
     Node,
     ParallelNode,
@@ -676,9 +679,30 @@ def _parse_set_to_clipboard(elem: etree._Element) -> SetToClipboardNode:
 
 def _parse_excel_write_cell(elem: etree._Element) -> ExcelWriteCellNode:
     return ExcelWriteCellNode(
-        cell=_attr(elem, "Cell") or "",
+        cell=_attr_expr(elem, "Cell"),
         sheet_name=_attr(elem, "SheetName") or "",
         text=_attr_expr(elem, "Text"),
+    )
+
+
+def _parse_excel_read_cell(elem: etree._Element) -> ExcelReadCellNode:
+    return ExcelReadCellNode(
+        cell=_attr_expr(elem, "Cell"),
+        sheet_name=_attr(elem, "SheetName") or "",
+        result=_in_argument_property_expr(elem, "Result"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_comment(elem: etree._Element) -> CommentNode:
+    return CommentNode(text=_attr(elem, "Text") or "")
+
+
+def _parse_log_message(elem: etree._Element) -> LogMessageNode:
+    return LogMessageNode(
+        message=_attr_expr(elem, "Message"),
+        level=_attr(elem, "Level"),
+        display_name=_attr(elem, "DisplayName"),
     )
 
 
@@ -1081,6 +1105,9 @@ _DISPATCH = {
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
+    (UI_NS, "ExcelReadCell"): _parse_excel_read_cell,
+    (UI_NS, "Comment"): _parse_comment,
+    (UI_NS, "LogMessage"): _parse_log_message,
     (UI_NS, "ExcelReadRange"): _parse_excel_read_range,
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,

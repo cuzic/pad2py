@@ -588,12 +588,63 @@ class SetToClipboardNode:
 
 
 @dataclass
-class ExcelWriteCellNode:
-    """`<ui:ExcelWriteCell Cell="..." SheetName="..." Text="..." />`(知見22)。"""
+class CommentNode:
+    """`<ui:Comment Text="..." />`(知見119、`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで発見)。アクティビティ
+    木に挿入される純粋な注釈——`Text`は常に生のリテラル文字列(VbExprでは
+    無い、実機確認済み)で実行時の挙動は一切無い。Pythonの`#`コメント行
+    へ変換する。"""
 
-    cell: str
+    text: str
+
+
+@dataclass
+class LogMessageNode:
+    """`<ui:LogMessage Level="..." Message="..." />`(知見119、
+    `UiPath.System.Activities`、`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで発見)。実機確認済み
+    の`level`は`"Info"`/`"Error"`のみ——他の値(`"Warn"`/`"Trace"`/
+    `"Fatal"`はUiPathのLogLevel列挙として存在が推定されるが実機未確認)は
+    コード生成を見送る。"""
+
+    message: Expr
+    level: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
+class ExcelWriteCellNode:
+    """`<ui:ExcelWriteCell Cell="..." SheetName="..." Text="..." />`
+    (知見22)。
+
+    知見119追記: `cell`は当初`str`型だったが、`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで`Cell="[&quot;B&quot;
+    +intCounter.ToString]"`(ループ内での連番セル指定、現場では非常に
+    一般的な実務パターン)という動的な実例を発見したため`Expr`へ昇格
+    した。`sheet_name`は全てのExcel活動(`ExcelReadRange`/
+    `ExcelWriteRange`/`ExcelAppendRange`含む)で実機確認済みの実例が常に
+    リテラル文字列("Sheet1"等)だったため`str`のまま残す(他の兄弟活動と
+    一貫性を保つ)。"""
+
+    cell: Expr
     sheet_name: str
     text: Expr
+
+
+@dataclass
+class ExcelReadCellNode:
+    """`<ui:ExcelReadCell>`(知見119、`ExcelWriteCellNode`と対になる読み取り
+    側、`PacktPublishing/Robotic-Process-Automation-Projects`の実機XAMLで
+    発見)。`cell`は`ExcelWriteCellNode`と同じ`Expr`(動的なセル指定の実例
+    あり)。`result`は`ui:ExcelReadCell.Result`配下の`OutArgument`要素
+    (`_in_argument_property_expr`、知見115で確立した共通パーサーで取得
+    ——`InArgument`/`OutArgument`のどちらのタグ名でも同じロジックで
+    動作する)。"""
+
+    cell: Expr
+    sheet_name: str
+    result: Expr
+    display_name: str | None = None
 
 
 @dataclass
@@ -877,6 +928,9 @@ Node = (
     | ReadTextFileNode
     | InvokeCodeNode
     | SetToClipboardNode
+    | CommentNode
+    | LogMessageNode
+    | ExcelReadCellNode
     | ExcelWriteCellNode
     | ExcelApplicationScopeNode
     | ExcelReadRangeNode

@@ -1387,3 +1387,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     (`tests/test_uipath_expr.py`4件・`tests/test_uipath_codegen.py`
     7件・`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全456件通過、
     リポジトリ全体で全1323件通過。
+77. **(完了、2026-11-06)** `ui:Comment`/`ui:LogMessage`/`ui:ExcelReadCell`
+    を新規実装、`ExcelWriteCellNode.cell`を`str`から`Expr`へ昇格、素の
+    変数へのメンバアクセス連鎖の未発見バグも修正(VM不使用、知見119——
+    知見117・118の手法を6件の実プロジェクトへ一括適用、1件は`# TODO`
+    0件で完全にクリーンに変換できた): 知見118の`ChainedAccess`修正
+    だけではカバーできない別のケース(`intCounter.ToString`のように
+    関数呼び出しを介さない素の変数へのチェーン、`IDENT`トークンの正規
+    表現がドット区切りを1トークンとして貪欲マッチするため文法の
+    `postfix`規則に到達しない)を発見・修正——末尾が確認済みの安全な
+    メンバ名の場合のみ分割して同じ変換を適用、`DateTime.Now`等の静的
+    クラス参照は無変換のまま変えない安全な追加。`ExcelWriteCellNode.
+    cell`は実機XAML(ループ内連番セル指定`"B"+intCounter.ToString`)で
+    動的な実例を発見したため`Expr`へ昇格——実際に一時`.xlsx`ファイルへ
+    生成コードを実行し正しいセルへ読み書きされることを確認済み。
+    `ExcelReadCell`は知見115の`_in_argument_property_expr`共通パーサーが
+    `OutArgument`タグでもそのまま動作することを確認。`LogMessage`は
+    確認済みの`Info`/`Error`のみ`logging`モジュールへマッピング。
+    `BrowserScope`/`AddQueueItem`/`GoogleVisionScope`は明示的に見送り。
+    回帰テスト追加(`tests/test_uipath_dsl.py`4件・
+    `tests/test_uipath_codegen.py`13件、既存2件の修正含む)、UiPath
+    関連テスト全473件通過、リポジトリ全体で全1341件通過。

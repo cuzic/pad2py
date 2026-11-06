@@ -19,12 +19,14 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     BuildDataTableNode,
     ClickNode,
+    CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -37,6 +39,7 @@ from dump_daemon.uipath_dsl import (
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
+    LogMessageNode,
     MessageBoxNode,
     ParallelNode,
     ReadTextFileNode,
@@ -499,6 +502,67 @@ def test_excel_append_range_properties():
     assert node.display_name == "Append Range"
 
 
+def test_excel_write_cell_with_dynamic_cell_expression():
+    """知見119: `Cell`は`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで動的な実例
+    (`Cell="[&quot;B&quot;+intCounter.ToString]"`)を発見し`Expr`へ昇格
+    した。"""
+    xml = (
+        f"<ui:ExcelWriteCell {_UI_XMLNS} "
+        'Cell="[&quot;B&quot;+intCounter.ToString]" DisplayName="Write Cell" '
+        'SheetName="Sheet1" Text="[strAdult]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelWriteCellNode)
+    assert node.cell == VbExpr(text='"B"+intCounter.ToString')
+    assert node.sheet_name == "Sheet1"
+    assert node.text == VbExpr(text="strAdult")
+
+
+def test_excel_read_cell_properties():
+    """知見119: `ui:ExcelReadCell`(`ExcelWriteCellNode`と対になる読み取り
+    側)。`.Result`はネストした`OutArgument`要素形
+    (`_in_argument_property_expr`、知見115で確立した共通パーサーを
+    `InArgument`以外のタグ名でも再利用できることを確認)。"""
+    xml = (
+        f"<ui:ExcelReadCell {_UI_XMLNS} "
+        'Cell="[&quot;A&quot;+intCounter.ToString]" DisplayName="Read Cell" '
+        'SheetName="Sheet1">'
+        "<ui:ExcelReadCell.Result>"
+        '<OutArgument x:TypeArguments="x:String">[strImagePath]</OutArgument>'
+        "</ui:ExcelReadCell.Result>"
+        "</ui:ExcelReadCell>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelReadCellNode)
+    assert node.cell == VbExpr(text='"A"+intCounter.ToString')
+    assert node.sheet_name == "Sheet1"
+    assert node.result == VbExpr(text="strImagePath")
+    assert node.display_name == "Read Cell"
+
+
+def test_comment_properties():
+    """知見119: `ui:Comment`(`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで発見)。`Text`は常に
+    生のリテラル文字列(VbExprでは無い)。"""
+    xml = f'<ui:Comment {_UI_XMLNS} Text="// Attach a browser" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CommentNode)
+    assert node.text == "// Attach a browser"
+
+
+def test_log_message_properties():
+    xml = (
+        f"<ui:LogMessage {_UI_XMLNS} "
+        'DisplayName="Log Message" Level="Info" Message="[&quot;done&quot;]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, LogMessageNode)
+    assert node.message == VbExpr(text='"done"')
+    assert node.level == "Info"
+    assert node.display_name == "Log Message"
+
+
 def test_invoke_workflow_file(main_wf):
     invoke = main_wf.root.body[9]
     assert isinstance(invoke, InvokeWorkflowFileNode)
@@ -555,7 +619,7 @@ def test_excel_application_scope(main_wf):
     assert scope.scope_var == "ExcelWorkbookScope"
     assert len(scope.body) == 1
     assert isinstance(scope.body[0], ExcelWriteCellNode)
-    assert scope.body[0].cell == "A1"
+    assert scope.body[0].cell == Literal(value="A1")
     assert scope.body[0].sheet_name == "Sheet1"
 
 

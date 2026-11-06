@@ -5722,6 +5722,77 @@ ProviderName(`Microsoft.Data.SqlClient`、SQLite以外のプロバイダの実�
 `tests/test_uipath_expr.py`に4件・`tests/test_uipath_codegen.py`に7件・
 `tests/test_uipath_dsl.py`に1件追加、全1323件通過。
 
+## 119. 「実機XAMLに対する実際のコード生成の検証」で6件の実プロジェクトを一括検証——`ui:Comment`/`ui:LogMessage`/`ui:ExcelReadCell`を新規実装、`ExcelWriteCellNode.cell`を`str`から`Expr`へ昇格、素の変数へのメンバアクセス連鎖の未発見バグも修正(知見117・118の手法を継続、VM不使用)
+
+知見117・118の「実機XAMLに対する実際のコード生成の検証」をさらに6件の
+多様な実プロジェクト(`PacktPublishing/Robotic-Process-Automation-
+Projects`の3ファイル・`allenlooplee/RPABook`・`HarshadRanganathan/
+uipath-learning`・`vajrang-b/UiPathIn30Days`)へ一括適用した。1件
+(`Excel_Sum_Formula.xaml`)は**`# TODO`が0件で完全にクリーンに変換できた
+**——良い検証結果。
+
+**別件のレンダラーバグ(知見118の追加調査で発見)**: `"A"+intCounter.
+ToString`(動的セル指定の実例、下記)を検証する過程で、知見118で修正した
+`ChainedAccess`(関数呼び出し結果へのチェーン)だけではカバーできない
+別のケースを発見した——`intCounter.ToString`のように**関数呼び出しを
+介さない素の変数**へのメンバアクセス連鎖は、`IDENT`トークンの正規表現
+(ドット区切りを1トークンとして貪欲マッチする、`postfix`文法規則とは
+無関係にレクサ段階で1トークンに吸収されてしまう)の都合で、修正前は
+不正な`intCounter.ToString`というPython属性アクセスがそのまま出力
+されていた(構文的には有効だが、Pythonの`int`に`.ToString`属性は無く
+実行時`AttributeError`になる、サイレントな誤変換)。レンダラーの`Ident`
+処理に、末尾セグメントが確認済みの安全なメンバ名(`ToString`/
+`ToUpper`/`ToLower`/`Trim`)の場合のみ分割して知見118の変換を適用する、
+安全な追加修正を行った——`DateTime.Now`のような静的クラス参照(末尾が
+対象メンバ名に一致しない)は無変換のまま変わらない。
+
+**`ExcelWriteCellNode.cell`を`str`から`Expr`へ昇格**: `PacktPublishing/
+Robotic-Process-Automation-Projects`の実機XAMLで`Cell="[&quot;B&quot;+
+intCounter.ToString]"`(ループ内での連番セル指定、現場では非常に一般的な
+実務パターン)という動的な実例を発見——知見22以来`str`型固定だったため
+このパターンは常に`# TODO`に倒れていた。`sheet_name`は全Excel活動で
+常にリテラルだったため`str`のまま残した(非対称昇格、兄弟活動との
+一貫性を優先)。実際に一時`.xlsx`ファイル(既存セルにプリセット値、
+`intCounter=5`)へ生成コードを実行し、`A5`から読んで`B5`へ正しく書き
+込まれることを確認済み(round-trip検証)。
+
+**`ui:ExcelReadCell`**(`ExcelWriteCellNode`と対になる読み取り側):
+`Cell`は同じ`Expr`、`.Result`はネストした`OutArgument`要素形——
+知見115で確立した`_in_argument_property_expr`共通パーサーが`InArgument`
+以外のタグ名(`OutArgument`)でも同じロジックでそのまま動作することを
+確認できた(タグ名を見ずに「最初の子要素のテキストまたはネストした
+Literal」という構造だけを見ているため)。
+
+**`ui:Comment`**: 純粋な注釈活動、`Text`属性(常にリテラル)をそのまま
+Pythonの`#`コメント行へ変換する——実行時の挙動は一切無い。
+
+**`ui:LogMessage`**: 実機確認済みの`Level`は`"Info"`/`"Error"`のみ——
+Python標準ライブラリ`logging`の対応メソッド(`logging.info`/
+`logging.error`)へマッピング。他の値(`"Warn"`等)は未確認のため
+`# TODO`へ倒す。
+
+**新たに発見したが今回は見送ったもの**: `BrowserScope`(既知の大きな
+別サブシステム)・`AddQueueItem`(Orchestrator連携、Phase8で既に方針
+決定済みのスコープ外)・`GoogleVisionScope`(サードパーティ/ニッチな
+Marketplaceパッケージ)・`Out/InOutArgument`のByRef書き戻し制約(既知の
+制約)・`ExcelReadCellNode`/`ExcelWriteCellNode`が`ExcelApplicationScope.
+Body`の直接の子ではなく更にIf/ForEach越しにネストしている場合は
+`scope_var`の文脈を失い`# TODO`に倒れる(知見84で既に文書化済みの構造的
+制約、新しいバグではない)。`ExcelWriteCellNode`には`display_name`
+フィールドが(他のExcel活動と違い)無い——実機では`DisplayName`属性が
+存在するため将来追加する価値はあるが、今回はスコープを絞るため見送った。
+
+`dump_daemon/uipath_dsl/types.py`に`CommentNode`/`LogMessageNode`/
+`ExcelReadCellNode`を追加、`ExcelWriteCellNode.cell`を`Expr`へ変更。
+`xaml_tree.py`に対応するパーサー関数(`_parse_comment`/
+`_parse_log_message`/`_parse_excel_read_cell`、既存`_parse_excel_write_
+cell`も更新)。`uipath_codegen/__init__.py`に`_generate_comment`/
+`_generate_log_message`/`_generate_excel_read_cell_in_scope`を追加、
+`_generate_excel_write_cell_in_scope`を`Expr`対応に更新、`render.py`の
+`Ident`処理に素の変数チェーン対応を追加。`tests/test_uipath_dsl.py`に
+4件・`tests/test_uipath_codegen.py`に13件追加(既存2件の修正含む)、
+全1341件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -50,6 +50,7 @@ from ..uipath_dsl.types import (
     BreakNode,
     BuildDataTableNode,
     ClickNode,
+    CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
@@ -57,6 +58,7 @@ from ..uipath_dsl.types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -73,6 +75,7 @@ from ..uipath_dsl.types import (
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
+    LogMessageNode,
     MessageBoxNode,
     Node,
     ParallelNode,
@@ -253,6 +256,10 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import shutil")
     if any("os.path." in line for line in body):
         imports.append("import os")
+    # `logging`(`LogMessage`→`logging.info(...)`/`.error(...)`変換先、
+    # 知見119)も同様。
+    if any("logging.info(" in line or "logging.error(" in line for line in body):
+        imports.append("import logging")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -401,11 +408,16 @@ def _generate_node(
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
         return _generate_send_outlook_mail(node, indent)
+    if isinstance(node, CommentNode):
+        return _generate_comment(node, indent)
+    if isinstance(node, LogMessageNode):
+        return _generate_log_message(node, indent)
     if isinstance(
         node,
         (
             InvokeCodeNode,
             ExcelWriteCellNode,
+            ExcelReadCellNode,
             ExcelReadRangeNode,
             ExcelWriteRangeNode,
             ExcelAppendRangeNode,
@@ -1827,6 +1839,12 @@ def _generate_excel_application_scope(
     for child in node.body:
         if isinstance(child, ExcelWriteCellNode):
             lines.extend(_generate_excel_write_cell_in_scope(child, indent, var))
+        elif isinstance(child, ExcelReadCellNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_read_cell_in_scope(child, indent, var), prefix
+                )
+            )
         elif isinstance(child, ExcelReadRangeNode):
             lines.extend(
                 _with_scope_child_display_name(
@@ -1861,14 +1879,76 @@ def _generate_excel_write_cell_in_scope(
     他の文字列出力先(`Append Line`/`Set To Clipboard`/`MessageBox`、知見46)
     と同じ`_vb_cstr()`経由でVBの文字列化規則に合わせる。"""
     prefix = INDENT * indent
+    if node.cell is None:
+        return [f"{prefix}# TODO: Excel Write Cell with no Cell captured"]
     todo: list[str] = []
+    cell = _render_value_or_todo(node.cell, prefix, todo)
     value = _render_value_or_todo(node.text, prefix, todo)
     if todo:
         return todo
     return [
-        f"{prefix}{scope_var}[{node.sheet_name!r}][{node.cell!r}] = "
+        f"{prefix}{scope_var}[{node.sheet_name!r}][{cell}] = "
         f"{VB_CSTR_HELPER_NAME}({value})"
     ]
+
+
+# 知見119: `ui:ExcelReadCell`(`ExcelWriteCellNode`と対になる読み取り側、
+# `PacktPublishing/Robotic-Process-Automation-Projects`の実機XAMLで発見)。
+def _generate_excel_read_cell_in_scope(
+    node: ExcelReadCellNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.cell is None:
+        return [f"{prefix}# TODO: Excel Read Cell with no Cell captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: Excel Read Cell with no output Result captured"]
+    todo: list[str] = []
+    cell = _render_value_or_todo(node.cell, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = {scope_var}[{node.sheet_name!r}][{cell}].value"]
+
+
+# 知見119: `ui:Comment`。純粋な注釈で実行時の挙動は無い——Pythonの`#`
+# コメント行へそのまま変換する(複数行テキストの場合は各行を個別の
+# コメント行にする、`#`無しの行が紛れてPythonのコードとして解釈される
+# ことを避ける)。
+def _generate_comment(node: CommentNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = node.text.splitlines() or [""]
+    return [f"{prefix}# {line}" for line in lines]
+
+
+# 知見119: `ui:LogMessage`。実機確認済みの`Level`は`"Info"`/`"Error"`のみ
+# ——Python標準ライブラリ`logging`の対応メソッドへマッピングする。
+_LOG_LEVEL_METHODS = {"Info": "info", "Error": "error"}
+
+
+def _generate_log_message(node: LogMessageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_log_message_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_log_message_body(node: LogMessageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.message is None:
+        return [f"{prefix}# TODO: Log Message with no Message captured"]
+    method = _LOG_LEVEL_METHODS.get(node.level or "Info")
+    if method is None:
+        return [
+            f"{prefix}# TODO: Log Message with unconfirmed Level "
+            f"({node.level!r}) — only Info/Error are confirmed, refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    message = _render_value_or_todo(node.message, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}logging.{method}({VB_CSTR_HELPER_NAME}({message}))"]
 
 
 # 知見115: `ui:ExcelReadRange`/`ui:ExcelWriteRange`。実機確認できた
@@ -2287,10 +2367,19 @@ def _generate_unresolved_activity(node, indent: int) -> list[str]:
     elif isinstance(node, ExcelWriteCellNode):
         # 知見93: `node.text`(書き込む値そのもの)も知見75で`Cell`/
         # `SheetName`だけを追記した際に見落としていた捕捉済みフィールド
-        # ——知見92と同じ「捕捉済みデータの未活用」の追加分。
+        # ——知見92と同じ「捕捉済みデータの未活用」の追加分。知見119で
+        # `node.cell`が`str`から`Expr`へ昇格したため`_describe_expr_for_
+        # comment`経由で表示する。
         detail = (
-            f" (Cell={node.cell!r}, SheetName={node.sheet_name!r}, "
+            f" (Cell={_describe_expr_for_comment(node.cell)}, "
+            f"SheetName={node.sheet_name!r}, "
             f"Text={_describe_expr_for_comment(node.text)})"
+        )
+    elif isinstance(node, ExcelReadCellNode):
+        detail = (
+            f" (Cell={_describe_expr_for_comment(node.cell)}, "
+            f"SheetName={node.sheet_name!r}, "
+            f"Result={_describe_expr_for_comment(node.result)})"
         )
     elif isinstance(node, SendOutlookMailNode):
         # 知見93: `node.body`(メール本文そのもの)も知見75で`To`/`Subject`

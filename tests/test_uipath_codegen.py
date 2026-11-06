@@ -40,11 +40,13 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     BuildDataTableNode,
     ClickNode,
+    CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
@@ -62,6 +64,7 @@ from dump_daemon.uipath_dsl import (
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
+    LogMessageNode,
     MessageBoxNode,
     ParallelNode,
     ReadTextFileNode,
@@ -183,6 +186,37 @@ def test_assign_chained_to_string_then_trim_renders():
     code = generate_python(wf)
     assert "x = _vb_cstr(_vb_cstr(y)).strip()" in code
     _compiles(code)
+
+
+def test_assign_bare_variable_dot_tostring_renders_correctly():
+    """知見119: 関数呼び出しを介さない素の変数へのメンバアクセス連鎖
+    (`intCounter.ToString`、`PacktPublishing/
+    Robotic-Process-Automation-Projects`の実機XAMLで発見)——`IDENT`の
+    正規表現がドット区切りを1トークンとして貪欲マッチするため、知見118の
+    `ChainedAccess`(`postfix`規則)には到達せず常に`Ident`として処理
+    される。修正前はこのケースが`intCounter.ToString`という不正なPython
+    属性アクセスとしてそのまま出力されていた(構文的には有効だが、
+    Pythonの`int`に`.ToString`属性は存在せず実行時に`AttributeError`)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="intCounter.ToString"))])
+    code = generate_python(wf)
+    assert "x = _vb_cstr(intCounter)" in code
+    _compiles(code)
+
+
+def test_assign_bare_variable_dot_toupper_renders_correctly():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="myVar.ToUpper"))])
+    code = generate_python(wf)
+    assert "x = myVar.upper()" in code
+    _compiles(code)
+
+
+def test_assign_bare_dotted_ident_without_known_suffix_is_unchanged():
+    """安全性の確認: 末尾が確認済みの安全なメンバ名(`ToString`/
+    `ToUpper`/`ToLower`/`Trim`)以外の場合は、既存の(無変換の)挙動を
+    変えない——`DateTime.Now`等の静的クラス参照を誤って変換しない。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="DateTime.Now"))])
+    code = generate_python(wf)
+    assert "x = DateTime.Now" in code
 
 
 def test_assign_chained_equals_call_renders_as_comparison():
@@ -1650,7 +1684,7 @@ def test_execute_non_query_with_populated_parameters_is_todo_not_guessed():
             # `openpyxl`への実コード生成を行うため、ここでは除いた——下記の
             # Excel専用テスト群を参照。`ExcelWriteCellNode`はスコープの
             # 外側(単独)の場合のみこのフォールバックに残る。
-            ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi")),
+            ExcelWriteCellNode(cell=Literal(value="A1"), sheet_name="Sheet1", text=Literal(value="hi")),
             "(Cell='A1', SheetName='Sheet1', Text='hi')",
         ),
         (
@@ -2245,7 +2279,7 @@ def test_excel_application_scope_with_write_cell_generates_real_code_together():
         [
             ExcelApplicationScopeNode(
                 workbook_path="wb.xlsx",
-                body=[ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi"))],
+                body=[ExcelWriteCellNode(cell=Literal(value="A1"), sheet_name="Sheet1", text=Literal(value="hi"))],
             )
         ]
     )
@@ -2582,6 +2616,134 @@ def test_excel_append_range_with_no_sheet_name_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Excel Append Range with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_excel_write_cell_with_dynamic_cell_expression_generates_real_code():
+    """知見119: `Cell`は当初`str`型だったが、実機XAML(`PacktPublishing/
+    Robotic-Process-Automation-Projects`、ループ内連番セル指定
+    `Cell="[&quot;B&quot;+intCounter.ToString]"`)で動的な実例を発見し
+    `Expr`へ昇格した。実際に一時`.xlsx`ファイルへ生成コードを実行し、
+    `intCounter`の値に応じて正しいセルへ書き込まれることを確認済み
+    (本セッション内、リポジトリには残していない)。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteCellNode(
+                        cell=VbExpr(text='"B"+intCounter.ToString'),
+                        sheet_name="Sheet1",
+                        text=Literal(value="hi"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "ExcelWorkbookScope['Sheet1'][_vb_add('B', _vb_cstr(intCounter))] = _vb_cstr('hi')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_write_cell_with_no_cell_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelWriteCellNode(cell=None, sheet_name="Sheet1", text=Literal(value="hi"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Write Cell with no Cell captured" in code
+    _compiles(code)
+
+
+def test_excel_read_cell_with_dynamic_cell_expression_generates_real_code():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadCellNode(
+                        cell=VbExpr(text='"A"+intCounter.ToString'),
+                        sheet_name="Sheet1",
+                        result=VbExpr(text="strVal"),
+                        display_name="Read Cell",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Read Cell" in code
+    assert "strVal = ExcelWorkbookScope['Sheet1'][_vb_add('A', _vb_cstr(intCounter))].value" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_read_cell_with_no_output_result_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadCellNode(
+                        cell=Literal(value="A1"), sheet_name="Sheet1", result=None
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Read Cell with no output Result captured" in code
+    _compiles(code)
+
+
+def test_comment_generates_python_comment_line():
+    wf = _wrap([CommentNode(text="hello comment")])
+    code = generate_python(wf)
+    assert "# hello comment" in code
+    _compiles(code)
+
+
+def test_comment_with_multiline_text_generates_one_comment_per_line():
+    wf = _wrap([CommentNode(text="line one\nline two")])
+    code = generate_python(wf)
+    assert "# line one" in code
+    assert "# line two" in code
+    _compiles(code)
+
+
+def test_log_message_with_info_level_generates_logging_info_call():
+    wf = _wrap([LogMessageNode(message=Literal(value="done"), level="Info")])
+    code = generate_python(wf)
+    assert "import logging" in code
+    assert "logging.info(_vb_cstr('done'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_log_message_with_error_level_generates_logging_error_call():
+    wf = _wrap([LogMessageNode(message=Literal(value="failed"), level="Error")])
+    code = generate_python(wf)
+    assert "logging.error(_vb_cstr('failed'))" in code
+    _compiles(code)
+
+
+def test_log_message_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([LogMessageNode(message=None, display_name="Log Message")])
+    code = generate_python(wf)
+    assert "# Log Message" in code
+    assert "# TODO: Log Message with no Message captured" in code
+    _compiles(code)
+
+
+def test_log_message_with_unconfirmed_level_is_todo_not_guessed():
+    wf = _wrap([LogMessageNode(message=Literal(value="x"), level="Warn")])
+    code = generate_python(wf)
+    assert "# TODO: Log Message with unconfirmed Level" in code
     _compiles(code)
 
 

@@ -465,6 +465,21 @@ _COMPARISON_OPS = {
 
 def _render_node(node: ExprNode) -> str:
     if isinstance(node, Ident):
+        # 知見119: `IDENT`トークンの正規表現(ドット区切りを1トークンとして
+        # 貪欲マッチ)の都合上、関数呼び出しを介さない素の変数へのメンバ
+        # アクセス連鎖(`intCounter.ToString`等、`PacktPublishing/
+        # Robotic-Process-Automation-Projects`の実機XAMLで発見)は文法上
+        # `postfix`規則に到達せず常に`Ident`としてレクサに1トークンで
+        # 吸収されてしまう——知見118の`ChainedAccess`修正だけでは
+        # カバーできない別のケース。末尾セグメントが確認済みの安全な
+        # メンバ名(`_CHAINED_PROPERTY_TRANSLATIONS`+`ToString`)の場合
+        # のみ、ドットで分割して同じ変換を適用する——それ以外(`DateTime.
+        # Now`等の静的クラス参照を含む)は末尾が対象メンバ名に一致しない
+        # ため従来通り(無変換でそのまま)の挙動を変えない、安全な追加。
+        if "." in node.name:
+            prefix, _, last = node.name.rpartition(".")
+            if last == "ToString" or last in _CHAINED_PROPERTY_TRANSLATIONS:
+                return _apply_chained_property(prefix, last)
         return node.name
     if isinstance(node, StringLiteral):
         return repr(node.value)
