@@ -32,6 +32,8 @@ from dump_daemon.uipath_dsl import (
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
+    DeleteFileNode,
+    DeleteFolderNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
@@ -1610,6 +1612,31 @@ def test_path_exists_with_folder_path_type():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, PathExistsNode)
     assert node.path_type == "Folder"
+
+
+def test_delete_file_properties():
+    """知見189: `ui:DeleteFileX`(GitHub code searchで508件ヒット、全件
+    `ui:DeleteFileX`——非X形は実機で一度も確認できず)。実機
+    `vajrang-b/UiPathIn30Days`で確認した実例。"""
+    xml = f'<ui:DeleteFileX {_UI_XMLNS} DisplayName="Delete File" Path="a.txt" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeleteFileNode)
+    assert node.path == Literal(value="a.txt")
+    assert node.display_name == "Delete File"
+
+
+def test_delete_folder_properties():
+    """知見189: `ui:DeleteFolderX`(`DeleteFile`の兄弟活動、GitHub code
+    searchで173件ヒット)。実機`happycodingandlife/UiPath-Generate-
+    Yearly_Report_Performer`で確認した`Recursive="True"`の実例。"""
+    xml = (
+        f"<ui:DeleteFolderX {_UI_XMLNS} DisplayName=\"Delete Folder\" "
+        'Path="[folder]" Recursive="True" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeleteFolderNode)
+    assert node.path == VbExpr(text="folder")
+    assert node.recursive == "True"
 
 
 def test_log_message_properties():

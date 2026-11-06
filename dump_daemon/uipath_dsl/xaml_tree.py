@@ -37,6 +37,8 @@ from .types import (
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
+    DeleteFileNode,
+    DeleteFolderNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
@@ -957,6 +959,23 @@ def _parse_path_exists(elem: etree._Element) -> PathExistsNode:
         exists=_attr_expr(elem, "Exists"),
         resource=_attr_expr(elem, "Resource"),
         path_type=_attr_or_none(elem, "PathType"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_delete_file(elem: etree._Element) -> DeleteFileNode:
+    path = _attr_expr(elem, "Path") or _in_argument_property_expr(elem, "Path")
+    return DeleteFileNode(
+        path=path,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_delete_folder(elem: etree._Element) -> DeleteFolderNode:
+    path = _attr_expr(elem, "Path") or _in_argument_property_expr(elem, "Path")
+    return DeleteFolderNode(
+        path=path,
+        recursive=_attr_or_none(elem, "Recursive"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1889,6 +1908,8 @@ _DISPATCH = {
     (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "MoveFile"): _parse_move_file,
     (UI_NS, "PathExists"): _parse_path_exists,
+    (UI_NS, "DeleteFileX"): _parse_delete_file,
+    (UI_NS, "DeleteFolderX"): _parse_delete_folder,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

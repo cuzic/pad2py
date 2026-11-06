@@ -2443,3 +2443,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      テスト追加(`tests/test_uipath_dsl.py`4件・`tests/
      test_uipath_codegen.py`16件)、UiPath関連テスト全828件通過、
      リポジトリ全体で全1887件通過。
+
+147. **(完了、2026-11-06)** `ui:DeleteFileX`+`ui:DeleteFolderX`を新規
+     実装(知見189): 素朴なGitHub code search(`"ui:DeleteFile"`)は
+     無印タグに見えたが、実機は全件`X`付き——`"<ui:DeleteFile "`
+     (完全一致)で検索エンジン自体が0件を返すことを確認し、無印タグ
+     が実在しないと正式に裏付けた(知見150と同種の部分一致の罠)。
+     `DeleteFileX`は`os.remove()`、`DeleteFolderX`の`Recursive=
+     "True"`は`shutil.rmtree()`・`"False"`は`os.rmdir()`(空の
+     フォルダのみ)——いずれもPython標準の確認済みAPI。副産物として
+     `ui:ForEachFolderX`という未調査の兄弟活動ファミリーも発見、
+     調査候補に追加。実機XAML4件で確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`14件)、
+     UiPath関連テスト全844件通過、リポジトリ全体で全1897件通過。

@@ -1064,6 +1064,47 @@ class PathExistsNode:
 
 
 @dataclass
+class DeleteFileNode:
+    """`<ui:DeleteFileX>`(知見189、GitHub code searchで508件ヒット
+    ——検索語`"ui:DeleteFile"`は`"ui:DeleteFileX"`への部分一致で、
+    実機で非X形(`ui:DeleteFile`単体)を一度も確認できなかった
+    ——`"<ui:DeleteFile "`(末尾スペース付き完全一致)で0件を確認
+    済み)。`UiPath/skills`公式リポジトリのStudio実機ground-truth
+    コーパス(`UiPath.System.Activities/25.10/DeleteFileX.xaml`)+
+    実機2件(`vajrang-b/UiPathIn30Days`・`andumorie/uipath-face-
+    recognition-framework`)で確認した構成は`Path`のみ——
+    `DisplayName`以外に属性が無い、`ClearDataTable`(知見184)と同じ
+    最も単純な活動の1つ。`ui:`名前空間のまま(`uix:`ではない)
+    Target/セレクタの概念を一切持たないため、知見で確立してきた
+    「Modern活動除外」の対象ではなく、`os.remove()`(Python標準の
+    確認済みAPI)が直接対応する通常のファイルシステム操作だと判断。"""
+
+    path: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class DeleteFolderNode:
+    """`<ui:DeleteFolderX>`(知見189、`DeleteFile`の兄弟活動、GitHub
+    code searchで173件ヒット)。実機2件(`tnadu/RPA-Task-Aggregator`・
+    `happycodingandlife/UiPath-Generate-Yearly_Report_Performer`)で
+    確認した構成は`Path`+`Recursive`(ground-truthの既定値`"True"`、
+    実機確認した全例も`"True"`——`"False"`の実例は未確認だが、
+    `os.rmdir()`(空のフォルダのみ削除)という確認済みの標準API対応が
+    明確なため値を問わず両方対応する)。
+
+    `Recursive="True"`の場合は`shutil.rmtree()`(フォルダとその内容を
+    再帰的に削除する確認済みの標準API)、`"False"`の場合は
+    `os.rmdir()`(空のフォルダのみ削除、内容がある場合は
+    `OSError`で失敗する——でっち上げた「強制的に空にする」処理は
+    しない)が直接対応する。"""
+
+    path: Expr = None
+    recursive: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2182,6 +2223,8 @@ Node = (
     | RetryScopeNode
     | MoveFileNode
     | PathExistsNode
+    | DeleteFileNode
+    | DeleteFolderNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

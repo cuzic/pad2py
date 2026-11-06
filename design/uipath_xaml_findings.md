@@ -8921,6 +8921,45 @@ copy()`→`shutil.move()`に変える形で済んだ。移動先が既に存在�
 (`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`16件)、
 UiPath関連テスト全828件通過、リポジトリ全体で全1887件通過。
 
+## 189. `ui:DeleteFileX`+`ui:DeleteFolderX`を新規実装——GitHub code search上は「ui:DeleteFile」という無印タグに見えたが実機は全件「X」付き、部分一致検索の罠を実機ゼロ件確認で正式に裏付け
+
+知見188の`ui:MoveFile`/`ui:PathExists`に続き、ファイルシステム操作系
+の基本活動`ui:DeleteFile`(素朴なGitHub code searchで508件ヒット)+
+`ui:DeleteFolder`(173件ヒット)を調査した。実際にダウンロードした
+実機XAMLを確認すると、タグは全件`ui:DeleteFileX`/`ui:DeleteFolderX`
+(「X」付き)だった——検索語`"ui:DeleteFile"`が`"ui:DeleteFileX"`への
+部分一致でヒットしていたという、知見150(TakeScreenshot/SaveImage)
+と同種の罠。今回は`"<ui:DeleteFile "`(末尾スペース付き完全一致)で
+GitHub code search自体が0件を返すことを確認し、「無印タグは実在
+しない」と正式に裏付けた——単に実機サンプルで1つも見なかっただけで
+なく、検索エンジン自体の集計で裏を取った点が今回の新しい確認手法。
+
+`ui:`名前空間のまま(Modern活動の`uix:`ではない)、Target/セレクタの
+概念を一切持たない単純な属性構成——`DeleteFileX`は`Path`のみ
+(`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス+
+実機2件(`vajrang-b/UiPathIn30Days`・`andumorie/uipath-face-
+recognition-framework`)で確認)、`DeleteFolderX`は`Path`+
+`Recursive`(ground-truthの既定値`"True"`、実機確認した全例も
+`"True"`)。
+
+`DeleteFileX`は`os.remove()`、`DeleteFolderX`の`Recursive="True"`は
+`shutil.rmtree()`(フォルダとその内容を再帰的に削除)・`"False"`は
+`os.rmdir()`(空のフォルダのみ削除、内容がある場合は`OSError`で
+失敗する——でっち上げた「強制的に空にする」処理はしない)——いずれも
+Python標準の確認済みAPI。`Recursive="False"`の実機例は確認できな
+かったが、`os.rmdir()`という対応が明確なため値を問わず両方対応した
+(知見117の`CopyFile`の`Overwrite`と同じ、両方の確認済み値に対応する
+判断)。
+
+副産物として、実機XAML調査中に`ui:ForEachFolderX`(サブフォルダを
+反復する活動)という未調査の活動も発見した——今回のスコープ外として
+今後の調査候補に追加する。実機XAML4件で`generate_python()`+
+`compile()`を確認(2件は無関係な既存の限界(C#式言語プロジェクト・
+未対応関数呼び出し)で安全に`# TODO`へ倒れることも確認)、合成データ
+で`Recursive`両方の値の成功パスも確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`14件)、UiPath
+関連テスト全844件通過、リポジトリ全体で全1897件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -8997,3 +9036,10 @@ UiPath関連テスト全828件通過、リポジトリ全体で全1887件通過�
   表現を判断できない、というアーキテクチャ上の前提作業(`DataTable`
   表現の統一、または変数ごとの表現追跡の導入)が必要——着手するなら
   まずそちらを先に設計する必要がある、相対的に大きな調査候補
+- 知見189で発見した`ui:ForEachFolderX`(実機`andumorie/uipath-face-
+  recognition-framework`の`UploadToDataset.xaml`でサブフォルダを
+  反復している実例を確認——`Folder`属性+`ActivityAction`body、
+  `ForEachNode`/`ForEachRow`(知見5・118)と同系統の構造の可能性が
+  高いが未調査)。`DeleteFileX`/`DeleteFolderX`(知見189)と同じ
+  ファイルシステム操作系の「X」付き活動ファミリーの一員と見られ、
+  同様の兄弟活動(`ForEachFileX`等)が存在する可能性もある

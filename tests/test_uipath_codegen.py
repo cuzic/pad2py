@@ -53,6 +53,8 @@ from dump_daemon.uipath_dsl import (
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
+    DeleteFileNode,
+    DeleteFolderNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelReadCellNode,
@@ -3474,6 +3476,78 @@ def test_path_exists_with_unrecognized_path_type_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: PathExists with unrecognized/unset PathType" in code
+    _compiles(code)
+
+
+def test_delete_file_calls_os_remove():
+    """知見189: `ui:DeleteFileX`(GitHub code searchで508件ヒット)。
+    `os.remove()`が直接対応する。"""
+    wf = _wrap([DeleteFileNode(path=Literal(value="a.txt"))])
+    code = generate_python(wf)
+    assert "os.remove('a.txt')" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_delete_file_display_name_becomes_a_comment():
+    wf = _wrap([DeleteFileNode(path=Literal(value="a.txt"), display_name="Delete File")])
+    code = generate_python(wf)
+    assert "# Delete File" in code
+    assert "os.remove(" in code
+    _compiles(code)
+
+
+def test_delete_file_with_no_path_is_todo():
+    wf = _wrap([DeleteFileNode(path=None)])
+    code = generate_python(wf)
+    assert "# TODO: DeleteFile with no Path captured" in code
+    _compiles(code)
+
+
+def test_delete_folder_recursive_true_calls_shutil_rmtree():
+    """知見189: `ui:DeleteFolderX`(GitHub code searchで173件ヒット)。
+    `Recursive="True"`は`shutil.rmtree()`が直接対応する。"""
+    wf = _wrap([DeleteFolderNode(path=Literal(value="d"), recursive="True")])
+    code = generate_python(wf)
+    assert "shutil.rmtree('d')" in code
+    assert "import shutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_delete_folder_recursive_false_calls_os_rmdir():
+    """`Recursive="False"`は`os.rmdir()`(空のフォルダのみ削除)が
+    直接対応する。"""
+    wf = _wrap([DeleteFolderNode(path=Literal(value="d"), recursive="False")])
+    code = generate_python(wf)
+    assert "os.rmdir('d')" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_delete_folder_display_name_becomes_a_comment():
+    wf = _wrap(
+        [DeleteFolderNode(path=Literal(value="d"), recursive="True", display_name="Delete Folder")]
+    )
+    code = generate_python(wf)
+    assert "# Delete Folder" in code
+    assert "shutil.rmtree(" in code
+    _compiles(code)
+
+
+def test_delete_folder_with_no_path_is_todo():
+    wf = _wrap([DeleteFolderNode(path=None, recursive="True")])
+    code = generate_python(wf)
+    assert "# TODO: DeleteFolder with no Path captured" in code
+    _compiles(code)
+
+
+def test_delete_folder_with_unrecognized_recursive_is_todo_not_guessed():
+    wf = _wrap([DeleteFolderNode(path=Literal(value="d"), recursive=None)])
+    code = generate_python(wf)
+    assert "# TODO: DeleteFolder with unrecognized/unset Recursive" in code
     _compiles(code)
 
 

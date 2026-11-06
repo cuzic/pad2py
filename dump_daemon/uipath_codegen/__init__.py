@@ -77,6 +77,8 @@ from ..uipath_dsl.types import (
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     DelayNode,
+    DeleteFileNode,
+    DeleteFolderNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
@@ -335,12 +337,22 @@ def _collect_imports(body: list[str]) -> list[str]:
     if any("email.mime.text.MIMEText(" in line for line in body):
         imports.append("import email.mime.text")
     # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117。
-    # `MoveFile`→`shutil.move(...)`変換先、知見188)も同様。
-    if any("shutil.copy(" in line or "shutil.move(" in line for line in body):
+    # `MoveFile`→`shutil.move(...)`変換先、知見188。`DeleteFolder`
+    # (Recursive=True)→`shutil.rmtree(...)`変換先、知見189)も同様。
+    if any(
+        "shutil.copy(" in line or "shutil.move(" in line or "shutil.rmtree(" in line
+        for line in body
+    ):
         imports.append("import shutil")
-    # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)も
-    # 同じ`os`モジュールのため同じ条件にまとめる。
-    if any("os.path." in line or "os.getcwd(" in line for line in body):
+    # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)・
+    # `os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`(Recursive=
+    # False)変換先、知見189)も同じ`os`モジュールのため同じ条件に
+    # まとめる。
+    if any(
+        "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
+        or "os.rmdir(" in line
+        for line in body
+    ):
         imports.append("import os")
     # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
     # 知見130)も同様。
@@ -585,6 +597,10 @@ def _generate_node(
         return _generate_move_file(node, indent)
     if isinstance(node, PathExistsNode):
         return _generate_path_exists(node, indent)
+    if isinstance(node, DeleteFileNode):
+        return _generate_delete_file(node, indent)
+    if isinstance(node, DeleteFolderNode):
+        return _generate_delete_folder(node, indent)
     if isinstance(node, BuildDataTableNode):
         return _generate_build_data_table(node, indent)
     if isinstance(node, HttpClientNode):
@@ -3372,6 +3388,51 @@ def _generate_path_exists_body(node: PathExistsNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{target} = {check}({path})"]
+
+
+# 知見189: `ui:DeleteFileX`。`os.remove()`(Python標準の確認済みAPI)が
+# 直接対応する。
+def _generate_delete_file(node: DeleteFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_delete_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_delete_file_body(node: DeleteFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: DeleteFile with no Path captured"]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}os.remove({path})"]
+
+
+# 知見189: `ui:DeleteFolderX`。`Recursive="True"`は`shutil.rmtree()`、
+# `"False"`は`os.rmdir()`(空のフォルダのみ削除)——いずれもPython
+# 標準の確認済みAPI。
+def _generate_delete_folder(node: DeleteFolderNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_delete_folder_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_delete_folder_body(node: DeleteFolderNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: DeleteFolder with no Path captured"]
+    if node.recursive not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: DeleteFolder with unrecognized/unset "
+            f"Recursive ({node.recursive!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    if todo:
+        return todo
+    call = "shutil.rmtree" if node.recursive == "True" else "os.rmdir"
+    return [f"{prefix}{call}({path})"]
 
 
 # 知見117: `ui:BuildDataTable`。`TableInfo`に埋め込まれた.NET `DataSet`の
