@@ -53,6 +53,17 @@ def _enum_arg(p: dict, name: str, default: str) -> str | None:
     return repr(default)
 
 
+# design/dsl_format_findings.md 知見195(decompile確認済み): `ResizeColumnsOrRows`の
+# CustomSize側6兄弟セレクタ → `(resize_target, selection_range)`。
+_RESIZE_COLUMNS_OR_ROWS_DISPATCH: dict[str, tuple[str, str]] = {
+    "Excel.ResizeColumnsOrRows.ResizeAllColumns": ("Column", "AllAvailable"),
+    "Excel.ResizeColumnsOrRows.ResizeRangeOfColumns": ("Column", "Range"),
+    "Excel.ResizeColumnsOrRows.ResizeSingleColumn": ("Column", "Single"),
+    "Excel.ResizeColumnsOrRows.ResizeAllRows": ("Row", "AllAvailable"),
+    "Excel.ResizeColumnsOrRows.ResizeRangeOfRows": ("Row", "Range"),
+    "Excel.ResizeColumnsOrRows.ResizeSingleRow": ("Row", "Single"),
+}
+
 # design/dsl_format_findings.md 知見192(decompile確認済み): `GetEmptyCellFromExcel`の
 # 8兄弟セレクタ → `(range_mode, operation)`。
 _GET_EMPTY_CELL_DISPATCH: dict[str, tuple[str, str]] = {
@@ -526,5 +537,47 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
                 return None
             return [f"{prefix}excel_actions.clear_cells({instance}, mode='NamedCell', cell_name={cell_name})"]
         return None
+
+    resize_dispatch = _RESIZE_COLUMNS_OR_ROWS_DISPATCH.get(action_id)
+    if resize_dispatch is not None:
+        # design/dsl_format_findings.md 知見195: `[Action(Id = "ResizeColumnsOrRows")]`が
+        # クラス名`ResizeColumnsOrRowsAction`の`...Action`接尾辞を取り除く(知見156のPDFと
+        # 同じパターン)——action_idは`Excel.ResizeColumnsOrRows.<セレクタ名>`。
+        resize_target, selection_range = resize_dispatch
+        instance = safe_render(p.get("Instance"))
+        if instance is None:
+            return None
+        if resize_target == "Column":
+            size = safe_render(p.get("Width"))
+        else:
+            size = safe_render(p.get("Height"))
+        if size is None:
+            return None
+        args = [instance, size, f"resize_target={resize_target!r}", f"selection_range={selection_range!r}"]
+        if selection_range == "Single":
+            if resize_target == "Column":
+                column = safe_render(p.get("Column"))
+                if column is None:
+                    return None
+                args.append(f"column={column}")
+            else:
+                row = safe_render(p.get("Row"))
+                if row is None:
+                    return None
+                args.append(f"row={row}")
+        elif selection_range == "Range":
+            if resize_target == "Column":
+                start_column = safe_render(p.get("StartColumn"))
+                end_column = safe_render(p.get("EndColumn"))
+                if start_column is None or end_column is None:
+                    return None
+                args.append(f"start_column={start_column}, end_column={end_column}")
+            else:
+                start_row = safe_render(p.get("StartRow"))
+                end_row = safe_render(p.get("EndRow"))
+                if start_row is None or end_row is None:
+                    return None
+                args.append(f"start_row={start_row}, end_row={end_row}")
+        return [f"{prefix}excel_actions.resize_columns_or_rows({', '.join(args)})"]
 
     return None

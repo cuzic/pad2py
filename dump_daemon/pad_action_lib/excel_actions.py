@@ -824,3 +824,59 @@ def clear_cells(
         raise
     except Exception as exc:
         raise ClearCellsError(str(exc)) from exc
+
+
+class ResizeColumnsOrRowsError(PadActionError):
+    pass
+
+
+def resize_columns_or_rows(
+    instance: ExcelInstanceHandle,
+    size: int,
+    resize_target: str = "Column",
+    selection_range: str = "Single",
+    column: str = "A",
+    row: int = 1,
+    start_column: str = "A",
+    end_column: str = "A",
+    start_row: int = 1,
+    end_row: int = 1,
+) -> None:
+    """design/dsl_format_findings.md 知見195(decompile確認済み): `ResizeColumnsOrRowsAction`の
+    `CustomSize`側(`ResizeType.Autofit`は知見190でライブCOMのレンダリングエンジン依存と
+    確認済みのため対象外)。`ResizeTargetSelection()`は`ColumnWidth`/`RowHeight`プロパティへ
+    数値を直接設定するだけ——`openpyxl`の`column_dimensions[col].width`/
+    `row_dimensions[row].height`(個別の列/行)と、`AllAvailable`側は
+    `sheet_format.defaultColWidth`/`defaultRowHeight`(ワークシート全体の既定値、
+    COMの`Columns`/`Rows`コレクション全体へのプロパティ設定と同じ「個別設定されていない
+    列/行全てに適用される既定値」という意味論)で1対1対応できる。常にアクティブシートのみ
+    操作する(知見180のGetTableRangeと同じdecompile確認済みの挙動)。
+    """
+    try:
+        sheet = instance.active_sheet
+        if resize_target == "Column":
+            if selection_range == "Single":
+                sheet.column_dimensions[column].width = size
+            elif selection_range == "Range":
+                for col_idx in range(column_index_from_string(start_column), column_index_from_string(end_column) + 1):
+                    sheet.column_dimensions[get_column_letter(col_idx)].width = size
+            elif selection_range == "AllAvailable":
+                sheet.sheet_format.defaultColWidth = size
+            else:
+                raise ValueError(f"Unknown SelectionRange: {selection_range!r}")
+        elif resize_target == "Row":
+            if selection_range == "Single":
+                sheet.row_dimensions[row].height = size
+            elif selection_range == "Range":
+                for row_idx in range(start_row, end_row + 1):
+                    sheet.row_dimensions[row_idx].height = size
+            elif selection_range == "AllAvailable":
+                sheet.sheet_format.defaultRowHeight = size
+            else:
+                raise ValueError(f"Unknown SelectionRange: {selection_range!r}")
+        else:
+            raise ValueError(f"Unknown ResizeTarget: {resize_target!r}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ResizeColumnsOrRowsError(str(exc)) from exc

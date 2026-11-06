@@ -208,15 +208,18 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     マクロ実行・セル色設定・コピペ・検索置換・ルックアップ・ライブ選択状態)だった。
     `Excel.ReadCellFormula`(数式文字列の読み取り、`write_to_excel()`の対称操作)のみ
     スコープ内と判断し新規結線した。Word/PowerPoint/Pdfは既知の保留事項のみ(新規発見無し)。
-  - [ ] 💻🔍 **残課題(知見190で発見)**:
-    - `Excel.ResizeColumnsOrRows`のCustomSize側(Autofitではない、`ColumnWidth`/
-      `RowHeight`への明示的な数値設定、`openpyxl`の`column_dimensions`/`row_dimensions`
-      で対応できそうに見える)——「値の読み書き・基本ワークシート操作」スコープ内に
-      収まりそうだが、時間の都合で今回は見送った。
-    - `DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、削除範囲周囲のセルを
-      シフトする)——`openpyxl`に部分範囲シフト削除の対応APIが無い(`delete_rows`/
-      `delete_cols`は行/列全体のシフトのみ)ため、手動実装は結合セル・書式の追従等の
-      詳細を取り違えるリスクが大きいと判断し見送り(知見194)。
+  - [ ] 🔍 **唯一の残課題**: `DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、
+    削除範囲周囲のセルをシフトする)——`openpyxl`に部分範囲シフト削除の対応APIが無い
+    (`delete_rows`/`delete_cols`は行/列全体のシフトのみ)ため、手動実装は結合セル・
+    書式の追従等の詳細を取り違えるリスクが大きいと判断し見送り(知見194)。
+    ✅ **`Excel.ResizeColumnsOrRows`のCustomSize側6件を結線完了(知見195)**:
+    `[Action(Id = "ResizeColumnsOrRows")]`がクラス名の`...Action`接尾辞を取り除くと
+    判明(知見190の候補報告はこれを見落としていた)——正しいaction_idは
+    `Excel.ResizeColumnsOrRows.<セレクタ名>`。`ColumnWidth`/`RowHeight`への直接設定
+    (`Single`/`Range`)・`sheet_format.defaultColWidth`/`defaultRowHeight`
+    (`AllAvailable`)で対応した。**これで知見190で発見した84件のExcel候補のうち
+    ユーザー指定スコープ外を除く全候補の結線が完了**(残るのは上記`DeleteCellsAction`
+    のみ)。
     ✅ **`Excel.ClearCellsFromExcel`の3件を結線完了(知見194)**: COMの`Range.Clear()`
       (値・書式両方)相当を`cell.value = None`+`cell.style = "Normal"`で近似。
       `ClearCellsRelativeTo`はライブExcel UIの`ActiveCell`を基準点にするため

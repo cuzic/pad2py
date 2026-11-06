@@ -579,3 +579,57 @@ def test_clear_cells_relative_to_not_implemented() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(NotImplementedError):
         xl.clear_cells(instance, mode="RelativeTo")
+
+
+def test_resize_columns_or_rows_single_column() -> None:
+    # design/dsl_format_findings.md 知見195(decompile確認済み): `ColumnWidth`プロパティへ
+    # 直接設定するだけ——`openpyxl`の`column_dimensions[col].width`と1対1対応。
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(instance, 25, resize_target="Column", selection_range="Single", column="A")
+    assert instance.active_sheet.column_dimensions["A"].width == 25
+
+
+def test_resize_columns_or_rows_range_of_columns() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(
+        instance, 15, resize_target="Column", selection_range="Range", start_column="A", end_column="C"
+    )
+    sheet = instance.active_sheet
+    assert sheet.column_dimensions["A"].width == 15
+    assert sheet.column_dimensions["B"].width == 15
+    assert sheet.column_dimensions["C"].width == 15
+
+
+def test_resize_columns_or_rows_all_columns_sets_sheet_default() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(instance, 12, resize_target="Column", selection_range="AllAvailable")
+    assert instance.active_sheet.sheet_format.defaultColWidth == 12
+
+
+def test_resize_columns_or_rows_single_row() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(instance, 30, resize_target="Row", selection_range="Single", row=2)
+    assert instance.active_sheet.row_dimensions[2].height == 30
+
+
+def test_resize_columns_or_rows_range_of_rows() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(
+        instance, 18, resize_target="Row", selection_range="Range", start_row=1, end_row=3
+    )
+    sheet = instance.active_sheet
+    assert sheet.row_dimensions[1].height == 18
+    assert sheet.row_dimensions[2].height == 18
+    assert sheet.row_dimensions[3].height == 18
+
+
+def test_resize_columns_or_rows_all_rows_sets_sheet_default() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.resize_columns_or_rows(instance, 22, resize_target="Row", selection_range="AllAvailable")
+    assert instance.active_sheet.sheet_format.defaultRowHeight == 22
+
+
+def test_resize_columns_or_rows_unknown_target_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(ValueError):
+        xl.resize_columns_or_rows(instance, 10, resize_target="NotATarget")

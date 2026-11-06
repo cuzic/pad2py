@@ -3375,6 +3375,57 @@ def test_generate_python_from_excel_clear_cells_relative_to_falls_back_to_todo()
     assert "# TODO: map PAD action: Excel.ClearCellsFromExcel.ClearCellsRelativeTo" in code
 
 
+def test_generate_python_from_excel_resize_single_column_converts() -> None:
+    # design/dsl_format_findings.md 知見195: `[Action(Id = "ResizeColumnsOrRows")]`が
+    # クラス名の`...Action`接尾辞を取り除く——action_idは3セグメント形式。
+    setup_dsl = "Excel.LaunchExcel.Launch Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = "Excel.ResizeColumnsOrRows.ResizeSingleColumn Instance: ExcelInstance Column: $'''A''' Width: 25"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "excel_actions.resize_columns_or_rows(ExcelInstance, 25, resize_target='Column', "
+        "selection_range='Single', column='A')" in code
+    )
+
+    exec(code, namespace)
+    assert namespace["ExcelInstance"].active_sheet.column_dimensions["A"].width == 25
+
+
+def test_generate_python_from_excel_resize_all_rows_converts() -> None:
+    setup_dsl = "Excel.LaunchExcel.Launch Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = "Excel.ResizeColumnsOrRows.ResizeAllRows Instance: ExcelInstance Height: 40"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "excel_actions.resize_columns_or_rows(ExcelInstance, 40, resize_target='Row', "
+        "selection_range='AllAvailable')" in code
+    )
+
+    exec(code, namespace)
+    assert namespace["ExcelInstance"].active_sheet.sheet_format.defaultRowHeight == 40
+
+
+def test_generate_python_from_excel_autofit_falls_back_to_todo() -> None:
+    # 知見195: Autofit側(ライブExcel COMのレンダリングエンジン依存、知見190で確認済み)は
+    # 分岐を追加せず安全にTODOへ倒れる。
+    dsl = "Excel.ResizeColumnsOrRows.AutofitSingleColumn Instance: ExcelInstance Column: $'''A'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.ResizeColumnsOrRows.AutofitSingleColumn" in code
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

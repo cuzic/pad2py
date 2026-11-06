@@ -3134,3 +3134,15 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 実装: `pad_action_lib/excel_actions.py`に`ClearCellsError`・`clear_cells()`を追加。`pad_codegen/actions/excel.py`に`Excel.ClearCellsFromExcel.ClearCells`/`ClearSingleCell`/`ClearNamedCell`の分岐を追加(`ClearCellsRelativeTo`は分岐を追加せず安全にTODOへ倒れる)。テストは`tests/test_pad_action_lib_excel.py`に5件追加、`tests/test_pad_codegen.py`に2件追加(いずれも実行結果の確認込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1109 passed, 28 skippedを確認(VM不要)。
 
 残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`DeleteCellsAction`)のうち、`DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、削除範囲の周囲セルをシフトする)は`openpyxl`に部分範囲シフト削除の対応APIが無い(`delete_rows`/`delete_cols`は行/列全体のシフトのみ)ため、手動実装は結合セル・書式の追従等の詳細を取り違えるリスクが大きいと判断し、今回は着手せず見送ったまま`pad_todo.md`に記録する。
+
+## 195. 知見190の最後の見送り分`Excel.ResizeColumnsOrRows`のCustomSize側(6兄弟セレクタ)を新規実装・結線——`[Action(Id = ...)]`による`...Action`接尾辞除去を見落としていたことも併せて発覚
+
+知見190で見送った残課題の最後、`ResizeColumnsOrRows`のCustomSize側(Autofitではない、`ColumnWidth`/`RowHeight`への明示的な数値設定)を実装した。
+
+実装前に`ResizeColumnsOrRowsAction`クラスの属性を再確認したところ、`[Action(Id = "ResizeColumnsOrRows")]`というクラス名の`...Action`接尾辞を取り除く上書き(知見156のPDF `ExtractImagesFromPDFAction`→`ExtractImagesFromPDF`と同じパターン)が付いていると判明した——知見190で`tools/pad_selector_audit.py`が報告した候補文字列(`Excel.ResizeColumnsOrRowsAction.ResizeAllColumns`等)は、ツール自身のドキュストリングが明記する既知の盲点(`[Action(Id=...)]`の上書きをツールは推測しない、`--id-override`で明示するかdecompileで直接確認する必要がある)にそのまま該当しており、実際のaction_idは`Excel.ResizeColumnsOrRows.ResizeAllColumns`(「Action」抜き)が正しいと確定した。
+
+`ResizeTargetSelection()`は`ColumnWidth`/`RowHeight`プロパティへ数値を直接設定するだけ(知見190で確認済みの`ResizeType.Autofit`はライブCOMのレンダリングエンジン依存のため対象外のまま)。`openpyxl`の`column_dimensions[col].width`/`row_dimensions[row].height`(個別の列/行、`Single`/`Range`セレクタ)、`sheet_format.defaultColWidth`/`defaultRowHeight`(ワークシート全体の既定値、COMの`Columns`/`Rows`コレクション全体へのプロパティ設定と同じ「個別設定されていない列/行全てに適用される既定値」という意味論、`AllAvailable`セレクタ)で1対1対応できると判断した。
+
+実装: `pad_action_lib/excel_actions.py`に`ResizeColumnsOrRowsError`・`resize_columns_or_rows()`を追加。`pad_codegen/actions/excel.py`に`_RESIZE_COLUMNS_OR_ROWS_DISPATCH`辞書(CustomSize側6件のみ、Autofit側6件は分岐を追加せず安全にTODOへ倒れる)と対応する分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に7件追加、`tests/test_pad_codegen.py`に3件追加(2件のexec検証+Autofit側のTODOフォールバック確認)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1121 passed, 28 skippedを確認(VM不要)。
+
+これで知見190で発見した84件のExcel候補のうち、ユーザー指定スコープ外(フィルタ・ソート・オートフィット・マクロ実行・セル色設定・コピペ・検索置換・ルックアップ・ライブ選択状態)以外の全候補(`ReadCellFormula`・`GetEmptyCellFromExcel`・`CopyExcelWorksheet`・`ClearCellsFromExcel`・`ResizeColumnsOrRows`)の結線が完了した。残る唯一の見送り事項は`DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、`openpyxl`に部分範囲シフト削除の対応APIが無いため知見194で見送り済み)のみ。
