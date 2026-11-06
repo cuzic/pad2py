@@ -45,6 +45,7 @@ from dump_daemon.uipath_dsl import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetTextNode,
     HttpClientNode,
     IfNode,
     InvokeCodeNode,
@@ -1080,6 +1081,93 @@ def test_type_into_escapes_pywinauto_special_characters_in_literal_text():
     exec(_TYPE_KEYS_ESCAPE_HELPER_SOURCE, namespace)  # noqa: S102
     escape = namespace["_pywinauto_type_keys_escape"]
     assert escape("100% {a+b}") == "100{%} {{}a{+}b{}}"
+
+
+_GET_TEXT_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_get_text_with_known_selector_generates_window_text():
+    wf = _wrap(
+        [GetTextNode(selector=_GET_TEXT_SELECTOR, text=VbExpr(text="result"))]
+    )
+    code = generate_python(wf)
+    assert "result = " in code
+    assert ".window_text()" in code
+    assert "# WARNING:" in code
+    _compiles(code)
+
+
+def test_get_text_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([GetTextNode(selector=None, display_name="Get Text 'balance'")])
+    code = generate_python(wf)
+    assert "# Get Text 'balance'" in code
+    assert "# TODO: Get Text with no selector captured" in code
+    _compiles(code)
+
+
+def test_get_text_with_no_selector_is_todo():
+    wf = _wrap([GetTextNode(selector=None, text=VbExpr(text="x"))])
+    code = generate_python(wf)
+    assert "# TODO: Get Text with no selector captured" in code
+    _compiles(code)
+
+
+def test_get_text_with_no_output_text_is_todo():
+    wf = _wrap([GetTextNode(selector=_GET_TEXT_SELECTOR, text=None)])
+    code = generate_python(wf)
+    assert "# TODO: Get Text with no output Text captured" in code
+    _compiles(code)
+
+
+def test_get_text_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [GetTextNode(selector="<wnd idx='2' />", text=VbExpr(text="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Get Text selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_get_text_with_delay_ms_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetTextNode(
+                selector=_GET_TEXT_SELECTOR, text=VbExpr(text="x"), delay_ms=Literal(value="2000")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Get Text with DelayMS set" in code
+    assert ".window_text()" not in code
+    _compiles(code)
+
+
+def test_get_text_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetTextNode(
+                selector=_GET_TEXT_SELECTOR,
+                text=VbExpr(text="x"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Get Text with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_get_text_with_delay_before_generates_time_sleep():
+    wf = _wrap(
+        [
+            GetTextNode(
+                selector=_GET_TEXT_SELECTOR, text=VbExpr(text="x"), delay_before=Literal(value="500")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
 
 
 @pytest.mark.parametrize(

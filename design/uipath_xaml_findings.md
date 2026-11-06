@@ -5278,6 +5278,36 @@ PAD調査時に既に発見していた罠(`dump_daemon/pad_ui_helpers.py`の
 `tests/test_uipath_dsl.py`に2件・`tests/test_uipath_codegen.py`に24件
 追加、全1158件通過。
 
+## 111. `ui:GetText`を実機XAML(GitHub実例、`UiPath/skills`公式リポジトリ含む)+公式ドキュメントで確認し、実コード生成に対応——Tier A着手第2件(VM不使用、知見100の手法を8回目として再適用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+3件目(`Click`→`TypeInto`→`GetText`)。`gh api search/code`で
+`UiPath/skills`公式リポジトリの複数件(`classic-browserscope-efail`/
+`classic-typeinto-field-not-cleared`/`classic-click-noop-simulate`の
+各`process/Main.xaml`)を確認し、`ui:GetText`は`ContinueOnError`/
+`DelayBefore`/`DelayMS`(いずれも`{x:Null}`実例ありnullable)のみという
+単純な構造だと確定した——`TypeInto`のような追加オプションは無い。
+
+**ドキュメント用語と実属性名の食い違い**: 公式ドキュメント(docs.uipath.com
+の`get-value`ページ)は裏のCLR型を`UiPath.Core.Activities.GetValue`、
+出力プロパティ名を`Value`と記載しているが、実機XAML上の属性名は4件
+全て一貫して`Text`——知見29(`HttpClient`のDisplayNameとCLR型名の不一致)
+と同種のケース。本パーサー・コード生成は実機確認済みの`Text`を信頼する。
+
+同ドキュメントは抽出の正確なAPI(UIAの`Name`/`ValuePattern`かWin32の
+`GetWindowText`か等)は明記していないが、「可視テキストを最大4096文字
+抽出する」という挙動は確認できた。`Click`のセレクタ解決と同じ「要素を
+一意に特定できることまでは主張しない」方針を踏襲し、`pywinauto`の
+`window_text()`(バックエンドに応じて適切なAPIへ自動ディスパッチする
+標準的なアクセサ)を`# WARNING`付きで採用した——1対1の機構確認までは
+主張しない。
+
+`dump_daemon/uipath_dsl/types.py`に`GetTextNode`、`xaml_tree.py`に
+`_parse_get_text`(`(UI_NS, "GetText")`へディスパッチ登録)、
+`uipath_codegen/__init__.py`に`_generate_get_text`を追加。
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に8件
+追加、全1174件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -54,6 +54,7 @@ from ..uipath_dsl.types import (
     FlowStepNode,
     FlowSwitchNode,
     ForEachNode,
+    GetTextNode,
     HttpClientNode,
     IfNode,
     InvokeCodeNode,
@@ -340,6 +341,8 @@ def _generate_node(
         return _generate_click(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
+    if isinstance(node, GetTextNode):
+        return _generate_get_text(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
@@ -1185,6 +1188,73 @@ def _generate_type_into_body(node: TypeIntoNode, indent: int) -> list[str]:
     text_arg = f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}({VB_CSTR_HELPER_NAME}({text}))"
     args = ", ".join([text_arg, *kwarg_parts])
     lines.append(f"{prefix}{rendered.expr}.type_keys({args})")
+    return lines
+
+
+# 知見111: `ui:GetText`。`ContinueOnError`/`DelayMS`は`Click`/`TypeInto`と
+# 同じ理由(未確認/未文書化)で非既定値は`# TODO`へ倒す。`DelayBefore`は
+# 同じUI Automationパッケージの「Common」カテゴリの属性で、`Click`/
+# `TypeInto`で確認済みの意味論(活動開始前の待機)がそのまま適用できる。
+#
+# 公式ドキュメント(`get-value`ページ)は抽出の正確なAPI(UIAの`Name`/
+# `ValuePattern`か、Win32の`GetWindowText`か等)を明記していないが、
+# 「指定したUI要素から可視テキストを最大4096文字抽出する」という挙動は
+# 確認できている——`pywinauto`の`window_text()`(バックエンドに応じて
+# 適切なAPIへ自動的にディスパッチする、要素の表示テキストを返す標準的な
+# アクセサ)を正確な1対1対応の主張はせず`# WARNING`付きで採用する
+# (`Click`のセレクタマッピング同様、「要素を一意に特定できることまでは
+# 主張しない」という既存の警告方針を踏襲)。
+def _generate_get_text(node: GetTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_text_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Get Text with no selector captured"]
+    if node.text is None:
+        return [f"{prefix}# TODO: Get Text with no output Text captured"]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: Get Text with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented "
+            "by UiPath (unlike DelayBefore), semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Get Text with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Get Text selector had no mappable attributes: "
+            f"{node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    target = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(
+        f"{prefix}# WARNING: exact UI Automation API behind 'Get Text' not "
+        "independently confirmed (docs only state visible-text extraction, "
+        "max 4096 chars) — using pywinauto's generic window_text() accessor"
+    )
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    lines.append(f"{prefix}{target} = {rendered.expr}.window_text()")
     return lines
 
 

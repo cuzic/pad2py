@@ -21,6 +21,7 @@ from dump_daemon.uipath_dsl import (
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
     ForEachNode,
+    GetTextNode,
     HttpClientNode,
     IfNode,
     InvokeCodeNode,
@@ -268,6 +269,28 @@ def test_type_into_legacy_activate_attribute_name():
     assert node.activate_before == Literal(value="False")
     assert node.click_before_typing == Literal(value="True")
     assert node.empty_field == Literal(value="True")
+
+
+def test_get_text_selector_and_output_binding():
+    """知見111: `ui:GetText`。`UiPath/skills`公式リポジトリの実機保存済み
+    XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/
+    `DelayMS`は`{x:Null}`(nullable)、`Text`は出力先の`VbExpr`。"""
+    xml = (
+        f"<ui:GetText {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" DelayBefore="{x:Null}" DelayMS="{x:Null}" '
+        'DisplayName="Get Text \'balance\'" Text="[balanceText]">'
+        "<ui:GetText.Target>"
+        "<ui:Target Selector=\"&lt;webctrl aaname='Current balance' tag='SPAN' /&gt;\" />"
+        "</ui:GetText.Target>"
+        "</ui:GetText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetTextNode)
+    assert "Current balance" in node.selector
+    assert node.text == VbExpr(text="balanceText")
+    assert node.delay_before is None
+    assert node.delay_ms is None
+    assert node.continue_on_error is None
 
 
 def test_invoke_workflow_file(main_wf):

@@ -1253,3 +1253,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     `_pywinauto_type_keys_escape`ヘルパーを常に経由させる。回帰テスト追加
     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`24件)、
     UiPath関連テスト全345件通過、リポジトリ全体で全1158件通過。
+69. **(完了、2026-11-05)** `ui:GetText`の実コード生成に新規対応(VM
+    不使用、知見111——Tier A着手第2件、知見100の手法を8回目として再適用):
+    `UiPath/skills`公式リポジトリの複数件で属性一覧が`ContinueOnError`/
+    `DelayBefore`/`DelayMS`のみ(いずれもnullable)という単純な構造だと
+    確定。公式ドキュメントは裏のCLR型を`GetValue`・プロパティ名を
+    `Value`と記載するが実機XAMLの属性名は一貫して`Text`(知見29の
+    `HttpClient`と同種の用語の食い違い)。抽出の正確なAPIは未確認だが
+    「可視テキスト最大4096文字抽出」という挙動は確認済みのため、
+    `pywinauto`の`window_text()`を`# WARNING`付きで採用(`Click`の
+    セレクタ解決と同じ「1対1確認は主張しない」方針)。`DelayMS`/
+    `ContinueOnError`は`Click`/`TypeInto`と同じ理由で`# TODO`。回帰テスト
+    追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+    8件)、UiPath関連テスト全354件通過、リポジトリ全体で全1174件通過。

@@ -33,6 +33,7 @@ from .types import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetTextNode,
     HttpClientNode,
     IfNode,
     InvokeCodeNode,
@@ -447,6 +448,24 @@ def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
     )
 
 
+def _parse_get_text(elem: etree._Element) -> GetTextNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return GetTextNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        text=_attr_expr(elem, "Text"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -799,6 +818,7 @@ _DISPATCH = {
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "TypeInto"): _parse_type_into,
+    (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,

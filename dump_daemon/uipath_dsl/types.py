@@ -316,6 +316,32 @@ class TypeIntoNode:
 
 
 @dataclass
+class GetTextNode:
+    """`<ui:GetText>`(知見111)。`selector`は`ui:GetText.Target`配下の
+    `ui:Target`要素の`Selector`属性(`ClickNode`/`TypeIntoNode`と同じ構造)。
+
+    `UiPath/skills`公式リポジトリの複数の実機保存済みXAMLで確認した属性は
+    `ContinueOnError`/`DelayBefore`/`DelayMS`(いずれも`{x:Null}`の実例が
+    あり nullable)のみ——`TypeInto`のような`ClickBeforeTyping`/
+    `EmptyField`等の追加オプションは無い、単純な構造。`text`は出力先
+    (`OutArgument`相当、実機では`Text="[varName]"`という`VbExpr`形で
+    確認済み)。
+
+    公式ドキュメントは裏のCLR型を`UiPath.Core.Activities.GetValue`
+    (プロパティ名は`Value`)と記載しているが、実機XAML上の属性名は常に
+    `Text`——`HttpClient`(知見29、DisplayNameとCLR型名の不一致)と同種の
+    「ドキュメントの用語と実際の直列化属性名が食い違う」ケース。本パーサー・
+    コード生成は実機確認済みの`Text`属性名を信頼する。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    text: Expr = None
+    delay_before: Expr = None
+    delay_ms: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -569,6 +595,7 @@ Node = (
     | ParallelNode
     | ClickNode
     | TypeIntoNode
+    | GetTextNode
     | InvokeWorkflowFileNode
     | AppendLineNode
     | ReadTextFileNode
