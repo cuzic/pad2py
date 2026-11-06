@@ -14,6 +14,7 @@ import pytest
 from lxml import etree
 
 from dump_daemon.uipath_dsl import (
+    ActivateNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -793,6 +794,28 @@ def test_hover_selector_and_cursor_position():
     assert "notepad.exe" in node.selector
     assert node.cursor_position == "Center"
     assert node.display_name == "Hover link"
+
+
+def test_activate_selector_and_properties():
+    """知見162: `ui:Activate`(GitHub code searchで604件ヒット)。
+    `UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス+
+    `Digital-RPA/MRE_B2BE`等の実機XAMLで確認した構造は`Target`+
+    `DelayBefore`/`DelayMS`/`ContinueOnError`のみ——`Click`/`Hover`
+    より単純で`CursorPosition`自体を持たない。"""
+    xml = (
+        f"<ui:Activate {_UI_XMLNS} DisplayName=\"Activate 'chrome.exe'\">"
+        "<ui:Activate.Target>"
+        "<ui:Target Selector=\"&lt;wnd app='chrome.exe' /&gt;\" />"
+        "</ui:Activate.Target>"
+        "</ui:Activate>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ActivateNode)
+    assert "chrome.exe" in node.selector
+    assert node.display_name == "Activate 'chrome.exe'"
+    assert node.delay_before is None
+    assert node.delay_ms is None
+    assert node.continue_on_error is None
 
 
 def test_log_message_properties():

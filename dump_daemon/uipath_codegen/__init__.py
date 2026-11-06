@@ -59,6 +59,7 @@ from openpyxl.utils.cell import coordinate_from_string
 from openpyxl.utils.exceptions import CellCoordinatesException
 
 from ..uipath_dsl.types import (
+    ActivateNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -450,6 +451,8 @@ def _generate_node(
         return _generate_click(node, indent)
     if isinstance(node, HoverNode):
         return _generate_hover(node, indent)
+    if isinstance(node, ActivateNode):
+        return _generate_activate(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1351,6 +1354,54 @@ def _generate_hover_body(node: HoverNode, indent: int) -> list[str]:
     kwargs = {"button": "move", **coords_kwargs}
     kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
     lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
+    return lines
+
+
+# 知見162: `ui:Activate`(GitHub code searchで604件ヒット)。`Click`/
+# `Hover`より単純(`CursorPosition`自体が無い)——指定した要素/ウィンドウ
+# をフォアグラウンドへ切り替えるだけの活動で、pywinautoの`set_focus()`
+# (両バックエンドで共通サポートされる確認済みの標準API)が直接対応する。
+def _generate_activate(node: ActivateNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_activate_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_activate_body(node: ActivateNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Activate with no selector captured"]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: Activate with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented "
+            "by UiPath (unlike DelayBefore), semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Activate with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Activate selector had no mappable attributes: "
+            f"{node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    lines.append(f"{prefix}{rendered.expr}.set_focus()")
     return lines
 
 

@@ -11,6 +11,7 @@ wf = parse_workflow_file("xaml_probe/Main.xaml")
 Phase 1〜3を参照。
 """
 from .types import (
+    ActivateNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -82,6 +83,7 @@ from .types import (
 from .xaml_tree import parse_activity, parse_workflow_file
 
 __all__ = [
+    "ActivateNode",
     "AppendLineNode",
     "AssignNode",
     "AttachWindowNode",

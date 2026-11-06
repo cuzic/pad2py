@@ -18,6 +18,7 @@ from pathlib import Path
 from lxml import etree
 
 from .types import (
+    ActivateNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -589,6 +590,23 @@ def _parse_hover(elem: etree._Element) -> HoverNode:
         delay_ms=_attr_expr(elem, "DelayMS"),
         send_window_messages=_attr_expr(elem, "SendWindowMessages"),
         simulate_hover=_attr_expr(elem, "SimulateHover"),
+    )
+
+
+def _parse_activate(elem: etree._Element) -> ActivateNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return ActivateNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
     )
 
 
@@ -1478,6 +1496,7 @@ _DISPATCH = {
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
+    (UI_NS, "Activate"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,
     (UI_NS, "SendHotkey"): _parse_send_hotkey,

@@ -7692,6 +7692,47 @@ set`/`# TODO: BrowserScope with Browser set`へ正しく倒れ、後者は
 1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全650件
 通過、リポジトリ全体で全1690件通過。
 
+## 162. `ui:Activate`(GitHub code searchで604件ヒット)を新規実装——`Click`/`Hover`より単純な「フォアグラウンド切り替えのみ」の活動、`UiPath/skills`公式ground-truthコーパスを初めて実際に活用
+
+`Click`(知見9)・`Hover`(知見157)と同じ`UiPath.Core.Activities`の
+基本UI Automation活動のうち、指定したウィンドウ/要素をフォアグラウンド
+へ切り替えるだけの`ui:Activate`(GitHub code searchで604件ヒット)が
+未実装のまま残っていたことを発見した。
+
+知見128で発見した`marcelocruzrpa/uipath-ai-skills`のStudio実機
+ground-truthコーパス(`uipath-core/references/studio-ground-truth/
+UiPath.UIAutomation.Activities/25.10/Activate.xaml`)を、知見128で
+「属性**名**の一覧としては権威的で有用、populated時の実例は別途実
+プロジェクトで確認が必要」と記録していた通りの使い方で初めて実際に
+活用した——属性の完全な語彙(`Target`+`DelayBefore`/`DelayMS`)を
+このground-truthコーパスで確認し、非デフォルト値(`ContinueOnError`
+を含む`Selector`設定済みの実例)は別途実機XAML5件(`Digital-RPA/
+MRE_B2BE`・`revaturelabs/uipath-automation-2`・`FadyYosry/
+IMDb_RottenTomatoes`・`piyushagarwal08/JU-Notes`)で補完した——
+`CursorPosition`自体を持たない点が`Click`/`Hover`より単純だと確定
+できた(クリックも移動も伴わない活動であるため)。
+
+pywinautoの`set_focus()`(両バックエンドの`base_wrapper`で共通に
+サポートされる確認済みの標準API)が直接対応する——`Hover`で発見した
+`move_mouse_input()`の既定値の罠(知見157)のような注意点は無い、
+最も単純な変換の1つ。
+
+`dump_daemon/uipath_dsl/types.py`に`ActivateNode(selector, display_
+name, delay_before, delay_ms, continue_on_error)`、`xaml_tree.py`に
+`_parse_activate`(`_parse_hover`と同じTarget抽出、`CursorPosition`
+抽出は無し)+`(UI_NS, "Activate")`の`_DISPATCH`登録、`uipath_codegen/
+__init__.py`に`_generate_activate`/`_generate_activate_body`
+(`DelayMS`/`ContinueOnError`の非デフォルト値は同じ理由で`# TODO`へ
+倒す)を追加。実機XAML(`Digital-RPA/MRE_B2BE`の`CloseSICS.xaml`)で
+`generate_python()`+`compile()`を実行し、`.set_focus()`呼び出しが
+正しく生成されることを確認した——別の実機XAML(`PacktPublishing`の
+`Main.xaml`)では`Activate`が知見161の`BrowserScope`(`Browser`/
+`UiBrowser`設定済みで`# TODO`へ倒れる)の子としてネストされており
+到達不能だったことも確認したが、これは既存の別課題で今回のスコープ
+外。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`7件)、UiPath関連テスト全658件通過、
+リポジトリ全体で全1698件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

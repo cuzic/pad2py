@@ -2074,3 +2074,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      単純な実例)で両方の経路を検証。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
      UiPath関連テスト全650件通過、リポジトリ全体で全1690件通過。
+
+120. **(完了、2026-11-06)** `ui:Activate`(GitHub code searchで604件
+     ヒット)を新規実装(知見162): `Click`/`Hover`より単純
+     (`CursorPosition`自体を持たない、クリックも移動も伴わずフォア
+     グラウンド切り替えのみ)な基本UI Automation活動。知見128で発見
+     した`UiPath/skills`公式ground-truthコーパスを初めて実際に活用
+     (属性名の語彙確認)し、非デフォルト値は別途実機XAML5件で補完
+     ——知見128の想定通りの使い方になった好例。pywinautoの
+     `set_focus()`(両バックエンドで共通サポートされる確認済みの
+     標準API)が直接対応し、`Hover`の`move_mouse_input()`既定値の罠
+     (知見157)のような注意点は無い。実機XAML(`Digital-RPA/
+     MRE_B2BE`)で`.set_focus()`呼び出しの生成を確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     7件)、UiPath関連テスト全658件通過、リポジトリ全体で全1698件
+     通過。

@@ -35,6 +35,7 @@ from dump_daemon.uipath_codegen import (
 )
 from dump_daemon.uipath_codegen.render import VB_CMP_HELPER_NAME, VB_NUM_HELPER_SOURCE
 from dump_daemon.uipath_dsl import (
+    ActivateNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -1752,6 +1753,68 @@ def test_hover_with_non_default_simulate_hover_is_todo_not_guessed():
     wf = _wrap([HoverNode(selector=_HOVER_SELECTOR, simulate_hover=Literal(value="True"))])
     code = generate_python(wf)
     assert "# TODO: Hover with non-default SimulateHover" in code
+    _compiles(code)
+
+
+_ACTIVATE_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_activate_with_known_selector_generates_set_focus():
+    """知見162: `ui:Activate`(GitHub code searchで604件ヒット)。
+    pywinautoの`set_focus()`(両バックエンドで共通サポートされる
+    確認済みの標準API)が直接対応する——`Hover`の`move_mouse_input()`
+    既定値の罠(知見157)のような注意点は無い。"""
+    wf = _wrap([ActivateNode(selector=_ACTIVATE_SELECTOR)])
+    code = generate_python(wf)
+    assert ".set_focus()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_activate_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([ActivateNode(selector=None, display_name="Activate 'chrome.exe'")])
+    code = generate_python(wf)
+    assert "# Activate 'chrome.exe'" in code
+    assert "# TODO: Activate with no selector captured" in code
+    _compiles(code)
+
+
+def test_activate_with_no_selector_is_todo():
+    wf = _wrap([ActivateNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: Activate with no selector captured" in code
+    _compiles(code)
+
+
+def test_activate_with_unmappable_selector_is_todo():
+    wf = _wrap([ActivateNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: Activate selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_activate_with_delay_before_generates_time_sleep():
+    wf = _wrap([ActivateNode(selector=_ACTIVATE_SELECTOR, delay_before=Literal(value="500"))])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_activate_with_delay_ms_is_todo_not_guessed():
+    wf = _wrap([ActivateNode(selector=_ACTIVATE_SELECTOR, delay_ms=Literal(value="500"))])
+    code = generate_python(wf)
+    assert "# TODO: Activate with DelayMS set" in code
+    assert ".set_focus()" not in code
+    _compiles(code)
+
+
+def test_activate_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [ActivateNode(selector=_ACTIVATE_SELECTOR, continue_on_error=Literal(value="True"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Activate with ContinueOnError set" in code
     _compiles(code)
 
 

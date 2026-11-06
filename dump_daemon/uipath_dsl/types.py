@@ -367,6 +367,28 @@ class HoverNode:
 
 
 @dataclass
+class ActivateNode:
+    """`<ui:Activate>`(知見162、GitHub code searchで604件ヒット)。
+    `UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+    (`UiPath.UIAutomation.Activities/25.10/Activate.xaml`、知見128で
+    発見した504件の単体活動フィクスチャ)+複数の実機XAML
+    (`Digital-RPA/MRE_B2BE`等)で確認した構造は`Target`+`DelayBefore`/
+    `DelayMS`/`ContinueOnError`のみ——`ClickNode`/`HoverNode`より
+    さらに単純で、`CursorPosition`自体を持たない(クリックも移動も
+    伴わず、指定した要素/ウィンドウをフォアグラウンドへ切り替える
+    だけの活動であるため)。pywinautoの`set_focus()`(両バックエンドの
+    `base_wrapper`で共通にサポートされる確認済みの標準API)が直接
+    対応する——`move_mouse_input()`のような既定値の罠(知見157)は
+    無い、最も単純な変換の1つ。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    delay_before: Expr = None
+    delay_ms: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1337,6 +1359,7 @@ Node = (
     | ParallelNode
     | ClickNode
     | HoverNode
+    | ActivateNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode
