@@ -109,6 +109,28 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       複合動作で、知見155のExcelスコープ(openpyxlでは再現不可)と同じ制約に抵触。
     - `WaitForImageAction`: `IfImageAction`と同じ`CheckImageActionBase`系列——知見38/39/42
       の既知の制約(画像セレクタの実機取得にRDPが必要)がそのまま当てはまる。
+- [x] 🔍 **新規発見・1件結線(知見164)**: `ActionSelectorBase`一括列挙監査には
+  「兄弟セレクタを持たないフラットな`[Action]`クラス自体は検出されない」という
+  構造的な盲点があると判明——`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を
+  持つ全クラスを直接列挙したところ、UIAutomation.Actions.dllに新たに15系統を発見
+  (`tools/selector_dumps/UIAutomation_flat_actions.txt`)。知見160の「8系統」調査は
+  この盲点のため氷山の一角だった。`FocusTextFieldInWindow`(→`UIAutomation.
+  FocusTextField`)は`TakeScreenshotOfUIElement`(知見161)と同じ低リスク条件
+  (`UiElementRef`機構+曖昧さの無い`.set_focus()`)を満たすため新規結線した。
+  - [ ] 💻🖥️ **残課題(知見164で精査・分類)**:
+    - `PressWindowButton`(→`PressButton`): `Button`パラメータ(同じ`UiElementRef`)+
+      `Simulate`(bool)で`.invoke()`(UIAの`InvokePattern`、知見81のRun実行アドホック
+      スクリプトで使用実績あり)/`.click_input()`を動的に切り替えるだけで実装可能——
+      低リスクだが`.invoke()`の`tests/fake_pywinauto.py`フェイクが未整備。
+    - `HoverOnElementInWindow`/`SelectTabInWindow`/`SelectMenuOptionInWindow`/
+      `SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/
+      `ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`: 未精査
+      (`UiElementRef`機構の可能性が高いが個々の動作のpywinauto対応が未確認)。
+    - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetUIControl`/
+      `GetWindowDetails`: `AttributeName`(`"Own Text"`/`"Exists"`/`"Location and Size"`/
+      `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。
+    - `UseDesktop`/`IfRemoteDesktopIsAvailableAction`/`WaitForRemoteDesktopAction`:
+      リモートデスクトップ機能専用、スコープ外の可能性が高い。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

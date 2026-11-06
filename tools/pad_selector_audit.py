@@ -35,12 +35,25 @@ decompileで直接確認する必要があり、本ツールが推測するこ�
 スコープ外とした既知の除外もここに含まれるため、最終判断は呼び出し側(人間、または
 `pad_todo.md`への反映作業)に委ねる。
 
-**既知の盲点(知見160)**: `pad_codegen`側が`action_id == "完全な文字列"`ではなく
+**既知の盲点1(知見160)**: `pad_codegen`側が`action_id == "完全な文字列"`ではなく
 `action_id.startswith("<Module>.<Group>.")`という前方一致で判定している箇所
 (例: `conditions.py`の`IfWindow`ファミリー)は、本ツールの単純なリテラル抽出では
 検出できない——`"<Module>.<Group>."`という末尾がドットの文字列は`_ACTION_ID_LITERAL_RE`
 に一致しないため。この場合、実際には結線済みでも「未結線候補」として誤って報告される
 (偽陰性=過大報告側のズレであり、安全側ではあるが要注意)。
+
+**既知の盲点2(知見164、より重大)**: `--dump`の元データ(VM上の`ActionSelectorBase`
+派生型のリフレクション列挙)自体が、**兄弟セレクタを一切持たないフラットな`[Action]`
+クラスを含まない**——`ActionSelectorBase`派生型は「そのクラスを対象とするセレクタ」
+しか列挙できないため、セレクタが1つも無いクラス(`pad_codegen`側はこれをフラットな
+2セグメント形式で結線する、Excelの`AddWorksheet`等と同じパターン)は`--dump`ファイル
+自体に現れず、本ツールはその存在を一切検出できない。真に網羅的な調査には
+`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ**全クラス**を別途列挙し
+(`ActionSelectorBase`の有無を問わない)、`ActionSelectorBase`一括列挙の結果と
+突き合わせて「セレクタを持たないクラス」を抽出する必要がある(知見164で
+UIAutomation.Actions.dllに適用し15系統を新規発見、`tools/selector_dumps/
+UIAutomation_flat_actions.txt`参照)——この追加監査は本ツールにまだ組み込まれて
+いない(次の課題)。
 """
 from __future__ import annotations
 

@@ -1353,6 +1353,43 @@ def test_generate_python_from_take_screenshot_of_ui_element_and_save_to_file_con
     ]
 
 
+def test_generate_python_from_focus_text_field_converts() -> None:
+    # design/dsl_format_findings.md 知見164(`[Action]`属性の網羅列挙監査で新規発見):
+    # `FocusTextFieldInWindow`は兄弟セレクタを持たないフラットなアクション
+    # (`UIAutomation.FocusTextField`、知見162の`Name`=`Id`)。`TextField`パラメータは
+    # `Click.Click`の`Element`と同じ`UiElementRef`機構で、同じ`ControlRepository`
+    # フィクスチャのセレクタがそのまま再利用できる。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.FocusTextField "
+        "TextField: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']\n\n"
+        + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').set_focus()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("set_focus", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別

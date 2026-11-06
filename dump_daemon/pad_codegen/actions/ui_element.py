@@ -171,4 +171,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"format={image_format.upper()!r})",
             f"{prefix}{dest_var} = {image_file_path}",
         ]
+    if node.action_id == "UIAutomation.FocusTextField":
+        # design/dsl_format_findings.md 知見164(`[Action]`属性の網羅列挙監査で新規発見):
+        # `FocusTextFieldInWindow`は`ActionSelectorBase`の兄弟セレクタを持たない単一の
+        # フラットなアクション(`[Action(Name = "FocusTextField")]`、知見162で確認済みの
+        # `Name`=`Id`の旧名)。パラメータは`TextField`(`UIAutomation.Click.Click`の
+        # `Element`と同じ`UiElementRef`機構)のみで、動作も`.set_focus()`
+        # (`UIAutomation.FocusWindow`系で既に実コード生成に使っている確証済みの
+        # pywinauto操作)そのもの——曖昧さが無いため実機未確認でも安全に結線できる。
+        element = node.params.get("TextField")
+        if not isinstance(element, UiElementRef):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        return [f"{prefix}{selector_expr}.set_focus()"]
     return None

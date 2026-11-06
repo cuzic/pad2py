@@ -2739,3 +2739,19 @@ public abstract class ActionAttributeBase : Attribute
 **2件目(`web_actions.py`、知見152)**: `_get_download_file_path()`が、末尾が`/`で終わる**非ルート**パス(例: `/downloads/`)の場合に`path.rsplit("/", 1)[-1]`で空文字列を返していた——decompileした.NETの`Uri.Segments`は、このケースでも最後のセグメント自体に末尾の`/`を含める(`segments = ["/", "downloads/"]`)ため、正しい変換は`"downloads/"`(その後`_sanitize_file_name()`で`/`自体が`_`に置換されるため最終的には`"downloads_"`)。真のルートパス(`path == "/"`)のケースは既に正しく処理されていたが、「非ルートかつ末尾が`/`」という中間ケースが未対応だった。
 
 両方とも、実際のPAD/pywinauto実行では発生しにくいエッジケース(IBM037は稀な中国語/EBCDIC系コードページ、末尾スラッシュのダウンロードURLは非典型)だが、decompileした.NET側の仕様とPython実装の間の不一致という意味では紛れもないバグだったため修正し、再発防止のテストを追加した。
+
+## 164. `ActionSelectorBase`一括列挙監査には「兄弟セレクタを持たないフラットな`[Action]`クラス」を見落とす盲点があると発覚——UIAutomation.Actions.dllに新たに15系統を発見、`FocusTextField`を新規結線
+
+知見139以降確立してきた`ActionSelectorBase`一括列挙監査(`ActionSelectorBase`派生型をリフレクションで列挙する)には、**兄弟セレクタを一切持たない単一の`[Action]`クラス自体は検出されない**という構造的な盲点があると気づいた——`ActionSelectorBase`派生型の一覧には、そのクラスを**対象とする**セレクタしか現れないため、セレクタが1つも無いクラス(知見155のExcelの`AddWorksheet`等と同じパターン)は一覧に載らない。知見160の「UIAutomation.Actions.dllに8系統が未着手」という調査も、この盲点のせいで**氷山の一角**だったと判明した。
+
+VM上で`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラス(セレクタの有無を問わず)を直接列挙し、`ActionSelectorBase`一括列挙の結果(セレクタを持つクラスの集合)と突き合わせたところ、**セレクタを持たないクラスが新たに15個**見つかった(`tools/selector_dumps/UIAutomation_flat_actions.txt`に保存): `GetDetailsOfElementInWindow`(→`GetElementDetails`)・`GetUIControl`・`GetWindowDetails`・`DragAndDropElementInWindow`(→`DragAndDropElement`)・`ExpandCollapseTreeNodeInWindow`(→`ExpandCollapseTreeNode`)・`FocusTextFieldInWindow`(→`FocusTextField`)・`PressWindowButton`(→`PressButton`)・`SelectRadioButtonInWindow`(→`SelectRadioButton`)・`SetCheckboxStateInWindow`(→`SetCheckboxState`)・`IfRemoteDesktopIsAvailableAction`(→`IfRemoteDesktopIsAvailable`)・`SelectMenuOptionInWindow`(→`SelectMenuOption`)・`SelectTabInWindow`(→`SelectTab`)・`UseDesktop`・`WaitForRemoteDesktopAction`(→`WaitForRemoteDesktop`)・`HoverOnElementInWindow`(→`HoverOnElement`)。いずれも`pad_codegen`には一切登場せず、今回初めて存在を認識した。
+
+このうち`FocusTextFieldInWindow`(`[Action(Name = "FocusTextField")]`、知見162で確認済みの`Name`=`Id`の旧名)はdecompileで精査した結果、`TakeScreenshotOfUIElement`(知見161)と全く同じ低リスク条件を満たしていた——`TextField`パラメータが`Click.Click`の`Element`と同じ`UiElementRef`機構、動作も`.set_focus()`(`UIAutomation.FocusWindow`系で既に実コード生成に使っている確証済みのpywinauto操作)そのもので曖昧さが無いため、実機未確認のまま安全に新規結線した。
+
+**他の候補の実装可否(decompile精査済み、未着手)**:
+- `PressWindowButton`: `Button`パラメータ(同じ`UiElementRef`機構)+`Simulate`(bool)。`Simulate=False`→`r.PressButtonInWindow(e)`(UIAの`InvokePattern`相当、pywinautoの`.invoke()`——本プロジェクトのRun実行用アドホックスクリプトで既に使用実績あり、知見81)、`Simulate=True`→`r.SimulateClickElementInWindow(e)`(`.click_input()`と同じ)。2つのpywinautoメソッドを`Simulate`で動的に切り替えるだけで実装可能——低リスクだが`.invoke()`のフェイク実装(`tests/fake_pywinauto.py`)が未整備のため次回以降に持ち越し。
+- `HoverOnElementInWindow`/`SelectTabInWindow`/`SelectMenuOptionInWindow`/`SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/`ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`: 未精査(セレクタ機構は同じ`UiElementRef`の可能性が高いが、個々の動作の正確なpywinauto対応は未確認)。
+- `GetDetailsOfElementInWindow`/`GetUIControl`/`GetWindowDetails`: UI要素の属性/詳細を読み取る系——`AttributeName`が`SuggestedValues`付きの自由文字列(`"Own Text"`/`"Exists"`/`"Location and Size"`/`"Enabled"`)で、各値が実際にどのUIAプロパティに対応するかは実機/decompileでの追加確認が必要。
+- `UseDesktop`/`IfRemoteDesktopIsAvailableAction`/`WaitForRemoteDesktopAction`: リモートデスクトップ機能専用——このプロジェクトのスコープ外である可能性が高い。
+
+テストは`tests/test_pad_codegen.py`に`FocusTextField`のexec検証テストを追加した。`design/pad_todo.md`に残り14候補を新規TODOとして記録する。
