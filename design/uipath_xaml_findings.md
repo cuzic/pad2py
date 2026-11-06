@@ -4965,6 +4965,57 @@ UiPath関連テスト全304件通過、リポジトリ全体で全1075件通過�
 無く`# TODO`に倒していた属性値」という本プロジェクト全体に共通するパターン
 に対する、汎用的で安価な調査手法として確立したと言える。
 
+## 105. `ui:Click.CursorPosition`の`Position="TopLeft"`+`OffsetX`/`OffsetY`を実機XAML(GitHub実例)で確認し、実コード生成に対応(VM不使用、知見100の手法を再適用)
+
+知見102〜104に続き、「GitHub上の実機保存済みXAMLを直接検索する」手法を
+`ui:Click.CursorPosition`(知見73で`"Center"`のみに限定していた)へ
+再適用した。`gh api search/code`で`Position="TopLeft"`
+(574件)・`"TopRight"`(84件)・`"BottomLeft"`(33件)・`"BottomRight"`
+(40件)・`"Custom"`(2件)が実際にUiPath Studioが保存した公開済みXAMLで
+確認できた。
+
+**実例の詳細**(`PacktPublishing/Robotic-Process-Automation-Projects`の
+`ZOHOAutomation.xaml`): `<ui:CursorPosition OffsetX="5" OffsetY="8"
+Position="TopLeft" />`(属性形)という実例を2件確認。同じファイル内に
+`Position="Center"`で`OffsetX`/`OffsetY`が`<CursorPosition.OffsetX>
+<InArgument x:TypeArguments="x:Int32" /></CursorPosition.OffsetX>`
+(プロパティ要素形、`InArgument`が空=未設定)という実例もあり——
+`Center`時のオフセットは実際には未設定のままだった(知見73の既存の
+「`Center`はオフセット無し」という前提と整合、新しい矛盾は見つからず)。
+
+**pywinauto側の確認**(VM不使用、インストール済みの実`pywinauto`ソース):
+`click_input(coords=...)`は未指定時`width()/2`・`height()/2`(クライアント
+座標系、原点は要素の左上)で中心を計算してから`client_to_screen`する
+——つまり`coords`パラメータは常に**要素の左上を原点とする座標**を期待する。
+したがって`Position="TopLeft"`+`OffsetX`/`OffsetY`は`coords=(offsetX,
+offsetY)`へ符号の曖昧性なくそのままマッピングできる、唯一の非`Center`値
+だと確定した。`TopRight`/`BottomLeft`/`BottomRight`はオフセットがどちらの
+方向に数えるか(右端から減算か、それとも別の規約か)が実機未確認のため
+対象外のまま。
+
+**修正**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `ClickNode`に`cursor_offset_x`/
+`cursor_offset_y`を追加(属性形・プロパティ要素形の両方に対応する
+`_cursor_offset()`ヘルパー経由)。`_generate_click_body`は`Position=
+"TopLeft"`の場合に`coords=(x, y)`を実際に生成する。`Center`に非`None`の
+オフセットが付いている(実機未確認の組み合わせ)場合も安全側に`# TODO`
+へ倒すようにした——知見92〜95と同じ「捕捉済みデータを隠さない」観点の
+延長で、既存の「`Center`は常にオフセット無し」という前提が崩れた場合に
+サイレントに誤変換しないための防御。
+
+回帰テスト追加(TopLeft+オフセットの実コード生成・オフセット省略時の
+既定`(0, 0)`・TopRight/Center+オフセット組み合わせ/非整数オフセットの
+TODOフォールバック)、UiPath関連テスト全308件通過、リポジトリ全体で
+全1087件通過。
+
+**この知見で確定したこと**: 知見100の調査手法は5回連続(Flowchart・
+Click ClickType/MouseButton・SendOutlookMail・HttpClient・本知見の
+CursorPosition)で異なる種類の「実機確認が無く`# TODO`に倒していた
+属性値」を解消できた——UiPath/.NETエコシステム全体でGitHub上に大量の
+実プロジェクトが公開されていることを活かした、本プロジェクトにとって
+VM実機キャプチャに次ぐ(多くの場合VMより手軽な)第二の確度の高い検証
+手段として確立したと言える。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

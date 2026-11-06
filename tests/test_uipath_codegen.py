@@ -671,13 +671,72 @@ def test_click_with_confirmed_default_cursor_position_generates_click_input(
     _compiles(code)
 
 
-def test_click_with_non_default_cursor_position_is_todo_not_guessed():
-    """知見73: `CursorPosition`が`"Center"`以外(オフセット指定のマッピング
-    未確認)の場合はでっち上げず`# TODO`に倒す。"""
-    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, cursor_position="TopLeft")])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # 知見105: `TopRight`/`BottomLeft`/`BottomRight`はオフセットの符号
+        # 規約が実機未確認のため依然TODO。
+        {"cursor_position": "TopRight", "cursor_offset_x": "5", "cursor_offset_y": "5"},
+        # `Center`に非None(未確認)のオフセットが付いている組み合わせも
+        # 安全側に倒す(知見105、Center+オフセット無しの実例しか確認して
+        # いないため)。
+        {"cursor_position": "Center", "cursor_offset_x": "5", "cursor_offset_y": None},
+    ],
+)
+def test_click_with_non_default_cursor_position_is_todo_not_guessed(kwargs):
+    """知見73・105: `CursorPosition`が未確認の値・符号の組み合わせの場合は
+    でっち上げず`# TODO`に倒す。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, **kwargs)])
     code = generate_python(wf)
     assert "# TODO: Click with non-default CursorPosition" in code
-    assert ".click_input()" not in code
+    assert ".click_input(" not in code
+    _compiles(code)
+
+
+def test_click_with_topleft_cursor_position_non_integer_offset_is_todo():
+    """知見105: `Position="TopLeft"`だがオフセットが整数化できない値の
+    場合は、でっち上げず`# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            ClickNode(
+                selector=_CLICK_SELECTOR, cursor_position="TopLeft", cursor_offset_x="notanumber"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Click with non-integer CursorPosition offsets" in code
+    assert ".click_input(" not in code
+    _compiles(code)
+
+
+def test_click_with_topleft_cursor_position_generates_coords_kwarg():
+    """知見105: `Position="TopLeft"`+`OffsetX`/`OffsetY`(GitHub上の実機
+    保存済みXAMLで確認済み、VM不使用)は、pywinautoの`coords=`既定座標系
+    (左上原点)と一致するため、でっち上げず実際に`coords=(x, y)`を生成
+    する。"""
+    wf = _wrap(
+        [
+            ClickNode(
+                selector=_CLICK_SELECTOR,
+                cursor_position="TopLeft",
+                cursor_offset_x="5",
+                cursor_offset_y="8",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert ".click_input(coords=(5, 8))" in code
+    _compiles(code)
+
+
+def test_click_with_topleft_cursor_position_and_no_offsets_defaults_to_origin():
+    """`Position="TopLeft"`だが`OffsetX`/`OffsetY`が未設定の場合は`(0, 0)`
+    (左上原点そのもの)として扱う。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, cursor_position="TopLeft")])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert ".click_input(coords=(0, 0))" in code
     _compiles(code)
 
 

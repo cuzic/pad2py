@@ -362,6 +362,24 @@ def _parse_parallel(elem: etree._Element) -> ParallelNode:
     return ParallelNode(branches=[parse_activity(c) for c in _activity_children(elem)])
 
 
+def _cursor_offset(cursor_elem: etree._Element, attr_name: str) -> str | None:
+    """知見105: `OffsetX`/`OffsetY`は属性形(`OffsetX="5"`)と、プロパティ
+    要素形(`<CursorPosition.OffsetX><InArgument x:TypeArguments="x:Int32"
+    /></CursorPosition.OffsetX>`、`InArgument`が空なら未設定)の両方が
+    実機で確認済み(`PacktPublishing/Robotic-Process-Automation-Projects`
+    の実例)。"""
+    direct = _attr(cursor_elem, attr_name)
+    if direct is not None:
+        return direct
+    prop_elem = _find_property_element(cursor_elem, attr_name)
+    if prop_elem is None:
+        return None
+    children = _direct_children(prop_elem)
+    if not children:
+        return None
+    return children[0].text
+
+
 def _parse_click(elem: etree._Element) -> ClickNode:
     selector = None
     target_prop = _find_property_element(elem, "Target")
@@ -371,12 +389,16 @@ def _parse_click(elem: etree._Element) -> ClickNode:
             if local == "Target":
                 selector = _attr(child, "Selector")
     cursor_position = None
+    cursor_offset_x = None
+    cursor_offset_y = None
     cursor_position_prop = _find_property_element(elem, "CursorPosition")
     if cursor_position_prop is not None:
         for child in _direct_children(cursor_position_prop):
             _, local = _split_tag(child.tag)
             if local == "CursorPosition":
                 cursor_position = _attr(child, "Position")
+                cursor_offset_x = _cursor_offset(child, "OffsetX")
+                cursor_offset_y = _cursor_offset(child, "OffsetY")
     return ClickNode(
         selector=selector,
         display_name=_attr(elem, "DisplayName"),
@@ -384,6 +406,8 @@ def _parse_click(elem: etree._Element) -> ClickNode:
         mouse_button=_attr(elem, "MouseButton"),
         key_modifiers=_attr(elem, "KeyModifiers"),
         cursor_position=cursor_position,
+        cursor_offset_x=cursor_offset_x,
+        cursor_offset_y=cursor_offset_y,
     )
 
 

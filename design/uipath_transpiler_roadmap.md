@@ -1191,3 +1191,12 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     未確認のため、でっち上げた自動注入はしない。`Cookies`/`Parameters`/
     `UrlSegments`/`Attachments`は引き続き`# TODO`。回帰テスト更新・追加、
     UiPath関連テスト全304件通過、リポジトリ全体で全1075件通過。
+64. **(完了、2026-11-05)** `ui:Click.CursorPosition`の`Position=
+    "TopLeft"`+`OffsetX`/`OffsetY`の実コード生成に対応(VM不使用、知見
+    105——知見100の手法を5回目として再適用): pywinautoの`click_input
+    (coords=...)`は既定で要素の左上を原点とする座標系を使うと実ソースで
+    確認済みのため、`TopLeft`+オフセットは符号の曖昧性なく`coords=(x,
+    y)`へマッピングできる。`TopRight`/`BottomLeft`/`BottomRight`は符号
+    規約が未確認のため引き続き`# TODO`。`Center`に未確認の非`None`
+    オフセットが付く組み合わせも安全側に倒す防御を追加。回帰テスト追加、
+    UiPath関連テスト全308件通過、リポジトリ全体で全1087件通過。

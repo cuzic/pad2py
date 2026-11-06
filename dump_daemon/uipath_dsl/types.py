@@ -221,10 +221,16 @@ class ClickNode:
     `cursor_position`は`ui:Click.CursorPosition`配下の`ui:CursorPosition`
     要素の`Position`属性(知見73、実機確認済みの値は`"Center"`のみ——
     pywinautoの`click_input()`既定(ターゲット要素の中心座標)と一致する
-    ため現状は安全)。`OffsetX`/`OffsetY`(`Position="Custom"`時のみ意味を
-    持つと推定)は未確認のまま捕捉しない——`Position`が`"Center"`以外の
-    値だった場合は`_generate_click`が`# TODO`へ倒すため、`OffsetX`/
-    `OffsetY`を素通りで失っても実害は無い。"""
+    ため現状は安全)。
+
+    `cursor_offset_x`/`cursor_offset_y`は知見105で追加——`gh api
+    search/code`でGitHub上の実機保存済みXAMLから、`Position="TopLeft"`+
+    `OffsetX`/`OffsetY`(属性形・`<CursorPosition.OffsetX>`プロパティ要素
+    形の両方が実在、後者は値が空なら未設定)という実例を確認した。
+    `TopRight`/`BottomLeft`/`BottomRight`時のoffsetの符号規約(右端/下端
+    からの向き)は実機未確認のため依然未対応——`TopLeft`(pywinautoの
+    `click_input(coords=...)`が既定で使うのと同じ原点、知見105参照)の
+    場合のみ`_generate_click`が実コード生成する。"""
 
     selector: str | None = None
     display_name: str | None = None
@@ -232,6 +238,8 @@ class ClickNode:
     mouse_button: str | None = None
     key_modifiers: str | None = None
     cursor_position: str | None = None
+    cursor_offset_x: str | None = None
+    cursor_offset_y: str | None = None
 
 
 @dataclass

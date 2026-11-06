@@ -824,9 +824,19 @@ _MOUSE_BUTTON_KWARGS: dict[str, dict[str, object]] = {
 _KEY_MODIFIERS_CONFIRMED_DEFAULTS = (None, "None")
 # `ui:Click.CursorPosition`の`Position`属性(知見73)。実機確認済みの値は
 # `"Center"`のみで、これはpywinautoの`click_input()`既定(ターゲット要素の
-# 中心座標)と一致するため安全。`"TopLeft"`等の他の値や`Position="Custom"`
-# 時の`OffsetX`/`OffsetY`は未確認のため`# TODO`へ倒す。
+# 中心座標)と一致するため安全。
 _CURSOR_POSITION_CONFIRMED_DEFAULTS = (None, "Center")
+# 知見105: `Position="TopLeft"`+`OffsetX`/`OffsetY`(属性形・プロパティ
+# 要素形の両方が実在)を`gh api search/code`でGitHub上の実機保存済みXAML
+# から確認した(`PacktPublishing/Robotic-Process-Automation-Projects`の
+# 実例、VM不使用)。pywinautoの`click_input(coords=...)`はデフォルトで
+# ターゲット要素のクライアント座標系(原点が左上)を使う(インストール
+# 済みの実`pywinauto`ソース`base_wrapper.py`で確認済み——`coords`未指定時
+# `width()/2`/`height()/2`で中心を計算してから`client_to_screen`する)
+# ため、`TopLeft`+オフセットは`coords=(offsetX, offsetY)`へそのまま
+# マッピングできる、符号の曖昧性が無い唯一の非Center値。`TopRight`/
+# `BottomLeft`/`BottomRight`はオフセットの符号規約(どちらの方向に数える
+# か)が実機未確認のため依然`# TODO`へ倒す。
 
 
 def _generate_click(node: ClickNode, indent: int) -> list[str]:
@@ -869,11 +879,28 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
             f"KeyModifiers={node.key_modifiers!r}) — mapping not confirmed via real "
             "capture, refusing to guess"
         ]
-    if node.cursor_position not in _CURSOR_POSITION_CONFIRMED_DEFAULTS:
+    coords_kwargs: dict[str, object] = {}
+    if node.cursor_position == "TopLeft":
+        try:
+            x = int(node.cursor_offset_x) if node.cursor_offset_x is not None else 0
+            y = int(node.cursor_offset_y) if node.cursor_offset_y is not None else 0
+        except ValueError:
+            return [
+                f"{prefix}# TODO: Click with non-integer CursorPosition offsets "
+                f"(OffsetX={node.cursor_offset_x!r}, OffsetY={node.cursor_offset_y!r}) "
+                "— refusing to guess"
+            ]
+        coords_kwargs = {"coords": (x, y)}
+    elif (
+        node.cursor_position not in _CURSOR_POSITION_CONFIRMED_DEFAULTS
+        or node.cursor_offset_x is not None
+        or node.cursor_offset_y is not None
+    ):
         return [
             f"{prefix}# TODO: Click with non-default CursorPosition "
-            f"({node.cursor_position!r}) — offset mapping not confirmed via real "
-            "capture, refusing to guess"
+            f"({node.cursor_position!r}, OffsetX={node.cursor_offset_x!r}, "
+            f"OffsetY={node.cursor_offset_y!r}) — offset mapping not confirmed via "
+            "real capture, refusing to guess"
         ]
     rendered = selector_text_to_pywinauto(node.selector)
     if rendered.expr == 'Desktop(backend="uia")':
@@ -881,7 +908,11 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
             f"{prefix}# TODO: Click selector had no mappable attributes: {node.selector}"
         ]
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
-    kwargs = {**_CLICK_TYPE_KWARGS[click_type], **_MOUSE_BUTTON_KWARGS[mouse_button]}
+    kwargs = {
+        **_CLICK_TYPE_KWARGS[click_type],
+        **_MOUSE_BUTTON_KWARGS[mouse_button],
+        **coords_kwargs,
+    }
     kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
     lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
     return lines
