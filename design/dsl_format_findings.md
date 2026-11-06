@@ -2667,3 +2667,16 @@ VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系�
 既存の`tests/test_pad_codegen.py`の該当する合成(synthetic)バッチテスト4件(PDF×3関数+1件、Word、PowerPoint)も、同じ誤ったフラットなaction_id形式でDSLを手書きしていたため正しい3セグメント形式に修正した。
 
 **教訓の総括**: 知見80の「検索結果TreeItemのAutomationIdを1語の検索で一括確認する」手法は、**アクショングループの存在確認**(「このアクションがPADに存在する」)としては有効だが、**真のDSL action_id文字列の確認**(「このアクションが実際にどう直列化されるか」)には使えない——後者には知見139以降確立してきた`ActionSelectorBase`一括列挙監査(decompile+リフレクション)が必須、という確証レベルの違いを明確に区別する必要がある。今後、新しいモジュールを「完了」と記録する際は、この両方を満たしていることを確認すること。
+
+## 159. design/common_rpa_framework_roadmap.md 層3「セレクタ/モード一括発見ツールの資産化」を実装——`tools/pad_selector_audit.py`で知見155-158の手法をコミット済みスクリプトへ
+
+知見155-158でExcel/PDF/Word/PowerPointに発見した「`ActionSelectorBase`一括列挙監査で確認したaction_id(3セグメント形式)と、`pad_codegen`側の実際の結線が食い違っている」という潜在バグのクラスを、今後の新規モジュール調査で機械的に検出できるよう、`design/common_rpa_framework_roadmap.md`の層3で構想されていたツールを実装した。
+
+`tools/pad_selector_audit.py`は、(1) VM上の`ActionSelectorBase`派生型を列挙するリフレクションスクリプトの出力(`<BaseClass> | <SelectorClassName> | ActionName=<Name>`形式、知見139以降のテンプレート)を解析し、(2) `pad_codegen/actions/<module>.py`をASTで静的解析して文字列リテラルからaction_id形式の値を全て抽出し、(3) dump内の各セレクタについて`<Module>.<BaseClass>.<ActionName>`が結線済み集合に含まれるかを突き合わせる。`[Action(Id=...)]`によるクラス名からの上書き(知見156のPDF)は`--id-override`で明示的に指定する(decompile結果から人間が確認した値をそのまま渡すだけで、ツール自身が推測することはない)。
+
+Excel/Word/PowerPoint/PDFの実際のVMリフレクション出力を`tools/selector_dumps/{Excel,Word,PowerPoint,PDF}.txt`としてコミットし(decompileしたC#ソース自体ではなく、知見139の標準フォーマットに整形済みの短い列挙結果のみ——従来通り逆コンパイル結果自体は非追跡の方針を維持)、ツールで検証した結果:
+- PDF/PowerPoint: dump内の全セレクタが結線済み(0件の未結線候補)。
+- Word: 18件の未結線候補(ワイルドカード系2件・ページ/ブックマーク読み取り2件・ブックマーク書き込み2件・`InsertImageToWord`系12件)——いずれも既知の意図的スコープ外と一致。
+- Excel: 84件の未結線候補——いずれもライブExcel COM専用(`ActivateCell`/`AutoFillCells`/`ClearCells`/`SetColor`/`SortCells`等)として知見155で確認済みのスコープ外と一致。
+
+この検証自体が、知見155-158の修正が正しく完全であること(スコープ内のセレクタに漏れが無いこと)の独立した裏付けにもなった。`tests/test_pad_selector_audit.py`にツール自身の単体テスト(埋め込みフィクスチャでの文字列抽出・dump解析・突き合わせロジック検証)と、実際の`Excel.txt`を使った回帰防止テスト(知見155で修正した8グループのうち、スコープ外と確認済みの4件以外が全て結線済みであることを確認)を追加した。

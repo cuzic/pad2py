@@ -98,9 +98,20 @@ ConversionResult = Converted | Unsupported
 
 **目指す形**: 今回の監査で使った「`ActionSelectorBase`を継承する全型をリフレクションで列挙し、既存codegenの`action_id`マッピングと突き合わせる」手順を、**コミットされたスクリプト+コマンド**にする。
 
+✅ **PAD側は実装完了(2026-11-06、知見159)**: `tools/pad_selector_audit.py`(AST走査で
+`pad_codegen/actions/<module>.py`からwire済みaction_id集合を抽出し、VMリフレクション
+dumpと突き合わせる)を実装し、`tools/selector_dumps/{Excel,Word,PowerPoint,PDF}.txt`
+(知見139のテンプレート形式でコミット、decompile結果自体は非追跡のまま)で実際に
+運用した。知見155-158で発見したExcel/PDF/Word/PowerPointの潜在バグ(action_idが
+3セグメント形式なのにcodegen側がフラット判定で一度もマッチしていなかった)の検証・
+回帰防止に使えることを確認済み。`ActionSelectorBase`由来の全型を列挙するVM側の
+PowerShellスクリプト自体は、知見139-158を通じて確立した標準テンプレート(`clipwire`
+のad-hoc targetとして都度生成)をそのまま使っており、専用の`.ps1`ファイルとしては
+まだ資産化していない(次の課題)。
+
 ```
-tools/pad_selector_audit.py      # dispatch関数群をAST走査してwire済みaction_id集合を抽出
-tools/pad_selector_audit.ps1     # VM上でActionSelectorBase由来の全型を列挙(知見135-137の手法)
+tools/pad_selector_audit.py      # [済み] dispatch関数群をAST走査してwire済みaction_id集合を抽出
+tools/pad_selector_audit.ps1     # [未着手] VM上でActionSelectorBase由来の全型を列挙するスクリプト自体の資産化
 ```
 
 実行結果は「未結線セレクタ一覧」としてCIやレポートに出力し、`pad_todo.md`への反映を半自動化する。UiPath側には活動種別が数百〜数千あるため、この種の**体系的な差分発見ツール**が無いと手探りのまま進むことになり、むしろUiPath側こそ優先度が高い。

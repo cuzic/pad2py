@@ -1,0 +1,9 @@
+ExtractImagesFromPDFAction | ExtractImagesSelector | ActionName=ExtractImages
+ExtractImagesFromPDFAction | ExtractImagesFromPageSelector | ActionName=ExtractImagesFromPage
+ExtractImagesFromPDFAction | ExtractImagesFromPageRangeSelector | ActionName=ExtractImagesFromPageRange
+ExtractTablesFromPDFAction | ExtractTablesSelector | ActionName=ExtractTables
+ExtractTablesFromPDFAction | ExtractTablesFromPageSelector | ActionName=ExtractTablesFromPage
+ExtractTablesFromPDFAction | ExtractTablesFromPageRangeSelector | ActionName=ExtractTablesFromPageRange
+ExtractTextFromPDFAction | ExtractTextSelector | ActionName=ExtractText
+ExtractTextFromPDFAction | ExtractTextFromPageSelector | ActionName=ExtractTextFromPage
+ExtractTextFromPDFAction | ExtractTextFromPageRangeSelector | ActionName=ExtractTextFromPageRange
