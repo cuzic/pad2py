@@ -1610,3 +1610,29 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
     UiPath関連テスト全517件通過(リポジトリ全体は並行作業中の別セッ
     ションのPAD系未完了変更による無関係な失敗4件を除き健全)。
+
+90. **(完了・重要なバグ修正、2026-11-06)** libxml2のxmlns値過剰検証で
+    REFramework共通ファイルがパース不能になるバグを発見・修正(知見132):
+    `RetryCurrentTransaction.xaml`(REFrameworkの標準構成ファイル、
+    多数の実プロジェクトで使われる)が`xmlns:mv="clr-namespace:...,
+    Version=10.0.0.0, Culture=neutral, PublicKeyToken=..."`という
+    アセンブリ完全修飾名形のxmlns値をlibxml2が「valid URIではない」と
+    過剰検証で拒否し、XML解析の入口で完全に失敗していた。
+    `parse_workflow_file`の`etree.parse`を、このエラーメッセージ
+    (`"is not a valid URI"`)に限定して`recover=True`の寛容パーサーへ
+    フォールバックするよう修正——他の種類のXML構文エラーは従来通り
+    伝播させる狭い修正。今後検証する実プロジェクトのうち無視できない
+    割合がXML解析の入口で弾かれる状態から救われると見込まれる。回帰
+    テスト追加(`tests/test_uipath_dsl.py`1件)。
+
+91. **(完了、2026-11-06)** 文字列/配列の`.Contains`/`.Length`+
+    `Directory.GetFiles`を新規実装(知見133——知見132と同じ検証バッチの
+    継続): `String.Contains(value)`をPythonの`in`演算子へ対応——
+    知見118/127の2つの連鎖呼び出し経路で重複していた`Equals`判定を
+    `_apply_chained_call`という共通ヘルパーへ整理し、そこへ`Contains`を
+    追加。`Directory.GetFiles(path)`(1引数、検索パターン省略)を
+    `os.listdir`+`os.path.isfile`のリスト内包表記へ対応。`.Length`
+    (配列/文字列いずれも)はPythonの`len()`に型を問わず直接対応する
+    ため連鎖呼び出し・呼び出し無し連鎖の両経路に追加。回帰テスト追加
+    (`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全523件通過
+    (リポジトリ全体は`test_pad_codegen.py`を除き全1133件通過)。

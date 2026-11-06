@@ -240,6 +240,44 @@ def test_path_getfilenamewithoutextension_renders_as_os_path_splitext():
     _compiles(code)
 
 
+def test_directory_getfiles_renders_as_os_listdir_comprehension():
+    """知見133: `Directory.GetFiles(path)`(`dexbob/RPA_Example`の実機
+    XAML`Directory.GetFiles(Str_OutputFolder)`で発見)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Directory.GetFiles(y)"))])
+    code = generate_python(wf)
+    assert (
+        "x = [os.path.join(y, _n) for _n in os.listdir(y) if os.path.isfile(os.path.join(y, _n))]"
+        in code
+    )
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_chained_call_result_dotted_length_renders_as_len():
+    """知見133: `Directory.GetFiles(path).Length`(`dexbob/RPA_Example`
+    の実機XAML、`.Length`は括弧省略形)。配列/文字列いずれも`len()`に
+    同じ意味論で直接対応する。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Directory.GetFiles(y).Length"))]
+    )
+    code = generate_python(wf)
+    assert (
+        "x = len([os.path.join(y, _n) for _n in os.listdir(y) "
+        "if os.path.isfile(os.path.join(y, _n))])"
+    ) in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_length_without_call_renders_as_len():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="arr.Length"))])
+    code = generate_python(wf)
+    assert "x = len(arr)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_bare_variable_dotted_copy_without_call_renders_as_datatable_copy():
     """知見130: `dtUB92.Copy`(括弧省略形、同上の実機XAML`DataTable.
     Copy()`で発見)。既存のDataTable表現(`list[dict]`)に対応する、各行の
@@ -304,6 +342,37 @@ def test_bare_variable_dotted_property_then_call_chain_renders():
     wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="a.Trim.ToUpper()"))])
     code = generate_python(wf)
     assert "x = a.strip().upper()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_tolower_contains_chain_renders_as_in_operator():
+    """知見133: `strStatus.ToString.ToLower.Contains("x")`
+    (`sarvesh0718/RCM-Bot-using-uipath-studio`・`harsranjan/RPA`の実機
+    XAMLで発見)。`String.Contains(value)`はPythonの`in`演算子と同じ
+    意味論(包含判定、オペランドの順序が逆になる点に注意)。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"),
+                value=VbExpr(text='strStatus.ToString.ToLower.Contains("done")'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "x = ('done') in (_vb_cstr(strStatus).lower())" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_chained_call_after_function_call_contains_renders_as_in_operator():
+    """知見133: `CStr(x).ToLower.Contains("y")`——`_render_chained_access`
+    (知見118の経路)でも同じ`Contains`対応が使われることを確認。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='CStr(y).ToLower.Contains("z")'))]
+    )
+    code = generate_python(wf)
+    assert "x = ('z') in (_vb_cstr(y).lower())" in code
     assert "# TODO" not in code
     _compiles(code)
 

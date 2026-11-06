@@ -1299,7 +1299,26 @@ def parse_workflow_file(path: str | Path) -> WorkflowFile:
     Libraryの`ActivityBuilder`形(知見26)・State Machineはv1スコープ外で、
     このパーサーも未対応(遭遇すると`ValueError`)。
     """
-    tree = etree.parse(str(path))
+    try:
+        tree = etree.parse(str(path))
+    except etree.XMLSyntaxError as exc:
+        # 知見132: `xmlns:mv="clr-namespace:Microsoft.VisualBasic;assembly=
+        # Microsoft.VisualBasic, Version=10.0.0.0, Culture=neutral,
+        # PublicKeyToken=..."`のような、アセンブリ完全修飾名を含む
+        # `clr-namespace`形のxmlns値(`mnsy1/UiPath_ACMEVerifyAccountPositions`
+        # の実機XAML、REFrameworkの`RetryCurrentTransaction.xaml`で発見
+        # ——REFramework系の多数の実プロジェクトで共通して使われる極めて
+        # 典型的なファイル)に対し、libxml2が「valid URIではない」と過剰に
+        # 厳格な検証で拒否する既知の挙動(XML Namespaces仕様自体はxmlns値を
+        # 厳密なRFC3986 URIに制限していない——空白・カンマを含むアセンブリ
+        # 修飾名形式は.NET/WPF/WFの慣習として広く使われており、XAML自体は
+        # 不正ではない)。このエラーメッセージに限定して`recover=True`の
+        # 寛容パーサーへフォールバックする——他の種類のXML構文エラー
+        # (閉じタグ不整合・切断されたファイル等)は従来通りそのまま
+        # 例外を伝播させ、本物の壊れたファイルを誤って黒塗りしない。
+        if "is not a valid URI" not in str(exc):
+            raise
+        tree = etree.parse(str(path), etree.XMLParser(recover=True))
     root = tree.getroot()
     ns, local = _split_tag(root.tag)
     if local != "Activity":

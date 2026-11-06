@@ -996,3 +996,29 @@ def test_sub1_workflow_arguments():
     assert isinstance(assign, AssignNode)
     assert assign.target == VbExpr(text="in_text")
     assert assign.value == Literal(value="test2")
+
+
+def test_parse_workflow_file_tolerates_assembly_qualified_clr_namespace_xmlns(tmp_path):
+    """知見132: `xmlns:mv="clr-namespace:Microsoft.VisualBasic;assembly=
+    Microsoft.VisualBasic, Version=10.0.0.0, Culture=neutral,
+    PublicKeyToken=..."`形(`mnsy1/UiPath_ACMEVerifyAccountPositions`の
+    実機XAML、REFrameworkの`RetryCurrentTransaction.xaml`で発見——
+    REFramework系の多数の実プロジェクトで共通して使われる典型的な
+    ファイル)。libxml2がこの値を「valid URIではない」と過剰に厳格な
+    検証で拒否する既知の挙動があり、修正前は`lxml.etree.XMLSyntaxError`
+    でワークフロー全体のパースが完全に失敗していた。"""
+    xaml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'xmlns:mv="clr-namespace:Microsoft.VisualBasic;assembly='
+        'Microsoft.VisualBasic, Version=10.0.0.0, Culture=neutral, '
+        'PublicKeyToken=b03f5f7f11d50a3a">'
+        '<Sequence DisplayName="Body" />'
+        "</Activity>"
+    )
+    path = tmp_path / "Test.xaml"
+    path.write_text(xaml, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assert wf.class_name == "Test"
+    assert isinstance(wf.root, SequenceNode)

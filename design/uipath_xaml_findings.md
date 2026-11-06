@@ -6372,6 +6372,76 @@ test_uipath_codegen.py`に5件追加、UiPath関連テスト全517件通過
 `test_pad_codegen.py`の4件が別途失敗中——本変更とは無関係、UiPath関連
 テストのみで検証)。
 
+## 132. 【重要】libxml2のxmlns値過剰検証でREFramework共通ファイルがパース不能になるバグを発見・修正(未使用の新規23リポジトリでの実機検証、VM不使用)
+
+知見117〜131の手法を未使用の新規23リポジトリへ適用する過程で、
+`mnsy1/UiPath_ACMEVerifyAccountPositions`の`RetryCurrentTransaction.xaml`
+——REFramework(多数のUiPathプロジェクトの標準テンプレート)に含まれる、
+極めて典型的で広く使われているファイル——が`lxml.etree.XMLSyntaxError`
+でXML解析自体の段階から完全に失敗することを発見した。原因は`xmlns:mv=
+"clr-namespace:Microsoft.VisualBasic;assembly=Microsoft.VisualBasic,
+Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"`
+という、アセンブリ完全修飾名(`Version`/`Culture`/`PublicKeyToken`を
+含む、空白とカンマを含む)を値に持つ`clr-namespace`形のxmlns宣言——
+libxml2がこれを「valid URIではない」と過剰に厳格な検証で拒否する
+(XML Namespaces仕様自体はxmlns値を厳密なRFC3986 URIに制限しておらず、
+.NET/WPF/WFの慣習として空白・カンマを含むアセンブリ修飾名形式が広く
+使われている——XAML自体は不正ではない、libxml2側の既知の過剰検証)。
+
+`parse_workflow_file`の`etree.parse(str(path))`を`try`で囲み、
+`XMLSyntaxError`のメッセージが`"is not a valid URI"`を含む場合**のみ**
+`etree.XMLParser(recover=True)`の寛容パーサーへフォールバックするよう
+修正した——他の種類のXML構文エラー(閉じタグ不整合・切断されたファイル
+等、本物の壊れたファイル)は従来通りそのまま例外を伝播させる、エラー
+メッセージで厳密に絞った狭い修正(`recover=True`を無条件に使うと
+本物の構文エラーも静かに握り潰してしまうリスクがあるため避けた)。
+
+**影響範囲の推定**: `RetryCurrentTransaction.xaml`はREFrameworkの標準
+構成ファイルの1つで、REFrameworkベースの実プロジェクトは非常に多い
+(知見で蓄積した実例でも複数回遭遇済み)——この1つのバグ修正で、今後
+検証する実プロジェクト全体のうち無視できない割合が、XML解析の入口で
+即座に弾かれる状態から救われると見込まれる。
+
+`dump_daemon/uipath_dsl/xaml_tree.py`の`parse_workflow_file`のみ変更。
+`tests/test_uipath_dsl.py`に合成XMLで同じxmlns値を再現する回帰テストを
+1件追加。
+
+## 133. 文字列/配列の`.Contains`/`.Length`+`Directory.GetFiles`を新規実装(知見132と同じ検証バッチの継続、VM不使用)
+
+**解決: `.Contains(arg)`**(`sarvesh0718/RCM-Bot-using-uipath-studio`・
+`harsranjan/RPA`の実機XAML、いずれも`strXxx.ToLower.Contains(...)`
+という形で発見)。知見127で確立した「素の変数への連鎖呼び出し」
+フォールバック経路・知見118の`_render_chained_access`経路の両方に
+`Contains`(1引数)を追加——どちらも「`base`は既にレンダリング済み
+文字列、末尾セグメントだけ未確定」という同じ形に帰着するため、重複して
+いた`Equals`判定ロジックを`_apply_chained_call`という共通ヘルパーへ
+まとめ、そこへ`Contains`を追加した(リファクタと機能追加を同時に
+行った——`Equals`判定の重複が3箇所目になりそうだったタイミングで
+整理)。`String.Contains(value)`はPythonの`in`演算子と同じ意味論
+(包含判定、オペランドの順序が逆になる点に注意: `base.Contains(x)`→
+`x in base`)。
+
+**解決: `Directory.GetFiles(path)`**(`dexbob/RPA_Example`の実機XAML
+`Directory.GetFiles(Str_OutputFolder)`で発見)。検索パターン・再帰
+オプションを省略した1引数の確認済み形のみ、指定ディレクトリ直下の
+ファイルのみ(サブディレクトリは含まない、.NETの既定動作)をフルパスで
+列挙するリスト内包表記(`[os.path.join(p, n) for n in os.listdir(p)
+if os.path.isfile(os.path.join(p, n))]`)へ対応した。
+
+**解決: `.Length`**(同じ実機XAMLで`Directory.GetFiles(...).Length`と
+連鎖して使われていた、括弧省略形)。.NETの`Length`プロパティは配列
+(`String()`等)・文字列(`String.Length`)のいずれでも文字数/要素数を
+返す——Pythonの`len()`に型を問わず同じ意味論で直接対応するため、
+`_apply_chained_property`(連鎖呼び出し経路)と知見119の`Ident`分岐
+(呼び出し無しの素の変数への連鎖、`_SAFE_BARE_MEMBERS`へ追加)の
+両方に追加した。
+
+`dump_daemon/uipath_codegen/render.py`に`_apply_chained_call`
+(新設、`Equals`/`Contains`の共通ロジック)・`directory.getfiles`
+分岐・`Length`/`_SAFE_BARE_MEMBERS`を追加。`tests/
+test_uipath_codegen.py`に6件追加、UiPath関連テスト全523件通過
+(リポジトリ全体は`test_pad_codegen.py`を除き全1133件通過)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

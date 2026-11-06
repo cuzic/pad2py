@@ -478,9 +478,10 @@ def _render_node(node: ExprNode) -> str:
         # ため従来通り(無変換でそのまま)の挙動を変えない、安全な追加。
         if "." in node.name:
             prefix, _, last = node.name.rpartition(".")
-            # 知見130: `Copy`(`DataTable.Copy`、括弧省略形)も同じ安全な
-            # メンバ名の一覧に加える。
-            if last == "ToString" or last == "Copy" or last in _CHAINED_PROPERTY_TRANSLATIONS:
+            # 知見130: `Copy`(`DataTable.Copy`、括弧省略形)、知見133:
+            # `Length`(配列/文字列、括弧省略形)も同じ安全なメンバ名の
+            # 一覧に加える(`_SAFE_BARE_MEMBERS`、本モジュール後方で定義)。
+            if last in _SAFE_BARE_MEMBERS or last in _CHAINED_PROPERTY_TRANSLATIONS:
                 return _apply_chained_property(prefix, last)
         return node.name
     if isinstance(node, StringLiteral):
@@ -571,6 +572,12 @@ def _render_node(node: ExprNode) -> str:
 # で一致——カルチャ依存の比較オーバーロードは未確認のため対象外)。
 _CHAINED_PROPERTY_TRANSLATIONS = {"ToUpper": "upper", "ToLower": "lower", "Trim": "strip"}
 
+# 知見119/130/133: 括弧省略形の素の変数へのメンバアクセス連鎖
+# (`_render_node`のIdent分岐)で、`_apply_chained_property`へそのまま
+# 委ねて良いと確認済みのメンバ名(`_CHAINED_PROPERTY_TRANSLATIONS`の
+# キー群とは別の、1:1の名前変換では済まない特別処理を持つもの)。
+_SAFE_BARE_MEMBERS = ("ToString", "Copy", "Length")
+
 
 def _render_chained_access(node: ChainedAccess) -> str:
     base = _render_node(node.target)
@@ -588,8 +595,25 @@ def _render_chained_access(node: ChainedAccess) -> str:
         # アクセスと同じ意味論(.NETの慣習——引数無しメソッドは括弧の
         # 有無を問わず同じ)。
         return _apply_chained_property(base, last)
+    return _apply_chained_call(base, last, args)
+
+
+def _apply_chained_call(base: str, last: str, args: list[str]) -> str:
+    """`.{last}({args})`形の、引数付き確認済みメンバメソッド呼び出し。
+    `_render_chained_access`(関数呼び出し結果への連鎖、知見118)と
+    `_render_func_call`の末尾フォールバック(素の変数への連鎖、知見127)
+    の両方から共通で呼ばれる——どちらも「`base`は既に文字列として
+    レンダリング済み、末尾セグメントだけが未確定」という同じ形に帰着
+    するため。"""
     if last == "Equals" and len(args) == 1:
         return f"({base}) == ({args[0]})"
+    if last == "Contains" and len(args) == 1:
+        # 知見133: `String.Contains(value)`(`sarvesh0718/
+        # RCM-Bot-using-uipath-studio`・`harsranjan/RPA`の実機XAMLで発見、
+        # いずれも`strXxx.ToLower.Contains(...)`のように`.ToLower`との
+        # 連鎖で使われていた)はPythonの`in`演算子と同じ意味論
+        # (部分文字列の包含判定、順序が逆になる点に注意)。
+        return f"({args[0]}) in ({base})"
     raise NotImplementedError(f"unsupported chained method call: .{last}(...)")
 
 
@@ -605,6 +629,13 @@ def _apply_chained_property(base: str, member: str) -> str:
         # ——`.Copy()`を複数回呼んだ結果が元のDataTableと行データを
         # 共有しないことを保証する。
         return f"[dict(_r) for _r in {base}]"
+    if member == "Length":
+        # 知見133: `Directory.GetFiles(path).Length`(`dexbob/RPA_Example`
+        # の実機XAML、`.Length`は括弧省略形)。配列(`String()`等)・文字列
+        # (`String.Length`)いずれも.NETでは文字数/要素数を返す`Length`
+        # プロパティで、Pythonの`len()`に同じ意味論で直接対応する
+        # ——型による分岐は不要。
+        return f"len({base})"
     if member in _CHAINED_PROPERTY_TRANSLATIONS:
         return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member]}()"
     raise NotImplementedError(f"unsupported chained member access: .{member}")
@@ -863,6 +894,19 @@ def _render_func_call(node: FuncCall) -> str:
                 "Path.GetFileNameWithoutExtension expects exactly 1 argument"
             )
         return f"os.path.splitext(os.path.basename({args[0]}))[0]"
+    if key == "directory.getfiles":
+        # 知見133: `System.IO.Directory.GetFiles(path)`(`dexbob/
+        # RPA_Example`の実機XAML`Directory.GetFiles(Str_OutputFolder)`で
+        # 発見)。1引数(検索パターン・再帰オプション省略)の確認済み形
+        # のみ、指定ディレクトリ直下のファイルのみ(サブディレクトリは
+        # 含まない、.NETの既定動作)をフルパスで列挙するリスト内包表記へ
+        # 対応する。
+        if len(args) != 1:
+            raise NotImplementedError("Directory.GetFiles expects exactly 1 argument")
+        return (
+            f"[os.path.join({args[0]}, _n) for _n in os.listdir({args[0]}) "
+            f"if os.path.isfile(os.path.join({args[0]}, _n))]"
+        )
     if key == "len":
         # 知見127: `Microsoft.VisualBasic.Strings.Len(Expression)`
         # (`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML`Len(sRstHttp)`で
@@ -926,8 +970,7 @@ def _render_func_call(node: FuncCall) -> str:
         last = segments[-1]
         if not args:
             return _apply_chained_property(base, last)
-        if last == "Equals" and len(args) == 1:
-            return f"({base}) == ({args[0]})"
+        return _apply_chained_call(base, last, args)
     raise NotImplementedError(
         f"unsupported function call (not in the confirmed Tier1 set): {node.name}(...)"
     )
