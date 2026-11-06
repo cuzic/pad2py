@@ -202,6 +202,10 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   レジストリ側状態保持パターン)を追加し、`win32gui.GetForegroundWindow()`→
   `Desktop(...).window(handle=...)`→`.window_text()`という3段の変換を一通りexec検証
   できるようにした。
+  **2026-11-05追記(`CloseWindow`/`FocusWindow`のControl/InstanceOrHandle系4件)**:
+  `CloseWindow.Close`/`FocusWindow.Focus`(Controlベース)・`CloseByInstanceOrHandle`/
+  `FocusByInstanceOrHandle`(WindowInstance変数ベース)の4テストにexec検証を追加した
+  (`ByTitleClass`系の兄弟セレクタは既にexec検証済みだったため、まだ手薄だった残り2系統を埋めた)。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

@@ -1573,6 +1573,12 @@ def test_generate_python_from_close_window_close_selector_converts() -> None:
     assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').close()" in code
     assert "# TODO: map PAD action: UIAutomation.CloseWindow.Close" not in code
 
+    from fake_pywinauto import fake_pywinauto_desktop
+
+    with fake_pywinauto_desktop() as registry:
+        exec(code, {})
+    assert registry.calls == [("close", [{"title": "Untitled - Notepad"}], {})]
+
 
 def test_generate_python_from_focus_window_focus_selector_converts() -> None:
     # design/dsl_format_findings.md 知見117の追記: `FocusWindow.Focus`も同じ構造。
@@ -1591,6 +1597,12 @@ def test_generate_python_from_focus_window_focus_selector_converts() -> None:
     assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').set_focus()" in code
     assert "# TODO: map PAD action: UIAutomation.FocusWindow.Focus" not in code
 
+    from fake_pywinauto import fake_pywinauto_desktop
+
+    with fake_pywinauto_desktop() as registry:
+        exec(code, {})
+    assert registry.calls == [("set_focus", [{"title": "Untitled - Notepad"}], {})]
+
 
 def test_generate_python_from_focus_window_by_instance_or_handle_converts() -> None:
     # design/dsl_format_findings.md 知見117の追記: `FocusWindow.FocusByInstanceOrHandle`は
@@ -1600,6 +1612,13 @@ def test_generate_python_from_focus_window_by_instance_or_handle_converts() -> N
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "AutomationWindow2.set_focus()" in code
+
+    from fake_pywinauto import FakeControl, FakeRegistry
+
+    registry = FakeRegistry()
+    fake_window = FakeControl(registry, {"title": "Untitled - Notepad"})
+    exec(code, {"AutomationWindow2": fake_window})
+    assert registry.calls == [("set_focus", [{"title": "Untitled - Notepad"}], {})]
     assert "# TODO" not in code
 
 
@@ -2002,6 +2021,13 @@ def test_generate_python_from_real_close_window_by_instance_handle_capture_conve
     compile(code, "<generated>", "exec")
     assert "AutomationWindow2.close()" in code
     assert "# TODO: map PAD action: UIAutomation.CloseWindow.CloseByInstanceOrHandle" not in code
+
+    from fake_pywinauto import FakeControl, FakeRegistry
+
+    registry = FakeRegistry()
+    fake_window = FakeControl(registry, {"title": "Untitled - Notepad"})
+    exec(code, {"AutomationWindow2": fake_window})
+    assert registry.calls == [("close", [{"title": "Untitled - Notepad"}], {})]
 
 
 def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_compiles() -> None:
