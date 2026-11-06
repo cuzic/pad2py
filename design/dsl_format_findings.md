@@ -2680,3 +2680,18 @@ Excel/Word/PowerPoint/PDFの実際のVMリフレクション出力を`tools/sele
 - Excel: 84件の未結線候補——いずれもライブExcel COM専用(`ActivateCell`/`AutoFillCells`/`ClearCells`/`SetColor`/`SortCells`等)として知見155で確認済みのスコープ外と一致。
 
 この検証自体が、知見155-158の修正が正しく完全であること(スコープ内のセレクタに漏れが無いこと)の独立した裏付けにもなった。`tests/test_pad_selector_audit.py`にツール自身の単体テスト(埋め込みフィクスチャでの文字列抽出・dump解析・突き合わせロジック検証)と、実際の`Excel.txt`を使った回帰防止テスト(知見155で修正した8グループのうち、スコープ外と確認済みの4件以外が全て結線済みであることを確認)を追加した。
+
+## 160. `tools/pad_selector_audit.py`を全Tier1/2モジュール+Web+UIAutomationへ適用——既存結線の完全性を独立に確認、かつUIAutomationの8アクション系統が完全に未着手だったと新規発見
+
+知見159のツールをExcel/Word/PowerPoint/PDF以外の全モジュール(Database/Text/Cryptography/File/Folder/Variables/Cmd/Web/XML/DateTime/UIAutomation)にも適用した。`pad2py-sweep-all-selectors-v3`(新規clipwire target、複数DLLを1回のPowerShell実行でまとめて列挙——1モジュールずつ実行するより高速)で取得したリフレクション出力を`tools/selector_dumps/`に追加した。
+
+**`--id-override`の要否に関する新知見**: Tier1/2モジュールの`*Action`接尾辞付きクラス名(例: `ConvertDateTimeToTextAction`/`CropTextAction`/`IfFileAction`/`WaitForFileAction`)は、ほぼ全てが`[Action(Id=...)]`でこの接尾辞を取り除いた名前(例: `ConvertDateTimeToText`/`CropText`/`IfFile`/`WaitForFile`)をDSLの中間セグメントとして使う——ただし`Cmd.OpenCmdSession`→`Open`・`Database.OpenConnection`→`Connect`・`Text.ReplaceTextAction`→`Replace`のような、単純な接尾辞除去ではない任意の命名もある。これらのoverride値は全て**既に実機DSLキャプチャで確認済みの既存結線(`pad_codegen/actions/*.py`)から逆算して導出した**(新たな推測は一切していない——既存結線の文字列を正解データとして使っただけ)。
+
+**検証結果(全てスコープ内は結線完了と確認)**:
+- Database/Text/Cryptography/Cmd/Web/XML/DateTime: 適切な`--id-override`を与えると、dump内の全セレクタが結線済みと一致(0件)。
+- File/Folder: 単一ファイル(`file.py`/`folder.py`)だけでは`IfFile`/`WaitForFile`/`IfFolderExists`系が「未結線」に見えたが、これは`conditions.py`/`wait.py`に分散して結線されているための見かけ上のギャップだと判明——ツール自体を「`--actions-py`省略時は`pad_codegen/actions/`ディレクトリ全体を対象にする」設計に変更し解消した。
+- Variables: `FindOrReplaceInDataTable`の`Replace*`系4件のみ未結線——知見123で意図的に見送った既知のギャップ(早期停止無し等)と完全に一致、想定通り。
+
+**UIAutomation.Actions.dllの新規発見(新たなTODO)**: `CloseWindow`/`FocusWindow`/`GetWindow`/`MoveWindow`/`ResizeWindow`/`SetWindowState`/`SetWindowVisibility`/`WaitForWindow`/`WaitForWindowContent`の9系統(知見116-120で確認済み)は`...Base`/`...Action`接尾辞を除去する同じパターンで全て結線済みと確認できた。`IfWindow`/`IfImage`/`IfWindowContains`は`conditions.py`が`action_id.startswith("UIAutomation.IfWindow.")`という前方一致判定を使っており、本ツールの単純な文字列リテラル抽出では検出できない(ツールの既知の盲点、`IfWindow`自体は実際には結線済み・`IfImage`/`IfWindowContains`は`conditions.py`のコメントに明記された意図的な未対応)。
+
+一方、以下8系統は`pad_codegen`のどのファイルにも一切登場せず、**この調査で初めて「存在すら認識していなかった未着手のアクション系統」として発見した**: `ExtractDataFromTable`/`ExtractDataFromWindow`(テーブル/ウィンドウからのデータ抽出)・`GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`(チェックボックス/ラジオボタンの選択状態取得)・`PopulateTextFieldInWindow`(テキストフィールド入力)・`SetDropDownListValueInWindow`(ドロップダウン操作)・`TakeScreenshotOfUIElement`(UI要素のスクリーンショット)・`WaitForImageAction`(画像の出現/消失待機、`IfImageAction`と同系統)。いずれもUI要素セレクタ(知見38以来の既知の制約でRDPが必要)を必要とするため、実装着手には実機セレクタ確認が前提になる——`pad_todo.md`に新規TODOとして記録する。

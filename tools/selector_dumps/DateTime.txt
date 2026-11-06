@@ -1,0 +1,5 @@
+GetCurrentDateTime | GetLocalDateTimeSelector | ActionName=Local
+GetCurrentDateTime | GetCurrentDateTimeSelector | ActionName=Current
+GetCurrentDateTime | GetWindowsDateTimeSelector | ActionName=Windows
+GetCurrentDateTime | GetCustomDateTimeOffsetSelector | ActionName=CustomOffset
+GetCurrentDateTime | GetCustomDateTimeZoneSelector | ActionName=CustomTimeZone

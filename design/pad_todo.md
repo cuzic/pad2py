@@ -88,6 +88,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (知見38の`appmask['<表示名>']`名前参照と同じ型)で、ブロッカーの正体は新しいスキーマ
   不明ではなく、既存の「UI要素リポジトリの実セレクタ取得にはRDPか2FA経由のクラウド保存が
   必要」という古い既知の制約(知見38/39/42)そのもの。この2項目は真にRDP必要で確定。
+- [ ] 🖥️ **新規発見(知見160、`tools/pad_selector_audit.py`でUIAutomation.Actions.dll全体を
+  再監査して判明)**: これまで一切着手していなかった8アクション系統が存在する——
+  `ExtractDataFromTable`/`ExtractDataFromWindow`(テーブル/ウィンドウからのデータ抽出)・
+  `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`(チェックボックス/
+  ラジオボタンの選択状態取得)・`PopulateTextFieldInWindow`(テキストフィールド入力)・
+  `SetDropDownListValueInWindow`(ドロップダウン操作)・`TakeScreenshotOfUIElement`
+  (UI要素のスクリーンショット)・`WaitForImageAction`(画像の出現/消失待機、`IfImage`と
+  同系統)。いずれもUI要素セレクタが必要で、`IfImage`/`WindowContainsElement`と同じ
+  「実セレクタ取得にはRDPが必要」制約(知見38/39/42)に該当する可能性が高い——着手には
+  実機セレクタ確認が前提。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

@@ -15,9 +15,12 @@ action_id判定がフラットな2セグメント形式のままで、実際のD
 (`<Module>.<BaseClass>.<ActionName>`)だったため一度も実際のDSLでマッチしなかった)
 を、今後の新規モジュール調査で未然に防ぐためのツール。
 
-`pad_codegen/actions/<module>.py`をASTで静的解析し、ソースコード中の
-`"<Module>.<X>"`または`"<Module>.<X>.<Y>"`という形のdotted文字列リテラルを全て
-抽出して「結線済みaction_id集合」とみなす(文字列の形だけで判定するため、辞書リテラル
+`pad_codegen/actions/`配下の全`*.py`(省略時、`--actions-py`で個別ファイル/別ディレクトリ
+へ絞り込み可能——1つのモジュールのaction_idが複数ファイルに分散するケース、例:
+`File.IfFile.*`は`conditions.py`、`File.WaitForFile.*`は`wait.py`、に対応するため全体を
+既定の対象にする)をASTで静的解析し、ソースコード中の`"<Module>.<X>"`または
+`"<Module>.<X>.<Y>"`という形のdotted文字列リテラルを全て抽出して「結線済みaction_id
+集合」とみなす(文字列の形だけで判定するため、辞書リテラル
 のキー/値どちらでも、素の`action_id == "..."`比較でも検出できる——どのif分岐の中にある
 かという制御フローの解析は行わない、意図的に単純な実装)。
 
@@ -29,6 +32,13 @@ decompileで直接確認する必要があり、本ツールが推測するこ�
 出力は「未結線候補」の一覧であり、エラーではない——ライブCOM専用機能など意図的に
 スコープ外とした既知の除外もここに含まれるため、最終判断は呼び出し側(人間、または
 `pad_todo.md`への反映作業)に委ねる。
+
+**既知の盲点(知見160)**: `pad_codegen`側が`action_id == "完全な文字列"`ではなく
+`action_id.startswith("<Module>.<Group>.")`という前方一致で判定している箇所
+(例: `conditions.py`の`IfWindow`ファミリー)は、本ツールの単純なリテラル抽出では
+検出できない——`"<Module>.<Group>."`という末尾がドットの文字列は`_ACTION_ID_LITERAL_RE`
+に一致しないため。この場合、実際には結線済みでも「未結線候補」として誤って報告される
+(偽陰性=過大報告側のズレであり、安全側ではあるが要注意)。
 """
 from __future__ import annotations
 
@@ -43,14 +53,23 @@ from pathlib import Path
 _ACTION_ID_LITERAL_RE = re.compile(r"^[A-Z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*){1,2}$")
 
 
-def extract_wired_action_ids(py_file: Path) -> set[str]:
-    """`py_file`中の全ての文字列リテラルから、action_idの形をしたものを抜き出す。"""
-    tree = ast.parse(py_file.read_text(encoding="utf-8"))
+def extract_wired_action_ids(py_path: Path) -> set[str]:
+    """`py_path`中の全ての文字列リテラルから、action_idの形をしたものを抜き出す。
+
+    `py_path`がディレクトリの場合は配下の`*.py`全ファイルを対象にする——1つの
+    モジュール(例: `File.*`)のaction_idが、同名のファイル(`file.py`)だけでなく
+    条件分岐(`conditions.py`)・待機(`wait.py`)等、複数のcodegenファイルに分散して
+    結線されているケース(`File.IfFile.Exists`は`conditions.py`、`File.WaitForFile.
+    Created`は`wait.py`)があるため、単一ファイルだけでは見落とす。
+    """
     found: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if _ACTION_ID_LITERAL_RE.match(node.value):
-                found.add(node.value)
+    py_files = sorted(py_path.glob("*.py")) if py_path.is_dir() else [py_path]
+    for py_file in py_files:
+        tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if _ACTION_ID_LITERAL_RE.match(node.value):
+                    found.add(node.value)
     return found
 
 
@@ -92,14 +111,8 @@ def audit(
     return missing
 
 
-def _default_actions_py(module: str) -> Path:
-    return (
-        Path(__file__).resolve().parent.parent
-        / "dump_daemon"
-        / "pad_codegen"
-        / "actions"
-        / f"{module.lower()}.py"
-    )
+def _default_actions_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "dump_daemon" / "pad_codegen" / "actions"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,7 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         "--actions-py",
         type=Path,
         default=None,
-        help="対象のpad_codegen/actions/*.py (省略時は--moduleの小文字から推測)",
+        help=(
+            "対象のpad_codegen/actions/*.py、またはディレクトリ"
+            "(省略時はpad_codegen/actions/ディレクトリ全体——1つのモジュールのaction_idが"
+            "複数ファイル(例: File.*はfile.py/conditions.py/wait.pyに分散)に跨ることがあるため)"
+        ),
     )
     parser.add_argument("--dump", type=Path, required=True, help="VMリフレクション出力ファイル")
     parser.add_argument(
@@ -121,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    actions_py = args.actions_py or _default_actions_py(args.module)
+    actions_py = args.actions_py or _default_actions_dir()
     overrides = dict(pair.split("=", 1) for pair in args.id_override)
 
     missing = audit(args.module, actions_py, args.dump, overrides)

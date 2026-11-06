@@ -1,0 +1,4 @@
+OpenCmdSession | OpenCmdWithOtherCodePageSelector | ActionName=OpenWithCodePage
+OpenCmdSession | OpenCmdSelector | ActionName=Open
+ReadFromCmdSession | ReadSelector | ActionName=Read
+ReadFromCmdSession | ReadAndSplitSelector | ActionName=ReadAndSplit

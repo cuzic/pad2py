@@ -1,0 +1,2 @@
+IfFolderExistsAction | FolderExistsSelector | ActionName=Exists
+IfFolderExistsAction | FolderDoesNotExistSelector | ActionName=DoesNotExist

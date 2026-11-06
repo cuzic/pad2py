@@ -1,0 +1,5 @@
+ExecuteSqlStatement | ConnectAndExecuteSelector | ActionName=ConnectAndExecute
+ExecuteSqlStatement | ConnectAndExecuteOracleSelector | ActionName=ConnectAndExecuteOracle
+ExecuteSqlStatement | ExecuteSelector | ActionName=Execute
+OpenConnection | OpenConnectionOtherSelector | ActionName=Connect
+OpenConnection | OpenConnectionOracleSelector | ActionName=ConnectOracle

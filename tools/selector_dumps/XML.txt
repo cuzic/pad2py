@@ -1,0 +1,12 @@
+ExecuteXPathQuery | ExecuteXPath | ActionName=ExecuteXPath
+ExecuteXPathQuery | ExecuteXPathAndGetFirstValueOnly | ActionName=ExecuteXPathAndGetFirstValueOnly
+GetXmlElementAttribute | GetElementAttribute | ActionName=GetElementAttribute
+GetXmlElementAttribute | GetElementAttributeAsNumeric | ActionName=GetElementAttributeAsNumeric
+GetXmlElementAttribute | GetElementAttributeAsBoolean | ActionName=GetElementAttributeAsBoolean
+GetXmlElementAttribute | GetElementAttributeAsDateTime | ActionName=GetElementAttributeAsDateTime
+GetXmlElementValue | GetElementValue | ActionName=GetElementValue
+GetXmlElementValue | GetElementValueAsNumeric | ActionName=GetElementValueAsNumeric
+GetXmlElementValue | GetElementValueAsBoolean | ActionName=GetElementValueAsBoolean
+GetXmlElementValue | GetElementValueAsDateTime | ActionName=GetElementValueAsDateTime
+WriteXmlToFile | WriteToFile | ActionName=WriteToFile
+WriteXmlToFile | WriteToFileFormatted | ActionName=WriteToFileFormatted
