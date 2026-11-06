@@ -5389,6 +5389,81 @@ PAD調査時に既に発見していた罠(`dump_daemon/pad_ui_helpers.py`の
 `_generate_ui_element_exists`を追加。`tests/test_uipath_dsl.py`に1件・
 `tests/test_uipath_codegen.py`に5件追加、全1224件通過。
 
+## 114. `ui:DatabaseConnect`/`ui:DatabaseDisconnect`/`ui:ExecuteQuery`/`ui:ExecuteNonQuery`を実機XAML+公式ドキュメントで確認し、SQLiteプロバイダのみ実コード生成に対応——Tier A項目2「Database活動」への着手第1件(VM不使用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+項目2(Database活動、「実務頻度が高いが完全に欠けている」と評価された
+領域)の最初の着手——項目1(UI Automation Classic基本活動の残り、
+Click/TypeInto/GetText/SelectItem/Element Exists)が一通り片付いたため、
+次の項目へ進んだ。これまでのUI Automation系の知見100手法(Click以降)とは
+別の新しい調査源を発見した。
+
+**新しい高価値な調査源の発見**: `marcelocruzrpa/uipath-ai-skills`
+リポジトリの`uipath-core/references/studio-ground-truth/`配下に、
+「Harvested」(実機Studioから自動収集)と明記された、複数のUiPath活動
+パッケージ(Database/Excel/Mail/PDF/Persistence/System/Testing/
+UIAutomation/WebAPI)のXAMLリファレンス集が存在すると発見した——AI
+コーディングエージェント向けに整備されたと見られる参照データで、
+各活動を未設定のまま(全属性`{x:Null}`)配置した「空テンプレート」が
+網羅的に揃っている。これは属性の**完全な語彙**(見落としが無いことの
+確認)には最適だが、populated時の実際のシリアライズ例(リテラル値の
+書式等)は別途、実際のプロジェクトリポジトリで確認する必要がある
+——両者を組み合わせて使う(語彙は空テンプレート、実例は実プロジェクト)
+という新しい調査パターンを確立した。他のパッケージ(Excel/Mail/PDF/
+WebAPI等)の今後の拡張作業でもこのリポジトリを優先的に調査すべき。
+
+**確定した構造**: `ui:DatabaseConnect`(`DatabaseConnection`出力・
+`ConnectionString`/`ProviderName`/`SecureConnectionString`)・
+`ui:DatabaseDisconnect`(`DatabaseConnection`入力)・`ui:ExecuteQuery`
+(`Sql`/`ExistingDbConnection`/`DataTable`出力/`CommandType`/
+`Parameters`)・`ui:ExecuteNonQuery`(同様だが`AffectedRecords`出力)。
+`allenlooplee/RPABook`の実機プロジェクトで populated時の実例
+(`ProviderName="System.Data.SQLite"`・`ConnectionString="Data
+Source=db.sqlite;Version=3;"`・`CommandType="Text"`)を確認した。
+`ExecuteQuery`/`ExecuteNonQuery`は`ExistingDbConnection`必須(自前の
+接続文字列は持たない——公式ドキュメントで「既存接続が渡された場合は
+ConnectionString/SecureConnectionStringは無視される」と確認済み)。
+
+**ライブラリ選定とスコープ**: .NET ADO.NETの`ProviderName`(プロバイダ
+invariant name)はPythonの単一ライブラリに1対1対応しない——プロバイダ
+ごとに別のPythonドライバが必要になる構造的な問題。実機確認できたのは
+`"System.Data.SQLite"`のみのため、**今回はSQLiteのみ対応**し標準
+ライブラリ`sqlite3`へマッピングした(新規依存追加は不要)。他のプロバイダ
+(SQL Server/PostgreSQL/MySQL/Oracle等)は`# TODO`へ倒す——でっち上げた
+ドライバ呼び出しで誤動作させるより安全側。`ConnectionString`は
+`Data Source=...;Version=3;`という ADO.NET形式(セミコロン区切り
+key=value)をコード生成時に静的パースし、`Data Source`キーの値を
+`sqlite3.connect()`へ直接埋め込む——リテラルでない(動的な)接続文字列は
+静的解析できないため`# TODO`へ倒す。
+
+`ExecuteQuery`の`DataTable`出力は`list[dict]`(各行を列名→値の辞書)へ
+マッピング——`sqlite3.Row`を`row_factory`に設定し`dict(row)`で変換する、
+追加依存なしで実現できる最もPythonicな表現と判断した。`ExecuteNonQuery`
+後は明示的に`.commit()`を呼ぶ(SQLiteの自動コミットに依存しない)。
+`Parameters`辞書(`ui:HttpClient.Headers`と同じ`x:Key`形、知見104の
+`_xkey_dict_entries`を汎用化して再利用)は実機確認できた実例が空のみの
+ため、populated時はプレースホルダ書式(`:name`/`@name`/`?`のどれを
+UiPath側のSQLが使うか)が未確認として`# TODO`へ倒す。
+
+**スコープ外として明示的に見送ったもの**(Database活動パッケージの
+残り、同じ`UiPath.Database.Activities`に`BulkInsert`/`BulkUpdate`/
+`DatabaseTransaction`/`InsertDataTable`が存在するとground-truthリポジトリ
+で確認済みだが今回は未着手): `DatabaseTransaction`(`UseTransaction`
+付きのスコープ活動、トランザクション境界の実装は別途必要)・
+`BulkInsert`/`BulkUpdate`/`InsertDataTable`(DataTable引き渡しの往復が
+絡み実装コストが高い)。
+
+生成コードを実際に`sqlite3`の実DBに対して実行し(本セッションの
+一時ファイル、リポジトリには残していない)、`SELECT`結果の`list[dict]`
+化・`DELETE`の`AffectedRecords`取得の両方が正しく動くことを確認済み。
+
+`dump_daemon/uipath_dsl/types.py`に`DatabaseConnectNode`/
+`DatabaseDisconnectNode`/`ExecuteQueryNode`/`ExecuteNonQueryNode`、
+`xaml_tree.py`に対応する4つのパーサー関数(`_xkey_dict_entries`に
+汎用化した上で再利用)、`uipath_codegen/__init__.py`に4つの生成関数を
+追加。`tests/test_uipath_dsl.py`に2件・`tests/test_uipath_codegen.py`に
+22件追加、全1256件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

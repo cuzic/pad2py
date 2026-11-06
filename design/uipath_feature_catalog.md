@@ -141,17 +141,28 @@ XAML表現の有無(第一軸)→実務頻度(第二軸)→実装コスト(第�
 提案する。
 
 ### Tier A: 次に着手すべき(高価値・低〜中コスト、既存パターンの横展開)
-1. **UI Automation Classic基本活動の残り**(Type Into/Get Text/Select Item/
-   Find Element等): Clickで確立済みのGitHub検索手法(知見100)がそのまま
-   転用できる。実務頻度が最も高いカテゴリの穴を塞ぐ。
-2. **Database活動**(Execute Query/Execute Non Query等): 実務頻度が高く
-   pad2pyに丸ごと欠けている。DataTable型のPython表現(pandasか素のlist of
-   dict か)を1つ決めれば実装パターンはHttpClient/Excelと同型。
+1. **(着手済み、2026-11-05〜06)** **UI Automation Classic基本活動の残り**
+   (Type Into/Get Text/Select Item/Element Exists): Clickで確立済みの
+   GitHub検索手法(知見100)がそのまま転用できた(知見110-113)。
+   `Find Element`/`Get Full Text`等、さらに残りの基本活動があれば継続可能。
+2. **(着手済み、2026-11-06)** **Database活動**(Execute Query/Execute
+   Non Query/Connect/Disconnect): 知見114でSQLiteプロバイダのみ実装
+   (`sqlite3`標準ライブラリ)。`BulkInsert`/`BulkUpdate`/
+   `DatabaseTransaction`/`InsertDataTable`、SQLite以外のプロバイダ
+   (SQL Server/PostgreSQL/MySQL等、要追加のPythonドライバ判断)が残課題。
 3. **Excel Classicの残り**(Read Range/Write Range等)・**汎用Mail
    (SMTP/POP3/IMAP)**: 既存の実装パターン(openpyxl/win32com)をそのまま
    拡張するだけで、追加調査コストが最も低い。
 4. **HTTP Requestのlegacy/current区別・SOAP Request**: HttpClientの基盤が
    あるので差分実装で済む。
+
+**新しい調査源(知見114で発見)**: `marcelocruzrpa/uipath-ai-skills`
+リポジトリの`uipath-core/references/studio-ground-truth/`配下に、
+実機Studioから自動収集されたXAMLリファレンス集(Database/Excel/Mail/
+PDF/Persistence/System/Testing/UIAutomation/WebAPIの各パッケージを
+カバー)が存在する。属性の完全な語彙確認に有用——項目2・3・4の残作業
+でも優先的に調査すること(ただしpopulated時の実例は別途実プロジェクトの
+リポジトリで確認する必要がある、知見114参照)。
 
 ### Tier B: 単体では最大の投資だが、見返りも最大
 5. **State Machine対応**: Phase1でスコープ外にした決定の再検討候補。単体では

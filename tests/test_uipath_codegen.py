@@ -37,8 +37,12 @@ from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
     ClickNode,
+    DatabaseConnectNode,
+    DatabaseDisconnectNode,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    ExecuteNonQueryNode,
+    ExecuteQueryNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowStepNode,
@@ -1324,6 +1328,194 @@ def test_ui_element_exists_with_unmappable_selector_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Element Exists selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def _sqlite_connect_node(**overrides) -> DatabaseConnectNode:
+    defaults = dict(
+        database_connection=VbExpr(text="conn"),
+        provider_name=Literal(value="System.Data.SQLite"),
+        connection_string=Literal(value="Data Source=db.sqlite;Version=3;"),
+    )
+    defaults.update(overrides)
+    return DatabaseConnectNode(**defaults)
+
+
+def test_database_connect_with_sqlite_provider_generates_sqlite3_connect():
+    wf = _wrap([_sqlite_connect_node()])
+    code = generate_python(wf)
+    assert "conn = sqlite3.connect('db.sqlite')" in code
+    assert "conn.row_factory = sqlite3.Row" in code
+    assert "import sqlite3" in code
+    _compiles(code)
+
+
+def test_database_connect_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([DatabaseConnectNode(database_connection=None, display_name="Connect")])
+    code = generate_python(wf)
+    assert "# Connect" in code
+    assert "# TODO: Database Connect with no output DatabaseConnection captured" in code
+    _compiles(code)
+
+
+def test_database_connect_with_no_output_is_todo():
+    wf = _wrap([DatabaseConnectNode(database_connection=None)])
+    code = generate_python(wf)
+    assert "# TODO: Database Connect with no output DatabaseConnection captured" in code
+    _compiles(code)
+
+
+def test_database_connect_with_secure_connection_string_is_todo_not_guessed():
+    wf = _wrap(
+        [_sqlite_connect_node(secure_connection_string=VbExpr(text="secureCs"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Database Connect with SecureConnectionString set" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "provider_name",
+    [None, Literal(value="System.Data.SqlClient"), VbExpr(text="someProvider")],
+)
+def test_database_connect_with_unconfirmed_provider_is_todo_not_guessed(provider_name):
+    wf = _wrap([_sqlite_connect_node(provider_name=provider_name)])
+    code = generate_python(wf)
+    assert "# TODO: Database Connect with unconfirmed ProviderName" in code
+    assert "sqlite3.connect(" not in code
+    _compiles(code)
+
+
+def test_database_connect_with_non_literal_connection_string_is_todo_not_guessed():
+    wf = _wrap([_sqlite_connect_node(connection_string=VbExpr(text="dynamicCs"))])
+    code = generate_python(wf)
+    assert "# TODO: Database Connect with non-literal ConnectionString" in code
+    _compiles(code)
+
+
+def test_database_connect_with_missing_data_source_key_is_todo_not_guessed():
+    wf = _wrap(
+        [_sqlite_connect_node(connection_string=Literal(value="Version=3;"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Database Connect with ConnectionString missing a 'Data Source' key" in code
+    _compiles(code)
+
+
+def test_database_disconnect_generates_close_call():
+    wf = _wrap([DatabaseDisconnectNode(database_connection=VbExpr(text="conn"))])
+    code = generate_python(wf)
+    assert "conn.close()" in code
+    _compiles(code)
+
+
+def test_database_disconnect_with_no_connection_is_todo():
+    wf = _wrap([DatabaseDisconnectNode(database_connection=None, display_name="Disconnect")])
+    code = generate_python(wf)
+    assert "# Disconnect" in code
+    assert "# TODO: Database Disconnect with no DatabaseConnection captured" in code
+    _compiles(code)
+
+
+def _execute_query_node(**overrides) -> ExecuteQueryNode:
+    defaults = dict(
+        sql=Literal(value="SELECT * FROM post"),
+        existing_db_connection=VbExpr(text="conn"),
+        data_table=VbExpr(text="table"),
+        command_type="Text",
+    )
+    defaults.update(overrides)
+    return ExecuteQueryNode(**defaults)
+
+
+def test_execute_query_with_known_connection_generates_fetchall():
+    wf = _wrap([_execute_query_node()])
+    code = generate_python(wf)
+    assert "_cur = conn.execute('SELECT * FROM post')" in code
+    assert "table = [dict(_r) for _r in _cur.fetchall()]" in code
+    _compiles(code)
+
+
+def test_execute_query_with_no_output_data_table_is_todo():
+    wf = _wrap([_execute_query_node(data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with no output DataTable captured" in code
+    _compiles(code)
+
+
+def test_execute_query_with_no_sql_is_todo():
+    wf = _wrap([_execute_query_node(sql=None)])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with no Sql captured" in code
+    _compiles(code)
+
+
+def test_execute_query_with_no_existing_connection_is_todo():
+    wf = _wrap([_execute_query_node(existing_db_connection=None)])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with no ExistingDbConnection captured" in code
+    _compiles(code)
+
+
+def test_execute_query_with_unconfirmed_command_type_is_todo_not_guessed():
+    wf = _wrap([_execute_query_node(command_type="StoredProcedure")])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with unconfirmed CommandType" in code
+    _compiles(code)
+
+
+def test_execute_query_with_populated_parameters_is_todo_not_guessed():
+    wf = _wrap([_execute_query_node(parameters={"id": Literal(value="1")})])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with populated Parameters" in code
+    _compiles(code)
+
+
+def test_execute_query_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap([_execute_query_node(continue_on_error=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_execute_query_with_timeout_ms_is_todo_not_guessed():
+    wf = _wrap([_execute_query_node(timeout_ms=Literal(value="5000"))])
+    code = generate_python(wf)
+    assert "# TODO: Execute Query with TimeoutMS set" in code
+    _compiles(code)
+
+
+def _execute_non_query_node(**overrides) -> ExecuteNonQueryNode:
+    defaults = dict(
+        sql=Literal(value="DELETE FROM post WHERE id=1"),
+        existing_db_connection=VbExpr(text="conn"),
+        affected_records=VbExpr(text="rows"),
+        command_type="Text",
+    )
+    defaults.update(overrides)
+    return ExecuteNonQueryNode(**defaults)
+
+
+def test_execute_non_query_with_known_connection_generates_commit_and_rowcount():
+    wf = _wrap([_execute_non_query_node()])
+    code = generate_python(wf)
+    assert "_cur = conn.execute('DELETE FROM post WHERE id=1')" in code
+    assert "conn.commit()" in code
+    assert "rows = _cur.rowcount" in code
+    _compiles(code)
+
+
+def test_execute_non_query_with_no_output_affected_records_is_todo():
+    wf = _wrap([_execute_non_query_node(affected_records=None)])
+    code = generate_python(wf)
+    assert "# TODO: Execute Non Query with no output AffectedRecords captured" in code
+    _compiles(code)
+
+
+def test_execute_non_query_with_populated_parameters_is_todo_not_guessed():
+    wf = _wrap([_execute_non_query_node(parameters={"id": Literal(value="1")})])
+    code = generate_python(wf)
+    assert "# TODO: Execute Non Query with populated Parameters" in code
     _compiles(code)
 
 

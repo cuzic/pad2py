@@ -404,6 +404,82 @@ class UiElementExistsNode:
 
 
 @dataclass
+class DatabaseConnectNode:
+    """`<ui:DatabaseConnect>`(知見114、`UiPath.Database.Activities`、Tier A
+    からTier B「Database活動」への着手第1件)。`marcelocruzrpa/
+    uipath-ai-skills`リポジトリの`studio-ground-truth/UiPath.Database.
+    Activities/2.0/`(実機Studioから自動収集されたと明記された参照用XAML
+    集)で属性の完全な語彙を確認し、`allenlooplee/RPABook`の実例で実際に
+    値が入った形を確認した——`ConnectionString="Data Source=db.sqlite;
+    Version=3;"`・`ProviderName="System.Data.SQLite"`。
+
+    `provider_name`/`connection_string`は.NET ADO.NETの語彙(プロバイダ
+    invariant name・プロバイダ固有の接続文字列書式)で、Pythonの標準
+    ライブラリとは1対1対応しない——プロバイダごとに別のPythonライブラリ
+    (SQLiteなら標準の`sqlite3`、SQL Serverなら`pyodbc`等)が必要になる。
+    本バージョンでは実機確認できた`"System.Data.SQLite"`のみ対応し、
+    それ以外のプロバイダは`# TODO`へ倒す(でっち上げ回避)。
+    `secure_connection_string`(`SecureString`型、公式ドキュメントで存在は
+    確認したが実機での使用例は未確認)も同様に見送る。"""
+
+    connection_string: Expr = None
+    secure_connection_string: Expr = None
+    provider_name: Expr = None
+    database_connection: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class DatabaseDisconnectNode:
+    """`<ui:DatabaseDisconnect DatabaseConnection="...">`(知見114)。
+    `database_connection`は閉じる対象の接続変数(`DatabaseConnectNode.
+    database_connection`と同じ変数名を指す、実機では`[VarName]`形の
+    `VbExpr`)。"""
+
+    database_connection: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ExecuteQueryNode:
+    """`<ui:ExecuteQuery>`(知見114)。`sql`/`existing_db_connection`/
+    `data_table`(出力、`DataTable`属性)が本体。`parameters`は
+    `ui:ExecuteQuery.Parameters`配下の`x:Key`付き辞書(`_xkey_dict_entries`
+    で共通パース)——実機確認できた実例は空のみで、populated時の
+    プレースホルダ書式(`:name`/`@name`/`?`のどれがSQL側で使われるか)が
+    未確認のため、populated時はコード生成を見送る(`parameters`自体は
+    保持するが、空でなければ`# TODO`に倒す判断はcodegen側で行う)。
+
+    `command_type`の実機確認済みの値は`"Text"`のみ(`CommandType`属性、
+    ADO.NETの`System.Data.CommandType`列挙——`"StoredProcedure"`も列挙値
+    として存在するはずだが実機未確認)。"""
+
+    sql: Expr = None
+    parameters: dict[str, Expr] = field(default_factory=dict)
+    existing_db_connection: Expr = None
+    data_table: Expr = None
+    command_type: str | None = None
+    continue_on_error: Expr = None
+    timeout_ms: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ExecuteNonQueryNode:
+    """`<ui:ExecuteNonQuery>`(知見114)。`ExecuteQueryNode`と同じ構造だが
+    出力が`DataTable`ではなく`AffectedRecords`(影響を受けた行数、整数)。"""
+
+    sql: Expr = None
+    parameters: dict[str, Expr] = field(default_factory=dict)
+    existing_db_connection: Expr = None
+    affected_records: Expr = None
+    command_type: str | None = None
+    continue_on_error: Expr = None
+    timeout_ms: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -660,6 +736,10 @@ Node = (
     | GetTextNode
     | SelectItemNode
     | UiElementExistsNode
+    | DatabaseConnectNode
+    | DatabaseDisconnectNode
+    | ExecuteQueryNode
+    | ExecuteNonQueryNode
     | InvokeWorkflowFileNode
     | AppendLineNode
     | ReadTextFileNode

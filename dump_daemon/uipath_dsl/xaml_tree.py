@@ -22,10 +22,14 @@ from .types import (
     BreakNode,
     CatchArm,
     ClickNode,
+    DatabaseConnectNode,
+    DatabaseDisconnectNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    ExecuteNonQueryNode,
+    ExecuteQueryNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowNode,
@@ -502,6 +506,51 @@ def _parse_ui_element_exists(elem: etree._Element) -> UiElementExistsNode:
     )
 
 
+def _parse_database_connect(elem: etree._Element) -> DatabaseConnectNode:
+    return DatabaseConnectNode(
+        connection_string=_attr_expr(elem, "ConnectionString"),
+        secure_connection_string=_attr_expr(elem, "SecureConnectionString"),
+        provider_name=_attr_expr(elem, "ProviderName"),
+        database_connection=_attr_expr(elem, "DatabaseConnection"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_database_disconnect(elem: etree._Element) -> DatabaseDisconnectNode:
+    return DatabaseDisconnectNode(
+        database_connection=_attr_expr(elem, "DatabaseConnection"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_execute_query(elem: etree._Element) -> ExecuteQueryNode:
+    parameters = _xkey_dict_entries(_find_property_element(elem, "Parameters"))
+    return ExecuteQueryNode(
+        sql=_attr_expr(elem, "Sql"),
+        parameters=parameters,
+        existing_db_connection=_attr_expr(elem, "ExistingDbConnection"),
+        data_table=_attr_expr(elem, "DataTable"),
+        command_type=_attr(elem, "CommandType"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_execute_non_query(elem: etree._Element) -> ExecuteNonQueryNode:
+    parameters = _xkey_dict_entries(_find_property_element(elem, "Parameters"))
+    return ExecuteNonQueryNode(
+        sql=_attr_expr(elem, "Sql"),
+        parameters=parameters,
+        existing_db_connection=_attr_expr(elem, "ExistingDbConnection"),
+        affected_records=_attr_expr(elem, "AffectedRecords"),
+        command_type=_attr(elem, "CommandType"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -611,10 +660,13 @@ def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
 _HTTP_CLIENT_FALLBACK_COLLECTION_PROPS = ("Cookies", "Parameters", "UrlSegments", "Attachments")
 
 
-def _http_client_dict_entries(prop_elem: etree._Element | None) -> dict[str, Expr]:
-    """知見104: `ui:HttpClient.Headers`が空でない場合の実直列化形
-    (`gh api search/code`でGitHub上の実機保存済みXAMLから確認、VM不使用)。
-    空の場合は`<scg:Dictionary x:TypeArguments="x:String,
+def _xkey_dict_entries(prop_elem: etree._Element | None) -> dict[str, Expr]:
+    """`x:Key`付き辞書エントリの共通パーサー(知見104で`ui:HttpClient.
+    Headers`向けに実装、知見114で`ui:ExecuteQuery`/`ui:ExecuteNonQuery`の
+    `Parameters`にも再利用——同じ`scg:Dictionary`/`x:Key`直列化パターンが
+    複数の活動で共有されているため)。
+
+    知見104: 空の場合は`<scg:Dictionary x:TypeArguments="x:String,
     InArgument(x:String)" />`(子要素なしの自己終了タグ)だが、populated時は
     この`scg:Dictionary`ラッパー自体が無くなり、各エントリが直接の子
     `<InArgument x:Key="...">`になる——値は直接テキスト形
@@ -649,7 +701,7 @@ def _parse_http_client(elem: etree._Element) -> HttpClientNode:
     (でっち上げ回避)。"""
     known = {"EndPoint", "Method", "Body", "TimeoutMS"}
     extra = {k: v for k, v in elem.attrib.items() if _split_tag(k)[1] not in known}
-    headers = _http_client_dict_entries(_find_property_element(elem, "Headers"))
+    headers = _xkey_dict_entries(_find_property_element(elem, "Headers"))
     has_populated = False
     for prop_name in _HTTP_CLIENT_FALLBACK_COLLECTION_PROPS:
         prop_elem = _find_property_element(elem, prop_name)
@@ -857,6 +909,10 @@ _DISPATCH = {
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
+    (UI_NS, "DatabaseConnect"): _parse_database_connect,
+    (UI_NS, "DatabaseDisconnect"): _parse_database_disconnect,
+    (UI_NS, "ExecuteQuery"): _parse_execute_query,
+    (UI_NS, "ExecuteNonQuery"): _parse_execute_non_query,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,

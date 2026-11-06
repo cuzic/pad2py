@@ -45,10 +45,14 @@ from ..uipath_dsl.types import (
     AssignNode,
     BreakNode,
     ClickNode,
+    DatabaseConnectNode,
+    DatabaseDisconnectNode,
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    ExecuteNonQueryNode,
+    ExecuteQueryNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowStepNode,
@@ -223,6 +227,11 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `time`(`Click`の`DelayBefore`→`time.sleep(...)`変換先、知見106)も同様。
     if any("time.sleep(" in line for line in body):
         imports.append("import time")
+    # `sqlite3`(`DatabaseConnect`の`ProviderName="System.Data.SQLite"`→
+    # `sqlite3.connect(...)`変換先、知見114)も同様。標準ライブラリだが
+    # 他のヘルパー同様、使用時のみ注入する。
+    if any("sqlite3.connect(" in line for line in body):
+        imports.append("import sqlite3")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -349,6 +358,14 @@ def _generate_node(
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
         return _generate_ui_element_exists(node, indent)
+    if isinstance(node, DatabaseConnectNode):
+        return _generate_database_connect(node, indent)
+    if isinstance(node, DatabaseDisconnectNode):
+        return _generate_database_disconnect(node, indent)
+    if isinstance(node, ExecuteQueryNode):
+        return _generate_execute_query(node, indent)
+    if isinstance(node, ExecuteNonQueryNode):
+        return _generate_execute_non_query(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
@@ -1380,6 +1397,213 @@ def _generate_ui_element_exists_body(node: UiElementExistsNode, indent: int) -> 
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
     lines.append(f"{prefix}{target} = {rendered.expr}.exists()")
     return lines
+
+
+def _parse_ado_connection_string(connection_string: str) -> dict[str, str]:
+    """ADO.NET接続文字列(`Key1=Value1;Key2=Value2;...`)を辞書に分解する
+    (知見114)。キーは小文字・前後空白除去で正規化する(実機確認済みの
+    `"Data Source=db.sqlite;Version=3;"`は`Data Source`というスペース
+    入りキー)。"""
+    parts: dict[str, str] = {}
+    for segment in connection_string.split(";"):
+        if "=" not in segment:
+            continue
+        key, _, value = segment.partition("=")
+        parts[key.strip().lower()] = value.strip()
+    return parts
+
+
+# 知見114: `ui:DatabaseConnect`。実機確認できた`ProviderName=
+# "System.Data.SQLite"`のみ対応する——.NET ADO.NETのプロバイダ名/接続
+# 文字列書式はプロバイダごとに異なり、Python側も別ライブラリ(SQL Server
+# なら`pyodbc`等)が必要になるため、未確認のプロバイダをでっち上げた
+# ライブラリ呼び出しへ変換するより`# TODO`に倒す方が安全。
+_SQLITE_PROVIDER_NAMES = {"system.data.sqlite", "sqlite"}
+
+
+def _generate_database_connect(node: DatabaseConnectNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_database_connect_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_database_connect_body(node: DatabaseConnectNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.database_connection is None:
+        return [f"{prefix}# TODO: Database Connect with no output DatabaseConnection captured"]
+    if node.secure_connection_string is not None:
+        return [
+            f"{prefix}# TODO: Database Connect with SecureConnectionString set "
+            "— not yet confirmed via real capture, refusing to guess"
+        ]
+    if not isinstance(node.provider_name, Literal) or node.provider_name.value.strip().lower() not in _SQLITE_PROVIDER_NAMES:
+        return [
+            f"{prefix}# TODO: Database Connect with unconfirmed ProviderName "
+            f"({node.provider_name!r}) — only System.Data.SQLite is confirmed/"
+            "mapped so far, refusing to guess a Python driver for other "
+            "providers"
+        ]
+    if not isinstance(node.connection_string, Literal):
+        return [
+            f"{prefix}# TODO: Database Connect with non-literal ConnectionString "
+            f"({node.connection_string!r}) — cannot statically extract the "
+            "SQLite file path, refusing to guess"
+        ]
+    ado_parts = _parse_ado_connection_string(node.connection_string.value)
+    db_path = ado_parts.get("data source")
+    if db_path is None:
+        return [
+            f"{prefix}# TODO: Database Connect with ConnectionString missing a "
+            f"'Data Source' key ({node.connection_string.value!r}) — refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.database_connection, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{target} = sqlite3.connect({db_path!r})",
+        f"{prefix}{target}.row_factory = sqlite3.Row",
+    ]
+
+
+def _generate_database_disconnect(node: DatabaseDisconnectNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_database_disconnect_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_database_disconnect_body(node: DatabaseDisconnectNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.database_connection is None:
+        return [f"{prefix}# TODO: Database Disconnect with no DatabaseConnection captured"]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.database_connection, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target}.close()"]
+
+
+# 知見114: `ui:ExecuteQuery`/`ui:ExecuteNonQuery`共通のガード。両活動とも
+# `ExistingDbConnection`必須(接続文字列を自前で持たない)・`CommandType`
+# 実機確認済みの値は`"Text"`のみ・`Parameters`は空の場合のみ対応
+# (populated時のプレースホルダ書式`:name`/`@name`/`?`のどれがSQL側で
+# 使われるか未確認のため、でっち上げず`# TODO`に倒す)。
+def _execute_query_family_todo(
+    prefix: str,
+    existing_db_connection: Expr,
+    command_type: str | None,
+    parameters: dict[str, Expr],
+    continue_on_error: Expr,
+    timeout_ms: Expr,
+    activity_label: str,
+) -> list[str] | None:
+    if existing_db_connection is None:
+        return [f"{prefix}# TODO: {activity_label} with no ExistingDbConnection captured"]
+    if command_type not in (None, "Text"):
+        return [
+            f"{prefix}# TODO: {activity_label} with unconfirmed CommandType "
+            f"({command_type!r}) — only 'Text' is confirmed, refusing to guess"
+        ]
+    if parameters:
+        return [
+            f"{prefix}# TODO: {activity_label} with populated Parameters — "
+            "the exact SQL placeholder syntax UiPath expects (':name'/"
+            "'@name'/'?') is not confirmed via real capture, refusing to "
+            "guess"
+        ]
+    if continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: {activity_label} with ContinueOnError set "
+            f"({_describe_expr_for_comment(continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if timeout_ms is not None:
+        return [
+            f"{prefix}# TODO: {activity_label} with TimeoutMS set "
+            f"({_describe_expr_for_comment(timeout_ms)}) — Python's sqlite3 "
+            "has no matching per-query execution timeout, refusing to guess"
+        ]
+    return None
+
+
+def _generate_execute_query(node: ExecuteQueryNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_execute_query_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_execute_query_body(node: ExecuteQueryNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Execute Query with no output DataTable captured"]
+    if node.sql is None:
+        return [f"{prefix}# TODO: Execute Query with no Sql captured"]
+    todo = _execute_query_family_todo(
+        prefix,
+        node.existing_db_connection,
+        node.command_type,
+        node.parameters,
+        node.continue_on_error,
+        node.timeout_ms,
+        "Execute Query",
+    )
+    if todo is not None:
+        return todo
+    collected: list[str] = []
+    conn = _render_value_or_todo(node.existing_db_connection, prefix, collected)
+    sql = _render_value_or_todo(node.sql, prefix, collected)
+    target = _render_value_or_todo(node.data_table, prefix, collected)
+    if collected:
+        return collected
+    return [
+        f"{prefix}_cur = {conn}.execute({sql})",
+        f"{prefix}{target} = [dict(_r) for _r in _cur.fetchall()]",
+    ]
+
+
+def _generate_execute_non_query(node: ExecuteNonQueryNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_execute_non_query_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_execute_non_query_body(node: ExecuteNonQueryNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.affected_records is None:
+        return [f"{prefix}# TODO: Execute Non Query with no output AffectedRecords captured"]
+    if node.sql is None:
+        return [f"{prefix}# TODO: Execute Non Query with no Sql captured"]
+    todo = _execute_query_family_todo(
+        prefix,
+        node.existing_db_connection,
+        node.command_type,
+        node.parameters,
+        node.continue_on_error,
+        node.timeout_ms,
+        "Execute Non Query",
+    )
+    if todo is not None:
+        return todo
+    collected: list[str] = []
+    conn = _render_value_or_todo(node.existing_db_connection, prefix, collected)
+    sql = _render_value_or_todo(node.sql, prefix, collected)
+    target = _render_value_or_todo(node.affected_records, prefix, collected)
+    if collected:
+        return collected
+    return [
+        f"{prefix}_cur = {conn}.execute({sql})",
+        f"{prefix}{conn}.commit()",
+        f"{prefix}{target} = _cur.rowcount",
+    ]
 
 
 # `ContinueOnError`(知見72、実機XAMLで確認した`ui:InvokeWorkflowFile`の

@@ -1293,3 +1293,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     の高いマッピングで`# WARNING`すら不要だった。回帰テスト追加
     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
     UiPath関連テスト全371件通過、リポジトリ全体で全1224件通過。
+72. **(完了、2026-11-06)** `ui:DatabaseConnect`/`ui:DatabaseDisconnect`/
+    `ui:ExecuteQuery`/`ui:ExecuteNonQuery`の実コード生成に新規対応(VM
+    不使用、知見114——Tier A項目2「Database活動」への着手第1件):
+    `marcelocruzrpa/uipath-ai-skills`の`studio-ground-truth/`(実機Studio
+    から自動収集済みと明記された複数パッケージのXAML参照集)で属性の
+    完全な語彙を確認し、`allenlooplee/RPABook`の実例でpopulated時の
+    直列化(`ProviderName="System.Data.SQLite"`等)を確認。.NET
+    ADO.NETのプロバイダ名はPythonの単一ライブラリに対応しないため、
+    実機確認できた`System.Data.SQLite`のみ標準ライブラリ`sqlite3`へ
+    マッピング(新規依存無し)、他プロバイダは`# TODO`。`ConnectionString`
+    をコード生成時に静的パースし`Data Source`を抽出。`DataTable`出力は
+    `list[dict]`(`sqlite3.Row`経由)へマッピングし、実際に一時SQLite DB
+    へ対して生成コードを実行して`SELECT`/`DELETE`両方の正しい動作を
+    確認済み。`Parameters`は空のみ対応(populated時のプレースホルダ書式
+    未確認で`# TODO`)。`BulkInsert`/`BulkUpdate`/`DatabaseTransaction`/
+    `InsertDataTable`は今回スコープ外として明示的に見送り。`ui:HttpClient.
+    Headers`用だった`_http_client_dict_entries`を`_xkey_dict_entries`に
+    汎用化して再利用。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+    `tests/test_uipath_codegen.py`22件)、UiPath関連テスト全395件通過、
+    リポジトリ全体で全1256件通過。

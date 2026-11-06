@@ -17,9 +17,13 @@ from dump_daemon.uipath_dsl import (
     AssignNode,
     BreakNode,
     ClickNode,
+    DatabaseConnectNode,
+    DatabaseDisconnectNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    ExecuteNonQueryNode,
+    ExecuteQueryNode,
     ForEachNode,
     GetTextNode,
     HttpClientNode,
@@ -339,6 +343,74 @@ def test_ui_element_exists_selector_and_output_binding():
     assert isinstance(node, UiElementExistsNode)
     assert "Notepad" in node.selector
     assert node.exists == VbExpr(text="notepadOpened")
+
+
+def test_database_connect_and_disconnect():
+    """知見114: `ui:DatabaseConnect`/`ui:DatabaseDisconnect`。
+    `allenlooplee/RPABook`の実機保存済みXAMLの属性構成を合成XMLで再現する。"""
+    connect_xml = (
+        f"<ui:DatabaseConnect {_UI_XMLNS} "
+        'DatabaseConnection="[PostDbConnection]" DisplayName="Connect" '
+        'ProviderName="System.Data.SQLite" '
+        'ConnectionString="Data Source=db.sqlite;Version=3;" />'
+    )
+    connect = parse_activity(etree.fromstring(connect_xml))
+    assert isinstance(connect, DatabaseConnectNode)
+    assert connect.database_connection == VbExpr(text="PostDbConnection")
+    assert connect.provider_name == Literal(value="System.Data.SQLite")
+    assert connect.connection_string == Literal(value="Data Source=db.sqlite;Version=3;")
+    assert connect.secure_connection_string is None
+
+    disconnect_xml = (
+        f"<ui:DatabaseDisconnect {_UI_XMLNS} "
+        'DatabaseConnection="[PostDbConnection]" DisplayName="Disconnect" />'
+    )
+    disconnect = parse_activity(etree.fromstring(disconnect_xml))
+    assert isinstance(disconnect, DatabaseDisconnectNode)
+    assert disconnect.database_connection == VbExpr(text="PostDbConnection")
+
+
+def test_execute_query_and_execute_non_query():
+    """知見114: `ui:ExecuteQuery`/`ui:ExecuteNonQuery`。空の`Parameters`
+    辞書(`_xkey_dict_entries`経由)も合わせて確認する。"""
+    query_xml = (
+        f"<ui:ExecuteQuery {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System" '
+        'ContinueOnError="{x:Null}" TimeoutMS="{x:Null}" CommandType="Text" '
+        'DataTable="[PostTable]" DisplayName="Execute Query" '
+        'ExistingDbConnection="[PostDbConnection]" Sql="SELECT * FROM post">'
+        "<ui:ExecuteQuery.Parameters>"
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        "</ui:ExecuteQuery.Parameters>"
+        "</ui:ExecuteQuery>"
+    )
+    query = parse_activity(etree.fromstring(query_xml))
+    assert isinstance(query, ExecuteQueryNode)
+    assert query.sql == Literal(value="SELECT * FROM post")
+    assert query.existing_db_connection == VbExpr(text="PostDbConnection")
+    assert query.data_table == VbExpr(text="PostTable")
+    assert query.command_type == "Text"
+    assert query.parameters == {}
+    assert query.continue_on_error is None
+    assert query.timeout_ms is None
+
+    non_query_xml = (
+        f"<ui:ExecuteNonQuery {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System" '
+        'ContinueOnError="{x:Null}" TimeoutMS="{x:Null}" CommandType="Text" '
+        'AffectedRecords="[rows]" DisplayName="Execute Non Query" '
+        'ExistingDbConnection="[PostDbConnection]" Sql="DELETE FROM post WHERE id=1">'
+        "<ui:ExecuteNonQuery.Parameters>"
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        "</ui:ExecuteNonQuery.Parameters>"
+        "</ui:ExecuteNonQuery>"
+    )
+    non_query = parse_activity(etree.fromstring(non_query_xml))
+    assert isinstance(non_query, ExecuteNonQueryNode)
+    assert non_query.sql == Literal(value="DELETE FROM post WHERE id=1")
+    assert non_query.affected_records == VbExpr(text="rows")
+    assert non_query.command_type == "Text"
+    assert non_query.parameters == {}
 
 
 def test_invoke_workflow_file(main_wf):
