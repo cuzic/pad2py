@@ -133,6 +133,7 @@ from ..uipath_dsl.types import (
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
+    SelectFileNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -594,6 +595,8 @@ def _generate_node(
         return _generate_get_password(node, indent)
     if isinstance(node, LoadImageNode):
         return _generate_load_image(node, indent)
+    if isinstance(node, SelectFileNode):
+        return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
@@ -2967,6 +2970,25 @@ def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
 # ネイティブAPIを直接呼ぶ」という点で「対象アプリ自身の技術を使う」という
 # 記述のカテゴリに合致する)という既存の標準アクセサで妥当にマッピング
 # できると判断した。1対1の機構確認までは主張せず`# WARNING`を付す。
+# 知見192: `ui:SelectFile`はOSのネイティブなファイル選択ダイアログを
+# 表示し、ユーザーの選択を待つ活動——headless実行環境で代わりに応答する
+# 安全な方法は無いため、`Filter`・出力の有無を問わず常に`# TODO`へ倒す
+# (知見176の`GetPassword`・知見174の`GetAttribute`と同じ判断)。
+def _generate_select_file(node: SelectFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_select_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_select_file_body(node: SelectFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    return [
+        f"{prefix}# TODO: SelectFile — displays a native OS file-picker "
+        "dialog for interactive user selection, no safe unattended "
+        "equivalent exists, refusing to guess"
+    ]
+
+
 def _generate_select_item(node: SelectItemNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_select_item_body(node, indent)

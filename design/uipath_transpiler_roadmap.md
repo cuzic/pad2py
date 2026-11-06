@@ -2487,3 +2487,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      手動確認。回帰テスト追加(`tests/test_uipath_dsl.py`3件・
      `tests/test_uipath_codegen.py`18件)、UiPath関連テスト全848件
      通過、リポジトリ全体で全1924件通過。
+
+150. **(完了、2026-11-06)** `ui:SelectFile`を新規実装(知見192):
+     ネイティブOSファイル選択ダイアログ。`GetPassword`(知見176)・
+     `GetAttribute`(知見174)と同じ「常にTODOへ倒れる活動でも型を
+     モデル化する価値がある」判断の3例目——headless実行環境で人間の
+     ダイアログ操作に代わって応答する安全な方法が無いため、`Filter`/
+     出力の有無を問わず常に`# TODO`へ倒す。実機XAML2件
+     (`GSA/RPA-OSS`・`lezwon/uipath_deoldify`)+合成データで確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`3件)、UiPath関連テスト全852件
+     通過、リポジトリ全体で全1928件通過。

@@ -1436,6 +1436,33 @@ class GetTextNode:
 
 
 @dataclass
+class SelectFileNode:
+    """`<ui:SelectFile>`(知見192、GitHub code searchで157件ヒット)。
+    OSのネイティブなファイル選択ダイアログを表示し、ユーザーが選んだ
+    ファイルを`SelectedFile`(単一選択)/`SelectedFiles`
+    (`Multiselect="True"`時、複数選択)へ返す活動。`UiPath/skills`
+    公式リポジトリのStudio実機ground-truthコーパス+実機2件
+    (`GSA/RPA-OSS`・`lezwon/uipath_deoldify`)で確認した構成は
+    `Filter`(拡張子フィルタ文字列、例`"Excel Files (*.xls, *.xlsx)|
+    *.xls;*.xlsx"`)+`SelectedFile`(出力)+`InitialDirectory`/
+    `Multiselect`/`SelectedFiles`(ground-truthコーパスでは全件
+    `{x:Null}`——実機で非null値を確認できず未検証)。
+
+    ネイティブOSダイアログでのユーザー操作そのものを表すため、
+    headless実行環境で代わりに応答する安全な方法は無い——知見176の
+    `GetPassword`・知見174の`GetAttribute`と同じ「常にTODOへ倒れる
+    活動でも、ノード型を適切にモデル化する価値がある」という判断の
+    3例目として、`Filter`の有無を問わず常に`# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    filter: Expr = None
+    initial_directory: Expr = None
+    multiselect: Expr = None
+    selected_file: Expr = None
+    selected_files: Expr = None
+
+
+@dataclass
 class SelectItemNode:
     """`<ui:SelectItem>`(知見112)。`selector`は`ui:SelectItem.Target`配下の
     `ui:Target`要素の`Selector`属性(`ClickNode`等と同じ構造)。`item`は
@@ -2356,6 +2383,7 @@ Node = (
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode
+    | SelectFileNode
     | SelectItemNode
     | UiElementExistsNode
     | DatabaseConnectNode

@@ -107,6 +107,7 @@ from dump_daemon.uipath_dsl import (
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
+    SelectFileNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -4586,6 +4587,37 @@ def test_get_full_text_with_no_selector_is_todo_labeled_correctly():
     wf = _wrap([GetTextNode(selector=None, text=VbExpr(text="x"), full_text=True)])
     code = generate_python(wf)
     assert "# TODO: Get Full Text with no selector captured" in code
+    _compiles(code)
+
+
+def test_select_file_always_declines_with_filter_and_output():
+    """知見192: `ui:SelectFile`はネイティブOSダイアログでの対話操作を
+    表すため、`Filter`/出力の有無を問わず常に`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            SelectFileNode(
+                filter=Literal(value="Excel Files (*.xls, *.xlsx)|*.xls;*.xlsx"),
+                selected_file=VbExpr(text="inputFileFullAddress"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SelectFile" in code
+    _compiles(code)
+
+
+def test_select_file_display_name_becomes_a_comment():
+    wf = _wrap([SelectFileNode(display_name="Select Input File")])
+    code = generate_python(wf)
+    assert "# Select Input File" in code
+    assert "# TODO: SelectFile" in code
+    _compiles(code)
+
+
+def test_select_file_with_no_properties_is_still_todo():
+    wf = _wrap([SelectFileNode()])
+    code = generate_python(wf)
+    assert "# TODO: SelectFile" in code
     _compiles(code)
 
 

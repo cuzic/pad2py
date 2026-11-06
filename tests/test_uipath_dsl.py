@@ -82,6 +82,7 @@ from dump_daemon.uipath_dsl import (
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
+    SelectFileNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -516,6 +517,24 @@ def test_get_value_reuses_get_text_node():
     assert node.text == VbExpr(text="inv_date")
     assert node.continue_on_error is None
     assert node.display_name == "Get Text 'text  6/6/2016'"
+
+
+def test_select_file_properties():
+    """知見192: `ui:SelectFile`(GitHub code searchで157件ヒット)。
+    実機`GSA/RPA-OSS`の`CatalogFramework/Main.xaml`で確認した
+    `Filter`+`SelectedFile`(出力)の構成。"""
+    xml = (
+        f"<ui:SelectFile {_UI_XMLNS} DisplayName=\"Select Input File for Execution\" "
+        'Filter="Excel Files (*.xls, *.xlsx)|*.xls;*.xlsx" '
+        'SelectedFile="[inputFileFullAddress]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SelectFileNode)
+    assert node.filter == Literal(value="Excel Files (*.xls, *.xlsx)|*.xls;*.xlsx")
+    assert node.selected_file == VbExpr(text="inputFileFullAddress")
+    assert node.selected_files is None
+    assert node.multiselect is None
+    assert node.initial_directory is None
 
 
 def test_select_item_selector_and_alter_if_disabled():

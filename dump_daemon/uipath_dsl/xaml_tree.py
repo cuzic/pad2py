@@ -95,6 +95,7 @@ from .types import (
     RethrowNode,
     RetryScopeNode,
     SaveImageNode,
+    SelectFileNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -1222,6 +1223,17 @@ def _parse_get_value(elem: etree._Element) -> GetTextNode:
     )
 
 
+def _parse_select_file(elem: etree._Element) -> SelectFileNode:
+    return SelectFileNode(
+        display_name=_attr(elem, "DisplayName"),
+        filter=_attr_expr(elem, "Filter"),
+        initial_directory=_attr_expr(elem, "InitialDirectory"),
+        multiselect=_attr_expr(elem, "Multiselect"),
+        selected_file=_attr_expr(elem, "SelectedFile"),
+        selected_files=_attr_expr(elem, "SelectedFiles"),
+    )
+
+
 def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     selector = _target_selector(elem)
     return SelectItemNode(
@@ -2020,6 +2032,7 @@ _DISPATCH = {
     (UI_NS, "GetValue"): _parse_get_value,
     (UI_NS, "GetAttribute"): _parse_get_attribute,
     (UI_NS, "GetPassword"): _parse_get_password,
+    (UI_NS, "SelectFile"): _parse_select_file,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,

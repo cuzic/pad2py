@@ -9076,6 +9076,35 @@ chained_property`とは別の、`_SAFE_BARE_MEMBERS`で許可された名前
 UiPath関連テスト全848件通過、リポジトリ全体で全1924件通過(28件
 skip、変化無し)。
 
+## 192. `ui:SelectFile`を新規実装——ネイティブOSファイル選択ダイアログ、知見176(`GetPassword`)・知見174(`GetAttribute`)と同じ「常にTODOへ倒れる活動でも型をモデル化する価値がある」判断の3例目
+
+GitHub code searchで`"<ui:SelectFile "`(123件ヒットした`RenameFileX`と
+同様の、トレーリングスペース付き完全一致パターン)が157件ヒットした。
+`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス(`UiPath.
+System.Activities/25.10/SelectFile.xaml`)+実機2件(`GSA/RPA-OSS`の
+`CatalogFramework/Main.xaml`、`lezwon/uipath_deoldify`の`Main.xaml`)で
+確認した構成は`Filter`(拡張子フィルタ文字列、例`"Excel Files (*.xls,
+*.xlsx)|*.xls;*.xlsx"`)+`SelectedFile`(出力、単一選択)+
+`InitialDirectory`/`Multiselect`/`SelectedFiles`(複数選択時の出力、
+ground-truthコーパスでは全件`{x:Null}`——実機2件とも非null値を確認
+できなかったため未検証のまま)。
+
+この活動はOSのネイティブなファイル選択ダイアログを表示し、ユーザーの
+実際の選択操作を待つ——`GetPassword`(知見176、DPAPI暗号化を復号する
+安全な方法が無い)や`GetAttribute`(知見174)と同様、本質的に人間の
+対話操作そのものを表しているため、headless実行環境で代わりに応答する
+確認済みの安全な方法は存在しない。そのため`Filter`・出力の有無を問わず
+常に`# TODO`へ倒す設計とした——この判断自体に新規性は無いが、「常に
+TODOへ倒れる活動でもノード型を適切にモデル化しておく価値がある
+(declineメッセージに`DisplayName`等の文脈情報を残せる、将来`Multiselect`
+等の実例が見つかった際の拡張の土台になる)」という既存方針の3例目として
+実装した。
+
+実機サンプル2件+合成XMLで`parse_activity()`+`generate_python()`+
+`compile()`を確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全852件通過、
+リポジトリ全体で全1928件通過(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
