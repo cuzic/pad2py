@@ -496,6 +496,46 @@ def test_generate_python_converts_if_window_by_instance_or_handle_modes(
 
 
 @pytest.mark.parametrize(
+    ("mode", "window_exists", "window_active", "expected_result"),
+    [
+        ("IsOpenByInstanceOrHandle", True, True, True),
+        ("IsOpenByInstanceOrHandle", False, False, False),
+        ("IsNotOpenByInstanceOrHandle", True, True, False),
+        ("IsNotOpenByInstanceOrHandle", False, False, True),
+        ("IsFocusedByInstanceOrHandle", True, True, True),
+        ("IsFocusedByInstanceOrHandle", True, False, False),
+        ("IsFocusedByInstanceOrHandle", False, False, False),
+        ("IsNotFocusedByInstanceOrHandle", True, True, False),
+        ("IsNotFocusedByInstanceOrHandle", True, False, True),
+        ("IsNotFocusedByInstanceOrHandle", False, False, True),
+    ],
+)
+def test_generate_python_if_window_by_instance_or_handle_modes_evaluate_correctly(
+    mode: str, window_exists: bool, window_active: bool, expected_result: bool
+) -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張:
+    # `test_generate_python_if_window_modes_evaluate_correctly_against_fake_pywinauto`は
+    # `Window: appmask[...]`(Control/リポジトリ経由)の経路しか検証していなかった——
+    # `WindowInstance`変数ベースの兄弟セレクタ4モードも同じ10パターンで真偽値まで検証する。
+    from fake_pywinauto import FakeControl, FakeRegistry
+
+    dsl = f"IF (UIAutomation.IfWindow.{mode} WindowInstance: AutomationWindow2) THEN\nSET X TO 1\nEND"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    condition_source = code.splitlines()[0].removeprefix("if ").removesuffix(":")
+
+    registry = FakeRegistry()
+    criteria = {"title": "Untitled - Notepad"}
+    if window_exists:
+        registry.register_window(**criteria)
+        registry.set_active([criteria], window_active)
+    fake_window = FakeControl(registry, criteria)
+    namespace: dict[str, object] = {"AutomationWindow2": fake_window}
+    exec(code, namespace)
+    assert eval(condition_source, namespace) is expected_result
+
+
+@pytest.mark.parametrize(
     ("mode", "expected_condition"),
     [
         ("IsOpenByTitleClass", "Desktop(backend='uia').window(title='Notepad').exists()"),

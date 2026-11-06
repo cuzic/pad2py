@@ -206,6 +206,11 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   `CloseWindow.Close`/`FocusWindow.Focus`(Controlベース)・`CloseByInstanceOrHandle`/
   `FocusByInstanceOrHandle`(WindowInstance変数ベース)の4テストにexec検証を追加した
   (`ByTitleClass`系の兄弟セレクタは既にexec検証済みだったため、まだ手薄だった残り2系統を埋めた)。
+  **2026-11-05追記(`IfWindow`のWindowInstance変数ベース4モード)**: 既存の
+  `test_generate_python_if_window_modes_evaluate_correctly_against_fake_pywinauto`は
+  `Window: appmask[...]`(Control/リポジトリ経由)の経路しか真偽値まで検証していなかった
+  ——`WindowInstance`変数ベースの兄弟セレクタ(`IsOpenByInstanceOrHandle`等)4モードにも
+  同じ10パターン(ウィンドウ存在/フォーカス状態×期待値)の`eval()`検証を追加した。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。
