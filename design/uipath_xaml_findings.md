@@ -7233,22 +7233,72 @@ test_uipath_codegen.py`19件、確認済み特殊キー名・Win単独・複数
 declin・DelayBefore・DelayMS declineの各パターンを個別にテスト)、
 UiPath関連テスト全603件通過、リポジトリ全体で全1619件通過。
 
+## 153. `ui:AttachWindow`(子を持つスコープ活動の棚卸し第1弾)を透過的ラッパーとして新規実装——`AttachWindow`に閉じ込められていた`ui:Delay`(知見151)も連動して到達可能になった
+
+知見151・152で「子を持つスコープ活動が軒並み未実装」というパターンに
+3回連続で遭遇し(`ui:AttachWindow`・`ui:OpenApplication`・基本WF版
+`ForEach`)、次の棚卸し候補として記録したうちの第1弾として
+`ui:AttachWindow`(GitHub code searchで1100件ヒット)を実装した。
+
+実機(`AI-Dep/AI-Antigravity`の`FA_CS_Asset_Entry.xaml`)で構造を
+再確認したところ、`ExcelApplicationScope`/`WordApplicationScope`
+(知見22・121)とは違い`ActivityAction`+`DelegateInArgument`のラッパー
+を持たず、`<ui:AttachWindow.Body><Sequence>...</Sequence></ui:
+AttachWindow.Body>`という単純な形だった——`ForEach.Body`/
+`While.Body`と同じ「常に`Sequence`でラップされる」パターン
+(`_unwrap_body_sequence`、知見22で確立)がそのまま使えた。
+
+既に確認済みの通り、`Click`/`TypeInto`/`SendHotkey`(知見9・110・152)
+は全て`selector`を自己完結的に(絶対パスで)保持する設計のため、
+`AttachWindow`が解決したウィンドウハンドルへの相対参照に子が依存する
+構造には**なっていない**。よって`AttachWindow`自体は`scope_var`束縛を
+一切作らず、「`Selector`を注釈コメントとして出力し子をそのまま
+`_generate_body`で再帰生成する透過的なラッパー」として実装した——
+当初の見立て(知見151・152の今後の調査候補)通りの結果になった。
+
+実装にあたり、`_child_node_lists`(知見88が警告する「複数ファイル
+結線用の子ノードリスト走査」専用の別registry)への登録漏れに注意
+した——`ExcelApplicationScopeNode`/`WordApplicationScopeNode`が
+過去に実際にこの登録漏れで`InvokeWorkflowFile`参照を見失う退行を
+起こした実例(知見88)があったため、`AttachWindowNode`も同じ場所へ
+`[node.body]`として登録した。
+
+実機XAML(`FA_CS_Asset_Entry.xaml`)で再検証したところ、今回の実装
+によって知見151で「`ui:AttachWindow`の子としてネストされており
+到達不能」と記録していた`ui:Delay`呼び出し3件が、連動して正しく
+`time.sleep(0.5)`/`time.sleep(1.0)`×2として生成されることを確認
+した——スコープ活動を1つ実装するだけで、以前の知見で「スコープ外」
+として保留していた子の実装が自動的に活きる好例。同ファイル内の
+別の未対応箇所(`Click`の`Selector`欠落・基本WF版`ForEach`・
+`InputDialog`の出力未設定・`MessageBox`のボタン選択再現不可)は
+`AttachWindow`とは無関係な既存の個別課題のまま健全に`# TODO`へ倒れ
+続けることも確認した(透過的ラッパーが既存の`# TODO`を隠してしまわ
+ないことの確認、知見84の教訓と同じ検証パターン)。
+
+`dump_daemon/uipath_dsl/types.py`に`AttachWindowNode(selector, body,
+display_name)`、`xaml_tree.py`に`_parse_attach_window`
+(`_unwrap_body_sequence`を再利用)+`(UI_NS, "AttachWindow")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`に
+`_generate_attach_window`(`_generate_body`で子を再帰生成、
+`_ensure_nonempty_suite`で空本体に`pass`を補う)を追加し、
+`_child_node_lists`にも登録。回帰テスト追加(`tests/
+test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件、
+Selector注釈コメント・DisplayName・Selector未設定・空本体・子の
+`# TODO`透過の各パターンを個別にテスト)、UiPath関連テスト全609件
+通過、リポジトリ全体で全1635件通過。
+
 ## 今後の調査候補(未着手)
-- **(新規、知見151・152で発見)** 子を持つスコープ活動が軒並み未実装:
-  `ui:AttachWindow`(`ui:AttachWindow.Body`配下に単一の`Sequence`等を
-  持つ、知見151で遭遇)・`ui:OpenApplication`(知見152で遭遇)・
-  基本WF版`ForEach`(`ui:ForEach`とは別の`{http://schemas.microsoft.
-  com/netfx/2009/xaml/activities}ForEach`、知見151で遭遇)。3件連続で
-  「子の活動自体は実装済みなのに親スコープが未実装のため到達不能」
-  というパターンに遭遇したため、次の棚卸し候補として記録する。特に
-  `ui:AttachWindow`/`ui:OpenApplication`は、子の活動(`Click`/
-  `TypeInto`/`SendHotkey`等)が既に確認済みの通り「選択した絶対
-  セレクタを自己完結的に保持する」設計のため、親スコープの子は相対
-  セレクタ解決への依存が無く、スコープ自体を「`Selector`を注釈
-  コメントとして出力し子をそのまま再帰実行する透過的なラッパー」
-  として実装できる可能性が高い(`ExcelApplicationScope`/
-  `WordApplicationScope`のような`scope_var`を使う必要は無いはず)——
-  次の実装候補として有望
+- **(部分的に解決)** 子を持つスコープ活動が軒並み未実装という
+  パターン(知見151・152で発見)のうち`ui:AttachWindow`は知見153で
+  透過的ラッパーとして実装済み。残り: `ui:OpenApplication`(知見152
+  で遭遇)・基本WF版`ForEach`(`ui:ForEach`とは別の`{http://
+  schemas.microsoft.com/netfx/2009/xaml/activities}ForEach`、知見151
+  で遭遇)。`ui:OpenApplication`は`ui:AttachWindow`と同じ「子は絶対
+  セレクタを自己完結的に保持する」設計が当てはまるはずで、同じ透過的
+  ラッパー方式で実装できる可能性が高い——次の実装候補として有望。
+  基本WF版`ForEach`は`ui:ForEach`(既に実装済み)とは別の構造
+  (`CurrentItem`ではなく`DelegateInArgument`経由の変数束縛の可能性)
+  のため個別に実機調査が必要
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

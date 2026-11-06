@@ -1926,3 +1926,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      は未対応のまま`# TODO`へ倒す。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`19件)、
      UiPath関連テスト全603件通過、リポジトリ全体で全1619件通過。
+
+111. **(完了、2026-11-06)** `ui:AttachWindow`(GitHub code searchで
+     1100件ヒットするスコープ活動)を透過的ラッパーとして新規実装
+     (知見153——知見151・152で発見した「子を持つスコープ活動が軒並み
+     未実装」というパターンの第1弾): `Click`/`TypeInto`/`SendHotkey`
+     の子活動は`selector`を自己完結的に(絶対パスで)保持する設計の
+     ため、`AttachWindow`自体は`scope_var`束縛を一切作らず「`Selector`
+     を注釈コメントとして出力し子をそのまま再帰生成する」透過的な
+     ラッパーとして実装した(`ExcelApplicationScope`のような
+     `scope_var`束縛は不要)。`_child_node_lists`(知見88が警告する
+     複数ファイル結線用の別registry)にも登録漏れ無く追加。実機XAML
+     で再検証し、知見151で「`AttachWindow`の子としてネストされており
+     到達不能」と記録していた`ui:Delay`呼び出し3件が連動して正しく
+     `time.sleep()`として生成されることを確認した。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     5件)、UiPath関連テスト全609件通過、リポジトリ全体で全1635件
+     通過。

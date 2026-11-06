@@ -19,6 +19,7 @@ from lxml import etree
 from .types import (
     AppendLineNode,
     AssignNode,
+    AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
     CatchArm,
@@ -914,6 +915,16 @@ def _parse_excel_append_range(elem: etree._Element) -> ExcelAppendRangeNode:
     )
 
 
+def _parse_attach_window(elem: etree._Element) -> AttachWindowNode:
+    body_elem = _find_property_element(elem, "Body")
+    body = _unwrap_body_sequence(body_elem)
+    return AttachWindowNode(
+        selector=_attr(elem, "Selector"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScopeNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -1321,6 +1332,7 @@ _DISPATCH = {
     (UI_NS, "ExcelReadRange"): _parse_excel_read_range,
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
+    (UI_NS, "AttachWindow"): _parse_attach_window,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,

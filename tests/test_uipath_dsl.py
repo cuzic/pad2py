@@ -16,6 +16,7 @@ from lxml import etree
 from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
+    AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
     ClickNode,
@@ -970,6 +971,32 @@ def test_excel_application_scope(main_wf):
     assert isinstance(scope.body[0], ExcelWriteCellNode)
     assert scope.body[0].cell == Literal(value="A1")
     assert scope.body[0].sheet_name == "Sheet1"
+
+
+def test_attach_window_unwraps_body_sequence():
+    """知見153: `ui:AttachWindow`(GitHub code searchで1100件ヒット)。
+    `AI-Dep/AI-Antigravity`の実機XAMLで確認した構造——
+    `ExcelApplicationScope`/`WordApplicationScope`とは違い
+    `ActivityAction`+`DelegateInArgument`のラッパーを持たず、
+    `.Body`配下に直接`Sequence`が1つ入るだけの単純な形
+    (`ForEach.Body`/`While.Body`と同じ`_unwrap_body_sequence`パターン)。"""
+    xml = (
+        f"<ui:AttachWindow {_UI_XMLNS} "
+        'DisplayName="Attach to Notepad" '
+        'Selector="&lt;wnd app=\'notepad.exe\' /&gt;">'
+        "<ui:AttachWindow.Body>"
+        '<Sequence DisplayName="Body">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ui:AttachWindow.Body>"
+        "</ui:AttachWindow>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AttachWindowNode)
+    assert "notepad.exe" in node.selector
+    assert node.display_name == "Attach to Notepad"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
 
 
 def test_word_application_scope_and_replace_text_in_document():

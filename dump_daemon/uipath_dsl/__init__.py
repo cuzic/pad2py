@@ -13,6 +13,7 @@ Phase 1〜3を参照。
 from .types import (
     AppendLineNode,
     AssignNode,
+    AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
     CatchArm,
@@ -81,6 +82,7 @@ from .xaml_tree import parse_activity, parse_workflow_file
 __all__ = [
     "AppendLineNode",
     "AssignNode",
+    "AttachWindowNode",
     "BreakNode",
     "BuildDataTableNode",
     "CatchArm",

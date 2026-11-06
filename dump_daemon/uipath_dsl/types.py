@@ -833,6 +833,31 @@ class ExcelReadCellNode:
 
 
 @dataclass
+class AttachWindowNode:
+    """`<ui:AttachWindow Selector="...">...</ui:AttachWindow>`(知見153、
+    `UiPath.Core.Activities`。GitHub code searchで1100件ヒット)。
+    `ExcelApplicationScopeNode`/`WordApplicationScopeNode`とは異なり
+    `ActivityAction`+`DelegateInArgument`のラッパーを持たない——実機
+    (`AI-Dep/AI-Antigravity`の`FA_CS_Asset_Entry.xaml`)で確認した構造は
+    `<ui:AttachWindow.Body><Sequence>...</Sequence></ui:AttachWindow.Body>`
+    という単純な形で、`ForEach.Body`/`While.Body`と同じ「常に`Sequence`
+    でラップされる」パターン(`_unwrap_body_sequence`、知見22)がそのまま
+    使える。
+
+    `AttachWindow`自身はスコープ変数を生成せず、子活動(実機確認済みの
+    `ClickNode`/`TypeIntoNode`/`SendHotkeyNode`は全て`selector`を自己
+    完結的に(絶対パスで)保持する設計、知見9・110・152)が`AttachWindow`
+    が解決したウィンドウハンドルへの相対参照に依存する構造には**なって
+    いない**——よって`AttachWindow`は「`Selector`を注釈コメントとして
+    出力し子をそのまま再帰実行する透過的なラッパー」として安全に実装
+    できる(`ExcelApplicationScope`のような`scope_var`束縛は不要)。"""
+
+    selector: str | None = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelApplicationScopeNode:
     """`<ui:ExcelApplicationScope WorkbookPath="...">...</ui:ExcelApplicationScope>`
     (知見22、`ActivityAction`+`DelegateInArgument`で`ForEach`と同じ構造)。"""
@@ -1189,6 +1214,7 @@ Node = (
     | LogMessageNode
     | ExcelReadCellNode
     | ExcelWriteCellNode
+    | AttachWindowNode
     | ExcelApplicationScopeNode
     | WordApplicationScopeNode
     | WordReplaceTextNode

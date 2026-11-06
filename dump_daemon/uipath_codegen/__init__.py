@@ -48,6 +48,7 @@ from openpyxl.utils.exceptions import CellCoordinatesException
 from ..uipath_dsl.types import (
     AppendLineNode,
     AssignNode,
+    AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
     ClickNode,
@@ -454,6 +455,8 @@ def _generate_node(
         return _generate_build_data_table(node, indent)
     if isinstance(node, HttpClientNode):
         return _generate_http_client(node, indent)
+    if isinstance(node, AttachWindowNode):
+        return _generate_attach_window(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, WordApplicationScopeNode):
@@ -2108,6 +2111,29 @@ def _with_scope_child_display_name(node: Node, lines: list[str], prefix: str) ->
     return lines
 
 
+# 知見153: `ui:AttachWindow`(GitHub code searchで1100件ヒット)。
+# `ExcelApplicationScopeNode`とは違い`scope_var`束縛を一切作らない
+# 透過的なラッパーとして実装する——実機確認済みの子活動(`Click`/
+# `TypeInto`/`SendHotkey`)は全て`selector`を自己完結的に(絶対パスで)
+# 保持する設計のため、`AttachWindow`が解決したウィンドウハンドルへの
+# 相対参照に子が依存する構造には**なっていない**(`types.py`の
+# `AttachWindowNode`docstring参照)。`Selector`は実行可能なコードでは
+# なく注釈コメントとして出力し、子はそのまま`_generate_body`で再帰
+# 生成する。
+def _generate_attach_window(
+    node: AttachWindowNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines: list[str] = []
+    if node.selector:
+        lines.append(f"{prefix}# Attach window: {node.selector}")
+    lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
+    lines = _ensure_nonempty_suite(lines, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
 def _generate_excel_application_scope(
     node: ExcelApplicationScopeNode, indent: int,
     invoke_resolver: dict[str, str] | None = None,
@@ -3047,6 +3073,8 @@ def _child_node_lists(node: Node) -> list[list[Node]]:
     if isinstance(node, ParallelNode):
         return [node.branches]
     if isinstance(node, (ExcelApplicationScopeNode, WordApplicationScopeNode)):
+        return [node.body]
+    if isinstance(node, AttachWindowNode):
         return [node.body]
     return []
 

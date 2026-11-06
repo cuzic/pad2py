@@ -37,6 +37,7 @@ from dump_daemon.uipath_codegen.render import VB_CMP_HELPER_NAME, VB_NUM_HELPER_
 from dump_daemon.uipath_dsl import (
     AppendLineNode,
     AssignNode,
+    AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
     ClickNode,
@@ -2705,6 +2706,77 @@ def test_http_client_real_fixture_now_generates_real_code():
     assert "import requests" in code
     assert "requests.request('GET'" in code
     assert "# TODO: unsupported in v1 codegen: HttpClientNode" not in code
+
+
+def test_attach_window_recurses_into_body_with_selector_comment():
+    """知見153: `ui:AttachWindow`(GitHub code searchで1100件ヒット)。
+    子活動(`Click`/`TypeInto`/`SendHotkey`)は`selector`を自己完結的に
+    保持するため、`AttachWindow`自身は`scope_var`束縛を作らない透過的
+    なラッパーとして実装する——`Selector`は注釈コメントとして出力し、
+    子はそのまま再帰生成される。"""
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<wnd app='notepad.exe' />",
+                body=[WriteLineNode(text=Literal(value="hi"))],
+                display_name="Attach to Notepad",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Attach window: <wnd app='notepad.exe' />" in code
+    assert "print(_vb_cstr('hi'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_attach_window_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<wnd app='notepad.exe' />",
+                body=[WriteLineNode(text=Literal(value="hi"))],
+                display_name="Attach to Notepad",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Attach to Notepad" in code
+    _compiles(code)
+
+
+def test_attach_window_with_no_selector_omits_comment():
+    wf = _wrap([AttachWindowNode(selector=None, body=[WriteLineNode(text=Literal(value="hi"))])])
+    code = generate_python(wf)
+    assert "# Attach window:" not in code
+    assert "print(_vb_cstr('hi'))" in code
+    _compiles(code)
+
+
+def test_attach_window_with_empty_body_generates_pass():
+    """知見153: `_ensure_nonempty_suite`(知見40と同じ理由)——本体が
+    空だとPython構文上`IndentationError`になるため`pass`を補う。"""
+    wf = _wrap([AttachWindowNode(selector="<wnd app='notepad.exe' />", body=[])])
+    code = generate_python(wf)
+    assert "pass" in code
+    _compiles(code)
+
+
+def test_attach_window_child_todo_still_surfaces():
+    """知見153: スコープ自体は`# TODO`にならないが、未対応な子の
+    `# TODO`は引き続き正しく出る(知見84と同じ教訓)。"""
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<wnd app='notepad.exe' />",
+                body=[InvokeCodeNode(code="content=content.ToUpper()")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Attach window:" in code
+    assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
+    _compiles(code)
 
 
 def test_excel_application_scope_uses_custom_scope_var_as_real_variable_name():
