@@ -1572,3 +1572,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     設計課題として記録(`AddDataRow`・`row(...)`スコープ追跡より大きい
     スコープ)。次tickへの引き継ぎ: この240件corpus(未使用)を次回C#
     対応を検討する際の一次データ源として再利用する価値がある。
+
+88. **(完了・重大な発見、2026-11-06)** 静的メソッド3件(`File.
+    ReadAllBytes`/`Convert.ToBase64String`/`Path.
+    GetFileNameWithoutExtension`)+`DataTable.Copy`を新規実装、VB.NETの
+    識別子大文字小文字の揺れによる【重大】な潜在バグを発見(知見130):
+    `String.IsNullOrEmpty`と同じパターンで静的メソッド3件を
+    `_render_func_call`に追加、`DataTable.Copy()`(括弧省略形)は
+    `_apply_chained_property`経由で`list[dict]`行コピーへ対応。
+    別途、`row(...)`/`keyrow(...)`添字曖昧性(知見126)の2件目の実機
+    確認も記録。**最重要**: VB.NETは識別子の大文字小文字を区別しないが
+    本トランスパイラは区別するため、同一変数が異なる大文字小文字表記で
+    参照されるXAML(`out_RequirementLanCur`宣言→本体では
+    `Out_RequirementLanCur`参照、実機で発見)では**2つの別々のPython
+    変数が静かに生成される**——`# TODO`へ保守的に倒れず、構文的に正しい
+    が意味的に誤ったコードを生成するという、`AddDataRow`・`row(...)`
+    より深刻な種類の問題。通常のローカル変数でも理論上同じ問題が起こり
+    うる一般的な懸念のため、次に「スコープ対応のコード生成アーキテク
+    チャ」を設計する際は識別子大文字小文字正規化を最優先要件とすべきと
+    判断し、重要な設計課題として記録(今回は実装見送り)。回帰テスト
+    追加(`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全511件
+    通過、リポジトリ全体で全1411件通過。

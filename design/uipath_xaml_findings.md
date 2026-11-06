@@ -6264,6 +6264,74 @@ VB.NETプロジェクトに比べて大幅に低い。
 `project.json`を先にスキャンして言語別に分類するところから始めると
 良い。
 
+## 130. 静的メソッド3件(`File.ReadAllBytes`/`Convert.ToBase64String`/`Path.GetFileNameWithoutExtension`)+`DataTable.Copy`を新規実装、VB.NETの識別子大文字小文字の揺れによる【重大】な潜在バグを発見(未使用の新規25リポジトリでの実機検証、知見117〜129の手法を継続、VM不使用)
+
+知見117〜129の手法を未使用の新規25リポジトリへ適用した。24件が
+例外無しで完走(1件はState Machineルート、想定通り)。
+
+**解決: 静的メソッド3件+`DataTable.Copy`**(`Dits21/Proyecto-Sistema-
+RPA-para-mejorar-el-procesamiento-de-lectura-de-facturas-`の1ファイル
+で4件とも発見、OCR結果画像のBase64エンコード処理)。`System.IO.File.
+ReadAllBytes(path)`→`open(path, 'rb').read()`、`System.Convert.
+ToBase64String(Byte())`→`base64.b64encode(bytes).decode('ascii')`
+(返り値を.NET同様の`String`に揃える)、`System.IO.Path.
+GetFileNameWithoutExtension(path)`→`os.path.splitext(os.path.
+basename(path))[0]`をいずれも1引数の確認済み形のみ`_render_func_call`
+の確認済み静的メソッド一覧に追加した(`String.IsNullOrEmpty`と同じ
+パターン)。`DataTable.Copy()`(括弧省略形`dtUB92.Copy`で実機確認)は
+既存のDataTable表現(`list[dict]`)に対応する、各行の辞書も独立させる
+リスト内包表記へ対応——`_apply_chained_property`(知見118/119/127で
+確立した「安全なメンバ名のみ変換」の共通経路)に追加し、知見119の
+`Ident`分岐の安全リストにも`Copy`を加えた(呼び出し構文の有無を問わず
+同じ経路を通る)。
+
+**追加確認(コード変更無し)**: `row(...)`/`keyrow(...)`のDataRow添字
+曖昧性(知見126で発見・保留)の、さらに2件目(`Pk-NY/
+Information_on_IssueData_RPA_Uipath`)の実機確認——`ForEachRow`反復
+変数名が`row`以外(`keyrow`)でも同じ曖昧性が起こることを確認した
+(保留方針に変更無し、知見126の設計課題としての優先度を補強する
+証拠として記録)。
+
+**【重大、未解決】VB.NETの識別子は大文字小文字を区別しないが、本
+トランスパイラは区別する——同一識別子の大文字小文字の揺れで異なる
+Python変数が生成されうる**(`TanMzCs2025/
+EDSAChallengeTania2025_AmazonProductSearchAndFilter`の`Browser_
+ValidateLangAndCur.xaml`で発見)。このXAMLは`OutArgument`を
+`out_RequirementLanCur`(小文字`o`)という名前で宣言しているが、本体の
+`Assign`アクティビティは`To`で`Out_RequirementLanCur`(大文字`O`)という
+**別の表記**を使って同じ引数を参照している——VB.NET自体は大文字小文字を
+区別しない言語のため、Studio/.NETコンパイラはこの2つを同じ変数として
+正しく解決する。しかし本トランスパイラは各識別子の参照をXAML中に現れた
+まさにそのテキストのままPython識別子として素通りさせるため(`render_
+expr`/`_render_node`の`Ident`処理は常に文脈自由な純粋関数)、生成された
+Pythonコードでは`out_RequirementLanCur`(関数の仮引数)と
+`Out_RequirementLanCur`(本体内で新たに作られる無関係なローカル変数)
+という**2つの別々の変数**になってしまう——`# TODO`で保守的に失敗する
+のではなく、**構文的には正しいが意味的に誤ったコードを静かに生成する**
+という、知見74/118/119/126よりも深刻な種類の問題(値の食い違いが実行時
+まで表面化しない)。
+
+この問題は今回発見した1箇所(`OutArgument`の参照)に限らず、**通常の
+ローカル変数の読み書きでも理論上同じように起こりうる**——VB.NET識別子
+が大文字小文字の揺れを許す以上、ソースのどこでも起こりうる一般的な
+問題である。解消には、ワークフロー(または関数)単位で宣言済みの変数・
+引数名を大文字小文字を区別せずに正規化されたPython識別子へ対応付ける
+名前解決パスが必要——現状の`render_expr`/`_render_node`には宣言済み
+名前の集合を渡す仕組みが無く、知見122の`AddDataRow`(クロスノードの
+DataTableスキーマ解決)・知見126の`row(...)`(変数スコープのDataRow型
+追跡)に続く**3件目の「スコープ情報が式レンダリングに必要」という実需要
+の確認**であり、かつ重大度は最も高い(他の2件は保守的に`# TODO`へ倒れる
+が、この問題は倒れずに誤ったコードを生成する)。今回は実装を見送るが、
+次に「スコープ対応のコード生成アーキテクチャ」を設計する際は、この
+識別子大文字小文字正規化を**最優先**の要件として含めるべきと判断し、
+重要な設計課題として記録する。
+
+`dump_daemon/uipath_codegen/render.py`の`_render_func_call`に静的
+メソッド3分岐、`_apply_chained_property`/`Ident`分岐に`Copy`を追加。
+`dump_daemon/uipath_codegen/__init__.py`の`_collect_imports`に`base64`
+検出を追加。`tests/test_uipath_codegen.py`に4件追加、UiPath関連テスト
+全511件通過、リポジトリ全体で全1411件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

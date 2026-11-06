@@ -199,6 +199,57 @@ def test_array_or_collection_indexing_syntax_is_ambiguous_with_func_call_falls_b
     _compiles(code)
 
 
+def test_file_readallbytes_renders_as_open_read():
+    """知見130: `File.ReadAllBytes(path)`(`Dits21/Proyecto-Sistema-
+    RPA-...`の実機XAML`file.ReadAllBytes(...)`で発見)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="File.ReadAllBytes(y)"))])
+    code = generate_python(wf)
+    assert "x = open(y, 'rb').read()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_convert_tobase64string_renders_as_base64_b64encode():
+    """知見130: `Convert.ToBase64String(bytes)`(同上の実機XAML
+    `convert.ToBase64String(...)`で発見)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Convert.ToBase64String(y)"))]
+    )
+    code = generate_python(wf)
+    assert "x = base64.b64encode(y).decode('ascii')" in code
+    assert "import base64" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_path_getfilenamewithoutextension_renders_as_os_path_splitext():
+    """知見130: `Path.GetFileNameWithoutExtension(path)`(同上の実機XAML
+    `path.GetFileNameWithoutExtension(...)`で発見)。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"), value=VbExpr(text="Path.GetFileNameWithoutExtension(y)")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "x = os.path.splitext(os.path.basename(y))[0]" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_copy_without_call_renders_as_datatable_copy():
+    """知見130: `dtUB92.Copy`(括弧省略形、同上の実機XAML`DataTable.
+    Copy()`で発見)。既存のDataTable表現(`list[dict]`)に対応する、各行の
+    辞書も独立させるコピーへ対応する。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="dtUB92.Copy"))])
+    code = generate_python(wf)
+    assert "x = [dict(_r) for _r in dtUB92]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_len_renders_as_python_len():
     """知見127: `Len(expr)`(`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML
     `Len(sRstHttp)`で発見)。文字列用法のみ想定し`len(expr)`へ対応する。"""

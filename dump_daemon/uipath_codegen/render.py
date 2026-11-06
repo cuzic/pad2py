@@ -478,7 +478,9 @@ def _render_node(node: ExprNode) -> str:
         # ため従来通り(無変換でそのまま)の挙動を変えない、安全な追加。
         if "." in node.name:
             prefix, _, last = node.name.rpartition(".")
-            if last == "ToString" or last in _CHAINED_PROPERTY_TRANSLATIONS:
+            # 知見130: `Copy`(`DataTable.Copy`、括弧省略形)も同じ安全な
+            # メンバ名の一覧に加える。
+            if last == "ToString" or last == "Copy" or last in _CHAINED_PROPERTY_TRANSLATIONS:
                 return _apply_chained_property(prefix, last)
         return node.name
     if isinstance(node, StringLiteral):
@@ -594,6 +596,15 @@ def _render_chained_access(node: ChainedAccess) -> str:
 def _apply_chained_property(base: str, member: str) -> str:
     if member == "ToString":
         return f"{VB_CSTR_HELPER_NAME}({base})"
+    if member == "Copy":
+        # 知見130: `DataTable.Copy()`(`Dits21/Proyecto-Sistema-RPA-...`
+        # の実機XAML`dtUB92.Copy`で発見、括弧無しの呼び出し——VB.NETの
+        # 引数無しメソッドは括弧省略可能という既存の慣習、知見118参照)。
+        # 既存のDataTable表現(`list[dict]`、知見114/115)に対応する
+        # コピーは、各行の辞書も独立させる浅いコピーのリスト内包表記
+        # ——`.Copy()`を複数回呼んだ結果が元のDataTableと行データを
+        # 共有しないことを保証する。
+        return f"[dict(_r) for _r in {base}]"
     if member in _CHAINED_PROPERTY_TRANSLATIONS:
         return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member]}()"
     raise NotImplementedError(f"unsupported chained member access: .{member}")
@@ -825,6 +836,33 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
+    if key == "file.readallbytes":
+        # 知見130: `System.IO.File.ReadAllBytes(path)`(`Dits21/
+        # Proyecto-Sistema-RPA-...`の実機XAML`file.ReadAllBytes(...)`で
+        # 発見)。1引数の確認済み形のみ`open(path, 'rb').read()`へ対応
+        # (返り値はPythonの`bytes`、.NETの`Byte()`に対応する)。
+        if len(args) != 1:
+            raise NotImplementedError("File.ReadAllBytes expects exactly 1 argument")
+        return f"open({args[0]}, 'rb').read()"
+    if key == "convert.tobase64string":
+        # 知見130: `System.Convert.ToBase64String(Byte())`(同上の実機
+        # XAML`convert.ToBase64String(...)`で発見)。1引数の確認済み形の
+        # みPythonの`base64.b64encode(bytes).decode('ascii')`へ対応——
+        # .NETは`String`を返すため`.decode('ascii')`で文字列化まで揃える
+        # (Base64はASCII文字集合のみを使うため安全)。
+        if len(args) != 1:
+            raise NotImplementedError("Convert.ToBase64String expects exactly 1 argument")
+        return f"base64.b64encode({args[0]}).decode('ascii')"
+    if key == "path.getfilenamewithoutextension":
+        # 知見130: `System.IO.Path.GetFileNameWithoutExtension(path)`
+        # (同上の実機XAML`path.GetFileNameWithoutExtension(...)`で発見)。
+        # 1引数の確認済み形のみ`os.path.splitext(os.path.basename(path))[0]`
+        # へ対応する。
+        if len(args) != 1:
+            raise NotImplementedError(
+                "Path.GetFileNameWithoutExtension expects exactly 1 argument"
+            )
+        return f"os.path.splitext(os.path.basename({args[0]}))[0]"
     if key == "len":
         # 知見127: `Microsoft.VisualBasic.Strings.Len(Expression)`
         # (`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML`Len(sRstHttp)`で
