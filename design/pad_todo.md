@@ -135,13 +135,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     知見170でdecompile精査・新規結線完了。`Click.Click`で実機確認済み(知見56)の
     `ClickType=LeftClick`・`RectangleEdgePoint=MiddleCenter`・オフセット0/0の組み合わせ
     に限り、pywinautoの`drag_mouse_input(dst=...)`に1:1対応。それ以外はTODO。
-  - [ ] 🖥️ **残課題(知見169/170で精査、decompileだけでは解決不可と判明)**:
-    - `SelectMenuOptionInWindow`: メニュー項目がUIAの`SelectionItemPattern`/
-      `InvokePattern`のどちらを実装するかコントロール次第で一定しない——ネイティブ側
-      ランタイムプロキシ実装(`UIAutomation.Core.dll`相当、未取得)でしか判定できない。
-    - `ExpandCollapseTreeNodeInWindow`: `FoldersPath`(ツリーパス文字列)+`UseRegex`を
-      使った複数階層の名前マッチング走査という複合操作——正確な走査アルゴリズムが
-      ネイティブ側実装にしか無い。
+  - [ ] 🖥️ **残課題(知見172で確定: decompileでは解決不可、RDP実機確認が必要)**:
+    - `SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`: `IAutomationRuntimeProxy`
+      の実装(`RemoteAutomationRuntimeProxy`、`Microsoft.Flow.RPA.Desktop.Modules.
+      UIAutomation.Common.dll`)は`System.Reflection.DispatchProxy`派生の汎用動的プロキシで、
+      全呼び出しをRPC越しの別プロセス(サンドボックス化されたオートメーション実行ワーカー)へ
+      中継するだけ——このインターフェースの全メソッドの実際の挙動は.NETアセンブリとして
+      静的取得・decompileできる範囲の外にある。これ以上はRDPでの実機観察以外に道が無い。
     - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetUIControl`/
       `GetWindowDetails`: `AttributeName`(`"Own Text"`/`"Exists"`/`"Location and Size"`/
       `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。

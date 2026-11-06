@@ -2838,3 +2838,11 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 - `PowerPoint.CopyPastePowerPointSlide`(`CopyPastePowerPointSlide`): `SourceInstance`/`DestinationInstance`という**2つの独立した`PowerPointInstanceHandle`**を受け取り、`_powerPointOperations.CopyPasteSlide(source, sourcePos, dest, destPos)`を呼ぶ——クロスプレゼンテーションのスライドコピーという、`dump_daemon/pad_action_lib/powerpoint_actions.py`のモジュールdocstライン自身が最初から明記していた既知のスコープ外機能と完全に一致する構造だと確認した。
 
 6件全て、該当する`pad_codegen/actions/*.py`に専用dispatchが元から存在せず(確認済み)、汎用の`# TODO: map PAD action: ...`フォールバックに安全に落ちる——コード変更は不要。`design/pad_todo.md`の該当項目を「未精査」から「decompileで確定確認済み(対応不要)」に更新し、今後のtickで同じ候補を再調査しないようにした。
+
+## 172. 知見170の保留2件(`SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`)——`IAutomationRuntimeProxy`の実装自体がRPC越しのサンドボックスプロセスにあり、静的decompileでは原理的に解決不可と確定
+
+知見170で「ネイティブ側ランタイムプロキシ実装(`UIAutomation.Core.dll`相当、未取得)でしか判定できない」と記録した2件について、`pad2py-pad-host`が一時的にidleになったタイミングで、Designer UIには一切触れない読み取り専用のリフレクション調査(clipwire exec、既存の「busy/idle問わず安全」の方針通り)を実施し、実装の所在を確定させた。
+
+`C:\Program Files (x86)\Power Automate Desktop`配下の全5685 DLLを`[System.Reflection.Assembly]::LoadFrom()`→`GetInterfaces()`で走査し、`IAutomationRuntimeProxy`(またはそれに似た名前)を実装する型を検索した。唯一のヒットは`Microsoft.Flow.RPA.Desktop.Modules.UIAutomation.Common.dll`の`RemoteAutomationRuntimeProxy`クラス——これを`ilspycmd`でdecompileした結果、**`System.Reflection.DispatchProxy`派生の汎用動的プロキシ**だと判明した。`Invoke(MethodInfo targetMethod, object[] args)`は`targetMethod.Invoke(_automationServerEndpoint.GetService<IAutomationRuntimeProxy>(), args)`——メソッド名を見ずに全呼び出しをそのまま別プロセス(`IAutomationServerEndpoint`、RPCでのサンドボックス化されたオートメーション実行ワーカー)へ中継するだけで、`SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`固有のロジックはこのクラスにも、スキャンした他のどのDLLにも存在しない。
+
+つまり、これら2件(および`IAutomationRuntimeProxy`インターフェースの全メソッド)の実際の挙動は、.NETアセンブリとして静的に取得・decompileできる範囲の外(別プロセスのネイティブまたは別ランタイムの実装、あるいは動的生成されたアセンブリ)にある——「decompileで突き止める」というこのセッション全体の中核手法が原理的に適用できない領域だと確定した。これ以上の追跡はPAD自体の内部プロセス境界を越えるリバースエンジニアリングになり、知見38/39/42由来の「RDPでの実機確認」で挙動を観察する以外に道が無い。`design/pad_todo.md`を「decompileでは解決不可と確定、RDP実機確認が必要」に更新した。
