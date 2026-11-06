@@ -3206,3 +3206,15 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 **教訓(知見183の「既存関数を再利用する前に知見ログをgrepする」を、調査の着手時にも適用すべきだった)**: `docs-local`配下の古い調査メモを調査の起点にする際は、着手前に必ず`design/pad_todo.md`・`design/dsl_format_findings.md`で同じキーワード(今回なら「DPAPI」「DPApi」「entropy」)を検索し、その後のセッションで既に解決されていないかを確認すべきだった——`docs-local`はgitに追跡されず更新が追いつかないことがあるため、知見ログ(`design/`配下)の方が常に最新かつ権威的な状態を反映している。知見197・198・199・200ではこの確認を(結果的に)怠らずに済んだが、本件では確認を省略してしまった。
 
 実装: コード変更は無し(無駄になった調査過程の記録のみ)。`dnfile`パッケージのインストール・`ilspycmd`のバージョン更新(v8.2.0.7535→v9.1.0.7988)はこのサンドボックス環境に残るが、プロジェクトの依存関係ではないため実害は無い。
+
+## 202. 知見200の新発見関数(`ContainsKey`/`Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`)の到達可能性を知見75のクリップボード往復手法で検証試行——RDPセッションが「Active」状態でも`type_keys()`ペーストが再現性よく無効化されると判明、ブロック要因の理解を修正
+
+`query user`で`pad2py-pad-host`のRDPセッションが(過去に記録していた「Disc」ではなく)**「Active」状態、かつidle timeが一桁秒**であることを確認した——これは`memory/pad2py_clipboard_paste_technique.md`が「長時間coldな非RDPセッションでのみ`type_keys()`/`SendInput`系入力が全滅する」と記録していた条件とは異なる状態だったため、知見200で保留していた6関数の到達可能性調査(標準`If`条件UIから`ContainsKey`/`Count`/`EndsWith`/`StartsWith`/`Blank`/`IsBlank`に到達できるか)を今回試行する根拠になると判断した。
+
+知見75確立のパイプライン(`pad2py-populate-step1-newflow`→`step2-namecreate`→クリップボードへ`SET Var1 TO $'''hello'''`/`SET Var2 TO $'''ell'''`に続く6つの`IF <関数名>(...) THEN`を設定→`step3-paste`→`step5-dump`でActionsリストの状態を読み取り)をそのまま再利用し、新規`clipwire`ターゲット`pad2py-set-clipboard-newfuncs`を追加して実行した。
+
+**結果**: `step3-paste`は両方の試行(1回目・2回後に`pad2py-set-clipboard-newfuncs`を再実行してからの2回目)とも`"focused"`/`"pasted"`という成功ログを返したにもかかわらず、`step5-dump`でActionsリストの内部を読むと`"You don't have any actions here yet"`のまま——ペースト操作自体が実際にはアプリケーションへ届いていないことが再現性よく確認できた(1回目の結果を疑って同じ条件でもう一度クリップボードの再設定→再ペーストを試したが、結果は完全に同一)。クリーンアップ(`step7-cleanup`、未保存ダイアログは出現せず——そもそも何も追加されていないため当然)は正常に完了し、probeフロー自体は後に残していない。
+
+**ブロック要因の理解の修正**: 従来の記録(`memory/pad2py_clipboard_paste_technique.md`)は「長時間coldな非RDPセッションでのみ失敗する」という理解だったが、今回「Active」状態・低idle timeのセッションでも同じ失敗モードが再現したことから、**RDPセッションの`query user`上の見かけの状態(Active/Disc)やidle timeの値だけでは、`type_keys()`/`SendInput`系入力が実際に機能するかどうかを判定できない**と判明した——何らかの別の条件(実際のRDPクライアント接続の有無、セッションのロック状態、あるいはWinStation自体のデスクトップ描画コンテキストの有無など、`query user`からは見えない要素)が真の決定要因である可能性が高いが、今回の1回の試行だけでは特定できない。知見75の`.invoke()`系操作(`New flow`ボタン・`Create`ボタンのクリック相当)は今回も問題なく機能した(`pad2py_run_without_rdp`の記録と整合)ため、「`.invoke()`系は常に機能し、`type_keys()`/`SendInput`系は`query user`から見える状態だけでは予測できない」という知見75・知見199以来の切り分けの大枠自体は変わらない。
+
+**今後の指針**: 知見200の6関数の到達可能性調査は依然未解決のまま保留とする(RDPクライアントで実際にリモートデスクトップ接続した状態での再試行が必要と推測されるが未確認)。`pad_todo.md`の該当項目の説明文を本知見へのポインタに更新し、「`query user`がActiveを示せば試せる」という誤った前提を除去する。
