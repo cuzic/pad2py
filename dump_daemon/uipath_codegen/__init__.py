@@ -263,7 +263,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117)も同様。
     if any("shutil.copy(" in line for line in body):
         imports.append("import shutil")
-    if any("os.path." in line for line in body):
+    # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)も
+    # 同じ`os`モジュールのため同じ条件にまとめる。
+    if any("os.path." in line or "os.getcwd(" in line for line in body):
         imports.append("import os")
     # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
     # 知見130)も同様。

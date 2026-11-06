@@ -6678,6 +6678,38 @@ startUiPathFromSalesforce`)はいずれも知見74のDataTable行/配列添字
 TRANSLATIONS`に2キー追加。`tests/test_uipath_codegen.py`に2件追加、
 UiPath関連テスト全534件通過、リポジトリ全体で全1462件通過。
 
+## 140. `Environment.CurrentDirectory`を新規実装——呼び出しを伴わない静的クラスプロパティの完全修飾名一致という新しい対応パターンを導入(未使用の新規17リポジトリでの実機検証、`compile()`標準化を継続、VM不使用)
+
+知見117〜139の手法を未使用の新規17リポジトリへ適用した。`compile()`
+検証でも構文エラーは0件(知見136〜138で修正した潜在バグの再発無し)。
+
+**解決: `Environment.CurrentDirectory`**(`E5Prasanth/Acme`の実機XAML
+で発見、`Environment.CurrentDirectory & "\Data.txt"`という一時ファイル
+パス構築パターン)。`System.Environment.CurrentDirectory`は呼び出しを
+伴わない静的クラスの**プロパティ**(メソッドではない)で、Pythonの
+`os.getcwd()`に直接対応する。
+
+これまでの`ToUpper`/`Length`/`Copy`等の対応(知見118・119・130・133)は
+いずれも「末尾セグメントの名前だけで、ベースが何であれ安全に適用できる
+汎用メンバ」(例: `.ToUpper`は文字列である限り常に`str.upper()`)だった
+が、`CurrentDirectory`はそうではない——`Environment`という**特定の
+静的クラス**の文脈でのみ`os.getcwd()`を意味し、他の任意の変数の
+`.CurrentDirectory`という同名メンバ(例えば架空の`FileInfo`型の変数)
+まで同じに変換してしまうと誤変換になる。このため末尾セグメントだけを
+見る既存の`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`とは
+別に、**完全修飾名(小文字化済み)で厳密に一致**させる新しい辞書
+`_STATIC_PROPERTY_TRANSLATIONS`を導入した——`_render_node`の`Ident`
+分岐で、末尾セグメント判定より先にこちらを調べる。回帰テストで、
+無関係な変数の同名メンバ(`someFileInfo.CurrentDirectory`)が誤変換
+されず従来通り無変換のまま通過することも確認した(でっち上げ回避の
+直接的な検証)。
+
+`dump_daemon/uipath_codegen/render.py`に`_STATIC_PROPERTY_TRANSLATIONS`
+(新設)+`Ident`分岐への組み込み。`dump_daemon/uipath_codegen/
+__init__.py`の`_collect_imports`の`os`検出条件に`os.getcwd(`を追加。
+`tests/test_uipath_codegen.py`に2件追加、UiPath関連テスト全536件通過、
+リポジトリ全体で全1464件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

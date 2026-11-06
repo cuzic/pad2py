@@ -435,6 +435,30 @@ def test_bare_variable_dotted_property_then_call_chain_renders():
     _compiles(code)
 
 
+def test_environment_currentdirectory_renders_as_os_getcwd():
+    """知見140: `Environment.CurrentDirectory`(`E5Prasanth/Acme`の実機
+    XAMLで発見、呼び出しを伴わない静的クラスプロパティの完全一致)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Environment.CurrentDirectory"))])
+    code = generate_python(wf)
+    assert "x = os.getcwd()" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_unrelated_variable_currentdirectory_member_is_left_unchanged():
+    """知見140: `_STATIC_PROPERTY_TRANSLATIONS`は完全修飾名一致のみ——
+    任意の変数の`.CurrentDirectory`メンバを誤って`os.getcwd()`へ変換
+    しない(でっち上げ回避、`someFileInfo.CurrentDirectory`のような
+    架空のケースで誤変換が起きないことを確認)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="someFileInfo.CurrentDirectory"))]
+    )
+    code = generate_python(wf)
+    assert "x = someFileInfo.CurrentDirectory" in code
+    _compiles(code)
+
+
 def test_bare_variable_dotted_toupperinvariant_renders_as_upper():
     """知見139: `method.ToUpperInvariant`(`R1zzabh/signalforge`の実機
     XAMLで発見、括弧省略形)。Pythonの`str.upper()`はロケールを参照

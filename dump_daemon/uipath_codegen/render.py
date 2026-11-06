@@ -477,6 +477,17 @@ def _render_node(node: ExprNode) -> str:
         # Now`等の静的クラス参照を含む)は末尾が対象メンバ名に一致しない
         # ため従来通り(無変換でそのまま)の挙動を変えない、安全な追加。
         if "." in node.name:
+            # 知見140: `Environment.CurrentDirectory`(`E5Prasanth/Acme`
+            # の実機XAMLで発見)のような、呼び出しを伴わない**静的クラス
+            # プロパティ**の全体一致は、末尾セグメントだけを見る下記の
+            # 「安全なメンバ名」判定では扱えない(`CurrentDirectory`
+            # という名前自体は汎用的な安全リストに含めるべきではない
+            # ——他の任意の変数の`.CurrentDirectory`メンバだと誤認しうる
+            # ため)。確認済みの完全修飾名のみを個別に対応する
+            # `_STATIC_PROPERTY_TRANSLATIONS`を先に調べる。
+            static_prop = _STATIC_PROPERTY_TRANSLATIONS.get(node.name.lower())
+            if static_prop is not None:
+                return static_prop
             prefix, _, last = node.name.rpartition(".")
             # 知見130: `Copy`(`DataTable.Copy`、括弧省略形)、知見133:
             # `Length`(配列/文字列、括弧省略形)も同じ安全なメンバ名の
@@ -590,6 +601,15 @@ _CHAINED_PROPERTY_TRANSLATIONS = {
 # 委ねて良いと確認済みのメンバ名(`_CHAINED_PROPERTY_TRANSLATIONS`の
 # キー群とは別の、1:1の名前変換では済まない特別処理を持つもの)。
 _SAFE_BARE_MEMBERS = ("ToString", "Copy", "Length")
+
+# 知見140: 呼び出しを伴わない静的クラスプロパティの完全修飾名(小文字化
+# 済み)→Python式。`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`
+# と違い末尾セグメントだけでなく完全な名前で一致させる——`CurrentDirectory`
+# のような名前は特定の静的クラス(`Environment`)の文脈でのみ安全な意味を
+# 持ち、任意の変数の同名メンバだと誤認するリスクがあるため。
+_STATIC_PROPERTY_TRANSLATIONS = {
+    "environment.currentdirectory": "os.getcwd()",
+}
 
 
 def _render_chained_access(node: ChainedAccess) -> str:
