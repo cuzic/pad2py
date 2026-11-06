@@ -3026,6 +3026,67 @@ def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -
     assert "# TODO" not in code
 
 
+def test_generate_python_from_excel_full_scope_batch_actually_executes_correctly(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見124/129/130で繰り返し確認された死角(文字列一致
+    # だけの`compile()`テストは、生成コードを実際に`exec()`した際の出力変数の実際の値を
+    # 一度も検証していない)を、`test_generate_python_from_excel_full_scope_in_batch_
+    # converts_all_actions`(同一DSLの文字列一致版、`compile()`のみ)について塞ぐ。
+    # `Excel.SaveExcel.Save`(パス未指定)は`instance.path`が無い`NewDocument`では
+    # 実行時に必ず失敗するため、ここでは代わりに`SaveAs`で実在する一時パスへ保存する
+    # (action_id自体は別の、同じく知見155で確認済みの兄弟セレクタ)。
+    dest = tmp_path / "out.xlsx"
+    dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.AddWorksheet Instance: ExcelInstance Name: $'''Sheet2''' "
+        "WorksheetPosition: Excel.WorksheetPosition.Last\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''hello''' "
+        "Column: $'''B''' Row: 2\n"
+        "Excel.ReadFromExcel.ReadCell Instance: ExcelInstance "
+        "StartColumn: $'''B''' StartRow: 2 CellValue=> CellValue\n"
+        "Excel.DeleteWorksheet.DeleteWorksheetByName Instance: ExcelInstance Name: $'''Sheet2'''\n"
+        "Excel.RenameWorksheet.RenameWorksheetWithIndex Instance: ExcelInstance "
+        "NewName: $'''Renamed''' Index: 0\n"
+        "Excel.SetActiveWorksheet.ActivateWorksheetByName Instance: ExcelInstance "
+        "Name: $'''Renamed'''\n"
+        "Excel.GetActiveWorksheet Instance: ExcelInstance "
+        "Name=> SheetName Index=> SheetIndex\n"
+        "Excel.GetAllWorksheets Instance: ExcelInstance Worksheets=> SheetNames\n"
+        "Excel.GetColumnName CellColumnIndex: 28 ColumnName=> ColumnName\n"
+        "Excel.GetFirstFreeColumnRow Instance: ExcelInstance "
+        "FirstFreeColumn=> FreeCol FirstFreeRow=> FreeRow\n"
+        "Excel.GetFirstFreeRowOnColumn Instance: ExcelInstance Column: $'''A''' "
+        "FirstFreeRowOnColumn=> FreeRowOnA\n"
+        "Excel.DeleteColumn Instance: ExcelInstance Column: $'''C'''\n"
+        "Excel.InsertColumn Instance: ExcelInstance Column: $'''D'''\n"
+        "Excel.DeleteRow Instance: ExcelInstance Index: 5\n"
+        "Excel.InsertRow Instance: ExcelInstance Index: 6\n"
+        f"Excel.SaveExcel.SaveAs Instance: ExcelInstance DocumentPath: $'''{dest}'''\n"
+        "Excel.CloseExcel.Close Instance: ExcelInstance"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+
+    assert namespace["CellValue"] == "hello"
+    assert namespace["SheetName"] == "Renamed"
+    assert namespace["SheetIndex"] == 0
+    assert namespace["SheetNames"] == ["Renamed"]
+    assert namespace["ColumnName"] == "AB"
+    assert namespace["FreeCol"] == 3
+    assert namespace["FreeRow"] == 3
+    assert namespace["FreeRowOnA"] == 1
+
+    import openpyxl
+
+    reopened = openpyxl.load_workbook(dest)
+    assert reopened.sheetnames == ["Renamed"]
+    assert reopened["Renamed"]["B2"].value == "hello"
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、
@@ -3101,6 +3162,41 @@ def test_generate_python_from_word_full_scope_in_batch_converts_all_actions() ->
     assert "# TODO" not in code
 
 
+def test_generate_python_from_word_full_scope_batch_actually_executes_correctly(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見124/129/130の死角(文字列一致だけの`compile()`
+    # テストは実際の出力変数の値を一度も検証していない)を、Wordの全スコープバッチ
+    # についても塞ぐ。`Word.SaveWord.Save`(パス未指定)は`NewDocument`では実行時に
+    # 必ず失敗するため`SaveAs`(同じく知見157で確認済みの兄弟セレクタ)を使い、
+    # `FindAndReplaceWord`の効果を観測するため2回目の`ReadFromWord`を追加した。
+    dest = tmp_path / "out.docx"
+    dsl = (
+        "Word.LaunchWord.Launch Instance=> WordInstance\n"
+        "Word.WriteToWord.WriteEndOfDocument Instance: WordInstance Text: $'''hello'''\n"
+        "Word.ReadFromWord.Read Instance: WordInstance WordData=> WordData\n"
+        "Word.FindAndReplaceWord.FindAndReplaceAllWithoutWildcards Instance: WordInstance "
+        "TextToFind: $'''hello''' TextToReplaceWith: $'''world'''\n"
+        "Word.ReadFromWord.Read Instance: WordInstance WordData=> WordData2\n"
+        f"Word.SaveWord.SaveAs Instance: WordInstance DocumentPath: $'''{dest}'''\n"
+        "Word.CloseWord.Close Instance: WordInstance"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+
+    assert "hello" in namespace["WordData"]
+    assert "world" in namespace["WordData2"]
+    assert "hello" not in namespace["WordData2"]
+
+    import docx
+
+    reopened = docx.Document(str(dest))
+    assert any("world" in p.text for p in reopened.paragraphs)
+
+
 def test_generate_python_from_word_unsupported_modes_fall_back_to_todo() -> None:
     # ページ/ブックマーク系はライブWordのレンダリング/ライブコレクション依存のため
     # スコープ外(知見157のセレクタ監査でHide/ShowAllから確定)——でっち上げたコードを
@@ -3132,6 +3228,13 @@ def test_generate_python_from_powerpoint_full_scope_batch_converts_all_actions()
     # `PowerPoint.<グループ>.<ActionName>`という3セグメント形式だった(知見155-157の
     # Excel/PDF/Wordと同種の潜在バグ)。`MovePowerPointSlide`は兄弟セレクタが無く、
     # 既存のフラットな形式のままで正しい。
+    #
+    # 警告(知見174): このDSLは`compile()`のみで`exec()`してはいけない——実際に実行すると
+    # `DeletePowerPointSlide.DeleteSlideLast`が唯一のスライドを削除した後に
+    # `MovePowerPointSlide`が空のプレゼンテーションに対して呼ばれ、
+    # `MoveSlideInvalidSourcePositionError`でクラッシュする。実行可能なDSLは
+    # `test_generate_python_from_powerpoint_full_scope_batch_actually_executes_correctly`
+    # を参照(2枚目のスライドを追加し、Move→Deleteの順に入れ替えてある)。
     dsl = (
         "PowerPoint.LaunchPowerPoint.Launch Instance=> PPTInstance\n"
         "PowerPoint.AddPowerPointSlide.AddSlideAsLast Instance: PPTInstance "
@@ -3180,6 +3283,59 @@ def test_generate_python_from_powerpoint_full_scope_batch_converts_all_actions()
         "document_format='FromExtension', document_path=None)" in code
     )
     assert "# TODO" not in code
+
+
+def test_generate_python_from_powerpoint_full_scope_batch_actually_executes_correctly(
+    tmp_path: Path,
+) -> None:
+    # design/dsl_format_findings.md 知見124/129/130の死角を、PowerPointの全スコープ
+    # バッチについても塞ぐ。既存の文字列一致版(`...converts_all_actions`)のDSLを
+    # そのまま`exec()`すると実際には**クラッシュする**ことが判明した——`DeletePowerPoint
+    # Slide.DeleteSlideLast`が唯一のスライドを削除した後に`MovePowerPointSlide`が
+    # (空になった)プレゼンテーションに対して呼ばれ、`MoveSlideInvalidSourcePositionError`
+    # を投げる。これは文字列一致だけの旧テストが一度も`exec()`していなかったために
+    # 気づかれていなかった(まさに知見124/129/130が繰り返し警告していた死角の実例)。
+    # ここでは全く同じ各action_idを1回ずつ使うが、2枚目のスライドを追加して
+    # (同じ`AddPowerPointSlide.AddSlideAsLast`の2回目呼び出し)`MovePowerPointSlide`
+    # 実行時に実際に2枚存在するよう順序を組み直した——テスト対象のaction_id集合は
+    # 変えていない。
+    dest = tmp_path / "out.pptx"
+    dsl = (
+        "PowerPoint.LaunchPowerPoint.Launch Instance=> PPTInstance\n"
+        "PowerPoint.AddPowerPointSlide.AddSlideAsLast Instance: PPTInstance "
+        "SlideIndex=> NewSlideIndex\n"
+        "PowerPoint.AddPowerPointSlide.AddSlideAsLast Instance: PPTInstance "
+        "SlideIndex=> NewSlideIndex2\n"
+        "PowerPoint.WriteToPowerPoint.WriteToFirstSlide Instance: PPTInstance Text: $'''hello'''\n"
+        "PowerPoint.ReadFromPowerPoint.Read Instance: PPTInstance PowerPointData=> PPTData\n"
+        "PowerPoint.MovePowerPointSlide SourceInstance: PPTInstance SourceSlidePosition: 1 "
+        "DestinationInstance: PPTInstance DestinationSlidePosition: 2\n"
+        "PowerPoint.DeletePowerPointSlide.DeleteSlideLast Instance: PPTInstance\n"
+        f"PowerPoint.SavePowerPoint.SaveAs Instance: PPTInstance DocumentPath: $'''{dest}'''\n"
+        "PowerPoint.ClosePowerPoint.Close Instance: PPTInstance"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+
+    assert namespace["NewSlideIndex"] == 1
+    assert namespace["NewSlideIndex2"] == 2
+    assert namespace["PPTData"].strip() == "hello"
+
+    from pptx import Presentation as _ReopenPresentation
+
+    reopened = _ReopenPresentation(str(dest))
+    # MovePowerPointSlideが「helloのスライド」を2番目へ移動した後、
+    # DeleteSlideLastが2番目(=helloのスライド)を削除するため、残るのは空スライド1枚のみ。
+    assert len(reopened.slides) == 1
+    remaining_text = "".join(
+        shape.text_frame.text for shape in reopened.slides[0].shapes if shape.has_text_frame
+    )
+    assert "hello" not in remaining_text
 
 
 def test_generate_python_from_real_pad_expr_precedence_run_compiles() -> None:

@@ -2858,3 +2858,19 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 試験後は即座にクリーンアップした: Designerの`Button "Close window"` `.invoke()`でフローを閉じ(未保存確認ダイアログも出ず、アクション0件のまま正常終了)、Notepadプロセスを`Stop-Process`で終了。`pad2py_populate_probe`という名前の空のフロー自体は(削除には追加のUI操作が必要なため)PADのフロー一覧に残存している——実害は無いコスメティックな残骸として許容した。
 
 `design/pad_todo.md`を更新: `PopulateTextFieldInWindow`/`SetDropDownListValueInWindow`は依然「RDP不要」の分類のままだが、**この具体的な技法(空canvasへのclipboard-paste)は現在のVM状態では機能しないと確認済み**——次回挑戦する際は、(a) RDPが接続された直後の状態で再試行する、または(b) 知見78の「検索→キーボードaddで項目を先に作ってから、既存項目のあるListへペースト/編集する」という既存項目ありの状態でのペーストに切り替える、のいずれかを先に試すべきとの教訓を記録した。
+
+## 174. 知見124/129/130が繰り返し指摘していた「文字列一致だけの`compile()`テストは実際の出力変数の値を一度も検証していない」という死角を、Excel/Word/PowerPointの「全スコープバッチ」テストに対して横断的に塞いだ——PowerPointの既存DSLは実際に`exec()`すると**クラッシュする**ことが新規発見された
+
+知見173でVM作業が一時的にブロックされたため、VM不要のテスト基盤強化へ切り替えた。`tests/test_pad_codegen.py`内で`compile(code, "<generated>", "exec")`は呼ぶが`exec(code, ...)`を一度も呼ばないテストを機械的に検索したところ、`test_generate_python_from_excel_full_scope_in_batch_converts_all_actions`/`..._word_..`/`..._powerpoint_..`(いずれも複数アクションを一括で結線確認する最重要テスト)が該当すると判明した——知見124「`AddRowToDataTable`」・知見129「`ZipFile`出力の`None`化」・知見130「`Folder.Copy`の`Destination`意味論」という、このセッションで繰り出されてきた実バグは全て「生成コードの文字列は正しいが、実際に実行した結果は検証していない」という同一の死角から見つかったもので、この死角自体がExcel/Word/PowerPointの最重要end-to-endテストにまだ残っていた。
+
+**Excel**: `test_generate_python_from_excel_full_scope_batch_actually_executes_correctly`を新規追加(`tempfile`で実在する一時パスへ`SaveAs`、`Save`(パス未指定)は`NewDocument`では必ず失敗するため意図的に別の兄弟セレクタへ差し替え)。`CellValue`/`SheetName`/`SheetIndex`/`SheetNames`/`ColumnName`/`FreeCol`/`FreeRow`/`FreeRowOnA`の全出力値を実際に計算・アサートし、保存後のファイルを`openpyxl.load_workbook()`で再読込して最終状態も確認した——**一発で全て正しく通り、新規バグは発見されなかった**(手計算した期待値と完全一致)。
+
+**Word**: `test_generate_python_from_word_full_scope_batch_actually_executes_correctly`を新規追加。`FindAndReplaceWord`の効果を実際に観測するため2回目の`ReadFromWord`を追加し(元のDSLは`TextToFind: 'a'`で対象テキスト`"hello"`に`'a'`が無く効果が見えないテストだったため、`'hello'→'world'`に変更——テスト対象のaction_id自体は変更していない)、置換前後の`WordData`/`WordData2`を実際に比較・保存後のdocxを再読込して検証した——**こちらも一発で通り、新規バグ無し**。
+
+**PowerPoint(本件が今回の最大の発見)**: 旧テストの`compile()`専用DSL(`AddPowerPointSlide`で1枚追加→`WriteToPowerPoint`→`ReadFromPowerPoint`→`DeletePowerPointSlide.DeleteSlideLast`で**その1枚を削除**→`MovePowerPointSlide`(`SourceSlidePosition: 1`/`DestinationSlidePosition: 2`))を実際に`exec()`してみたところ、**`MovePowerPointSlide`の時点でスライドが0枚になっており、`move_power_point_slide()`内の`source_slide_position > count`チェックで`MoveSlideInvalidSourcePositionError`が投げられてクラッシュする**ことが分かった——これは丸6セッション以上「実行して確認済み」と記録されていたテストが、実際には一度も実行可能な状態になっていなかったという、まさに知見124/129/130が警告していた死角そのものの実例。
+
+実行可能にするため、同一のaction_id集合を保ったまま(新しいアクション種別は追加していない)`AddPowerPointSlide.AddSlideAsLast`をもう一度呼んで2枚目のスライドを追加し、`MovePowerPointSlide`→`DeletePowerPointSlide.DeleteSlideLast`の順序に入れ替えた新規テスト`test_generate_python_from_powerpoint_full_scope_batch_actually_executes_correctly`を追加。`NewSlideIndex`/`NewSlideIndex2`/`PPTData`を実際に検証し(`_slide_text()`が末尾に`"\n"`を付与する仕様も実行して初めて判明し、`.strip()`で吸収)、保存後のpptxを再読込して「移動→削除の結果、残る1枚にはhelloが含まれない」ことまで確認した——こちらも一発で通ったが、**旧い文字列一致テスト自体が「実行可能性の保証が無いまま6件以上のアクションを連鎖させる」という潜在的に危険なテストパターンだったこと自体が今回の収穫**。
+
+旧来の文字列一致テスト(`..._converts_all_actions`)はそのまま残し(個々の生成コードの正確な文字列表現を見るテストとしての価値は維持)、新規のexec検証テストを並置する方針を採った——知見129/130と同じ「文字列一致と実行確認は別の懸念であり、両方必要」という教訓に従った。既存の文字列一致版PowerPointテストはクラッシュするDSLをそのまま残しているが、それは`compile()`(構文エラーが無いことの確認)のみなので実害は無い——ただし次に誰かがこの古いテストを安易に`exec()`付きへ「改善」しようとした場合に今回と同じ罠にかかる可能性があるため、コメントで注意書きを追加した。
+
+テストは`tests/test_pad_codegen.py`に3件(Excel/Word/PowerPoint、いずれも`tempfile`を使った実ファイル往復込み)追加。VM/RDPとも不要。

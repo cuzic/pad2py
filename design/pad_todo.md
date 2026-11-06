@@ -462,6 +462,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       (フラットな2セグメント形式)は当初から正しかった(修正不要)。
       `Word.InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装
         のため対象外のまま。
+    - [x] 💻 **テスト基盤の死角を解消(知見174)**: Excel/Word/PowerPointの「全スコープ
+      バッチ」テストが文字列一致の`compile()`のみで一度も`exec()`していなかったと判明
+      (知見124/129/130と同じ死角)。各モジュールに実際に`exec()`して出力変数の値・
+      保存ファイルの最終状態まで検証する新規テストを追加したところ、**PowerPointの
+      既存DSLは実際に実行すると`MoveSlideInvalidSourcePositionError`でクラッシュする**
+      (唯一のスライドを削除した後に空のプレゼンテーションへ`MovePowerPointSlide`を
+      呼んでいた)という、6セッション以上気づかれていなかった実行不可能なテストDSLを
+      新規発見した。Excel/Wordは実行確認で新規バグ無しと確定。
 - [x] 💻 `GenerateDataTableFromCSVAction`/`ConvertDataTableToCSVAction`の`ColumnsSeparator`が
   `SystemDefault`以外(Comma/Semicolon/Tab)で常にTODOへ倒れていたゲート漏れ、および
   両方の`CustomColumnsSeparator`兄弟セレクタ(`ReadCustomSeparator`/`DataTableToCSVCustomSeparator`)。
