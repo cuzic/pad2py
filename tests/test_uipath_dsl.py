@@ -37,6 +37,7 @@ from dump_daemon.uipath_dsl import (
     GetTextNode,
     HttpClientNode,
     IfNode,
+    InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
@@ -597,6 +598,29 @@ def test_log_message_level_as_unconfirmed_enum_reference_kept_raw():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, LogMessageNode)
     assert node.level == "Warn"
+
+
+def test_input_dialog_properties():
+    """知見131: `ui:InputDialog`(`UiPath.Core.Activities`、
+    `cameronmcnz/uipath-tutorials`の`NumberGuesser`の実機XAMLの属性構成を
+    そのまま合成XMLで再現する)。"""
+    xml = (
+        f"<ui:InputDialog {_UI_XMLNS} "
+        'Options="{x:Null}" DisplayName="Input Dialog" IsPassword="False" '
+        'Label="Pick a number between 1 and 10" Title="What will you choose?">'
+        "<ui:InputDialog.Result>"
+        '<OutArgument x:TypeArguments="x:Int32">[guess]</OutArgument>'
+        "</ui:InputDialog.Result>"
+        "</ui:InputDialog>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InputDialogNode)
+    assert node.title == Literal(value="What will you choose?")
+    assert node.label == Literal(value="Pick a number between 1 and 10")
+    assert node.is_password == "False"
+    assert node.options is None
+    assert node.result == VbExpr(text="guess")
+    assert node.display_name == "Input Dialog"
 
 
 def test_get_outlook_mail_messages_properties():

@@ -125,6 +125,37 @@ class MessageBoxNode:
 
 
 @dataclass
+class InputDialogNode:
+    """`<ui:InputDialog Title="..." Label="..." IsPassword="..."
+    Options="{x:Null}" />`+`<ui:InputDialog.Result><OutArgument>...
+    </OutArgument></ui:InputDialog.Result>`(知見131、`UiPath.Core.
+    Activities`、`cameronmcnz/uipath-tutorials`の`NumberGuesser`・
+    `MIETDevelopers/112-KavyaDhar-RPA`の`UserInp`の実機XAMLで発見)。
+
+    `MessageBox`(上記)の「でっち上げた`input()`等のユーザー入力再現は
+    行わない」という方針とは**異なる**判断になる——`MessageBox`は通知/
+    選択ダイアログであり`input()`への変換自体が意味論の飛躍だが、
+    `InputDialog`はそもそも「ユーザーにテキスト入力を求め、その結果を
+    `Result`へ返す」活動そのもので、Pythonの`input()`組み込み関数が
+    まさに同じ意味論(テキストを促し、文字列を返す)を持つ——これは
+    代替・妥協ではなく直接対応する変換。
+
+    実機確認済みの範囲: `IsPassword="False"`(2件とも確認)・`Options`
+    未設定(2件とも`{x:Null}`)の組み合わせのみ安全な変換対象とする。
+    `IsPassword="True"`(パスワード入力、`getpass.getpass()`が対応先と
+    推測されるが実機未確認)・`Options`設定済み(選択肢付きダイアログに
+    変わると推測されるが実機未確認)は、推測せず`# TODO`へ倒す。
+    """
+
+    title: Expr = None
+    label: Expr = None
+    is_password: str | None = None
+    options: Expr = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class IfNode:
     """`<If Condition="...">...</If>`(知見5)。`If.Then`/`If.Else`はそれぞれ
     0〜1個の子アクティビティを持ちうる(複数ステップなら`Sequence`でラップ
@@ -989,6 +1020,7 @@ Node = (
     | AssignNode
     | MultipleAssignNode
     | MessageBoxNode
+    | InputDialogNode
     | IfNode
     | ForEachNode
     | TryCatchNode

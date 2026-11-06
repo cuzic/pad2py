@@ -73,6 +73,7 @@ from ..uipath_dsl.types import (
     GetTextNode,
     HttpClientNode,
     IfNode,
+    InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
@@ -368,6 +369,8 @@ def _generate_node(
         return _generate_multiple_assign(node, indent)
     if isinstance(node, MessageBoxNode):
         return _generate_message_box(node, indent)
+    if isinstance(node, InputDialogNode):
+        return _generate_input_dialog(node, indent)
     if isinstance(node, IfNode):
         return _generate_if(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachNode):
@@ -513,6 +516,50 @@ def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
     return [
         *todo,
         f"{prefix}print({VB_CSTR_HELPER_NAME}({caption}) + ': ' + {VB_CSTR_HELPER_NAME}({text}))",
+    ]
+
+
+_INPUT_DIALOG_SAFE_IS_PASSWORD = (None, "False")
+
+
+def _generate_input_dialog(node: InputDialogNode, indent: int) -> list[str]:
+    """知見131: `ui:InputDialog`はPythonの`input()`組み込み関数が直接
+    対応する(`MessageBox`の「でっち上げない」方針とは違い、`input()`へ
+    の変換自体が意味論上の直接対応——`InputDialogNode`のdocstring参照)。
+
+    実機確認済みの`IsPassword="False"`・`Options`未設定の組み合わせのみ
+    対応し、それ以外(パスワード入力・選択肢付きダイアログへ変わると
+    推測されるが実機未確認)は推測せず`# TODO`へ倒す。
+    """
+    prefix = INDENT * indent
+    if node.is_password not in _INPUT_DIALOG_SAFE_IS_PASSWORD:
+        return [
+            f"{prefix}# TODO: Input Dialog with IsPassword={node.is_password!r} — only "
+            "the non-password (False) case is confirmed, refusing to guess"
+        ]
+    if node.options is not None:
+        return [
+            f"{prefix}# TODO: Input Dialog with Options captured "
+            f"({_describe_expr_for_comment(node.options)}) — only the plain-text "
+            "(no Options) case is confirmed, refusing to guess"
+        ]
+    if node.label is None:
+        return [f"{prefix}# TODO: Input Dialog with no Label captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: Input Dialog with no output Result captured"]
+    todo: list[str] = []
+    label = _render_value_or_todo(node.label, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if node.title is None:
+        if todo:
+            return todo
+        return [f"{prefix}{target} = input({VB_CSTR_HELPER_NAME}({label}))"]
+    title = _render_value_or_todo(node.title, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{target} = input({VB_CSTR_HELPER_NAME}({title}) + ': ' "
+        f"+ {VB_CSTR_HELPER_NAME}({label}))"
     ]
 
 

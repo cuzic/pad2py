@@ -1593,3 +1593,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     判断し、重要な設計課題として記録(今回は実装見送り)。回帰テスト
     追加(`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全511件
     通過、リポジトリ全体で全1411件通過。
+
+89. **(完了、2026-11-06)** `ui:InputDialog`を新規実装(知見131——知見122
+    で発見・保留していた最後の1件): GitHub上で実機確認した2件
+    (`cameronmcnz/uipath-tutorials`の`NumberGuesser`・`MIETDevelopers/
+    112-KavyaDhar-RPA`の`UserInp`)の属性構成が完全に一致
+    (`Title`/`Label`リテラル文字列・`IsPassword="False"`・`Options`
+    未設定・`.Result`プロパティ要素)。`MessageBox`の「でっち上げた
+    `input()`等のユーザー入力再現は行わない」という既存方針とは矛盾
+    しない——`InputDialog`は「テキスト入力を求め結果を返す」活動その
+    ものでPythonの`input()`が意味論上**直接対応**するため、方針が
+    適用される前提(対話を模倣する推測)がそもそも当てはまらないケース
+    と判断した。`Title`/`Label`は`MessageBox`の`Caption`/`Text`と同じ
+    結合パターンを流用。`IsPassword="True"`・`Options`設定済みは実機
+    未確認のため`# TODO`へ倒す。回帰テスト追加(`tests/
+    test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
+    UiPath関連テスト全517件通過(リポジトリ全体は並行作業中の別セッ
+    ションのPAD系未完了変更による無関係な失敗4件を除き健全)。

@@ -6332,6 +6332,46 @@ DataTableスキーマ解決)・知見126の`row(...)`(変数スコープのDataR
 検出を追加。`tests/test_uipath_codegen.py`に4件追加、UiPath関連テスト
 全511件通過、リポジトリ全体で全1411件通過。
 
+## 131. `ui:InputDialog`を新規実装(知見122で発見・保留していた最後の1件、`MessageBox`とは異なる「直接対応」の判断、VM不使用)
+
+知見122・124・125で見送った3件のうち、唯一残っていた`InputDialog`
+(「対話的な入力の非対話変換という設計判断が必要」としていた項目)を
+今回解決した。GitHub検索(`ui:InputDialog extension:xaml`、総計5176件)
+で実機確認した2件(`cameronmcnz/uipath-tutorials`の`NumberGuesser`・
+`MIETDevelopers/112-KavyaDhar-RPA`の`UserInp`)は属性構成が完全に一致:
+`Title`/`Label`(両方リテラル文字列)・`IsPassword="False"`・
+`Options="{x:Null}"`(2件とも未設定)・`.Result`プロパティ要素
+(`OutArgument`、知見115の`_in_argument_property_expr`をそのまま再利用)。
+
+**`MessageBox`(知見2・5・79・107)とは異なる設計判断**: `MessageBoxNode`
+のdocstringには「でっち上げた`input()`等のユーザー入力再現は行わない」
+と明記されている——`MessageBox`は通知/選択ダイアログであり、`input()`
+への変換は意味論上の飛躍(ユーザーの選択という行為を、存在しない対話的
+入力で置き換える推測)になるため。しかし`InputDialog`はそもそも
+「ユーザーにテキスト入力を求め、その結果を`Result`へ返す」活動
+そのもので、Pythonの`input()`組み込み関数が**まさに同じ意味論**
+(テキストを促し、文字列を返す)を持つ——これは代替・妥協ではなく
+直接対応する変換であり、`MessageBox`の既存方針と矛盾しない(方針が
+適用される前提——「対話を模倣する推測」——がそもそも当てはまらない
+ケース)。`Title`/`Label`は`MessageBox`の`Caption`/`Text`と同じ
+「`Title`が無い場合は`Label`のみ、ある場合は`"Title: Label"`形で結合」
+という既に確立したパターンをそのまま流用した。
+
+**実機確認済みの範囲のみ対応**: `IsPassword="True"`(パスワード入力、
+`getpass.getpass()`が対応先と推測されるが実機未確認)・`Options`設定済み
+(選択肢付きダイアログに変わると推測されるが実機未確認)は、2件とも
+確認できなかったため推測せず`# TODO`へ倒す——`MessageBox`の`Buttons`/
+`ChosenButton`の扱いと同じ「ワークフローが対話の結果を実際に使っている
+可能性がある場合は安全側に倒す」方針を踏襲した。
+
+`dump_daemon/uipath_dsl/types.py`に`InputDialogNode`、`xaml_tree.py`に
+`_parse_input_dialog`、`uipath_codegen/__init__.py`に`_generate_input_
+dialog`を追加。`tests/test_uipath_dsl.py`に1件・`tests/
+test_uipath_codegen.py`に5件追加、UiPath関連テスト全517件通過
+(リポジトリ全体は、並行作業中の別セッションのPAD系未完了変更により
+`test_pad_codegen.py`の4件が別途失敗中——本変更とは無関係、UiPath関連
+テストのみで検証)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

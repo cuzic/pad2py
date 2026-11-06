@@ -48,6 +48,7 @@ from .types import (
     GetTextNode,
     HttpClientNode,
     IfNode,
+    InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
@@ -291,6 +292,17 @@ def _parse_message_box(elem: etree._Element) -> MessageBoxNode:
         caption=_attr_expr(elem, "Caption"),
         buttons=_attr(elem, "Buttons"),
         chosen_button=_attr_expr(elem, "ChosenButton"),
+    )
+
+
+def _parse_input_dialog(elem: etree._Element) -> InputDialogNode:
+    return InputDialogNode(
+        title=_attr_expr(elem, "Title"),
+        label=_attr_expr(elem, "Label"),
+        is_password=_attr(elem, "IsPassword"),
+        options=_attr_expr(elem, "Options"),
+        result=_in_argument_property_expr(elem, "Result"),
+        display_name=_attr(elem, "DisplayName"),
     )
 
 
@@ -1195,6 +1207,7 @@ _DISPATCH = {
     (WF_NS, "Switch"): _parse_switch,
     (WF_NS, "Parallel"): _parse_parallel,
     (UI_NS, "MessageBox"): _parse_message_box,
+    (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
     (UI_NS, "ForEach"): _parse_for_each,
     (UI_NS, "ForEachRow"): _parse_for_each_row,

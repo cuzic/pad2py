@@ -62,6 +62,7 @@ from dump_daemon.uipath_dsl import (
     GetTextNode,
     HttpClientNode,
     IfNode,
+    InputDialogNode,
     InvokeCodeNode,
     InvokeWorkflowFileNode,
     Literal,
@@ -597,6 +598,71 @@ def test_message_box_with_buttons_or_chosen_button_is_todo_not_guessed(kwargs):
     code = generate_python(wf)
     assert "# TODO: MessageBox with Buttons=" in code
     assert "print('hi')" not in code
+    _compiles(code)
+
+
+def test_input_dialog_maps_to_input():
+    """知見131: `InputDialog`はPythonの`input()`が直接対応する
+    (`MessageBox`の`print()`代替とは違い、意味論の直接対応)。"""
+    wf = _wrap(
+        [
+            InputDialogNode(
+                title=Literal(value="What will you choose?"),
+                label=Literal(value="Pick a number between 1 and 10"),
+                is_password="False",
+                result=VbExpr(text="guess"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "guess = input(" in code
+    assert "What will you choose?" in code
+    assert "Pick a number between 1 and 10" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_input_dialog_with_no_title_omits_it():
+    wf = _wrap(
+        [
+            InputDialogNode(
+                label=Literal(value="Enter name"),
+                is_password="False",
+                result=VbExpr(text="name"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "name = input(_vb_cstr('Enter name'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # 知見131: `IsPassword="True"`(パスワード入力、`getpass.getpass()`
+        # が対応先と推測されるが実機未確認)は推測せず`# TODO`へ倒す。
+        {"is_password": "True"},
+        # `Options`設定済み(選択肢付きダイアログへ変わると推測されるが
+        # 実機未確認)も同様。
+        {"options": VbExpr(text="choices")},
+    ],
+)
+def test_input_dialog_with_unconfirmed_attrs_is_todo_not_guessed(kwargs):
+    base_kwargs = {"label": Literal(value="Enter password"), "is_password": "False", "result": VbExpr(text="x")}
+    base_kwargs.update(kwargs)
+    wf = _wrap([InputDialogNode(**base_kwargs)])
+    code = generate_python(wf)
+    assert "# TODO: Input Dialog with" in code
+    assert "input(" not in code
+    _compiles(code)
+
+
+def test_input_dialog_with_no_result_is_todo_not_guessed():
+    wf = _wrap([InputDialogNode(label=Literal(value="Enter name"), is_password="False")])
+    code = generate_python(wf)
+    assert "# TODO: Input Dialog with no output Result captured" in code
     _compiles(code)
 
 
