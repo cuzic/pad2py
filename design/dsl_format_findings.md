@@ -2825,3 +2825,16 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 `tests/fake_pywinauto.py`に`.drag_mouse_input(dst: FakeControl)`(`dst`のフルパスを記録するだけの最小フェイク)を追加。
 
 実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.DragAndDropElement`の分岐を追加。テストは`tests/test_pad_codegen.py`に検証済み組み合わせのexecテスト1件・未検証組み合わせのTODOフォールバックテスト1件を追加した。
+
+## 171. 知見165に記録した「おそらくライブCOM専用」の6候補をdecompileで確定確認——`Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`/`Excel.RunMacro`/`Excel.GetSelectedCellRange`/`PowerPoint.CopyPastePowerPointSlide`
+
+知見165/166/170で「ライブCOM専用、知見155のスコープ外パターンと同じ可能性が高い」として「未精査」のまま`design/pad_todo.md`に残していた6候補について、既存の決定を裏付けるだけでなく、実際にdecompileして確定させた——「可能性が高い」止まりだと将来のtickで同じ候補を何度も再調査しかねないため、実装こそ不要だが確認自体は済ませる方針で1件ずつ見た。
+
+- `Excel.Attach`(`AttachToRunningExcel`): `ExcelActions.AttachToRunningExcelDocument(...)`を呼ぶ——ライブExcel COMプロセスへの直接アタッチ。
+- `Excel.RunMacro`(`RunExcelMacro`): `ExcelActions.RunMacro(instance, macro)`を呼ぶ——ライブExcelインスタンス上でVBAマクロを実行する、`openpyxl`に対応物が存在しない機能。
+- `Excel.GetSelectedCellRange`(`GetSelectedCellRange`): `ExcelActions.GetSelectedCellRange(...)`を呼ぶ——ライブExcel UIの「現在の選択範囲」を読む。ファイルベースの`openpyxl`には対話的に操作中のUI状態という概念自体が無い。
+- `Word.Attach`(`AttachToRunningWord`): `Excel.Attach`と同型のライブWord COMプロセスへの直接アタッチ。
+- `PowerPoint.AttachToRunningPowerPoint`(`AttachToRunningPowerPoint`): 同様にライブPowerPoint COMプロセスへの直接アタッチ。
+- `PowerPoint.CopyPastePowerPointSlide`(`CopyPastePowerPointSlide`): `SourceInstance`/`DestinationInstance`という**2つの独立した`PowerPointInstanceHandle`**を受け取り、`_powerPointOperations.CopyPasteSlide(source, sourcePos, dest, destPos)`を呼ぶ——クロスプレゼンテーションのスライドコピーという、`dump_daemon/pad_action_lib/powerpoint_actions.py`のモジュールdocstライン自身が最初から明記していた既知のスコープ外機能と完全に一致する構造だと確認した。
+
+6件全て、該当する`pad_codegen/actions/*.py`に専用dispatchが元から存在せず(確認済み)、汎用の`# TODO: map PAD action: ...`フォールバックに安全に落ちる——コード変更は不要。`design/pad_todo.md`の該当項目を「未精査」から「decompileで確定確認済み(対応不要)」に更新し、今後のtickで同じ候補を再調査しないようにした。

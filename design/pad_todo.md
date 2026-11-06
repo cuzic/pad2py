@@ -166,11 +166,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       非PivotのTable名→レンジは読めるが、ワークシート横断探索の前例が無い点と
       `IsPivot=True`(`GetPivotTableRange`)に対応するAPIが`openpyxl`に無い点の
       両方が未解決——`IsPivot`分岐の片方だけ実装するのはでっち上げに近いため保留。
-    - `PowerPoint.CopyPastePowerPointSlide`: クロスプレゼンテーションのコピー、
-      `MovePowerPointSlide`と同種の複合動作(同じくNotImplementedError委譲か)。
-    - `Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`/
-      `Excel.RunMacro`/`Excel.GetSelectedCellRange`: ライブCOM専用、知見155の
-      スコープ外パターンと同じ可能性が高い。
+  - [x] 🔍 **decompileで確定確認済み(対応不要、知見171)**: `Excel.Attach`
+    (`AttachToRunningExcelDocument`)/`Word.Attach`(`AttachToRunningWord`)/
+    `PowerPoint.AttachToRunningPowerPoint`(同型)はいずれもライブCOMプロセスへの
+    直接アタッチ、`Excel.RunMacro`はライブExcel上のVBAマクロ実行、
+    `Excel.GetSelectedCellRange`はライブExcel UIの「現在の選択範囲」読み取り、
+    `PowerPoint.CopyPastePowerPointSlide`は2つの独立`PowerPointInstanceHandle`間の
+    クロスプレゼンテーションコピー——6件全てdecompileで確認済みのライブCOM専用機能。
+    専用dispatchは元から存在せず汎用TODOフォールバックに安全に落ちるため対応不要。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の
