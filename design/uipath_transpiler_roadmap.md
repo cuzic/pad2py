@@ -1266,3 +1266,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     `ContinueOnError`は`Click`/`TypeInto`と同じ理由で`# TODO`。回帰テスト
     追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
     8件)、UiPath関連テスト全354件通過、リポジトリ全体で全1174件通過。
+70. **(完了、2026-11-06)** `ui:SelectItem`の実コード生成に新規対応(VM
+    不使用、知見112——Tier A着手第3件、知見100の手法を9回目として再適用):
+    `ContinueOnError`/`DelayAfter`/`DelayBefore`/`Items`はいずれも
+    nullable、`Item`(選択する値)が本体という構造だと確定。`AlterIfDisabled`
+    は`Click`/`TypeInto`と違い公式ドキュメントで確認済みの既定(`True`
+    相当、本活動は入力方式が`SimulateClick`固定で変更不可、無効化要素も
+    既定で操作対象)——`"False"`のみ再現手段未確認で`# TODO`。選択自体は
+    「対象アプリ自身の技術を使う(SimulateClick)」という記述に`pywinauto`
+    の`.select()`(ネイティブAPI直接呼び出し)が合致すると判断し`# WARNING`
+    付きで採用。`DelayAfter`(新規、既定300ms確認済み)は活動後の
+    `time.sleep()`として生成。回帰テスト追加(`tests/test_uipath_dsl.py`
+    1件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全365件
+    通過、リポジトリ全体で全1214件通過。

@@ -64,6 +64,7 @@ from ..uipath_dsl.types import (
     Node,
     ParallelNode,
     ReadTextFileNode,
+    SelectItemNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -343,6 +344,8 @@ def _generate_node(
         return _generate_type_into(node, indent)
     if isinstance(node, GetTextNode):
         return _generate_get_text(node, indent)
+    if isinstance(node, SelectItemNode):
+        return _generate_select_item(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
@@ -1255,6 +1258,84 @@ def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
     if delay_before is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
     lines.append(f"{prefix}{target} = {rendered.expr}.window_text()")
+    return lines
+
+
+# 知見112: `ui:SelectItem`。`AlterIfDisabled`は`Click`/`TypeInto`とは違い
+# 公式ドキュメントで確認済みの既定値(`True`相当——本活動は入力方式が
+# `SimulateClick`固定で変更不可、無効化された要素も既定で操作対象になる
+# と明記されている)。確認済みの`"True"`/未設定のみ対応、`"False"`
+# (無効化要素を操作しない、という逆の挙動)は`pywinauto`の`.select()`に
+# それを再現する手段が未確認のため`# TODO`へ倒す。
+#
+# `Item`を実際に選択する手段は、公式ドキュメントが「対象アプリ自身の
+# 技術を使う(SimulateClick)」と明言している——これは`Click`の
+# `SimulateClick`(機構未確認のため見送り)とは違い、`pywinauto`の
+# `.select()`(Win32の`ComboBoxWrapper`は`CB_SELECTSTRING`等のネイティブ
+# メッセージ、UIAは`SelectionItemPattern.Select()`——いずれも「対象の
+# ネイティブAPIを直接呼ぶ」という点で「対象アプリ自身の技術を使う」という
+# 記述のカテゴリに合致する)という既存の標準アクセサで妥当にマッピング
+# できると判断した。1対1の機構確認までは主張せず`# WARNING`を付す。
+def _generate_select_item(node: SelectItemNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_select_item_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_select_item_body(node: SelectItemNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Select Item with no selector captured"]
+    if node.item is None:
+        return [f"{prefix}# TODO: Select Item with no Item captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Select Item with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if _literal_str(node.alter_if_disabled) not in (None, "True"):
+        return [
+            f"{prefix}# TODO: Select Item with AlterIfDisabled set "
+            f"({node.alter_if_disabled!r}) — UiPath docs only confirm the "
+            "True-like default (disabled elements altered by default), "
+            "refusing to guess how to reproduce False with pywinauto's "
+            "select()"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Select Item selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    delay_after = (
+        _render_value_or_todo(node.delay_after, prefix, todo)
+        if node.delay_after is not None
+        else None
+    )
+    item = _render_value_or_todo(node.item, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(
+        f"{prefix}# WARNING: exact UI Automation API behind 'Select Item' "
+        "not independently confirmed (docs only state it uses "
+        "SimulateClick, i.e. the target application's own technology) — "
+        "using pywinauto's generic select() accessor"
+    )
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    lines.append(f"{prefix}{rendered.expr}.select({VB_CSTR_HELPER_NAME}({item}))")
+    if delay_after is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_after}) / 1000.0)")
     return lines
 
 

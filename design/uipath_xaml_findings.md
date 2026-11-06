@@ -5308,6 +5308,47 @@ PAD調査時に既に発見していた罠(`dump_daemon/pad_ui_helpers.py`の
 `tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に8件
 追加、全1174件通過。
 
+## 112. `ui:SelectItem`を実機XAML(GitHub実例、`UiPath/skills`公式リポジトリ含む)+公式ドキュメントで確認し、実コード生成に対応——Tier A着手第3件(VM不使用、知見100の手法を9回目として再適用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+4件目(`Click`→`TypeInto`→`GetText`→`SelectItem`)。`gh api search/code`で
+`UiPath/skills`公式リポジトリ含む複数件の実機保存済みXAMLを確認し、
+`ContinueOnError`/`DelayAfter`/`DelayBefore`/`Items`はいずれも`{x:Null}`
+実例ありでnullable、`Item`(選択する値、リテラル・`VbExpr`の両方の実例
+あり)が本体という構造だと確定した。`Items`(ドロップダウン等の選択可能な
+項目一覧、`<ui:SelectItem.Items><scg:List>...`形)はStudioが記録時に
+キャプチャした設計時スナップショットで実行時には使われないため捕捉対象
+としない。
+
+**`AlterIfDisabled`が`Click`/`TypeInto`と違い確認済み**: 公式ドキュメント
+(`select-item`ページ)に「本活動は入力方式が`SimulateClick`固定で
+ユーザーが変更できず、無効化された要素も既定で操作対象になる」と明記
+されている——実機XAML(`UiPath/skills`)でも`AlterIfDisabled="True"`という
+明示的な実例を確認した。`Click`/`TypeInto`では同じ属性が「未文書化の
+ため常に見送り」だったのに対し、`SelectItem`ではこれが確認済みの既定
+という違いがある。逆の`"False"`(無効化要素を操作しない)は`pywinauto`の
+`.select()`でそれを再現する手段が未確認のため`# TODO`へ倒した。
+
+**`Item`選択の実装手段**: 公式ドキュメントが「`SimulateClick`=対象アプリ
+自身の技術を使う」と明言している——`Click`の`SimulateClick`(機構未確認
+のため見送り)とは違い、`pywinauto`の`.select()`(Win32の
+`ComboBoxWrapper`は`CB_SELECTSTRING`等のネイティブメッセージ、UIAは
+`SelectionItemPattern.Select()`——いずれも「対象のネイティブAPIを直接
+呼ぶ」という点で「対象アプリ自身の技術を使う」という記述のカテゴリに
+合致する)という既存の標準アクセサで妥当にマッピングできると判断した。
+1対1の機構確認までは主張せず`# WARNING`を付す。
+
+`DelayAfter`(活動終了後の待機時間、公式ドキュメントで既定300msと確認
+済み)は`Click`/`TypeInto`/`GetText`には無かった新規属性——確認済みの
+`DelayBefore`と同じ考え方で、活動本体(`.select()`呼び出し)の後に
+`time.sleep()`として生成する。
+
+`dump_daemon/uipath_dsl/types.py`に`SelectItemNode`、`xaml_tree.py`に
+`_parse_select_item`(`(UI_NS, "SelectItem")`へディスパッチ登録)、
+`uipath_codegen/__init__.py`に`_generate_select_item`を追加。
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に10件
+追加、全1214件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

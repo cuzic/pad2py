@@ -342,6 +342,38 @@ class GetTextNode:
 
 
 @dataclass
+class SelectItemNode:
+    """`<ui:SelectItem>`(知見112)。`selector`は`ui:SelectItem.Target`配下の
+    `ui:Target`要素の`Selector`属性(`ClickNode`等と同じ構造)。`item`は
+    選択する値(`Item`属性、実機ではリテラル文字列・`VbExpr`の両方の実例が
+    ある)。
+
+    `UiPath/skills`公式リポジトリ含む複数件の実機保存済みXAMLで確認した
+    属性: `ContinueOnError`/`DelayAfter`/`DelayBefore`はいずれも`{x:Null}`
+    の実例がありnullable。`Items`(ドロップダウン等の選択可能な項目一覧、
+    `<ui:SelectItem.Items><scg:List>...`の子要素形)はStudioが記録時に
+    キャプチャした設計時スナップショットであり実行時には使われないため
+    (`Item`で指定した値を実際に選べるかどうかは実行時のUI状態で決まる)、
+    本パーサーは捕捉しない。
+
+    `alter_if_disabled`は`Click`/`TypeInto`とは違い公式ドキュメントで
+    確認済み——本活動は入力方式が`SimulateClick`固定(ユーザーが変更
+    不可)で、既定で無効化された要素も操作対象になる("disabled elements
+    are altered by default")と明記されている。実機XAMLでも
+    `AlterIfDisabled="True"`という明示的な実例を確認した——これは
+    `Click`/`TypeInto`の「未文書化のため常に見送り」とは異なり、確認済みの
+    既定として扱える。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    item: Expr = None
+    delay_before: Expr = None
+    delay_after: Expr = None
+    continue_on_error: Expr = None
+    alter_if_disabled: Expr = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -596,6 +628,7 @@ Node = (
     | ClickNode
     | TypeIntoNode
     | GetTextNode
+    | SelectItemNode
     | InvokeWorkflowFileNode
     | AppendLineNode
     | ReadTextFileNode

@@ -30,6 +30,7 @@ from dump_daemon.uipath_dsl import (
     MessageBoxNode,
     ParallelNode,
     ReadTextFileNode,
+    SelectItemNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -290,6 +291,33 @@ def test_get_text_selector_and_output_binding():
     assert node.text == VbExpr(text="balanceText")
     assert node.delay_before is None
     assert node.delay_ms is None
+    assert node.continue_on_error is None
+
+
+def test_select_item_selector_and_alter_if_disabled():
+    """知見112: `ui:SelectItem`。`UiPath/skills`公式リポジトリの実機保存済み
+    XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/
+    `DelayAfter`/`DelayBefore`/`Items`は`{x:Null}`(nullable)、
+    `AlterIfDisabled`は公式ドキュメントで確認済みの既定(`True`相当)が
+    明示的な実例として現れる。design-time snapshotの`Items`子要素は
+    捕捉しない(実行時には使われないため)。"""
+    xml = (
+        f"<ui:SelectItem {_UI_XMLNS} xmlns:scg=\"clr-namespace:System.Collections.Generic;assembly=System\" "
+        'ContinueOnError="{x:Null}" DelayAfter="{x:Null}" DelayBefore="{x:Null}" '
+        'Items="{x:Null}" AlterIfDisabled="True" DisplayName="Select Benefits Plan" '
+        'Item="[BenefitPlan]">'
+        "<ui:SelectItem.Target>"
+        "<ui:Target Selector=\"&lt;webctrl id='benefitPlanDropdown' tag='SELECT' /&gt;\" />"
+        "</ui:SelectItem.Target>"
+        "</ui:SelectItem>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SelectItemNode)
+    assert "benefitPlanDropdown" in node.selector
+    assert node.item == VbExpr(text="BenefitPlan")
+    assert node.alter_if_disabled == Literal(value="True")
+    assert node.delay_before is None
+    assert node.delay_after is None
     assert node.continue_on_error is None
 
 

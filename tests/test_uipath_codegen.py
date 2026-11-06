@@ -54,6 +54,7 @@ from dump_daemon.uipath_dsl import (
     MessageBoxNode,
     ParallelNode,
     ReadTextFileNode,
+    SelectItemNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -1167,6 +1168,117 @@ def test_get_text_with_delay_before_generates_time_sleep():
     )
     code = generate_python(wf)
     assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
+
+
+_SELECT_ITEM_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_select_item_with_known_selector_generates_select_call():
+    wf = _wrap(
+        [SelectItemNode(selector=_SELECT_ITEM_SELECTOR, item=Literal(value="Bold"))]
+    )
+    code = generate_python(wf)
+    assert ".select(_vb_cstr('Bold'))" in code
+    assert "# WARNING:" in code
+    _compiles(code)
+
+
+def test_select_item_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([SelectItemNode(selector=None, display_name="Select Benefits Plan")])
+    code = generate_python(wf)
+    assert "# Select Benefits Plan" in code
+    assert "# TODO: Select Item with no selector captured" in code
+    _compiles(code)
+
+
+def test_select_item_with_no_selector_is_todo():
+    wf = _wrap([SelectItemNode(selector=None, item=Literal(value="x"))])
+    code = generate_python(wf)
+    assert "# TODO: Select Item with no selector captured" in code
+    _compiles(code)
+
+
+def test_select_item_with_no_item_is_todo():
+    wf = _wrap([SelectItemNode(selector=_SELECT_ITEM_SELECTOR, item=None)])
+    code = generate_python(wf)
+    assert "# TODO: Select Item with no Item captured" in code
+    _compiles(code)
+
+
+def test_select_item_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [SelectItemNode(selector="<wnd idx='2' />", item=Literal(value="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Item selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_select_item_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SelectItemNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                item=Literal(value="x"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Item with ContinueOnError set" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize("alter_if_disabled", [None, Literal(value="True")])
+def test_select_item_with_confirmed_alter_if_disabled_generates_select_call(alter_if_disabled):
+    """知見112: `AlterIfDisabled`は`Click`/`TypeInto`とは違い公式ドキュメント
+    で確認済みの既定(`True`相当、未設定時もこの既定が有効)。"""
+    wf = _wrap(
+        [
+            SelectItemNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                item=Literal(value="x"),
+                alter_if_disabled=alter_if_disabled,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".select(" in code
+    _compiles(code)
+
+
+def test_select_item_with_alter_if_disabled_false_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SelectItemNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                item=Literal(value="x"),
+                alter_if_disabled=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Item with AlterIfDisabled set" in code
+    _compiles(code)
+
+
+def test_select_item_with_delay_before_and_delay_after_generates_time_sleep():
+    wf = _wrap(
+        [
+            SelectItemNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                item=Literal(value="x"),
+                delay_before=Literal(value="200"),
+                delay_after=Literal(value="300"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    sleeps = [ln for ln in code.splitlines() if "time.sleep(" in ln]
+    assert len(sleeps) == 2
+    assert "_vb_num('200')" in sleeps[0]
+    assert "_vb_num('300')" in sleeps[1]
     _compiles(code)
 
 
