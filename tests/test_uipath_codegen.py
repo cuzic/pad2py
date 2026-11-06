@@ -2888,6 +2888,34 @@ def test_attach_window_child_todo_still_surfaces():
     _compiles(code)
 
 
+def test_window_scope_with_application_window_is_todo_not_guessed():
+    """知見158: `ui:WindowScope`(`AttachWindow`と同義の別活動)の
+    `ApplicationWindow`は実機確認した9件以上全てで未設定だった——
+    `OpenApplication`の`ApplicationWindow`と同じ理由(UiElement出力
+    変数が未実装)ででっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<wnd app='notepad.exe' />",
+                application_window=VbExpr(text="win"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: WindowScope with ApplicationWindow output binding set" in code
+    assert "# Attach window:" not in code
+    _compiles(code)
+
+
+def test_window_scope_with_timeout_ms_is_todo_not_guessed():
+    wf = _wrap(
+        [AttachWindowNode(selector="<wnd app='notepad.exe' />", timeout_ms=Literal(value="2000"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: WindowScope with TimeoutMS set" in code
+    _compiles(code)
+
+
 def test_open_application_launches_process_and_recurses_into_body():
     """知見154: `ui:OpenApplication`。`FileName`のみ(確認済みの単純な
     場合)は`subprocess.Popen([...])`で実際に起動するコードを生成し、

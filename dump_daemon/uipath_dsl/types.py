@@ -906,11 +906,30 @@ class AttachWindowNode:
     が解決したウィンドウハンドルへの相対参照に依存する構造には**なって
     いない**——よって`AttachWindow`は「`Selector`を注釈コメントとして
     出力し子をそのまま再帰実行する透過的なラッパー」として安全に実装
-    できる(`ExcelApplicationScope`のような`scope_var`束縛は不要)。"""
+    できる(`ExcelApplicationScope`のような`scope_var`束縛は不要)。
+
+    知見158追記: `ui:WindowScope`(GitHub code searchで1688件ヒット
+    ——`AttachWindow`の1100件より多い!)が、`DisplayName`が常に
+    `"Attach Window '...'"`になる同義の別活動(おそらく異なるUI
+    Automationパッケージバージョンでの名称、`allenlooplee/RPABook`・
+    `HarshadRanganathan/uipath-learning`等9件以上の実機XAMLで確認)だと
+    判明した。意味論は`AttachWindow`と同じ(既存ウィンドウに接続して
+    `Body`を実行、プロセス起動は行わない)だが、構造は`AttachWindow`
+    とは違い`OpenApplication`(知見154)と同じ`ActivityAction`+
+    `DelegateInArgument`(`Name`は`"ContextTarget"`)のラッパーを持つ。
+    `ApplicationWindow`/`SearchScope`/`TimeoutMS`/`Window`という4つの
+    追加属性を持つが、実機確認した9件以上全てで`{x:Null}`(未設定)
+    だった——同じ`AttachWindowNode`を再利用し、これらが設定されている
+    場合は(`OpenApplication`の`ApplicationWindow`等と同じ理由で)
+    `# TODO`へ倒す。"""
 
     selector: str | None = None
     body: list["Node"] = field(default_factory=list)
     display_name: str | None = None
+    application_window: Expr = None
+    search_scope: Expr = None
+    timeout_ms: Expr = None
+    window: Expr = None
 
 
 @dataclass

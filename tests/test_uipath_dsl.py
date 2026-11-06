@@ -385,6 +385,29 @@ def test_type_into_legacy_activate_attribute_name():
     assert node.empty_field == Literal(value="True")
 
 
+def test_type_secure_text_reuses_type_into_node():
+    """知見158: `ui:TypeSecureText`(GitHub code searchで544件ヒット
+    ——`piyushagarwal08/JU-Notes`等の実機XAMLで確認)。`ui:TypeInto`
+    (知見110)と属性構成が全く同じで、入力文字列の属性名のみ`Text`
+    ではなく`SecureText`——意味論・コード生成が完全に同じため、
+    新しいノード型を追加せず既存の`TypeIntoNode`をそのまま再利用する。"""
+    xml = (
+        f"<ui:TypeSecureText {_UI_XMLNS} "
+        'Activate="True" DisplayName="Type Secure Text password" '
+        'SecureText="[Password]">'
+        "<ui:TypeSecureText.Target>"
+        "<ui:Target Selector=\"&lt;ctrl automationid='pass' /&gt;\" />"
+        "</ui:TypeSecureText.Target>"
+        "</ui:TypeSecureText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TypeIntoNode)
+    assert "automationid='pass'" in node.selector
+    assert node.text == VbExpr(text="Password")
+    assert node.activate_before == Literal(value="True")
+    assert node.display_name == "Type Secure Text password"
+
+
 def test_get_text_selector_and_output_binding():
     """知見111: `ui:GetText`。`UiPath/skills`公式リポジトリの実機保存済み
     XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/
@@ -1077,6 +1100,43 @@ def test_attach_window_unwraps_body_sequence():
     assert node.display_name == "Attach to Notepad"
     assert len(node.body) == 1
     assert isinstance(node.body[0], SendHotkeyNode)
+
+
+def test_window_scope_reuses_attach_window_node():
+    """知見158: `ui:WindowScope`(GitHub code searchで1688件ヒット
+    ——`AttachWindow`の1100件より多い!)は`AttachWindow`と同義の別
+    活動(`DisplayName`が常に`"Attach Window '...'"`になる、実機9件以上
+    で確認)。構造は`OpenApplication`(知見154)と同じ`ActivityAction`+
+    `DelegateInArgument`のラッパーを持つが、意味論は`AttachWindow`と
+    同じため同じ`AttachWindowNode`を返す。"""
+    xml = (
+        f"<ui:WindowScope {_UI_XMLNS} "
+        'ApplicationWindow="{x:Null}" SearchScope="{x:Null}" '
+        'TimeoutMS="{x:Null}" Window="{x:Null}" '
+        'DisplayName="Attach Window \'Calculator Applicati\'" '
+        'Selector="&lt;wnd app=\'notepad.exe\' /&gt;">'
+        "<ui:WindowScope.Body>"
+        '<ActivityAction x:TypeArguments="x:Object">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Object" Name="ContextTarget" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:WindowScope.Body>"
+        "</ui:WindowScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AttachWindowNode)
+    assert "notepad.exe" in node.selector
+    assert node.display_name == "Attach Window 'Calculator Applicati'"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
+    assert node.application_window is None
+    assert node.search_scope is None
+    assert node.timeout_ms is None
+    assert node.window is None
 
 
 def test_open_application_unwraps_activity_action_body():

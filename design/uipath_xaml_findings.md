@@ -7498,6 +7498,61 @@ to_pywinauto`が未対応の属性)だったため、成功パス自体は単体
 test_uipath_codegen.py`10件)、UiPath関連テスト全634件通過、
 リポジトリ全体で全1674件通過。
 
+## 158. `ui:TypeSecureText`(既存の`TypeIntoNode`を再利用)と`ui:WindowScope`(`AttachWindow`より多い1688件ヒットの同義活動、既存の`AttachWindowNode`を再利用)を新規実装
+
+同じtickで2つの「既存ノード型を再利用するだけで実装できる」高頻度
+未実装活動を発見・実装した——いずれも新しいノード型を追加せず、
+既存のパーサー/コード生成を再利用できた。
+
+**`ui:TypeSecureText`**(GitHub code searchで544件ヒット): 実機
+(`piyushagarwal08/JU-Notes`の`UiDemo_Login.xaml`)で構造を確認した
+ところ、`ui:TypeInto`(知見110)と属性構成が完全に同じ
+(`ClickBeforeTyping`/`DelayBefore`/`DelayBetweenKeys`/`DelayMS`/
+`EmptyField`/`SendWindowMessages`/`SimulateType`/`Activate`)で、
+唯一の違いは入力文字列を保持する属性名が`Text`ではなく`SecureText`
+(本来`System.Security.SecureString`型だが、本トランスパイラは
+どの変数もPythonの通常の識別子として扱うため.NET型の違いを意識する
+必要が無い)。意味論・コード生成が完全に同じため、新しいノード型を
+追加せず既存の`TypeIntoNode`を返す`_parse_type_secure_text`を追加
+するだけで済んだ(`ui:ForEachRow`が`ForEachNode`を再利用するのと
+同じ設計パターン)。
+
+**`ui:WindowScope`**(GitHub code searchで1688件ヒット——`ui:
+AttachWindow`の1100件より多い!): 同じ実機XAMLで`DisplayName`が
+常に`"Attach Window '...'"`になる活動を発見し、`allenlooplee/
+RPABook`・`HarshadRanganathan/uipath-learning`等9件以上の実機XAMLで
+意味論(既存ウィンドウに接続して`Body`を実行、プロセス起動は行わ
+ない)が`AttachWindow`(知見153)と同じであることを確認した——
+おそらく異なるUI Automationパッケージバージョンでの名称違い。
+構造は`AttachWindow`とは違い`OpenApplication`(知見154)と同じ
+`ActivityAction`+`DelegateInArgument`(`Name`は`"ContextTarget"`)の
+ラッパーを持つが、子は`ContextTarget`を参照しない設計のため同様に
+束縛しない。`ApplicationWindow`/`SearchScope`/`TimeoutMS`/`Window`
+という4つの追加属性を持つが、実機確認した9件以上全てで`{x:Null}`
+だった——`AttachWindowNode`にこれら4つのフィールドを追加し、設定
+されている場合は`OpenApplication`の`ApplicationWindow`等と同じ理由
+(正確な意味論が未確認)で`# TODO`へ倒す。
+
+実機XAML(`piyushagarwal08/JU-Notes`の`UiDemo_Login.xaml`、`ReFramework`
+系のログインシーケンス)で`generate_python()`+`compile()`を実行し、
+`WindowScope`が正しく`# Attach window: ...`+子の再帰生成に展開され、
+`TypeSecureText`が`TypeInto`と全く同じ`type_keys(_pywinauto_type_
+keys_escape(_vb_cstr(Password)))`を生成することを確認した——同じ
+1ファイルで両方の新機能が連動して正しく動く実例になった(知見154が
+`Delay`・`SendHotkey`・`AttachWindow`を連動させたのと同種のパターン)。
+
+`dump_daemon/uipath_dsl/xaml_tree.py`に`_parse_type_secure_text`
+(`TypeIntoNode`を返す)+`(UI_NS, "TypeSecureText")`、`_parse_window_
+scope`(`AttachWindowNode`を返す)+`(UI_NS, "WindowScope")`の
+`_DISPATCH`登録。`dump_daemon/uipath_dsl/types.py`の`AttachWindowNode`
+に`application_window`/`search_scope`/`timeout_ms`/`window`の4
+フィールドを追加、`uipath_codegen/__init__.py`の`_generate_attach_
+window`を`_generate_attach_window_body`に分割し新規フィールドの
+decline判定を追加(既存の`AttachWindow`自身はこれらを一切設定しない
+ため挙動は変わらない)。回帰テスト追加(`tests/test_uipath_dsl.py`
+2件・`tests/test_uipath_codegen.py`2件)、UiPath関連テスト全638件
+通過、リポジトリ全体で全1678件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -622,6 +622,45 @@ def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
     )
 
 
+def _parse_type_secure_text(elem: etree._Element) -> TypeIntoNode:
+    """`<ui:TypeSecureText>`(知見158、GitHub code searchで544件ヒット
+    ——`piyushagarwal08/JU-Notes`等の実機XAMLで確認)。`ui:TypeInto`
+    (知見110)と属性構成が全く同じ(`ClickBeforeTyping`/`DelayBefore`/
+    `DelayBetweenKeys`/`DelayMS`/`EmptyField`/`SendWindowMessages`/
+    `SimulateType`/`Activate`)で、唯一の違いは入力文字列を保持する
+    属性名が`Text`ではなく`SecureText`(本来`System.Security.
+    SecureString`型だが、本トランスパイラはどの変数もPythonの通常の
+    識別子として扱うため.NET型の違いは意識する必要が無い)。意味論・
+    コード生成はTypeIntoと完全に同じため、新しいノード型を追加せず
+    既存の`TypeIntoNode`をそのまま返す(`ui:ForEachRow`が`ForEachNode`
+    を再利用するのと同じ設計)。"""
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    activate_before = _attr_expr(elem, "ActivateBefore")
+    if activate_before is None and _attr(elem, "Activate") is not None:
+        activate_before = _attr_expr(elem, "Activate")
+    return TypeIntoNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        text=_attr_expr(elem, "SecureText"),
+        empty_field=_attr_expr(elem, "EmptyField"),
+        click_before_typing=_attr_expr(elem, "ClickBeforeTyping"),
+        simulate_type=_attr_expr(elem, "SimulateType"),
+        send_window_messages=_attr_expr(elem, "SendWindowMessages"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        delay_between_keys=_attr_expr(elem, "DelayBetweenKeys"),
+        activate_before=activate_before,
+        alter_if_disabled=_attr_expr(elem, "AlterIfDisabled"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
 def _parse_send_hotkey(elem: etree._Element) -> SendHotkeyNode:
     selector = None
     target_prop = _find_property_element(elem, "Target")
@@ -970,6 +1009,24 @@ def _parse_attach_window(elem: etree._Element) -> AttachWindowNode:
         selector=_attr(elem, "Selector"),
         body=body,
         display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_window_scope(elem: etree._Element) -> AttachWindowNode:
+    """知見158: `ui:WindowScope`(`AttachWindow`と同義の別活動——`.Body`
+    の構造は`ActivityAction`+`DelegateInArgument`、`OpenApplication`
+    (知見154)と同じ抽出方法)。同じ`AttachWindowNode`を返す。"""
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return AttachWindowNode(
+        selector=_attr(elem, "Selector"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+        application_window=_attr_expr(elem, "ApplicationWindow"),
+        search_scope=_attr_expr(elem, "SearchScope"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        window=_attr_expr(elem, "Window"),
     )
 
 
@@ -1377,6 +1434,7 @@ _DISPATCH = {
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "TypeInto"): _parse_type_into,
+    (UI_NS, "TypeSecureText"): _parse_type_secure_text,
     (UI_NS, "SendHotkey"): _parse_send_hotkey,
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "SelectItem"): _parse_select_item,
@@ -1400,6 +1458,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "AttachWindow"): _parse_attach_window,
+    (UI_NS, "WindowScope"): _parse_window_scope,
     (UI_NS, "OpenApplication"): _parse_open_application,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,

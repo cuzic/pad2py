@@ -2006,3 +2006,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      10件)、UiPath関連テスト全634件通過、リポジトリ全体で全1674件
      通過。
+
+116. **(完了、2026-11-06)** `ui:TypeSecureText`(既存の`TypeIntoNode`
+     を再利用)と`ui:WindowScope`(`AttachWindow`より多い1688件ヒット
+     の同義活動、既存の`AttachWindowNode`を再利用)を新規実装
+     (知見158): `TypeSecureText`は`TypeInto`と属性構成が完全に同じで
+     `Text`属性名が`SecureText`なだけ——新しいノード型を追加せず
+     既存の`TypeIntoNode`を返すパーサーを追加するだけで済んだ。
+     `WindowScope`は`DisplayName`が常に`"Attach Window '...'"`になる
+     `AttachWindow`の同義活動(異なるUI Automationパッケージバージョン
+     の名称違いと推定)で、構造は`OpenApplication`と同じ`ActivityAction`
+     +`DelegateInArgument`のラッパーを持つが意味論は`AttachWindow`と
+     同じ——`AttachWindowNode`に`ApplicationWindow`等4フィールドを
+     追加し、同じノード型を再利用した。実機XAML(ReFrameworkのログイン
+     シーケンス)で両機能が連動して正しく動くことを確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     2件)、UiPath関連テスト全638件通過、リポジトリ全体で全1678件
+     通過。

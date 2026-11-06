@@ -2236,12 +2236,50 @@ def _generate_attach_window(
     out_arg_resolver: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
     prefix = INDENT * indent
+    lines = _generate_attach_window_body(node, indent, invoke_resolver, out_arg_resolver)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+# 知見158: `ui:WindowScope`(`AttachWindow`と同義の別活動)が持つ
+# `ApplicationWindow`/`SearchScope`/`TimeoutMS`/`Window`は、実機確認
+# した9件以上全てで未設定だった——設定されている場合は
+# `OpenApplication`の`ApplicationWindow`等と同じ理由(正確な意味論が
+# 未確認)で`# TODO`へ倒す。`ui:AttachWindow`自体はこれらの属性を
+# 持たないため常に`None`のままで、この分岐には到達しない。
+def _generate_attach_window_body(
+    node: AttachWindowNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.application_window is not None:
+        return [
+            f"{prefix}# TODO: WindowScope with ApplicationWindow output "
+            f"binding set ({_describe_expr_for_comment(node.application_window)}) "
+            "— UiElement output variable not modeled, refusing to guess"
+        ]
+    if node.search_scope is not None:
+        return [
+            f"{prefix}# TODO: WindowScope with SearchScope set "
+            f"({_describe_expr_for_comment(node.search_scope)}) — refusing "
+            "to guess"
+        ]
+    if node.timeout_ms is not None:
+        return [
+            f"{prefix}# TODO: WindowScope with TimeoutMS set "
+            f"({_describe_expr_for_comment(node.timeout_ms)}) — wait-for-"
+            "window-ready polling behavior not modeled, refusing to guess"
+        ]
+    if node.window is not None:
+        return [
+            f"{prefix}# TODO: WindowScope with Window set "
+            f"({_describe_expr_for_comment(node.window)}) — refusing to guess"
+        ]
     lines: list[str] = []
     if node.selector:
         lines.append(f"{prefix}# Attach window: {node.selector}")
     lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
-    lines = _ensure_nonempty_suite(lines, indent)
-    return _with_scope_child_display_name(node, lines, prefix)
+    return _ensure_nonempty_suite(lines, indent)
 
 
 # 知見154: `ui:OpenApplication`。`AttachWindow`(知見153)と同じ理由
