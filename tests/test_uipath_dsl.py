@@ -21,7 +21,9 @@ from dump_daemon.uipath_dsl import (
     DatabaseDisconnectNode,
     DoWhileNode,
     ExcelApplicationScopeNode,
+    ExcelReadRangeNode,
     ExcelWriteCellNode,
+    ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     ForEachNode,
@@ -411,6 +413,42 @@ def test_execute_query_and_execute_non_query():
     assert non_query.affected_records == VbExpr(text="rows")
     assert non_query.command_type == "Text"
     assert non_query.parameters == {}
+
+
+def test_excel_read_range_and_write_range():
+    """知見115: `ui:ExcelReadRange`/`ui:ExcelWriteRange`。`Range`の
+    ネスト`InArgument`+`Literal`形(`HarshadRanganathan/uipath-learning`の
+    実例)、`StartingCell`の属性直書き形(`allenlooplee/RPABook`の実例)を
+    合成XMLで再現する。"""
+    read_xml = (
+        f"<ui:ExcelReadRange {_UI_XMLNS} "
+        'AddHeaders="False" DataTable="[dt]" DisplayName="Read Range" '
+        'SheetName="Sheet1">'
+        "<ui:ExcelReadRange.Range>"
+        '<InArgument x:TypeArguments="x:String">'
+        '<Literal x:TypeArguments="x:String" Value="" />'
+        "</InArgument>"
+        "</ui:ExcelReadRange.Range>"
+        "</ui:ExcelReadRange>"
+    )
+    read_node = parse_activity(etree.fromstring(read_xml))
+    assert isinstance(read_node, ExcelReadRangeNode)
+    assert read_node.sheet_name == "Sheet1"
+    assert read_node.range == Literal(value="")
+    assert read_node.add_headers == "False"
+    assert read_node.data_table == VbExpr(text="dt")
+
+    write_xml = (
+        f"<ui:ExcelWriteRange {_UI_XMLNS} "
+        'AddHeaders="True" DataTable="[uploadTable]" DisplayName="Write Range" '
+        'SheetName="Sheet2" StartingCell="A1" />'
+    )
+    write_node = parse_activity(etree.fromstring(write_xml))
+    assert isinstance(write_node, ExcelWriteRangeNode)
+    assert write_node.sheet_name == "Sheet2"
+    assert write_node.starting_cell == "A1"
+    assert write_node.add_headers == "True"
+    assert write_node.data_table == VbExpr(text="uploadTable")
 
 
 def test_invoke_workflow_file(main_wf):

@@ -5464,6 +5464,49 @@ UiPath側のSQLが使うか)が未確認として`# TODO`へ倒す。
 追加。`tests/test_uipath_dsl.py`に2件・`tests/test_uipath_codegen.py`に
 22件追加、全1256件通過。
 
+## 115. `ui:ExcelReadRange`/`ui:ExcelWriteRange`を実機XAML(ground-truthリポジトリ+実プロジェクト)で確認し、確認済みの既定値のみ実コード生成に対応——Tier A項目3「Excel Classicの残り」への着手第1件(VM不使用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+項目3(Excel Classicの残り)の最初の着手。知見114で発見した
+`marcelocruzrpa/uipath-ai-skills`の`studio-ground-truth/UiPath.Excel.
+Activities/3.4/`で属性の完全な語彙を確認し、`HarshadRanganathan/
+uipath-learning`・`allenlooplee/RPABook`の実プロジェクトでpopulated時の
+直列化を確認した。
+
+**確定した構造**: `ui:ExcelReadRange`/`ui:ExcelWriteRange`はいずれも
+既存の`ExcelApplicationScopeNode`(知見22・97)配下の子活動——
+`ExcelWriteCellNode`と同じ「スコープと連動する」構造。`Range`
+(`ExcelReadRange`のみ)は属性直書きではなく`<ui:ExcelReadRange.Range>`
+配下の`InArgument`要素(さらにネストした`<Literal Value="">`要素形、
+`Click`の`CursorPosition.OffsetX`(知見105)と同種のプロパティ要素形)。
+実機確認できた値は空文字列のみ(「シート全体の使用範囲」を意味する)。
+`StartingCell`(`ExcelWriteRange`のみ)は単純な属性直書き(`"A1"`)。
+`AddHeaders`はhervested空テンプレートの既定が`ExcelReadRange`は
+`"True"`、`ExcelWriteRange`は`"False"`という非対称な既定値だと確認した。
+
+**実装**: `DataTable`を`ExecuteQuery`(知見114)と同じ`list[dict]`
+表現に揃えた(異なる活動パッケージ間でも同じ「表形式データ」の
+Python表現を統一する判断)。`openpyxl`の`Worksheet.iter_rows
+(values_only=True)`で読み取り、`AddHeaders`時は最初の行を辞書キーとして
+`dict(zip(...))`する。書き込みは`Worksheet.append()`——これは常に既存
+内容の末尾に追記する挙動のため、`StartingCell`が確認済みの`"A1"`
+以外(既存シートの中間への書き込み)の場合は正確な再現手段が未確認とし
+`# TODO`へ倒した。`Range`が空文字列以外(特定範囲の指定)も同じ理由で
+`# TODO`。
+
+実際に`openpyxl`で作成した一時`.xlsx`ファイル(本セッションのみ、
+リポジトリには残していない)に対して生成コードを実行し、Sheet1から
+ヘッダー付きで読み取った`list[dict]`をSheet2へ書き込んだ結果が元の
+データと完全に一致することを確認済み(round-trip検証)。
+
+`dump_daemon/uipath_dsl/types.py`に`ExcelReadRangeNode`/
+`ExcelWriteRangeNode`、`xaml_tree.py`に`_in_argument_property_expr`
+(ネストした`InArgument`プロパティの共通パーサー、`Click`の
+`_cursor_offset`から発想を汎用化)+対応する2つのパーサー関数、
+`uipath_codegen/__init__.py`に`_generate_excel_application_scope`の
+子ディスパッチ拡張+2つの生成関数を追加。`tests/test_uipath_dsl.py`に
+1件・`tests/test_uipath_codegen.py`に9件追加、全1266件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

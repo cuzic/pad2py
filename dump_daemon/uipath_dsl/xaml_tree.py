@@ -27,7 +27,9 @@ from .types import (
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
+    ExcelReadRangeNode,
     ExcelWriteCellNode,
+    ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     FlowchartNode,
@@ -606,6 +608,46 @@ def _parse_excel_write_cell(elem: etree._Element) -> ExcelWriteCellNode:
     )
 
 
+def _in_argument_property_expr(elem: etree._Element, prop_name: str) -> Expr:
+    """`<X.PropName><InArgument x:TypeArguments="...">...</InArgument>
+    </X.PropName>`形のプロパティを`Expr`へ変換する(知見115、`ui:
+    ExcelReadRange.Range`で確認済み)。`InArgument`の内容は直接テキスト
+    (`VbExpr`/生リテラル)か、ネストした`<Literal x:TypeArguments="..."
+    Value="..." />`要素(属性`Value`、空文字列を含む)のいずれか。"""
+    prop_elem = _find_property_element(elem, prop_name)
+    if prop_elem is None:
+        return None
+    children = _direct_children(prop_elem)
+    if not children:
+        return None
+    in_arg = children[0]
+    nested = _direct_children(in_arg)
+    if nested:
+        value = _attr(nested[0], "Value")
+        return _parse_expr(value) if value is not None else None
+    return _parse_expr(in_arg.text)
+
+
+def _parse_excel_read_range(elem: etree._Element) -> ExcelReadRangeNode:
+    return ExcelReadRangeNode(
+        sheet_name=_attr(elem, "SheetName") or "",
+        range=_in_argument_property_expr(elem, "Range"),
+        add_headers=_attr(elem, "AddHeaders"),
+        data_table=_attr_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_excel_write_range(elem: etree._Element) -> ExcelWriteRangeNode:
+    return ExcelWriteRangeNode(
+        sheet_name=_attr(elem, "SheetName") or "",
+        starting_cell=_attr(elem, "StartingCell"),
+        add_headers=_attr(elem, "AddHeaders"),
+        data_table=_attr_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScopeNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -919,6 +961,8 @@ _DISPATCH = {
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
+    (UI_NS, "ExcelReadRange"): _parse_excel_read_range,
+    (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "HttpClient"): _parse_http_client,

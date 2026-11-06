@@ -1313,3 +1313,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     汎用化して再利用。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
     `tests/test_uipath_codegen.py`22件)、UiPath関連テスト全395件通過、
     リポジトリ全体で全1256件通過。
+73. **(完了、2026-11-06)** `ui:ExcelReadRange`/`ui:ExcelWriteRange`の実
+    コード生成に新規対応(VM不使用、知見115——Tier A項目3「Excel
+    Classicの残り」への着手第1件): 知見114の`studio-ground-truth/`リポ
+    ジトリで属性の完全な語彙を確認、`HarshadRanganathan/uipath-learning`・
+    `allenlooplee/RPABook`の実例でpopulated時の直列化を確認。既存の
+    `ExcelApplicationScopeNode`配下の子活動として実装(`ExcelWriteCell`
+    と同じ構造)。`DataTable`は`ExecuteQuery`(知見114)と同じ`list[dict]`
+    表現に統一。`Range`(空文字列=シート全体のみ確認済み)・`StartingCell`
+    (`"A1"`のみ確認済み、`openpyxl`の`append()`が常に末尾追記のため
+    それ以外は再現手段未確認)以外は`# TODO`。実際に一時`.xlsx`ファイルへ
+    対して生成コードを実行し、Sheet1→Sheet2のround-tripが完全一致する
+    ことを確認済み。ネストした`InArgument`プロパティの共通パーサー
+    `_in_argument_property_expr`を新設(`Click`の`_cursor_offset`から
+    発想を汎用化)。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+    `tests/test_uipath_codegen.py`9件)、UiPath関連テスト全405件通過、
+    リポジトリ全体で全1266件通過。

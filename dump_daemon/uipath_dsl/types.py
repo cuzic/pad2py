@@ -572,6 +572,40 @@ class ExcelApplicationScopeNode:
 
 
 @dataclass
+class ExcelReadRangeNode:
+    """`<ui:ExcelReadRange>`(知見115、`ExcelApplicationScope`配下の子活動、
+    `ExcelWriteCellNode`と同じ「スコープと連動する」活動)。`range`は
+    `ui:ExcelReadRange.Range`配下の`InArgument`要素(ネストした`<Literal
+    Value="">`要素形——実機確認済みの値は空文字列のみ、「シート全体の
+    使用範囲」を意味する)。`sheet_name`は`ExcelWriteCellNode`と同じ
+    `str`型(VbExprは未対応、既存の制約を継承)。`add_headers`は実機で
+    `"True"`/`"False"`の両方を確認済み(harvested空テンプレートの既定は
+    `"True"`)。"""
+
+    sheet_name: str = ""
+    range: Expr = None
+    add_headers: str | None = None
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ExcelWriteRangeNode:
+    """`<ui:ExcelWriteRange>`(知見115、`ExcelReadRangeNode`と対になる
+    書き込み側)。`starting_cell`は属性直書き(`StartingCell="A1"`、
+    `Range`のようなネスト構造ではない)。`data_table`は書き込む内容
+    (入力、実機では`[dataTableVar]`形のVbExpr)。`add_headers`の
+    harvested空テンプレートの既定は`"False"`(`ExcelReadRange`とは
+    非対称な既定値)。"""
+
+    sheet_name: str = ""
+    starting_cell: str | None = None
+    add_headers: str | None = None
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendOutlookMailNode:
     """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
 
@@ -747,6 +781,8 @@ Node = (
     | SetToClipboardNode
     | ExcelWriteCellNode
     | ExcelApplicationScopeNode
+    | ExcelReadRangeNode
+    | ExcelWriteRangeNode
     | SendOutlookMailNode
     | HttpClientNode
     | UnknownActivityNode

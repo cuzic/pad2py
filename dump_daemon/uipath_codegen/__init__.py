@@ -50,7 +50,9 @@ from ..uipath_dsl.types import (
     DoWhileNode,
     Expr,
     ExcelApplicationScopeNode,
+    ExcelReadRangeNode,
     ExcelWriteCellNode,
+    ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     FlowchartNode,
@@ -374,7 +376,7 @@ def _generate_node(
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendOutlookMailNode):
         return _generate_send_outlook_mail(node, indent)
-    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode)):
+    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode, ExcelReadRangeNode, ExcelWriteRangeNode)):
         return _generate_unresolved_activity(node, indent)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
@@ -1698,6 +1700,10 @@ def _generate_excel_application_scope(
     for child in node.body:
         if isinstance(child, ExcelWriteCellNode):
             lines.extend(_generate_excel_write_cell_in_scope(child, indent, var))
+        elif isinstance(child, ExcelReadRangeNode):
+            lines.extend(_generate_excel_read_range_in_scope(child, indent, var))
+        elif isinstance(child, ExcelWriteRangeNode):
+            lines.extend(_generate_excel_write_range_in_scope(child, indent, var))
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
@@ -1722,6 +1728,90 @@ def _generate_excel_write_cell_in_scope(
         f"{prefix}{scope_var}[{node.sheet_name!r}][{node.cell!r}] = "
         f"{VB_CSTR_HELPER_NAME}({value})"
     ]
+
+
+# 知見115: `ui:ExcelReadRange`/`ui:ExcelWriteRange`。実機確認できた
+# `Range`(空文字列=シート全体)・`StartingCell`(`"A1"`のみ)の組み合わせ
+# だけ実コード生成し、その他は`# TODO`へ倒す——`openpyxl`の`append()`は
+# 既存内容の末尾に追記する挙動で、`StartingCell`が`"A1"`以外(既存シート
+# の中間への書き込み)の場合に正確に再現する手段が未確認なため。
+# `DataTable`は`ExecuteQuery`(知見114)と同じ`list[dict]`表現に揃える
+# ——`AddHeaders`時は最初の行の辞書キーをヘッダー行として書き込む。
+def _generate_excel_read_range_in_scope(
+    node: ExcelReadRangeNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Excel Read Range with no output DataTable captured"]
+    if node.range is not None and not (
+        isinstance(node.range, Literal) and node.range.value == ""
+    ):
+        return [
+            f"{prefix}# TODO: Excel Read Range with non-empty/non-literal "
+            f"Range ({node.range!r}) — only the whole-used-range default is "
+            "confirmed, refusing to guess"
+        ]
+    if not node.sheet_name:
+        return [f"{prefix}# TODO: Excel Read Range with no SheetName captured"]
+    add_headers = node.add_headers if node.add_headers is not None else "True"
+    if add_headers not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Excel Read Range with unrecognized AddHeaders "
+            f"({node.add_headers!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_ws = {scope_var}[{node.sheet_name!r}]",
+        f"{prefix}_rows = list(_ws.iter_rows(values_only=True))",
+    ]
+    if add_headers == "True":
+        lines.append(
+            f"{prefix}{target} = [dict(zip(_rows[0], _r)) for _r in _rows[1:]] "
+            "if _rows else []"
+        )
+    else:
+        lines.append(f"{prefix}{target} = [list(_r) for _r in _rows]")
+    return lines
+
+
+def _generate_excel_write_range_in_scope(
+    node: ExcelWriteRangeNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Excel Write Range with no input DataTable captured"]
+    if node.starting_cell not in (None, "A1"):
+        return [
+            f"{prefix}# TODO: Excel Write Range with non-default StartingCell "
+            f"({node.starting_cell!r}) — openpyxl's append() cannot target an "
+            "arbitrary starting cell, refusing to guess"
+        ]
+    if not node.sheet_name:
+        return [f"{prefix}# TODO: Excel Write Range with no SheetName captured"]
+    add_headers = node.add_headers if node.add_headers is not None else "False"
+    if add_headers not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Excel Write Range with unrecognized AddHeaders "
+            f"({node.add_headers!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    rows = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_ws = {scope_var}[{node.sheet_name!r}]",
+        f"{prefix}_rows = {rows}",
+        f"{prefix}if _rows:",
+    ]
+    inner = INDENT * (indent + 1)
+    if add_headers == "True":
+        lines.append(f"{inner}_ws.append(list(_rows[0].keys()))")
+    lines.append(f"{inner}for _row in _rows:")
+    lines.append(f"{INDENT * (indent + 2)}_ws.append(list(_row.values()))")
+    return lines
 
 
 # 知見102: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/

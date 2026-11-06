@@ -150,9 +150,12 @@ XAML表現の有無(第一軸)→実務頻度(第二軸)→実装コスト(第�
    (`sqlite3`標準ライブラリ)。`BulkInsert`/`BulkUpdate`/
    `DatabaseTransaction`/`InsertDataTable`、SQLite以外のプロバイダ
    (SQL Server/PostgreSQL/MySQL等、要追加のPythonドライバ判断)が残課題。
-3. **Excel Classicの残り**(Read Range/Write Range等)・**汎用Mail
-   (SMTP/POP3/IMAP)**: 既存の実装パターン(openpyxl/win32com)をそのまま
-   拡張するだけで、追加調査コストが最も低い。
+3. **(着手済み、2026-11-06)** **Excel Classicの残り**(Read Range/Write
+   Range)・**汎用Mail(SMTP/POP3/IMAP)**: 知見115でRead Range/Write
+   Rangeを実装(`openpyxl`、`list[dict]`表現、既存パターンの拡張)。
+   残課題: 特定範囲指定(`Range`が空以外)・`StartingCell`が`"A1"`以外・
+   Read Cell/Read Column/Read Row等の他のRead系活動・汎用Mail
+   (SMTP/POP3/IMAP、まだ未着手)。
 4. **HTTP Requestのlegacy/current区別・SOAP Request**: HttpClientの基盤が
    あるので差分実装で済む。
 

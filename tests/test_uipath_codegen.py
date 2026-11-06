@@ -40,7 +40,9 @@ from dump_daemon.uipath_dsl import (
     DatabaseConnectNode,
     DatabaseDisconnectNode,
     ExcelApplicationScopeNode,
+    ExcelReadRangeNode,
     ExcelWriteCellNode,
+    ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     FlowchartNode,
@@ -1911,6 +1913,181 @@ def test_excel_application_scope_with_genuinely_unsupported_child_shows_its_todo
     code = generate_python(wf)
     assert "openpyxl.load_workbook('wb.xlsx')" in code
     assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
+    _compiles(code)
+
+
+def test_excel_read_range_with_empty_range_generates_real_code():
+    """知見115: `Range`が空文字列(=シート全体)・`AddHeaders="True"`の
+    確認済み組み合わせ。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadRangeNode(
+                        sheet_name="Sheet1",
+                        range=Literal(value=""),
+                        add_headers="True",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_ws = ExcelWorkbookScope['Sheet1']" in code
+    assert "dt = [dict(zip(_rows[0], _r)) for _r in _rows[1:]] if _rows else []" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_read_range_without_headers_generates_list_of_lists():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadRangeNode(
+                        sheet_name="Sheet1",
+                        range=None,
+                        add_headers="False",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "dt = [list(_r) for _r in _rows]" in code
+    _compiles(code)
+
+
+def test_excel_read_range_with_no_output_data_table_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelReadRangeNode(sheet_name="Sheet1", data_table=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Read Range with no output DataTable captured" in code
+    _compiles(code)
+
+
+def test_excel_read_range_with_populated_range_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelReadRangeNode(
+                        sheet_name="Sheet1",
+                        range=Literal(value="A1:C10"),
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Read Range with non-empty/non-literal Range" in code
+    _compiles(code)
+
+
+def test_excel_read_range_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelReadRangeNode(sheet_name="", data_table=VbExpr(text="dt"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Read Range with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_excel_write_range_with_default_starting_cell_generates_real_code():
+    """知見115: `StartingCell="A1"`・`AddHeaders="True"`の確認済み組み合わせ。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteRangeNode(
+                        sheet_name="Sheet2",
+                        starting_cell="A1",
+                        add_headers="True",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_ws = ExcelWorkbookScope['Sheet2']" in code
+    assert "_ws.append(list(_rows[0].keys()))" in code
+    assert "_ws.append(list(_row.values()))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_write_range_without_headers_skips_header_row():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteRangeNode(
+                        sheet_name="Sheet2",
+                        starting_cell="A1",
+                        add_headers="False",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_ws.append(list(_rows[0].keys()))" not in code
+    assert "_ws.append(list(_row.values()))" in code
+    _compiles(code)
+
+
+def test_excel_write_range_with_no_input_data_table_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelWriteRangeNode(sheet_name="Sheet2", data_table=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Write Range with no input DataTable captured" in code
+    _compiles(code)
+
+
+def test_excel_write_range_with_non_default_starting_cell_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteRangeNode(
+                        sheet_name="Sheet2",
+                        starting_cell="B5",
+                        data_table=VbExpr(text="dt"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Write Range with non-default StartingCell" in code
     _compiles(code)
 
 
