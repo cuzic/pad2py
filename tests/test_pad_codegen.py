@@ -2655,6 +2655,10 @@ def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -
         "FirstFreeColumn=> FreeCol FirstFreeRow=> FreeRow\n"
         "Excel.GetFirstFreeRowOnColumn Instance: ExcelInstance Column: $'''A''' "
         "FirstFreeRowOnColumn=> FreeRowOnA\n"
+        "Excel.DeleteColumn Instance: ExcelInstance Column: $'''C'''\n"
+        "Excel.InsertColumn Instance: ExcelInstance Column: $'''D'''\n"
+        "Excel.DeleteRow Instance: ExcelInstance Index: 5\n"
+        "Excel.InsertRow Instance: ExcelInstance Index: 6\n"
         "Excel.SaveExcel.Save Instance: ExcelInstance\n"
         "Excel.CloseExcel.Close Instance: ExcelInstance"
     )
@@ -2699,6 +2703,10 @@ def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -
     assert (
         "FreeRowOnA = excel_actions.get_first_free_row_on_column(ExcelInstance, 'A')" in code
     )
+    assert "excel_actions.delete_column(ExcelInstance, 'C')" in code
+    assert "excel_actions.insert_column(ExcelInstance, 'D')" in code
+    assert "excel_actions.delete_row(ExcelInstance, 5)" in code
+    assert "excel_actions.insert_row(ExcelInstance, 6)" in code
     assert "excel_actions.save_excel(ExcelInstance, save_mode='Save')" in code
     assert "excel_actions.close_excel(ExcelInstance, close_mode='DoNotSave')" in code
     assert "# TODO" not in code

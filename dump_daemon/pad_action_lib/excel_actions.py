@@ -93,6 +93,30 @@ class RetrieveFirstFreeRowError(PadActionError):
     pass
 
 
+class ColumnNotFoundError(PadActionError):
+    pass
+
+
+class DeleteColumnError(PadActionError):
+    pass
+
+
+class InsertColumnError(PadActionError):
+    pass
+
+
+class RowNotFoundError(PadActionError):
+    pass
+
+
+class DeleteRowError(PadActionError):
+    pass
+
+
+class InsertRowError(PadActionError):
+    pass
+
+
 @dataclass
 class ExcelInstanceHandle:
     """不透明なワークブック参照(「window instance」問題と同種)。
@@ -460,3 +484,43 @@ def get_first_free_row_on_column(instance: ExcelInstanceHandle, column: str) -> 
         return row
     except Exception as exc:
         raise RetrieveFirstFreeRowError(str(exc)) from exc
+
+
+def delete_column(instance: ExcelInstanceHandle, column: str) -> None:
+    try:
+        col_index = column_index_from_string(column)
+    except Exception as exc:
+        raise ColumnNotFoundError(str(exc)) from exc
+    try:
+        instance.active_sheet.delete_cols(col_index, 1)
+    except Exception as exc:
+        raise DeleteColumnError(str(exc)) from exc
+
+
+def insert_column(instance: ExcelInstanceHandle, column: str) -> None:
+    try:
+        col_index = column_index_from_string(column)
+    except Exception as exc:
+        raise ColumnNotFoundError(str(exc)) from exc
+    try:
+        instance.active_sheet.insert_cols(col_index, 1)
+    except Exception as exc:
+        raise InsertColumnError(str(exc)) from exc
+
+
+def delete_row(instance: ExcelInstanceHandle, index: int) -> None:
+    if index < 1:
+        raise RowNotFoundError(f"Row index must be >= 1, got {index}")
+    try:
+        instance.active_sheet.delete_rows(index, 1)
+    except Exception as exc:
+        raise DeleteRowError(str(exc)) from exc
+
+
+def insert_row(instance: ExcelInstanceHandle, index: int) -> None:
+    if index < 1:
+        raise RowNotFoundError(f"Row index must be >= 1, got {index}")
+    try:
+        instance.active_sheet.insert_rows(index, 1)
+    except Exception as exc:
+        raise InsertRowError(str(exc)) from exc

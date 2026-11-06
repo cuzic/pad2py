@@ -141,11 +141,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (Contains/StartsWith/EndsWith/IsEmpty/Equal/NotEqual等10演算子のみ、
   GreaterThan系・IsBlank系は実機規則/Blank値のPython表現が未確認のため
   `NotImplementedError`に留めた)。
-  - [ ] 💻🖥️ **残課題(知見165で発見、未精査)**:
-    - `Excel.DeleteColumn`/`DeleteRow`/`InsertColumn`/`InsertRow`: openpyxlの
-      `delete_cols()`/`delete_rows()`/`insert_cols()`/`insert_rows()`に対応
-      しそうな有力候補(知見155のExcelスコープ内の可能性が高い)。
-    - `Excel.GetTableRange`: Excel Table構造体のレンジ取得、COM専用か要確認。
+  - [x] 💻 `Excel.DeleteColumn`/`DeleteRow`/`InsertColumn`/`InsertRow` — 知見166で
+    decompile精査・新規結線完了。openpyxlの`delete_cols()`/`delete_rows()`/
+    `insert_cols()`/`insert_rows()`に1:1対応する低リスク追加(セレクタ無し、
+    `Instance`+`Column`または`Index`のみ)。
+  - [ ] 💻🖥️ **残課題(知見165/166で発見、未精査のまま)**:
+    - `Excel.GetTableRange`: 知見166で保留継続。`openpyxl`の`Worksheet.tables`で
+      非PivotのTable名→レンジは読めるが、ワークシート横断探索の前例が無い点と
+      `IsPivot=True`(`GetPivotTableRange`)に対応するAPIが`openpyxl`に無い点の
+      両方が未解決——`IsPivot`分岐の片方だけ実装するのはでっち上げに近いため保留。
     - `PowerPoint.CopyPastePowerPointSlide`: クロスプレゼンテーションのコピー、
       `MovePowerPointSlide`と同種の複合動作(同じくNotImplementedError委譲か)。
     - `Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`/

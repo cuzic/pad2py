@@ -301,4 +301,32 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{instance}, {column})"
         ]
 
+    if action_id == "Excel.DeleteColumn":
+        instance = safe_render(p.get("Instance"))
+        column = safe_render(p.get("Column"))
+        if instance is None or column is None:
+            return None
+        return [f"{prefix}excel_actions.delete_column({instance}, {column})"]
+
+    if action_id == "Excel.InsertColumn":
+        instance = safe_render(p.get("Instance"))
+        column = safe_render(p.get("Column"))
+        if instance is None or column is None:
+            return None
+        return [f"{prefix}excel_actions.insert_column({instance}, {column})"]
+
+    if action_id == "Excel.DeleteRow":
+        instance = safe_render(p.get("Instance"))
+        index = safe_render(p.get("Index"))
+        if instance is None or index is None:
+            return None
+        return [f"{prefix}excel_actions.delete_row({instance}, {index})"]
+
+    if action_id == "Excel.InsertRow":
+        instance = safe_render(p.get("Instance"))
+        index = safe_render(p.get("Index"))
+        if instance is None or index is None:
+            return None
+        return [f"{prefix}excel_actions.insert_row({instance}, {index})"]
+
     return None

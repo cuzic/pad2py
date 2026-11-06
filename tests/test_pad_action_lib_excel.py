@@ -227,3 +227,59 @@ def test_get_first_free_row_on_column() -> None:
     xl.write_to_excel(instance, "y", column="A", row=2)
     assert xl.get_first_free_row_on_column(instance, "A") == 3
     assert xl.get_first_free_row_on_column(instance, "B") == 1
+
+
+def test_delete_column_shifts_remaining_columns_left() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.write_to_excel(instance, "a", column="A", row=1)
+    xl.write_to_excel(instance, "b", column="B", row=1)
+    xl.delete_column(instance, "A")
+    assert xl.read_from_excel(instance, "SingleCell", start_column="A", start_row=1) == "b"
+
+
+def test_delete_column_invalid_letter_raises_column_not_found_error() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.ColumnNotFoundError):
+        xl.delete_column(instance, "1A")
+
+
+def test_insert_column_shifts_existing_columns_right() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.write_to_excel(instance, "a", column="A", row=1)
+    xl.insert_column(instance, "A")
+    assert xl.read_from_excel(instance, "SingleCell", start_column="A", start_row=1) is None
+    assert xl.read_from_excel(instance, "SingleCell", start_column="B", start_row=1) == "a"
+
+
+def test_insert_column_invalid_letter_raises_column_not_found_error() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.ColumnNotFoundError):
+        xl.insert_column(instance, "")
+
+
+def test_delete_row_shifts_remaining_rows_up() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.write_to_excel(instance, "a", column="A", row=1)
+    xl.write_to_excel(instance, "b", column="A", row=2)
+    xl.delete_row(instance, 1)
+    assert xl.read_from_excel(instance, "SingleCell", start_column="A", start_row=1) == "b"
+
+
+def test_delete_row_non_positive_index_raises_row_not_found_error() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.RowNotFoundError):
+        xl.delete_row(instance, 0)
+
+
+def test_insert_row_shifts_existing_rows_down() -> None:
+    instance = xl.launch_excel("NewDocument")
+    xl.write_to_excel(instance, "a", column="A", row=1)
+    xl.insert_row(instance, 1)
+    assert xl.read_from_excel(instance, "SingleCell", start_column="A", start_row=1) is None
+    assert xl.read_from_excel(instance, "SingleCell", start_column="A", start_row=2) == "a"
+
+
+def test_insert_row_non_positive_index_raises_row_not_found_error() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.RowNotFoundError):
+        xl.insert_row(instance, -1)
