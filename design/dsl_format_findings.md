@@ -2458,3 +2458,11 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 **留保事項(実機キャプチャによる確証はまだ無い)**: `DatabaseType`パラメータ自体がDSL上でどう直列化されるか(明示的に`Other`以外を選んだ場合)は未確認——既存の`Connect.Connect`も元々このパラメータを読んでいなかった前例に合わせ、`ConnectAndExecute`も読まずにデフォルト("Other")のまま結線した。`ConnectAndExecute`の出力束縛が本当に`Result`1個だけ(`Connection`の別出力が無い)かも、`Execute`セレクタと同一クラスという構造的推測に基づくものであり、実機DSLキャプチャでの直接確認はまだ無い。
 
 Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、未結線セレクタの全量を把握した(詳細はdesign/pad_todo.md参照)——Database以外はまだ個別の結線作業に未着手。
+
+## 140. 知見139のXML.Actions.dll分を結線完了——`GetElementValueAsNumeric`/`AsBoolean`/`AsDateTime`・`ExecuteXPathAndGetFirstValueOnly`・`WriteToFile`(非フォーマット)の5件を新規結線
+
+知見139でDatabase以外は「監査完了・結線は未着手」としていたXML.Actions.dllについて、結線作業まで完了した。`pad_action_lib.xml_actions.get_xml_element_value()`は元々`value_type: str = "Text"`引数を持っていた(Text以外の値は未使用のまま実装だけ存在していた)ため、`GetElementValueAsNumeric`/`AsBoolean`/`AsDateTime`の3セレクタは既存の`get_xml_element_value()`にそのまま`value_type="Numeric"/"Boolean"/"DateTime"`を渡すだけで結線できた(`Database.Connect.ConnectOracle`と同じ「セレクタ自体がモードを固定する」パターン)。同様に`execute_xpath_query()`の`first_value_only`引数・`write_xml_to_file()`の`format_xml`引数も既存実装のまま`ExecuteXPathAndGetFirstValueOnly`/`WriteToFile`(非フォーマット版)に対応できた。
+
+**見送った項目**: `GetElementAttribute`クラスの`AsNumeric`/`AsBoolean`/`AsDateTime`3セレクタは、`get_xml_element_attribute()`自体に`value_type`引数が無く(常に文字列を返す)、新規の型変換ロジック実装が必要なため今回は見送った——`get_xml_element_value()`の`value_type`実装をそのまま再利用できる可能性が高いが、属性用のValueType列挙値がElement用と同じ文字列("Numeric"/"Boolean"/"DateTime")かは実機未確認。
+
+テストは`tests/test_pad_codegen.py`に4件追加(`GetElementValueAsNumeric/AsBoolean/AsDateTime`の3パターンparametrize+`ExecuteXPathAndGetFirstValueOnly`+`WriteToFile`)、全て実際に`exec()`して出力値まで検証した。

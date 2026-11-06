@@ -21,6 +21,7 @@ import base64
 import hashlib
 import hmac
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -3788,3 +3789,72 @@ def test_generate_python_from_database_connect_and_execute_oracle_converts() -> 
         "QueryResult = database_actions.connect_and_execute('DRIVER=Oracle;', 'SELECT 1 FROM DUAL', "
         "database_type='Oracle', timeout=30)[1]" in code
     )
+
+
+@pytest.mark.parametrize(
+    ("mode", "xml_value", "expected"),
+    [
+        ("Numeric", "42", 42),
+        ("Boolean", "true", True),
+        ("DateTime", "2026-01-02", datetime(2026, 1, 2)),
+    ],
+)
+def test_generate_python_from_get_xml_element_value_as_typed_converts(mode: str, xml_value: str, expected: object) -> None:
+    # design/dsl_format_findings.md 知見139: `ActionSelectorBase`一括列挙監査を
+    # XML.Actions.dllに適用して発見した`GetElementValue`の兄弟セレクタ
+    # (`GetElementValueAsNumeric`/`AsBoolean`/`AsDateTime`)。`value_type`はセレクタ
+    # 自体が固定するため、既存の`xml_actions.get_xml_element_value()`の`value_type`
+    # 引数(実装済み)をそのまま使って結線できた。
+    from decimal import Decimal
+
+    dsl = (
+        f"SET Doc TO $'''<r><v>{xml_value}</v></r>'''\n"
+        f"XML.GetXmlElementValue.GetElementValueAs{mode} Document: Doc XPathQuery: $'''/r/v''' "
+        "ElementValue=> N"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"value_type={mode!r}" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    if mode == "Numeric":
+        assert namespace["N"] == Decimal(expected)
+    else:
+        assert namespace["N"] == expected
+
+
+def test_generate_python_from_execute_xpath_and_get_first_value_only_converts() -> None:
+    # design/dsl_format_findings.md 知見139: `ExecuteXPath`の兄弟セレクタ。
+    dsl = (
+        "SET Doc TO $'''<r><v>a</v><v>b</v></r>'''\n"
+        "XML.ExecuteXPathQuery.ExecuteXPathAndGetFirstValueOnly XmlDocument: Doc "
+        "XPathQuery: $'''//v/text()''' XPathResult=> R"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "first_value_only=True" in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["R"] == "a"
+
+
+def test_generate_python_from_write_xml_to_file_without_formatting_converts() -> None:
+    # design/dsl_format_findings.md 知見139: `WriteToFileFormatted`の兄弟セレクタ
+    # (`Indentation`パラメータ自体がDSL上に無い)。
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "out.xml"
+        dsl = (
+            f"XML.WriteXmlToFile.WriteToFile File: $'''{out_path}''' "
+            "Xml: $'''<r><v>1</v></r>''' Encoding: XML.XMLEncoding.DefaultEncoding"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert "format_xml=False" in code
+        exec(code, {})
+        assert out_path.read_text(encoding="utf-8") == "<r><v>1</v></r>"
