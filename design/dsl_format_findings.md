@@ -2956,3 +2956,15 @@ OOXMLでは`<w:bookmarkStart w:name="..." w:id="N"/>`と`<w:bookmarkEnd w:id="N"
 **書き込み側(`WriteTextOnBookmark`)を実際に精査した追記**: `decompile`した`WriteTextOnBookmark()`自体のロジック(ブックマーク未発見時は例外、空ブックマークなら`Range.InsertBefore`一択、非空なら`StartOfBookmark`→`InsertBefore`/`EndOfBookmark`→`InsertAfter`で両方ともマーカーに隣接する箇所へのraw文字列挿入)は構造としてlxmlで再現できそうに見えたが、**`AppendNewLine`(decompile確認済み: `WriteToWord`の既存のStartOfDocument/EndOfDocumentモードと同じく「テキストの前に`\r\n`を挿入する」仕様)が常にテキストへ埋め込みの`\r\n`を持ち込む**ため、Word COMの`Range.InsertBefore`/`InsertAfter`が埋め込み`\r\n`をブックマーク境界の相対位置で実際にどう段落分割するか(ブックマーク自体が複数段落に広がることになるか等)が実機未確認で、`AppendNewLine=True`という典型的な使い方のケースで安全に実装できないと判明した——単一行+`AppendNewLine=False`に絞れば実装は可能だが、実用上のカバー範囲が大きく狭まるため、今回は見送りのまま次の調査対象として記録する(読み取り側のような明確な「このまま完結する」実装ではなく、`AppendNewLine`絡みの段落構造への実機確認が追加で必要)。
 
 実装: `pad_action_lib/word_actions.py`に`_bookmark_range_text()`(lxml直接検索)を追加し、`read_from_word()`の`Bookmark`モードを無条件`NotImplementedError`から実装へ変更。`dump_daemon/pad_codegen/actions/word.py`に`Word.ReadFromWord.ReadBookmark`の分岐を追加。テストは`tests/test_pad_action_lib_word.py`に単体テスト4件(見つかる場合・空ブックマーク・見つからない場合・保存→再読込往復)、`tests/test_pad_codegen.py`にexec検証テスト1件を追加。VM不要。
+
+## 182. 知見173の「次回挑戦する際は...」の方針(b)を試行——`type_keys()`(キーボード入力)自体がこのセッション状態では一切機能しないと確定、知見173の「空canvasへのpaste限定の問題」という理解を訂正
+
+`pad2py-pad-host`が再度idleになったタイミングで、知見173で示唆した次善策——知見78の「検索→キーボードaddで項目を先に作ってから、既存項目のあるListへペースト/編集する」を試した。新規フロー(`pad2py_kbadd_probe`)を作成し、Designerの`Edit "Search actions"`へ`.set_focus()`した後`.type_keys("Set variable", with_spaces=True)`を呼んだところ、**`SendInput() inserted only 0 out of 2 keyboard events`という例外で即座に失敗**した。
+
+これは知見173で観察した「空の`List "Actions"`へのpasteだけが効かない」という理解より範囲が広い、より根本的な事実を示している——`type_keys()`(pywinautoの内部実装は`SendInput`、Windowsのグローバルキーボード注入API)自体が、対象がList・Edit・TreeItemのいずれであっても**全く機能しない**状態になっている。つまり「空canvasへのpasteが特異的に失敗する」のではなく、「このセッションの現在のデスクトップ状態では、キーボード入力を注入する操作(paste・検索語入力・キーボードaddのいずれも)は種類を問わず全て失敗する」という、より広い結論に訂正する。知見173で提示した2つの代替案のうち(a)「RDP接続直後に再試行する」のみが依然有効な仮説で、(b)「既存項目のあるListへのペーストに切り替える」はそもそもキーボード入力自体が機能しないため試す前提が崩れている。
+
+一方、`.invoke()`(UIAの`InvokePattern`、`Button`の新規フロー作成・ダイアログのCreate/Close操作等)は本tickでも問題なく機能した(知見81のRun実行と同じ経路)——「`.invoke()`は機能するが`type_keys()`/`SendInput`は機能しない」という非対称性が、このセッション状態(長期間RDP未接続)の特徴として改めて確認できた。
+
+試験後は即座にクリーンアップした: 検索語入力が失敗したため何も入力されておらず、Designerの`Button "Close window"` `.invoke()`で未保存確認ダイアログも出ずに正常終了(アクション0件のまま)。`pad2py_kbadd_probe`という名前の空のフロー自体はPADのフロー一覧に残存(前回の`pad2py_populate_probe`と同じ、実害の無いコスメティックな残骸)。
+
+`design/pad_todo.md`・`memory: pad2py_clipboard_paste_technique`を更新: `PopulateTextFieldInWindow`等のUI操作系action_idの実機動作確認は、`type_keys()`系の操作が全滅している現在の状態では**RDP接続以外に有効な代替手段が無い**と確定した。`.invoke()`ベースの操作(ボタン押下・Run実行)のみは引き続き安全に使える。

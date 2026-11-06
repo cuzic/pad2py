@@ -102,13 +102,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `PopulateTextMode`(Replace/Append)・`ClickType`・`OptionsNames`/`OptionsIndeces`/
       `UseRegularExpressions`の正確な挙動が実機未確認なこと——知見81の「Run実行+
       ファイル書き出し確認」で解決できる見込み(VM上での実機確認が必要、RDP不要)。
-      **知見173で試行・ブロック発見**: 空の`List "Actions"`canvasへのclipboard-paste
+      **知見173/182で試行・ブロック確定**: 空の`List "Actions"`canvasへのclipboard-paste
       (`.set_focus()`→`.type_keys("^v")`)が、RDP未接続状態が長く続いた今回のVM状態では
-      実際のWin32キーボードフォーカス移動を起こせず(生UIAの`GetFocusedElement()`で
-      確認、フォーカスは`"Desktop 1"`に残ったまま)、ペーストが無反応だった。次回は
-      (a) RDP接続直後の状態で再試行、または(b) 知見78の検索+キーボードadd技法で
-      先に項目を1件作ってから既存項目ありの状態でペーストを試す、のいずれかを先に
-      検証すべき。
+      実際のWin32キーボードフォーカス移動を起こせず無反応だった(知見173)。次善策として
+      知見78の検索+キーボードadd技法(`Edit "Search actions"`への`.type_keys()`で検索語
+      入力)も試したが、`SendInput() inserted only 0 out of 2 keyboard events`で即座に
+      失敗(知見182)——`type_keys()`/`SendInput`自体がこのセッション状態では対象を問わず
+      全滅していると確定し、「空canvasへのpasteだけが特異的に失敗する」という知見173の
+      理解を訂正した。`.invoke()`(ボタン押下・Run実行)は引き続き機能する。実機動作確認
+      には**RDP接続以外に有効な代替手段が無い**と確定、RDPが使えるようになるまで保留。
     - `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`: UI要素セレクタ
       を使わず「現在のウィンドウ全体をスキャンする」操作と判明——出力される識別名の
       形式(表示テキスト/AutomationId)が実機未確認。**知見175調査時に追加確認**:
