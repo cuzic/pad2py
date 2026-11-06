@@ -328,6 +328,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `AllMatches: False`でも型は変わらず最初の1件だけのリスト)。既存の`_cell_matches()`を
   再利用した`find_item_in_datatable_everywhere()`を実装・結線した
   (`codegen_coverage.py`: 176/202→177/202)。
+  - [x] 💻 **`SearchMode=FindAndReplace`側4件の新規結線(知見176)**: `tools/pad_selector_
+    audit.py`の再実行で発見した未結線候補——`ReplaceItemInDataTableEverywhere`/
+    `ReplaceItemInDataTableWithRegexEverywhere`/`ReplaceItemInDataTableByColumnIndex`/
+    `ReplaceItemInDataTableWithRegexByColumnIndex`。Find側と同じマッチ判定・同じ
+    `DataTableMatches`出力契約で、`find_and_replace_in_datatable_everywhere()`を新規実装
+    (未使用だった旧`find_or_replace_in_datatable()`を置き換え)。副産物として
+    `_cell_matches()`のregex分岐が実機と逆(常にIGNORECASEを付与していたが実機は常に
+    大文字小文字を区別)という既存の潜在バグも発見・修正した。VM不要。
 - [x] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
   ✅ **実機確認・結線完了(知見86)**: VMが空いたタイミングで知見81の手法を使い、
   `1 + $'''2'''` = `3`・`$'''2''' + 1` = `3`・`$'''a''' + $'''b'''` = `"ab"`を

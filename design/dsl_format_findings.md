@@ -2883,4 +2883,16 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 
 実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.GetUIControl`の分岐を追加。テストは`tests/test_pad_codegen.py`にexec検証テストを1件追加(`fake_pywinauto`で出力変数が実際に正しいセレクタ条件を保持していることまで確認)。
 
-`GetDetailsOfElementInWindow`/`GetWindowDetails`(`AttributeName`/`ExtractionOperation`→UIAプロパティの対応)は、知見172で確定した`IAutomationRuntimeProxy`のRPC不透明な壁にそのまま該当するため、依然`design/pad_todo.md`の「decompileでは解決不可、RDP実機確認が必要」カテゴリに残す。
+`GetDetailsOfElementInWindow`/`GetWindowDetails`(`AttributeName`/`ExtractionOperation`→UIAプロパティの対応)は、知見172で確定した`IAutomationRuntimeProxy`のRPC不透明な壁にそのまま該当するため、依然`design/pad_todo.md`の「decompileでは解決不可、RDP実機確認が必要」カテゴリに残す。副産物として`GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`(知見161の残課題)もdecompile確認したところ、両方とも`UIAutomationActionBase`派生で同じRPC経由(`r.GetCheckboxState`/`GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`)だったため、同じ壁に該当すると確定した。
+
+## 176. `tools/pad_selector_audit.py`をVariables.Actions.dllに再適用して発見した未結線4件(`FindOrReplaceInDataTable`の`Replace*`系兄弟セレクタ)を新規結線——同じ`_cell_matches()`内の正規表現大文字小文字区別バグも合わせて修正
+
+知見175調査の一環で、全モジュールに対して`tools/pad_selector_audit.py`を再実行し横断的に未結線候補が残っていないか確認したところ、Variables.Actions.dllに4件の未結線候補(`Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableByColumnIndex`/`ReplaceItemInDataTableEverywhere`/`ReplaceItemInDataTableWithRegexByColumnIndex`/`ReplaceItemInDataTableWithRegexEverywhere`)を発見した——他の全モジュール(Database/Web/File/Folder/Cmd/Cryptography/DateTime/Text/XML/Variables以外)は監査済みで全セレクタ結線済みと確認(Clipboard/Compressionのみ、`ActionSelectorBase`一括列挙用のVMダンプ自体が未取得のため監査不可、低優先度のまま残す)。
+
+decompileで確認した`FindOrReplaceInDataTable`クラス(既に知見89/123/133/135で`SearchMode=Find`側4件を確認済み)の`Execute()`を再精査したところ、`SearchMode=FindAndReplace`側(`Replace*`系4件)はFind側と**全く同じマッチ判定ロジック・同じ`DataTableMatches`出力契約**(`(行,列)`の0始まりペアのリスト)を使い、マッチしたセルを即座に3分岐(`UseRegex`/`MatchEntireCellContents`/それ以外)で置換しながらテーブルを直接mutateするだけだと確認した——Find側で確立済みの`_cell_matches()`/`_resolve_column_name()`をそのまま再利用できる構造。
+
+**副産物として発見・修正したバグ**: `_cell_matches()`のUseRegex分岐が`ignore_case`引数(`not match_case`)でregexに`re.IGNORECASE`を付与していたが、decompileした`FindOrReplaceInDataTable.Match()`のUseRegex分岐は`regex?.IsMatch(text)`のみで`MatchCase`を一切参照せず、`ValidateAndInitializeRegex()`も`RegexOptions.Compiled`のみ(IgnoreCase無し)でコンパイルしている——つまり実機のregex系セレクタ(`MatchCase`が常にHidden+既定値False)は**常に大文字小文字を区別する**のに、既存の実装(知見123/135で結線済みの`FindItemInDataTableWithRegexEverywhere`/`WithRegexByColumnIndex`)は逆に常に大文字小文字を無視していた——既存のテストはこの違いを検出できる入力(大文字小文字が異なる候補を含む文字列)を使っていなかったため今まで気づかれていなかった潜在バグ。`_cell_matches()`のregex分岐を「`ignore_case`/`entire_cell`パラメータを無視し常に`re.search(find_value, text)`(大文字小文字区別・アンカー無し)」に修正した。
+
+新規実装: `pad_action_lib/variables_actions.py`の未使用(どのcodegenからも呼ばれていなかった)`find_or_replace_in_datatable()`(`int`件数を返す旧実装、置換ステップのregex分岐にも同じIGNORECASEバグがあった)を、`find_item_in_datatable_everywhere()`と同じ引数名・同じ`list[tuple[int,int]]`出力契約を持つ`find_and_replace_in_datatable_everywhere()`へ置き換えた(旧関数はcodegenから一度も参照されていなかったため、シグネチャ変更による既存動作への影響は無い)。
+
+実装: `dump_daemon/pad_codegen/actions/variables.py`に`Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableEverywhere`/`ReplaceItemInDataTableWithRegexEverywhere`/`ReplaceItemInDataTableByColumnIndex`/`ReplaceItemInDataTableWithRegexByColumnIndex`の4分岐を追加。テストは`tests/test_pad_action_lib_variables.py`に単体テスト8件(新関数4件+regexの大文字小文字区別修正確認2件+旧テストの置き換え)、`tests/test_pad_codegen.py`にexec検証テスト4件(CSV経由でDataTableを組み立て、置換後のテーブル内容・`DataTableMatches`の両方を検証)を追加。VM不要。

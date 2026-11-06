@@ -212,11 +212,63 @@ def test_add_row_to_datatable_with_list_wrong_length_raises() -> None:
         va.add_row_to_datatable(table, [3, 4, 5])
 
 
-def test_find_or_replace_in_datatable() -> None:
+def test_find_and_replace_in_datatable_everywhere_returns_matches_and_mutates_table() -> None:
+    # design/dsl_format_findings.md 知見176: SearchMode=FindAndReplace側も
+    # find_item_in_datatable_everywhereと同じ(行,列)マッチ位置の出力契約を持つ。
     table = [{"a": "hello", "b": "world"}]
-    count = va.find_or_replace_in_datatable(table, "hello", "HI")
-    assert count == 1
+    matches = va.find_and_replace_in_datatable_everywhere(table, "hello", "HI")
+    assert matches == [(0, 0)]
     assert table[0]["a"] == "HI"
+
+
+def test_find_and_replace_in_datatable_everywhere_case_insensitive_preserves_replacement() -> None:
+    table = [{"a": "Hello world"}]
+    va.find_and_replace_in_datatable_everywhere(table, "hello", "HI", match_case=False)
+    assert table[0]["a"] == "HI world"
+
+
+def test_find_and_replace_in_datatable_everywhere_match_case_true_is_case_sensitive() -> None:
+    table = [{"a": "Hello world"}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, "hello", "HI", match_case=True)
+    assert matches == []
+    assert table[0]["a"] == "Hello world"
+
+
+def test_find_and_replace_in_datatable_everywhere_entire_cell_contents() -> None:
+    table = [{"a": "apple", "b": "apple"}]
+    va.find_and_replace_in_datatable_everywhere(table, "apple", "banana", match_entire_cell_contents=True)
+    assert table == [{"a": "banana", "b": "banana"}]
+
+
+def test_find_and_replace_in_datatable_everywhere_use_regex_is_case_sensitive() -> None:
+    # design/dsl_format_findings.md 知見176(decompile確認済みの修正): regex系セレクタは
+    # MatchCaseがHiddenかつネイティブのRegexもIgnoreCase無しでコンパイルされるため、常に
+    # 大文字小文字を区別する(match_case引数の値に関わらず)。
+    table = [{"a": "order-123"}, {"a": "ORDER-456"}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, r"order-\d+", "MATCHED", use_regex=True)
+    assert matches == [(0, 0)]
+    assert table == [{"a": "MATCHED"}, {"a": "ORDER-456"}]
+
+
+def test_find_and_replace_in_datatable_everywhere_all_matches_false_stops_at_first() -> None:
+    table = [{"a": "x", "b": "x"}, {"a": "x", "b": "x"}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, "x", "y", all_matches=False)
+    assert matches == [(0, 0)]
+    assert table == [{"a": "y", "b": "x"}, {"a": "x", "b": "x"}]
+
+
+def test_find_and_replace_in_datatable_everywhere_column_scoped() -> None:
+    table = [{"a": "x", "b": "x"}, {"a": "y", "b": "x"}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, "x", "z", column="b")
+    assert matches == [(0, 1), (1, 1)]
+    assert table == [{"a": "x", "b": "z"}, {"a": "y", "b": "z"}]
+
+
+def test_find_item_in_datatable_everywhere_use_regex_is_case_sensitive() -> None:
+    # design/dsl_format_findings.md 知見176(decompile確認済みの修正): Find系のregexも
+    # 同じ理由で常に大文字小文字を区別する——`_cell_matches()`の既存バグ修正。
+    table = [{"a": "order-123"}, {"a": "ORDER-456"}]
+    assert va.find_item_in_datatable_everywhere(table, r"order-\d+", use_regex=True) == [(0, 0)]
 
 
 def test_find_item_in_datatable_everywhere_returns_row_col_pairs() -> None:

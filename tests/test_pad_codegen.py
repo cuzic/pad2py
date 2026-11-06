@@ -3465,6 +3465,109 @@ def test_generate_python_from_find_item_in_datatable_with_regex_everywhere_conve
     assert namespace["M"] == [(0, 0)]
 
 
+def test_generate_python_from_replace_item_in_datatable_everywhere_converts() -> None:
+    # design/dsl_format_findings.md 知見176(decompile確認済み): `FindOrReplaceInDataTable`の
+    # `SearchMode=FindAndReplace`側(知見165/166のaudit toolで未結線のまま発見された4件の
+    # うち1件)。`FindItemInDataTableEverywhere`(知見89)と同じ`DataTableMatches`出力契約
+    # (`(行,列)`ペアのリスト)で、テーブルを直接mutateしながら置換する。
+    dsl = (
+        "SET CSV TO $'''A\nhello\nworld'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableEverywhere "
+        "DataTable: T ValueToFind: $'''hello''' TextToReplaceWith: $'''HI''' AllMatches: True "
+        "MatchCase: False MatchEntireCellContents: False DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "M = variables_actions.find_and_replace_in_datatable_everywhere(T, 'hello', 'HI', "
+        "all_matches=True, match_case=False, match_entire_cell_contents=False)" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 0)]
+    assert namespace["T"] == [{"A": "HI"}, {"A": "world"}]
+
+
+def test_generate_python_from_replace_item_in_datatable_with_regex_everywhere_converts() -> None:
+    # 知見176: `ReplaceItemInDataTableEverywhere`の兄弟セレクタ(`UseRegex: True`固定)。
+    dsl = (
+        "SET CSV TO $'''A\norder-123\nno digits'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableWithRegexEverywhere "
+        "DataTable: T ValueToFind: $'''[0-9]+''' TextToReplaceWith: $'''N''' AllMatches: True "
+        "DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "M = variables_actions.find_and_replace_in_datatable_everywhere(T, '[0-9]+', 'N', "
+        "all_matches=True, use_regex=True)" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 0)]
+    assert namespace["T"] == [{"A": "order-N"}, {"A": "no digits"}]
+
+
+def test_generate_python_from_replace_item_in_datatable_by_column_index_converts() -> None:
+    # 知見176の追記: 兄弟セレクタ`ReplaceItemInDataTableByColumnIndex`(列名でも指定できる)。
+    dsl = (
+        "SET CSV TO $'''A,B\nx,x\ny,x'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableByColumnIndex "
+        "DataTable: T ValueToFind: $'''x''' TextToReplaceWith: $'''z''' AllMatches: True "
+        "MatchCase: False MatchEntireCellContents: False ColumnNameOrIndex: $'''B''' DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "M = variables_actions.find_and_replace_in_datatable_everywhere(T, 'x', 'z', "
+        "all_matches=True, match_case=False, match_entire_cell_contents=False, column='B')" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 1), (1, 1)]
+    assert namespace["T"] == [{"A": "x", "B": "z"}, {"A": "y", "B": "z"}]
+
+
+def test_generate_python_from_replace_item_in_datatable_with_regex_by_column_index_converts() -> None:
+    # 知見176の追記: 上記2つの組み合わせ(`UseRegex: True`固定+列名/列インデックス両対応)。
+    dsl = (
+        "SET CSV TO $'''A,B\norder-1,x\norder-2,y'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: CSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> T\n"
+        "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableWithRegexByColumnIndex "
+        "DataTable: T ValueToFind: $'''[0-9]+''' TextToReplaceWith: $'''N''' AllMatches: True "
+        "ColumnNameOrIndex: $'''A''' DataTableMatches=> M"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "M = variables_actions.find_and_replace_in_datatable_everywhere(T, '[0-9]+', 'N', "
+        "all_matches=True, use_regex=True, column='A')" in code
+    )
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["M"] == [(0, 0), (1, 0)]
+    assert namespace["T"] == [{"A": "order-N", "B": "x"}, {"A": "order-N", "B": "y"}]
+
+
 def test_generate_python_from_find_item_in_datatable_by_column_index_converts() -> None:
     # design/dsl_format_findings.md 知見123の追記: 兄弟セレクタ
     # `FindItemInDataTableByColumnIndex`(列名でも指定できる)。

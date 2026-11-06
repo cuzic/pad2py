@@ -344,6 +344,83 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{table}, {value}, all_matches={all_matches}, use_regex=True, column={column!r})"
         ]
 
+    if action_id == "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableEverywhere":
+        # design/dsl_format_findings.md 知見176(decompile確認済み): `FindItemInDataTableEverywhere`
+        # (知見89)の兄弟セレクタ(`SearchMode: FindAndReplace`固定)。マッチ判定・出力契約は
+        # 同一、テーブルを直接mutateしながら置換する点のみ異なる。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        replace_with = safe_render(p.get("TextToReplaceWith"))
+        all_matches = safe_render(p.get("AllMatches"))
+        match_case = safe_render(p.get("MatchCase"))
+        entire_cell = safe_render(p.get("MatchEntireCellContents"))
+        if (
+            None in (table, value, replace_with, all_matches, match_case, entire_cell)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_and_replace_in_datatable_everywhere("
+            f"{table}, {value}, {replace_with}, all_matches={all_matches}, "
+            f"match_case={match_case}, match_entire_cell_contents={entire_cell})"
+        ]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableWithRegexEverywhere":
+        # 知見176: `ReplaceItemInDataTableEverywhere`の兄弟セレクタ(`UseRegex: True`固定、
+        # `MatchEntireCellContents`/`MatchCase`は選択不可=常に既定値False、知見123と同じ構造)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        replace_with = safe_render(p.get("TextToReplaceWith"))
+        all_matches = safe_render(p.get("AllMatches"))
+        if None in (table, value, replace_with, all_matches) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_and_replace_in_datatable_everywhere("
+            f"{table}, {value}, {replace_with}, all_matches={all_matches}, use_regex=True)"
+        ]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableByColumnIndex":
+        # 知見176: `ReplaceItemInDataTableEverywhere`の列指定版(知見133と同じ列名/列
+        # インデックス両対応、`column`は`find_and_replace_in_datatable_everywhere()`内の
+        # `_resolve_column_name()`が解決する)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        replace_with = safe_render(p.get("TextToReplaceWith"))
+        all_matches = safe_render(p.get("AllMatches"))
+        match_case = safe_render(p.get("MatchCase"))
+        entire_cell = safe_render(p.get("MatchEntireCellContents"))
+        column = p.get("ColumnNameOrIndex")
+        if (
+            None in (table, value, replace_with, all_matches, match_case, entire_cell)
+            or not isinstance(column, str)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_and_replace_in_datatable_everywhere("
+            f"{table}, {value}, {replace_with}, all_matches={all_matches}, "
+            f"match_case={match_case}, match_entire_cell_contents={entire_cell}, column={column!r})"
+        ]
+
+    if action_id == "Variables.FindOrReplaceInDataTable.ReplaceItemInDataTableWithRegexByColumnIndex":
+        # 知見176: 上記2つの組み合わせ(`UseRegex: True`固定+列名/列インデックス両対応)。
+        table = safe_render(p.get("DataTable"))
+        value = safe_render(p.get("ValueToFind"))
+        replace_with = safe_render(p.get("TextToReplaceWith"))
+        all_matches = safe_render(p.get("AllMatches"))
+        column = p.get("ColumnNameOrIndex")
+        if (
+            None in (table, value, replace_with, all_matches)
+            or not isinstance(column, str)
+            or not node.output_var
+        ):
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.find_and_replace_in_datatable_everywhere("
+            f"{table}, {value}, {replace_with}, all_matches={all_matches}, use_regex=True, "
+            f"column={column!r})"
+        ]
+
     if action_id == "Variables.FilterDataTable":
         table = safe_render(p.get("DataTable"))
         # 知見72の「一度も編集されていない」空バックティック文字列(`` `` ``→Pythonの`""`)は

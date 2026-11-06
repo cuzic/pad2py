@@ -273,46 +273,66 @@ def _cell_matches(cell: object, find_value: str, is_regex: bool, ignore_case: bo
 
     text = str(cell)
     if is_regex:
-        flags = re.IGNORECASE if ignore_case else 0
-        pattern = f"^{find_value}$" if entire_cell else find_value
-        return re.search(pattern, text, flags=flags) is not None
+        # design/dsl_format_findings.md 知見176(decompile確認済みの修正): `FindOrReplaceInDataTable.
+        # Match()`のUseRegex分岐は`regex?.IsMatch(text)`のみで、`MatchCase`/`MatchEntireCellContents`
+        # を一切参照しない——正規表現は`ValidateAndInitializeRegex()`で`RegexOptions.Compiled`のみ
+        # (IgnoreCase無し)でコンパイルされるため常に大文字小文字を区別し、`IsMatch`は部分一致
+        # (アンカー無し)。`ignore_case`/`entire_cell`はいずれも無視する(両パラメータは実機でも
+        # Regex系セレクタで常にHiddenかつ既定値False)。
+        return re.search(find_value, text) is not None
     haystack = text.lower() if ignore_case else text
     needle = find_value.lower() if ignore_case else find_value
     return haystack == needle if entire_cell else needle in haystack
 
 
-def find_or_replace_in_datatable(
+def find_and_replace_in_datatable_everywhere(
     table: DataTable,
-    find_value: str,
-    replace_value: str,
+    value_to_find: str,
+    text_to_replace_with: str,
     *,
-    is_regex: bool = False,
-    ignore_case: bool = False,
-    entire_cell: bool = False,
+    all_matches: bool = True,
+    match_case: bool = False,
+    match_entire_cell_contents: bool = False,
+    use_regex: bool = False,
     column: str | None = None,
-) -> int:
+) -> list[tuple[int, int]]:
+    """design/dsl_format_findings.md 知見176(decompile確認済み): `FindOrReplaceInDataTable`の
+    `SearchMode=FindAndReplace`側(`Replace*`系4セレクタ)。マッチ判定自体は`SearchMode=Find`側
+    (`find_item_in_datatable_everywhere()`)と全く同じロジック・同じ`DataTableMatches`出力契約
+    (`(行, 列)`の0始まりペアのリスト)——マッチしたセルを即座に置換しながらテーブルを
+    直接mutateする点のみが異なる。置換の実装は decompile した`FindOrReplaceForCell()`の
+    3分岐そのまま: `use_regex`は`regex.Replace(text, TextToReplaceWith)`(常に大文字小文字を
+    区別、`_cell_matches()`の修正と同じ理由でMatchCaseは無視)、`match_entire_cell_contents`は
+    セル全体をそのまま置換、それ以外は`ReplaceString()`相当(大文字小文字を区別した/しない
+    部分文字列置換、置換後の文字列中の元のケースは保持しない——decompile確認済みの通り
+    置換文字列自体をそのまま挿入するだけ)。
+    """
     import re
 
-    replaced = 0
-    for row in table:
-        target_columns = [column] if column is not None else list(row.keys())
-        for col in target_columns:
-            if col not in row:
+    resolved_column = _resolve_column_name(table, column) if column is not None else None
+    matches: list[tuple[int, int]] = []
+    for row_idx, row in enumerate(table):
+        for col_idx, col_name in enumerate(list(row.keys())):
+            if resolved_column is not None and col_name != resolved_column:
                 continue
-            if _cell_matches(row[col], find_value, is_regex, ignore_case, entire_cell):
-                text = str(row[col])
-                if is_regex:
-                    flags = re.IGNORECASE if ignore_case else 0
-                    row[col] = re.sub(find_value, replace_value, text, flags=flags)
-                elif entire_cell:
-                    row[col] = replace_value
-                else:
-                    if ignore_case:
-                        row[col] = re.sub(re.escape(find_value), replace_value, text, flags=re.IGNORECASE)
-                    else:
-                        row[col] = text.replace(find_value, replace_value)
-                replaced += 1
-    return replaced
+            cell = row[col_name]
+            if not _cell_matches(cell, value_to_find, use_regex, not match_case, match_entire_cell_contents):
+                continue
+            matches.append((row_idx, col_idx))
+            text = str(cell)
+            if use_regex:
+                row[col_name] = re.sub(value_to_find, text_to_replace_with, text)
+            elif match_entire_cell_contents:
+                row[col_name] = text_to_replace_with
+            elif match_case:
+                row[col_name] = text.replace(value_to_find, text_to_replace_with)
+            else:
+                row[col_name] = re.sub(
+                    re.escape(value_to_find), text_to_replace_with, text, flags=re.IGNORECASE
+                )
+            if not all_matches:
+                return matches
+    return matches
 
 
 def find_item_in_datatable_everywhere(
