@@ -6647,6 +6647,37 @@ todo`または同等のガードを備えていることを確認した——新
 のみ変更。`tests/test_uipath_codegen.py`に1件追加、UiPath関連テスト
 全532件通過、リポジトリ全体で全1460件通過。
 
+## 139. `ToUpperInvariant`/`ToLowerInvariant`を新規実装、実機検証に`compile()`を標準手順として定着(未使用の新規13リポジトリでの実機検証、知見136〜138の教訓を実践、VM不使用)
+
+知見136〜138で確立した「`# TODO`の個数や例外の有無だけでは生成コードの
+妥当性を保証できない」という教訓を、本tickから標準の検証手順
+(`compile()`で実際にコンパイルを試す)として恒常的に組み込んだ——
+未使用の新規13リポジトリを検証し、構文エラーは0件だった(知見136〜138
+で修正した3箇所の潜在バグが、少なくともこのサンプルでは再発していない
+ことを確認)。
+
+**解決: `ToUpperInvariant`/`ToLowerInvariant`**(`R1zzabh/signalforge`
+の実機XAML`method.ToUpperInvariant`で発見、括弧省略形)。既存の
+`ToUpper`/`ToLower`(知見118)と同じ`upper`/`lower`へ対応する——
+「Invariant」(カルチャ非依存)の呼称が示す違いは、トルコ語の`i`/`İ`の
+ような一部言語でのカルチャ依存の大小文字変換を避ける点だが、Pythonの
+`str.upper()`/`str.lower()`はそもそもロケールを一切参照しない
+(Unicode標準の単純な大小文字マッピングのみ)仕様のため、意味論上の
+食い違いが無い——`_CHAINED_PROPERTY_TRANSLATIONS`辞書にキーを追加
+するだけで、知見118の`_render_chained_access`・知見119の`Ident`分岐・
+知見127の`_render_func_call`フォールバックの3経路全てに自動的に
+反映された(辞書駆動の設計の利点)。
+
+**新たに確認(コード変更無し)**: `config(...)`(`plaah/
+web-application-with-rpa-dhl`)・`rjs(...)`(`cristinegulescu/
+startUiPathFromSalesforce`)はいずれも知見74のDataTable行/配列添字
+曖昧性の別インスタンス——既存の保守的な`# TODO`decline(`If`条件内の
+場合は例外伝播)が正しく機能していることを再確認しただけ。
+
+`dump_daemon/uipath_codegen/render.py`の`_CHAINED_PROPERTY_
+TRANSLATIONS`に2キー追加。`tests/test_uipath_codegen.py`に2件追加、
+UiPath関連テスト全534件通過、リポジトリ全体で全1462件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

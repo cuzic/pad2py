@@ -435,6 +435,25 @@ def test_bare_variable_dotted_property_then_call_chain_renders():
     _compiles(code)
 
 
+def test_bare_variable_dotted_toupperinvariant_renders_as_upper():
+    """知見139: `method.ToUpperInvariant`(`R1zzabh/signalforge`の実機
+    XAMLで発見、括弧省略形)。Pythonの`str.upper()`はロケールを参照
+    しないため、`ToUpper`と同じ変換先で意味論上の食い違いが無い。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="method.ToUpperInvariant"))])
+    code = generate_python(wf)
+    assert "x = method.upper()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_tolowerinvariant_renders_as_lower():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="method.ToLowerInvariant"))])
+    code = generate_python(wf)
+    assert "x = method.lower()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_bare_variable_dotted_tolower_contains_chain_renders_as_in_operator():
     """知見133: `strStatus.ToString.ToLower.Contains("x")`
     (`sarvesh0718/RCM-Bot-using-uipath-studio`・`harsranjan/RPA`の実機

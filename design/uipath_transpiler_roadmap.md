@@ -1713,3 +1713,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     確立済みの規約に合わせただけ。回帰テスト追加(`tests/
     test_uipath_codegen.py`1件)、UiPath関連テスト全532件通過、
     リポジトリ全体で全1460件通過。
+
+97. **(完了、2026-11-06)** `ToUpperInvariant`/`ToLowerInvariant`を
+    新規実装、実機検証に`compile()`を標準手順として定着(知見139——
+    知見136〜138の教訓を実践): 既存の`ToUpper`/`ToLower`(知見118)と
+    同じ`upper`/`lower`へ対応——Pythonの`str.upper()`/`str.lower()`は
+    ロケールを参照しないため「Invariant」の意味論上の食い違いが無い。
+    `_CHAINED_PROPERTY_TRANSLATIONS`辞書にキーを追加するだけで、3つの
+    呼び出し経路全てに自動反映された(辞書駆動の設計の利点)。新規13
+    リポジトリの検証で構文エラーは0件——知見136〜138で修正した潜在
+    バグの再発は確認されなかった。回帰テスト追加(`tests/
+    test_uipath_codegen.py`2件)、UiPath関連テスト全534件通過、
+    リポジトリ全体で全1462件通過。

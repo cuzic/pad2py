@@ -570,7 +570,20 @@ def _render_node(node: ExprNode) -> str:
 # (文字列同士の`Equals`はPythonの`==`と同じ値比較になる、.NET `String.
 # Equals`の既定の序数比較とPythonの文字列`==`はいずれも単純な文字列値比較
 # で一致——カルチャ依存の比較オーバーロードは未確認のため対象外)。
-_CHAINED_PROPERTY_TRANSLATIONS = {"ToUpper": "upper", "ToLower": "lower", "Trim": "strip"}
+# 知見139: `ToUpperInvariant`/`ToLowerInvariant`(`R1zzabh/signalforge`
+# の実機XAML`method.ToUpperInvariant`で発見)も同じ`upper`/`lower`へ
+# 対応する——「Invariant」(カルチャ非依存)の呼称が示す違いは、トルコ語の
+# `i`/`İ`のような一部言語でのカルチャ依存の大小文字変換を避ける点だが、
+# Pythonの`str.upper()`/`str.lower()`はそもそもロケールを一切参照しない
+# (Unicode標準の単純な大小文字マッピングのみ)仕様のため、`ToUpper`/
+# `ToLower`と全く同じ変換先で意味論上の食い違いが無い。
+_CHAINED_PROPERTY_TRANSLATIONS = {
+    "ToUpper": "upper",
+    "ToUpperInvariant": "upper",
+    "ToLower": "lower",
+    "ToLowerInvariant": "lower",
+    "Trim": "strip",
+}
 
 # 知見119/130/133: 括弧省略形の素の変数へのメンバアクセス連鎖
 # (`_render_node`のIdent分岐)で、`_apply_chained_property`へそのまま
