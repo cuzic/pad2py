@@ -3290,3 +3290,24 @@ END
 2. **`IsBlank`は`IsEmpty`の別名ではない**——空文字列・非空文字列・空白のみの文字列、試した3パターン全てで`False`になった。これは.NETの`String.IsNullOrEmpty`/`String.IsNullOrWhiteSpace`のどちらでもない挙動で、実際に何が`True`を返すのかは依然不明(未初期化の変数への参照は、PAD側がエラーを出す可能性があり未検証)。**`IsEmpty`のでっち上げた別名として結線しないという判断は正しかった**ことが確定した。
 
 **実装**: `dump_daemon/pad_action_lib/text_actions.py`に`function_condition_ends_with()`/`function_condition_starts_with()`(いずれも大文字小文字を無視する文字列比較のみ対応、文字列以外は`UnsupportedFunctionConditionArgumentError`を投げる)を追加。`dump_daemon/pad_codegen/__init__.py`の`_render_function_condition()`に`EndsWith`/`StartsWith`の分岐を追加(`ContainsKey`/`Count`/`Blank`は知見204で到達不能と確定済みのため対応不要、`IsBlank`は意味論未確認のため意図的に未対応のまま)。実機で確認した往復済みテキストを`tests/fixtures/if_function_containskey_count_endswith_startswith_blank_isblank.txt`として保存した。`tests/test_pad_codegen.py`に正常系(大文字小文字を無視する真偽値の実際の評価含む)・単体テスト(文字列以外での例外)・`ContainsKey`/`Count`/`Blank`が依然`NotImplementedError`になることを確認するテストを追加。`codegen_coverage.py`: `condition_function_call`バケットが新規保存したfixtureにより4/4→6/10(`EndsWith`/`StartsWith`がOK、`ContainsKey`/`Count`/`Blank`/`IsBlank`はTODO)、全体185/202→193/210(92%)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1207 passed, 28 skippedを確認。
+
+## 206. `VariableTrailer`の動的セレクタ構築を実機で初めて成功——セレクタ属性の値欄に`%変数名%`をそのまま入力するだけで動的化できると判明(ただし元々探していた`.Name (args)`トレーラ構文そのものはDSLテキスト上に出現しなかった)
+
+同じVM作業セッション内で、`pad_todo.md`に長年「🖥️・優先度は低」として残っていた`VariableTrailer`の動的セレクタ構築(知見38以来「Inspect UI elements」ピッカーが必要と判明していたが、desktop accessが無く試せなかった項目)を、desktop accessが生きている間に初めて実機で試行した。
+
+**手順**(全て`clipwire exec`経由、`.invoke()`/`click_input()`混在):
+1. 新規フローに「Click UI element in window」アクションを検索(`Search actions`に入力)→`TreeItem.set_focus()`+`{ENTER}`(知見78の技法)で追加。
+2. アクションをダブルクリックして編集ダイアログを開く(知見75/173/182で長年「新規ダイアログの内容はdesktop acces無しでは見えない」とされていた制約が、desktop access確認後は完全に解消していることも併せて確認——`.invoke()`でダイアログ自体は開けても、こうやってUIA子要素(`Edit`/`Button`等)が正しく読めるのはdesktop accessが有効な場合のみ)。
+3. ダイアログ内「UI elements」ボタンを`.invoke()`(`click_input()`はトグルの開閉タイミングがずれて空振りすることが多く、`.invoke()`の方が安定)→「Add UI element」を`.invoke()`→「UI element picker」ウィンドウが開く(知見38と全く同じ文言:「Hover the mouse over the UI element...then press Ctrl + Left click」)。
+4. Notepadのタイトルバー付近へ`pywinauto.mouse.move()`でカーソル移動→`win32api.keybd_event(VK_CONTROL, ...)`でCtrl押下→`mouse.click()`→Ctrl解放、という合成Ctrl+左クリックで要素をキャプチャ(`pyautogui`はこのVMの venvに未インストールだったため、既存の`pywin32`依存で代替した)。`"Local computer > Window 'Untitled - Notepad' > Title Bar"`というキャプチャ結果がUI element欄に反映された。
+5. 「Open selector builder for selected UI element」を`.invoke()`→「Selectors of UI element "Title Bar"」ダイアログが開き、`DataGrid 'Selector attributes'`(Class/Enabled/Id/Name/Ordinal/Visibleの各属性行、チェックボックス+Operator+Valueの3列)と、現在の選択結果をリアルタイムに表示する`Document 'Selector text'`(`legacy_properties()['Value']`で読める)が確認できた。デフォルトでは`Id`属性のみ使用され、値は固定の`"TitleBar"`(ウィンドウ固有ではない汎用値)——`titlebar[Id="TitleBar"]`。
+6. 「Use Name attribute in selector」チェックボックスを`.toggle()`で有効化すると`Name`属性も使われるようになり、`Value for Name`欄(初期値は空文字列)が編集可能になった。この欄に`%MyDynamicVar%`と入力したところ(`pywinauto.type_keys()`は`%`をAlt修飾キーのプレフィックスとして解釈するため、`{%}MyDynamicVar{%}`というエスケープ形式で入力する必要があった——素のまま打つと`%`が消費され`"yDynamrcVar"`のような壊れた文字列になることも実機で確認)、`Selector text`のプレビューが即座に`titlebar[Id="TitleBar"][Name="%MyDynamicVar%"]`に変化した。
+7. セレクタダイアログ・アクションダイアログの両方を`Save`で確定した後、知見75の往復確認手法(アクションを全選択→コピー→クリップボード読み取り)でDSLテキストを取得した。
+
+**確認できた事実・結論**:
+- **UI要素セレクタの「動的化」は、セレクタ属性の値欄に`%変数名%`という、`Set variable`等の他のテキスト入力欄と全く同じPAD標準の変数補間記法をそのまま入力するだけで実現する**——`.Name (args)`のようなトレーラ専用の特別な入力UIは不要で、通常の文字列入力欄がそのまま動的値のプレースホルダーを受け付ける。
+- **この`%変数名%`は、DSLテキストの`appmask[...]`参照(トップレベルの`Element:`パラメータ値)には一切現れない**——取得したDSLは`Element: appmask['Window \'Untitled - Notepad\'']['Title Bar']`のまま変化せず、単純な名前参照のままだった。`%MyDynamicVar%`という文字列は、代わりに`# [ControlRepository]`セクション内の`Repository`JSON文字列の奥深く、該当する`SelectorAttribute`エントリの`"Value"`フィールド(`{"Operation": "EqualTo", "Value": "%MyDynamicVar%", ...}`)にそのまま埋め込まれる形で保存されていた。
+- **これは`pad_todo.md`が長年「未解明」としていた`RepositoryTrailerHandler.EvaluateControl()`の`.Parameters`評価の実体と整合する**——保存済みセレクタJSON内の`%変数名%`プレースホルダーを、実行時に変数の現在値へ置換してからUIA照合に使う、という挙動だと考えれば、decompileで確認した「UI要素リポジトリ参照専用の動的値埋め込み機構」という説明と矛盾しない。ただし、今回確認できたのは「`%変数名%`記法がセレクタJSON内に保存される」という入力側の挙動のみで、知見・decompile発見当初に問われていた**「`.Name (args)`という引数付きトレーラ構文がDSLテキスト上のどこに/どういう形で出現するか」という元々の問い自体には、直接の答えにはなっていない**——今回試した経路(通常のUI element picker→Selector builder)はこのトレーラ構文を一度も生成しなかった。`.Name (args)`という構文が実際にどのPAD機能から生成されるのかは、依然未解明のまま残る(別の経路——例えば動的セレクタで構築した要素を`SET`式の右辺で参照する、またはpad_todo.mdが例示する`DataTable`/`CustomObject`の汎用メソッド呼び出し構文との混同の可能性——を今後確認する必要がある)。
+- 副産物として、**知見75/173/182の「desktop access無しでは新規ダイアログの内容が見えない」という制約が、desktop accessが実際に有効な状態では完全に解消する**ことも確認した——今回全てのダイアログ(アクション編集・UI element picker・Selector builder)が問題なく開き、内部のUIA要素も正しく読み取れた。
+
+**今後の指針**: `pad_todo.md`の該当項目を本知見へのポインタに更新し、「`%変数名%`記法によるセレクタ属性の動的化」自体は実機確認済みとして記録する一方、「`.Name (args)`トレーラ構文の生成元」という元々の問いは依然未解明のまま保留する(真に低優先度のため、次回明確な手がかりが見つかるまで再調査しない)。probeフロー・Notepadはいずれも保存せず`.invoke()`でクリーンに後始終処理した。コード変更は無し(あくまでDSL構文・UI挙動の調査のみ)。

@@ -400,16 +400,21 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   保留)。`dump_daemon/pad_action_lib/text_actions.py`の`function_condition_ends_with()`/
   `function_condition_starts_with()`と`pad_codegen`の結線まで完了。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
-  🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
+  🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた**:
   `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、
   `.Parameters`(引数)を実際に読み取っている唯一の評価経路が`RepositoryTrailerHandler.EvaluateControl()`
   (`appmask[...]`UI要素リポジトリ参照専用)だと判明した——DataTable/CustomObject等の汎用メソッド
   呼び出しではなく、**UI要素セレクタに実行時の値を埋め込む「動的セレクタ」専用の機構**
-  (UiPathの`Dynamic Selector`相当のPAD版)だった。評価されたパラメータの辞書がセレクタ文字列の
-  組み立てに渡される実装を確認済み(詳細はdocs-local、逆コンパイル結果由来のため非追跡)。
-  ただしこの動的セレクタ自体を作るには知見38以来の「Inspect UI elements」ピッカー(RDP必須)が
-  必要なため、`appmask[...]`参照の構築全般と同じRDP必須カテゴリに留まる——「何が生成するか不明」
-  という問い自体は決着したが、実機確認・結線はRDP待ちのまま(🖥️のまま、優先度は低)。
+  (UiPathの`Dynamic Selector`相当のPAD版)だった。
+  **知見206でdesktop access下の実機検証を実施**: 「Inspect UI elements」ピッカーで要素を
+  キャプチャ→Selector builderの属性値欄(例: `Value for Name`)に`%変数名%`を直接入力するだけで
+  動的化できることを確認した(`Selector text`プレビューが`[Name="%MyDynamicVar%"]`に変化、
+  保存後は`# [ControlRepository]`セクションのRepository JSON内`"Value": "%MyDynamicVar%"`に
+  そのまま保存される——`RepositoryTrailerHandler.EvaluateControl()`の`.Parameters`評価と
+  整合する入力側の挙動)。**ただし、元々問われていた`.Name (args)`という引数付きトレーラ構文
+  自体はDSLテキスト上に一度も出現しなかった**(`Element: appmask[...]`参照は単純な名前参照の
+  まま変化無し)——この構文がどのPAD機能から生成されるのかは依然未解明のまま。再調査は
+  明確な新しい手がかりが見つかるまで見送る(優先度は低)。
 - [x] 💻🖥️ `Variables.FindOrReplaceInDataTable.FindItemInDataTableEverywhere`の出力契約
   (`DataTableMatches`の形)を実機確認。
   ✅ **実機確認・結線完了(知見89)**: RDP不要——`AddRowToDataTable`/`AddColumnToDataTable`等
