@@ -392,10 +392,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   ステーション問題(ユーザーによるパスワードリセット・RDP接続・clipd再起動で解消)を
   経て、知見75の往復手法で6関数全ての到達可能性を実機確定した: `EndsWith`/
   `StartsWith`/`IsBlank`は標準If条件UIから**到達可能**(`"Has error"`無し)、
-  `ContainsKey`/`Count`/`Blank`は**到達不能**(`"Has error"`)。ただし到達可能な3関数の
-  **真偽値の意味論(EndsWith/StartsWithのDataRow/IList多態性、IsBlankとIsEmptyの
-  異同)は未確認のまま**——知見81の「Run実行+ファイル書き出し」手法での追加確認が
-  必要なため、`pad_codegen`への結線はまだ行っていない(詳細は知見204)。
+  `ContainsKey`/`Count`/`Blank`は**到達不能**(`"Has error"`)。続けて知見81の「Run実行+
+  ファイル書き出し」手法で`EndsWith`/`StartsWith`/`IsBlank`の実際の真偽値まで実機確認した
+  (知見205): `EndsWith`/`StartsWith`は大文字小文字を区別しない文字列部分一致(結線済み、
+  文字列以外は未確認のため例外)、`IsBlank`は空文字列・非空文字列・空白のみの文字列いずれも
+  `False`になり`IsEmpty`の別名ではないと確定(何が`True`になるか不明なため未結線のまま
+  保留)。`dump_daemon/pad_action_lib/text_actions.py`の`function_condition_ends_with()`/
+  `function_condition_starts_with()`と`pad_codegen`の結線まで完了。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
   🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
   `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、

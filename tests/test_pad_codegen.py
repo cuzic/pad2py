@@ -2990,6 +2990,71 @@ def test_generate_python_from_unknown_function_condition_raises() -> None:
         generate_python(tree)
 
 
+def test_generate_python_from_real_if_function_endswith_startswith_converts_case_insensitive() -> None:
+    # design/dsl_format_findings.md 知見204: 知見75のペースト往復手法で`EndsWith`/
+    # `StartsWith`が標準If条件UIから到達可能(エラー無く自然文表示される)ことを実機確認、
+    # 続けて知見81のRun実行+ファイル書き出し手法で実際の真偽値を確認したところ、両者とも
+    # 大文字小文字を区別しないことが判明した("Hello World".EndsWith("world") == True)。
+    dsl = (
+        "SET Var1 TO $'''Hello World'''\n"
+        "SET Var2 TO $'''world'''\n"
+        "IF EndsWith(Var1, Var2) THEN\n"
+        "END\n"
+        "SET Var3 TO $'''HEL'''\n"
+        "IF StartsWith(Var1, Var3) THEN\n"
+        "END\n"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import text_actions" in code
+    assert "if text_actions.function_condition_ends_with(Var1, Var2):" in code
+    assert "if text_actions.function_condition_starts_with(Var1, Var3):" in code
+    assert "# TODO" not in code
+    assert "NotImplementedError" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Var1"] == "Hello World"
+
+
+def test_function_condition_ends_with_starts_with_are_case_insensitive() -> None:
+    # 知見204で実機確認済みの挙動そのものの単体テスト。
+    from dump_daemon.pad_action_lib import text_actions
+
+    assert text_actions.function_condition_ends_with("Hello World", "World") is True
+    assert text_actions.function_condition_ends_with("Hello World", "world") is True
+    assert text_actions.function_condition_ends_with("hello", "llo") is True
+    assert text_actions.function_condition_ends_with("hello", "xyz") is False
+    assert text_actions.function_condition_starts_with("hello", "hel") is True
+    assert text_actions.function_condition_starts_with("hello", "HEL") is True
+    assert text_actions.function_condition_starts_with("hello", "xyz") is False
+
+
+def test_function_condition_ends_with_starts_with_reject_non_string_arguments() -> None:
+    # 知見200が指摘するDataRow/IList型への多態的な挙動は未確認のため、文字列以外は
+    # でっち上げずに例外を投げる(design/dsl_format_findings.md 知見204)。
+    from dump_daemon.pad_action_lib import text_actions
+
+    with pytest.raises(text_actions.UnsupportedFunctionConditionArgumentError):
+        text_actions.function_condition_ends_with(["a", "b"], "b")
+    with pytest.raises(text_actions.UnsupportedFunctionConditionArgumentError):
+        text_actions.function_condition_starts_with("hello", 1)
+
+
+@pytest.mark.parametrize("function_name", ["ContainsKey", "Count", "Blank"])
+def test_generate_python_from_real_if_function_unreachable_names_raise(function_name: str) -> None:
+    # design/dsl_format_findings.md 知見204: `ContainsKey`/`Count`/`Blank`は知見75の
+    # ペースト往復手法で標準If条件UIから到達不能("Has error")と実機確認済み——`IsEmpty`の
+    # でっち上げた別名として結線しないよう、意図的に未対応のまま安全にNotImplementedErrorへ
+    # 倒す(到達可能だが真偽値の意味論が未確認の`IsBlank`も同じ理由で未対応)。
+    args = "Var1" if function_name in ("Count", "Blank") else "Var1, Var1"
+    dsl = f"SET Var1 TO $'''hello'''\nIF {function_name}({args}) THEN\nEND\n"
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match=function_name):
+        generate_python(tree)
+
+
 def test_generate_python_from_pdf_extract_text_minimal_params_uses_defaults() -> None:
     # design/dsl_format_findings.md 知見156(`ActionSelectorBase`一括列挙監査、知見155の
     # Excelの手法をPDFへ適用): `ExtractTextFromPDFAction`には`PagesToExtract`

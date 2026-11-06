@@ -1,0 +1,14 @@
+SET Var1 TO $'''hello'''
+SET Var2 TO $'''ell'''
+IF ContainsKey(Var1, Var2) THEN
+END
+IF Count(Var1) THEN
+END
+IF EndsWith(Var1, Var2) THEN
+END
+IF StartsWith(Var1, Var2) THEN
+END
+IF Blank(Var1) THEN
+END
+IF IsBlank(Var1) THEN
+END

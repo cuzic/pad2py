@@ -241,8 +241,13 @@ def _generate_conditional(node: ConditionalNode, indent: int, ctx: CodegenContex
 
 
 def _render_function_condition(header: IfFunctionRecord | ElseIfFunctionRecord) -> str | None:
-    """知見75で実機確認済みの4関数(Contains/NotContains/IsEmpty/IsNotEmpty)のみPythonの
-    真偽値式に変換する。未知の関数名は`None`を返し、呼び出し元が安全にTODOへ倒す。"""
+    """知見75で実機確認済みの4関数(Contains/NotContains/IsEmpty/IsNotEmpty)、および知見200/204
+    で実機確認済みの2関数(EndsWith/StartsWith)をPythonの真偽値式に変換する。未知の関数名は
+    `None`を返し、呼び出し元が安全にTODOへ倒す。`Blank`/`IsBlank`(知見204で到達可能と確認
+    済みだが、空文字列・非空文字列・空白のみの文字列いずれもFalseを返すことまでは確認できた
+    一方、何がTrueになるのかは未確認——`IsEmpty`のでっち上げた別名にしないよう、意図的に
+    未結線のままTODOへ倒す)。`ContainsKey`/`Count`は知見204で「標準If条件UIから到達不能」と
+    確定済みのため対応不要。"""
     args = [render_value(a) for a in header.args]
     if header.function_name == "Contains" and len(args) == 2:
         return f"{args[1]} in {args[0]}"
@@ -252,6 +257,10 @@ def _render_function_condition(header: IfFunctionRecord | ElseIfFunctionRecord) 
         return f"not {args[0]}"
     if header.function_name == "IsNotEmpty" and len(args) == 1:
         return f"bool({args[0]})"
+    if header.function_name == "EndsWith" and len(args) == 2:
+        return f"text_actions.function_condition_ends_with({args[0]}, {args[1]})"
+    if header.function_name == "StartsWith" and len(args) == 2:
+        return f"text_actions.function_condition_starts_with({args[0]}, {args[1]})"
     return None
 
 

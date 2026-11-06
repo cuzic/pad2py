@@ -3267,3 +3267,26 @@ END
 ペースト前のクリップボード内容と、Actionsリスト全選択(Ctrl+A)+コピー(Ctrl+C)で読み戻した内容がバイト単位で完全一致することも確認済み(知見75の往復確認基準を満たす)。プローブフローは`.invoke()`で「Don't save」まで含めてクリーンに後始終処理した。
 
 **確定した到達可能性(意味論はまだ未確認)**: `EndsWith`/`StartsWith`/`IsBlank`は実在する標準If条件関数であり、`pad_codegen`への結線候補になる。ただし知見200が指摘した「`EndsWith`/`StartsWith`はDataRow/IList型への多態的な要素単位比較ロジックを持つ可能性がある」という懸念、および`IsBlank`が既知の`IsEmpty`(知見75で確定済み、`not a`)と意味論的に同一か別物か(.NETの`String.IsNullOrEmpty`と`String.IsNullOrWhiteSpace`の違いに相当する可能性がある)は、今回の到達可能性テスト(関数名が認識されるかどうかの二値判定)だけでは決着しない——実際の真偽値の挙動は未確認のまま。`pad_codegen`へ結線するには、知見81の「Run実行+ファイル書き出し」手法で実際の真偽値を実機確認する追加の作業が必要(でっち上げずに安全側で保留、次のVM作業機会の候補として記録)。
+
+## 205. 知見204続き——`EndsWith`/`StartsWith`の実際の真偽値を知見81のRun実行+ファイル書き出し手法で確認・結線。`IsBlank`は空文字列・非空文字列・空白文字列のいずれもFalseになるという意外な挙動が判明し、`IsEmpty`の別名にはできないと確定(未結線のまま保留)
+
+同じVM作業セッション内(desktop accessが生きている間)で、知見204で到達可能と確認した`EndsWith`/`StartsWith`/`IsBlank`の実際の真偽値を、`SET`+`IF <関数>(...) THEN ... ELSE ... END`+`File.WriteText`で結果を書き出し、`.invoke()`でRunボタンを押して実行→`clipwire exec`でファイル内容を読む、という知見81の手法で確認した。
+
+**検証したケースと結果**:
+
+| ケース | 結果 |
+| --- | --- |
+| `EndsWith("hello", "llo")` | `True` |
+| `StartsWith("hello", "hel")` | `True` |
+| `IsBlank("")`(空文字列) | `False` |
+| `IsBlank("hello")`(非空文字列) | `False` |
+| `IsBlank("   ")`(空白のみ) | `False` |
+| `EndsWith("Hello World", "World")`(完全一致の大文字小文字) | `True` |
+| `EndsWith("Hello World", "world")`(小文字版) | `True` |
+| `StartsWith("hello", "HEL")`(大文字版) | `True` |
+
+**確定した意味論**:
+1. **`EndsWith`/`StartsWith`は大文字小文字を区別しない**——`"Hello World".EndsWith("world")`(小文字)も`"hello".StartsWith("HEL")`(大文字)も`True`になった。知見200が懸念した`DataRow`/`IList`への多態性は、文字列同士の組については確認不要(単純な大文字小文字無視の部分文字列判定で説明がつく)。文字列以外の型への挙動は依然未確認のまま。
+2. **`IsBlank`は`IsEmpty`の別名ではない**——空文字列・非空文字列・空白のみの文字列、試した3パターン全てで`False`になった。これは.NETの`String.IsNullOrEmpty`/`String.IsNullOrWhiteSpace`のどちらでもない挙動で、実際に何が`True`を返すのかは依然不明(未初期化の変数への参照は、PAD側がエラーを出す可能性があり未検証)。**`IsEmpty`のでっち上げた別名として結線しないという判断は正しかった**ことが確定した。
+
+**実装**: `dump_daemon/pad_action_lib/text_actions.py`に`function_condition_ends_with()`/`function_condition_starts_with()`(いずれも大文字小文字を無視する文字列比較のみ対応、文字列以外は`UnsupportedFunctionConditionArgumentError`を投げる)を追加。`dump_daemon/pad_codegen/__init__.py`の`_render_function_condition()`に`EndsWith`/`StartsWith`の分岐を追加(`ContainsKey`/`Count`/`Blank`は知見204で到達不能と確定済みのため対応不要、`IsBlank`は意味論未確認のため意図的に未対応のまま)。実機で確認した往復済みテキストを`tests/fixtures/if_function_containskey_count_endswith_startswith_blank_isblank.txt`として保存した。`tests/test_pad_codegen.py`に正常系(大文字小文字を無視する真偽値の実際の評価含む)・単体テスト(文字列以外での例外)・`ContainsKey`/`Count`/`Blank`が依然`NotImplementedError`になることを確認するテストを追加。`codegen_coverage.py`: `condition_function_call`バケットが新規保存したfixtureにより4/4→6/10(`EndsWith`/`StartsWith`がOK、`ContainsKey`/`Count`/`Blank`/`IsBlank`はTODO)、全体185/202→193/210(92%)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1207 passed, 28 skippedを確認。

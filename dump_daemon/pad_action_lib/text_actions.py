@@ -42,6 +42,10 @@ class TextNotValidDateTimeError(PadActionError):
     pass
 
 
+class UnsupportedFunctionConditionArgumentError(PadActionError):
+    pass
+
+
 def append_line(text: str, line_to_append: str = "") -> str:
     return text + NEWLINE + line_to_append
 
@@ -117,6 +121,35 @@ def _culture_find(haystack: str, needle: str, ignore_case: bool) -> int:
     if ignore_case:
         return haystack.lower().find(needle.lower())
     return haystack.find(needle)
+
+
+def function_condition_ends_with(value: object, suffix: object) -> bool:
+    """`IfFunctionRecord`/`ElseIfFunctionRecord`の`EndsWith(a, b)`条件関数
+    (design/dsl_format_findings.md 知見204で実機確認: `"Hello World"`/`"World"`・
+    `"Hello World"`/`"world"`がともにTrueになり、大文字小文字を区別しないと確定)。
+    文字列同士の比較のみ実機確認済み——知見200が指摘する`DataRow`/`IList`型への多態的な
+    挙動は未確認のため、文字列以外の組み合わせはでっち上げずに例外を投げる。
+    """
+    if not isinstance(value, str) or not isinstance(suffix, str):
+        raise UnsupportedFunctionConditionArgumentError(
+            "EndsWith(...) for non-string (e.g. DataRow/IList) arguments is unconfirmed; only "
+            "the case-insensitive string suffix check (design/dsl_format_findings.md "
+            "knowledge204) is implemented."
+        )
+    return value.lower().endswith(suffix.lower())
+
+
+def function_condition_starts_with(value: object, prefix: object) -> bool:
+    """`StartsWith(a, b)`条件関数。`function_condition_ends_with`と同じく知見204で大文字
+    小文字を区別しないことを実機確認済み、文字列以外はでっち上げずに例外を投げる。
+    """
+    if not isinstance(value, str) or not isinstance(prefix, str):
+        raise UnsupportedFunctionConditionArgumentError(
+            "StartsWith(...) for non-string (e.g. DataRow/IList) arguments is unconfirmed; only "
+            "the case-insensitive string prefix check (design/dsl_format_findings.md "
+            "knowledge204) is implemented."
+        )
+    return value.lower().startswith(prefix.lower())
 
 
 def crop_text(
