@@ -1638,6 +1638,72 @@ def test_generate_python_from_set_checkbox_state_skips_toggle_when_already_in_ta
     assert registry.calls == []
 
 
+def test_generate_python_from_drag_and_drop_element_in_verified_combination() -> None:
+    # design/dsl_format_findings.md 知見170(decompile確認済み): `DragAndDropElementInWindow`
+    # は`ClickType=LeftClick`・`RectangleEdgePointForMouseDown/Up=MiddleCenter`・
+    # オフセット0/0の組み合わせ(`Click.Click`で実機確認済みの知見56と同じ組み合わせ)に
+    # 限り、pywinautoの`drag_mouse_input(dst=...)`に1:1対応する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    element = "appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']"
+    dsl = (
+        "UIAutomation.DragAndDropElement "
+        f"ControlToDrag: {element} ControlToDropOver: {element} "
+        "ClickType: UIAutomation.DragAndDropClickType.LeftClick "
+        "MouseDownOffsetX: 0 MouseDownOffsetY: 0 MouseUpOffsetX: 0 MouseUpOffsetY: 0 "
+        "RectangleEdgePointForMouseDown: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "RectangleEdgePointForMouseUp: UIAutomation.RectangleEdgePoint.MiddleCenter\n\n"
+        + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    window_expr = "Desktop(backend=\"uia\").window(title='Untitled - Notepad').child_window(class_name='Edit')"
+    assert f"{window_expr}.drag_mouse_input(dst={window_expr})" in code
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        (
+            "drag_mouse_input",
+            [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}],
+            {"dst": [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}]},
+        ),
+    ]
+
+
+def test_generate_python_keeps_drag_and_drop_as_todo_when_click_type_unverified() -> None:
+    # 知見170: `ClickType=RightClick`は実機未検証のため安全にTODOへ倒す。
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    element = "appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']"
+    dsl = (
+        "UIAutomation.DragAndDropElement "
+        f"ControlToDrag: {element} ControlToDropOver: {element} "
+        "ClickType: UIAutomation.DragAndDropClickType.RightClick "
+        "MouseDownOffsetX: 0 MouseDownOffsetY: 0 MouseUpOffsetX: 0 MouseUpOffsetY: 0 "
+        "RectangleEdgePointForMouseDown: UIAutomation.RectangleEdgePoint.MiddleCenter "
+        "RectangleEdgePointForMouseUp: UIAutomation.RectangleEdgePoint.MiddleCenter\n\n"
+        + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    assert "# TODO: map PAD action: UIAutomation.DragAndDropElement" in code
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別

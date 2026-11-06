@@ -18,7 +18,7 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
 `.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
 `.window_text()`/`.capture_as_image().save()`/`.invoke()`/`.select()`/`.toggle()`/
-`.get_toggle_state()`)のみ——新しい呼び出し形が出てきたら、
+`.get_toggle_state()`/`.drag_mouse_input(dst=...)`)のみ——新しい呼び出し形が出てきたら、
 その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
 `AttributeError`で気づけるようにする)。
 """
@@ -97,6 +97,9 @@ class FakeControl:
         self._registry.record("toggle", self._full_path(), {})
         current = self._registry.toggle_state_for(self._full_path())
         self._registry._set_toggle_state(self._full_path(), 0 if current else 1)
+
+    def drag_mouse_input(self, dst: "FakeControl") -> None:
+        self._registry.record("drag_mouse_input", self._full_path(), {"dst": dst._full_path()})
 
     def close(self) -> None:
         self._registry.record("close", self._full_path(), {})

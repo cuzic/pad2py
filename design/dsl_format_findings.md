@@ -2811,3 +2811,17 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 `tests/fake_pywinauto.py`に`.select()`(呼び出し記録のみ)と、`.toggle()`/`.get_toggle_state()`(`FakeRegistry`に`_toggle_states`状態を追加、`toggle()`実行時に実際に0↔1を反転させる——「既に目的状態ならtoggleしない」という冪等性をテストで検証できるようにするため、単なる呼び出し記録だけでなく最小限の状態遷移を実装した)を追加した。
 
 実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.SelectTab`/`UIAutomation.SelectRadioButton`/`UIAutomation.SetCheckboxState`の3分岐を追加。テストは`tests/test_pad_codegen.py`に4件(select系2件、checkbox系2件——toggleする場合/しない場合)追加した。
+
+## 170. 知見164/169の残課題`DragAndDropElementInWindow`を新規結線——`Click.Click`と同じ検証済みパラメータ組み合わせに限定、`SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`は依然保留
+
+知見169の残り3系統(`SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`)をdecompile精査した。
+
+**`SelectMenuOptionInWindow`は保留継続**: `Execute()`は`r.SelectMenuOptionInWindow(e)`のみを呼ぶ構造自体は`SelectTabInWindow`/`SelectRadioButtonInWindow`(知見169)と同じだが、`Control`プロパティのNameオーバーライドが無い(ベースクラスの既定名のまま)。問題はpywinauto側の対応手段の曖昧さ——メニュー項目はネイティブWin32メニューがUIAに変換される際、`SelectionItemPattern`(知見169の`.select()`)・`InvokePattern`(`.invoke()`、知見167)のどちらを実装するかコントロールの種類次第で一定しない(decompileした`SelectMenuOptionInWindow`自身にはパターン選択ロジックが見えず、ネイティブ側のランタイムプロキシ実装——`UIAutomation.Core.dll`相当、未取得——にしか判定ロジックが無い)。でっち上げずに1つを選ぶ根拠が無いため保留のまま。
+
+**`ExpandCollapseTreeNodeInWindow`は保留継続**: `FoldersPath`(文字列、"/"区切りのツリーパスらしき名前)+`UseRegex`(bool)+`Operation`(Expand/Collapse)という3パラメータを持ち、ネイティブ側で`r.ExpandCollapseTreeNodeInWindow(e, FoldersPath, expandInsteadOfCollapse, UseRegex)`を呼ぶ——複数階層のツリーノードを名前(または正規表現)で辿りながら各階層を展開/折りたたむという複合操作で、`Click.Click`型の「1要素+固定パラメータ」パターンとは異質。正確な走査アルゴリズム(大文字小文字区別・部分一致/完全一致・各階層でのExpandCollapsePattern呼び出し順序等)はネイティブ側実装(未取得)にしかなく、推測で実装するとでっち上げになるため保留。
+
+**`DragAndDropElementInWindow`は新規結線**: `Control`(→`ControlToDrag`)+`ControlToDropOver`(いずれも`Click.Click`の`Element`と同じ`UiElementRef`機構)に加え、`ClickType`(`LeftClick`/`RightClick`の2値)・`MouseDownOffsetX/Y`・`MouseUpOffsetX/Y`・`RectangleEdgePointForMouseDown/Up`(`Click.Click`と全く同じ`RectangleEdgePoint`列挙、9点グリッド)を持つ——ネイティブ側で`DragAndDropElementInWindow(dragElement, dropElement, ...)`を呼ぶだけ。知見56で実機確認済みなのは`Click.Click`の`ClickType=LeftClick`・`RectangleEdgePoint=MiddleCenter`・オフセット0/0の組み合わせのみなので、全く同じ制約をここにも適用した——この組み合わせに限れば、pywinautoの`base_wrapper.BaseWrapper.drag_mouse_input(dst=..., src=None, button="left")`(`src`省略時は呼び出し元自身、`dst`に別の`BaseWrapper`を渡すと`_calc_click_coords()`で中点座標を自動計算する——まさに「MiddleCenter+オフセット0/0」の意味そのもの)に1:1対応する単一の曖昧さ無しライブラリ呼び出しだと確認し、安全に結線した。`RightClick`・矩形基準点変更・オフセット有りの組み合わせは実機未検証のため、`Click.Click`と同じ方針で安全にTODOへ倒す。
+
+`tests/fake_pywinauto.py`に`.drag_mouse_input(dst: FakeControl)`(`dst`のフルパスを記録するだけの最小フェイク)を追加。
+
+実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.DragAndDropElement`の分岐を追加。テストは`tests/test_pad_codegen.py`に検証済み組み合わせのexecテスト1件・未検証組み合わせのTODOフォールバックテスト1件を追加した。

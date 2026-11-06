@@ -257,4 +257,42 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}if {selector_expr}.get_toggle_state() != {target}:",
             f"{prefix}{INDENT}{selector_expr}.toggle()",
         ]
+    if node.action_id == "UIAutomation.DragAndDropElement":
+        # design/dsl_format_findings.md 知見170(decompile確認済み): `DragAndDropElementInWindow`
+        # の`Control`(`ControlToDrag`に改名、`UiElementRef`)+`ControlToDropOver`
+        # (同じく`UiElementRef`)はネイティブ側で`DragAndDropElementInWindow(dragElement,
+        # dropElement, MouseDownOffsetX/Y, MouseUpOffsetX/Y, ClickType, RectangleEdgePoint
+        # ForMouseDown/Up)`を呼ぶ——オフセット・矩形上の基準点を自由に設定できる9点グリッド式
+        # だが、`Click.Click`で実機確認済み(知見56)なのは`ClickType=LeftClick`・
+        # `RectangleEdgePoint=MiddleCenter`・オフセット0/0の組み合わせのみなので、同じ
+        # 制約をここにも適用する。この組み合わせに限れば、pywinautoの`drag_mouse_input(dst=...)`
+        # (`src`省略時は自分自身、`dst`に別のコントロールを渡すと`_calc_click_coords()`で
+        # その中心座標を使う——まさにMiddleCenter+オフセット0/0の意味そのもの)に1:1対応する
+        # 単一の曖昧さ無しライブラリ呼び出し。それ以外の組み合わせ(Right click・矩形基準点
+        # 変更・オフセット有り)は実機未検証のため安全にTODOへ倒す。
+        control = node.params.get("ControlToDrag")
+        drop_over = node.params.get("ControlToDropOver")
+        click_type = node.params.get("ClickType")
+        down_x = node.params.get("MouseDownOffsetX", 0)
+        down_y = node.params.get("MouseDownOffsetY", 0)
+        up_x = node.params.get("MouseUpOffsetX", 0)
+        up_y = node.params.get("MouseUpOffsetY", 0)
+        down_edge = node.params.get("RectangleEdgePointForMouseDown")
+        up_edge = node.params.get("RectangleEdgePointForMouseUp")
+        middle_center = EnumRef("UIAutomation.RectangleEdgePoint.MiddleCenter")
+        if (
+            isinstance(control, UiElementRef)
+            and isinstance(drop_over, UiElementRef)
+            and click_type == EnumRef("UIAutomation.DragAndDropClickType.LeftClick")
+            and down_x == 0
+            and down_y == 0
+            and up_x == 0
+            and up_y == 0
+            and down_edge == middle_center
+            and up_edge == middle_center
+        ):
+            drag_expr = _build_pywinauto_selector_expr(control.path, ctx)
+            drop_expr = _build_pywinauto_selector_expr(drop_over.path, ctx)
+            if drag_expr is not None and drop_expr is not None:
+                return [f"{prefix}{drag_expr}.drag_mouse_input(dst={drop_expr})"]
     return None

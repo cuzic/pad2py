@@ -131,10 +131,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     decompile精査・新規結線完了。`get_toggle_state()`で現在状態を読み、目的の状態と
     異なる場合のみ`toggle()`する冪等パターン(UIAのTogglePattern自体の制約による
     唯一の実装方法)。
-  - [ ] 💻🖥️ **残課題(知見164で精査・分類、知見169時点でなお未精査)**:
-    - `SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`/
-      `DragAndDropElementInWindow`: 未精査(`UiElementRef`機構の可能性が高いが
-      個々の動作のpywinauto対応が未確認)。
+  - [x] 💻 `DragAndDropElementInWindow`(→`UIAutomation.DragAndDropElement`) —
+    知見170でdecompile精査・新規結線完了。`Click.Click`で実機確認済み(知見56)の
+    `ClickType=LeftClick`・`RectangleEdgePoint=MiddleCenter`・オフセット0/0の組み合わせ
+    に限り、pywinautoの`drag_mouse_input(dst=...)`に1:1対応。それ以外はTODO。
+  - [ ] 🖥️ **残課題(知見169/170で精査、decompileだけでは解決不可と判明)**:
+    - `SelectMenuOptionInWindow`: メニュー項目がUIAの`SelectionItemPattern`/
+      `InvokePattern`のどちらを実装するかコントロール次第で一定しない——ネイティブ側
+      ランタイムプロキシ実装(`UIAutomation.Core.dll`相当、未取得)でしか判定できない。
+    - `ExpandCollapseTreeNodeInWindow`: `FoldersPath`(ツリーパス文字列)+`UseRegex`を
+      使った複数階層の名前マッチング走査という複合操作——正確な走査アルゴリズムが
+      ネイティブ側実装にしか無い。
     - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetUIControl`/
       `GetWindowDetails`: `AttributeName`(`"Own Text"`/`"Exists"`/`"Location and Size"`/
       `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。
