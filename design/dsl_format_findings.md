@@ -2524,3 +2524,15 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 ## 146. 知見145の反例発見を受け、本セッションで新規結線した全パラメータ名を`InputArgumentAttribute.Name`で再検証——Web.InvokeSoapServiceの`Url`/`Endpoint`以外に反例は無いと確認
 
 知見145で「リフレクションのプロパティ名=DSL名」という経験則の反例(`InvokeSoapServiceAction.Url`が実際には`Endpoint`という名前でDSLに現れる)を発見したため、本セッション(知見139-145)で新規結線した全パラメータ名(`Database`/`XML`/`Cmd`/`Text`/`Cryptography`/`Web.DownloadFromWeb`、計40件超)についてVM上で`InputArgumentAttribute.Name`を一括確認した。結果、知見145の`Url`→`Endpoint`以外には反例が見つからなかった——本セッションの既存結線は全て安全だと確認できた。今後も新しいモジュールのプロパティ名を使う際は、プロパティ名だけでなく必ず`InputArgumentAttribute.Name`(または`OutputArgumentAttribute.Name`)を確認する運用を継続する。
+
+## 147. Web.InvokeWebService系(29セレクタ)の構造を解明——`Method`は実機で既に動的パラメータだったと判明、`InvokeWebServiceUseAuth`のみ結線完了
+
+知見144・145に続き、Web.Actions.dllの残りセレクタ群(InvokeWebService系29セレクタ)の構造をVM上で確認した。全て単一の`InvokeWebServiceBase`クラスで、`Method`はこのクラス自身の列挙型(`Get`/`Post`/`Connect`/`Head`/`Put`/`Delete`/`Options`/`Trace`/`Patch`の9値)だと判明——**既存の実機キャプチャ(基本セレクタ)でも`Method: Web.Method.Get`が既に通常のDSLパラメータとして明示的に現れており**、`pad_codegen`側も元からこれを動的に読んで結線していた(知見144までの「セレクタ自体が1つの列挙値を固定する」という典型パターンとは異なる)。
+
+このため、`InvokeWebServicePost`/`InvokeWebServicePut`等の接尾辞セレクタが`Method`の選択肢を制限しているのか、それとも単に同じ機能への別のUIエントリポイント(ユーザーが「POST リクエストを送信する」で検索しやすくするため等)に過ぎないのかは、今回の調査だけでは確定できなかった——基本セレクタが既に全9つのMethod値を自由に選べる以上、無理に別物として結線を推測するより、実機キャプチャまたはdecompileでの裏取りを待つのが安全と判断した。
+
+一方`InvokeWebServiceUseAuth`(`UseAuthentication`/`Username`/`Password`のみを追加する兄弟セレクタ)は、既存の`Method`動的読み取りロジックにそのまま認証引数を重ねられるため安全に結線できた——既存の`invoke_web_service()`が元から`use_credentials`/`username`/`password`を実装済みだったため、呼び分けのみで済んだ。
+
+`SaveResponse`(ToVariable/ToFile)・`UploadType`(FilePath/Binary)・`FileName`(KeepOriginal/SpecifyFullPath)という3つの追加列挙も確認できたが、`SaveToFile`/`SaveToFolder`/`Upload`接尾辞セレクタの結線(`invoke_web_service()`側にファイル入出力機能を新規実装する必要がある)は引き続き見送る。
+
+テストは`tests/test_pad_codegen.py`に1件追加し、`web_actions.invoke_web_service`を差し替えて`use_credentials`/`username`/`password`の受け渡しをexec検証した。

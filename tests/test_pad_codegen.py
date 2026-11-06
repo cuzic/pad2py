@@ -4228,3 +4228,44 @@ def test_generate_python_from_invoke_soap_service_use_auth_converts() -> None:
     assert kwargs["use_credentials"] is True
     assert kwargs["username"] == "u"
     assert kwargs["password"] == "p"
+
+
+def test_generate_python_from_invoke_web_service_use_auth_converts() -> None:
+    # design/dsl_format_findings.md 知見139・147: `ActionSelectorBase`一括列挙監査を
+    # Web.InvokeWebService系29セレクタに適用して発見した`InvokeWebServiceUseAuth`。
+    # 既存の`invoke_web_service()`の`use_credentials`/`username`/`password`引数が
+    # そのまま対応できた(`Method`は既存の基本セレクタと同じく動的に読む)。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    dsl = (
+        "Web.InvokeWebService.InvokeWebServiceUseAuth Url: $'''http://example.test/''' "
+        "Method: Web.Method.Get Accept: $'''application/xml''' ContentType: $'''application/xml''' "
+        "CustomHeaders: $'''''' RequestBody: $'''''' ConnectionTimeout: 30 FollowRedirection: True "
+        "FailOnErrorStatus: False EncodeRequestBody: False UserAgent: $'''UA''' "
+        "Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True "
+        "Username: $'''u''' Password: $'''p''' Response=> R"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    calls = []
+
+    def fake_invoke_web_service(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        return web_actions.InvokeWebServiceResult(response="auth response")
+
+    original = web_actions.invoke_web_service
+    web_actions.invoke_web_service = fake_invoke_web_service
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        web_actions.invoke_web_service = original
+    assert namespace["R"] == "auth response"
+    assert len(calls) == 1
+    _, kwargs = calls[0]
+    assert kwargs["use_credentials"] is True
+    assert kwargs["username"] == "u"
+    assert kwargs["password"] == "p"

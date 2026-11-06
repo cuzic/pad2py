@@ -114,7 +114,18 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{extra_args})"
         ]
 
-    if action_id == "Web.InvokeWebService.InvokeWebService":
+    if action_id in ("Web.InvokeWebService.InvokeWebService", "Web.InvokeWebService.InvokeWebServiceUseAuth"):
+        # 知見139・147(`ActionSelectorBase`一括列挙監査をWeb.InvokeWebService系29セレクタに
+        # 適用): 全て`InvokeWebServiceBase`という単一クラスで、`Method`はこのクラス自体の
+        # 列挙型(Get/Post/Connect/Head/Put/Delete/Options/Trace/Patchの9値)であり、実機
+        # キャプチャ済みの基本セレクタでも既にDSL上の通常パラメータとして明示的に現れる
+        # (このため`Post`/`Put`接尾辞セレクタとの違いが`Method`の選択肢制限なのか別の
+        # UI上の提示方法の違いなのかは未確定——`SaveToFile`/`SaveToFolder`/`Upload`接尾辞
+        # (`SaveResponse`/`FileName`/`UploadType`/`UploadAttachments`列挙)は実機未確認の
+        # ままのため見送る)。`UseAuth`は`UseAuthentication`/`Username`/`Password`の
+        # 組み合わせのみが追加される兄弟セレクタで、既存の`Method`を動的に読む結線へ
+        # 安全に重ねられる。
+        use_auth = action_id.endswith("UseAuth")
         url = safe_render(p.get("Url"))
         method = enum_last(p.get("Method"))
         accept = safe_render(p.get("Accept"))
@@ -138,6 +149,13 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         # (従来はEncodingを一切読み取らず、設定されていても無条件に進めてしまっていた)。
         if encoding != "AutoDetect":
             return None
+        auth_args = ""
+        if use_auth:
+            username = safe_render(p.get("Username"))
+            password = safe_render(p.get("Password"))
+            if username is None or password is None:
+                return None
+            auth_args = f", use_credentials=True, username={username}, password={password}"
         response_var = node.output_vars.get("Response")
         headers_var = node.output_vars.get("ResponseHeaders")
         status_var = node.output_vars.get("StatusCode")
@@ -150,7 +168,8 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"request_body={request_body}, connection_timeout={timeout}, "
             f"fail_on_error_status={fail_on_error}, trim_request_body={trim_body}, "
             f"encode_request_body={encode_body}, follow_redirection={follow}, "
-            f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted})"
+            f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
+            f"{auth_args})"
         ]
         if response_var:
             lines.append(f"{prefix}{response_var} = {tmp}.response")
