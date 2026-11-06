@@ -76,3 +76,17 @@ def test_windows_lists_only_top_level_registered_windows() -> None:
     windows = desktop.windows()
     assert len(windows) == 1
     assert windows[0].criteria == {"title": "Notepad"}
+
+
+def test_set_active_controls_wrapper_object_regardless_of_call_count() -> None:
+    # `wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため、`is_active()`の値は
+    # 個々のオブジェクトではなくレジストリ側で管理する(`UIAutomation.IfWindow.IsFocused`
+    # 等の生成コードは同じセレクタに対し`wrapper_object()`を複数回呼ぶため)。
+    registry = FakeRegistry()
+    registry.register_window(title="Notepad")
+    registry.set_active([{"title": "Notepad"}], False)
+    desktop = make_fake_desktop(registry)(backend="uia")
+    window = desktop.window(title="Notepad")
+
+    assert window.wrapper_object().is_active() is False
+    assert window.wrapper_object().is_active() is False  # 2回目の呼び出しでも値が保持される

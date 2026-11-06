@@ -86,6 +86,7 @@ class FakeRegistry:
 
     def __init__(self) -> None:
         self._existing_paths: list[list[dict]] = []
+        self._active_overrides: list[tuple[list[dict], bool]] = []
         self.calls: list[tuple[str, list[dict], dict]] = []
 
     def register_window(self, **criteria: object) -> None:
@@ -96,6 +97,12 @@ class FakeRegistry:
         """既知の(存在する)子孫コントロールへのパスを登録する(例:
         ウィンドウ条件+コントロール条件の2段)。"""
         self._existing_paths.append(list(path_criteria))
+
+    def set_active(self, path_criteria: list[dict], active: bool) -> None:
+        """指定したパスの`wrapper_object().is_active()`が返す値を設定する
+        (既定は`True`)。`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため、
+        状態はここ(レジストリ側)で保持する。"""
+        self._active_overrides.append((path_criteria, active))
 
     def exists(self, path: list[dict]) -> bool:
         return any(self._path_matches(existing, path) for existing in self._existing_paths)
@@ -110,6 +117,9 @@ class FakeRegistry:
         )
 
     def wrapper_for(self, path: list[dict]) -> FakeWrapperObject:
+        for criteria, active in reversed(self._active_overrides):
+            if self._path_matches(criteria, path):
+                return FakeWrapperObject(active=active)
         return FakeWrapperObject()
 
     def record(self, action: str, path: list[dict], kwargs: dict) -> None:

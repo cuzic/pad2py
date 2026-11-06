@@ -415,6 +415,68 @@ def test_generate_python_converts_all_four_if_window_modes(mode: str, expected_c
 
 
 @pytest.mark.parametrize(
+    ("mode", "window_exists", "window_active", "expected_result"),
+    [
+        ("IsOpen", True, True, True),
+        ("IsOpen", False, False, False),
+        ("IsNotOpen", True, True, False),
+        ("IsNotOpen", False, False, True),
+        ("IsFocused", True, True, True),
+        ("IsFocused", True, False, False),
+        ("IsFocused", False, False, False),  # 存在しないウィンドウ=exists()ガードで例外無しにFalse
+        ("IsNotFocused", True, True, False),
+        ("IsNotFocused", True, False, True),
+        ("IsNotFocused", False, False, True),
+    ],
+)
+def test_generate_python_if_window_modes_evaluate_correctly_against_fake_pywinauto(
+    mode: str, window_exists: bool, window_active: bool, expected_result: bool
+) -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b): 上の4テストは生成された条件式の
+    # *文字列*しか検査していなかった——この条件式の本体は`pass`のみ(実機キャプチャに
+    # THENブロックの中身が無いため)で、`exec()`しても分岐の実際の真偽は観測できない。
+    # そこで生成コードを`exec()`した後の名前空間で条件式自体を`eval()`し、フェイクの
+    # ウィンドウ状態(存在/フォーカス)を変えたときに正しい真偽値になることを検証する。
+    import pywinauto
+
+    from fake_pywinauto import FakeRegistry, make_fake_desktop
+
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_if_window.txt").read_text(
+        encoding="utf-8"
+    )
+    original_dsl = (
+        "IF (UIAutomation.IfWindow.IsOpen Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN"
+    )
+    modified_dsl = (
+        f"IF (UIAutomation.IfWindow.{mode} Window: appmask['Window \\'Untitled - "
+        "Notepad\\''] InstantCheck: False) THEN"
+    )
+    text = text.replace(original_dsl, modified_dsl)
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    condition_source = code.splitlines()[2].removeprefix("if ").removesuffix(":")
+
+    registry = FakeRegistry()
+    if window_exists:
+        registry.register_window(title="Untitled - Notepad")
+        registry.set_active([{"title": "Untitled - Notepad"}], window_active)
+    had_desktop = hasattr(pywinauto, "Desktop")
+    original_desktop = getattr(pywinauto, "Desktop", None)
+    pywinauto.Desktop = make_fake_desktop(registry)
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert eval(condition_source, namespace) is expected_result
+    finally:
+        if had_desktop:
+            pywinauto.Desktop = original_desktop
+        else:
+            del pywinauto.Desktop
+
+
+@pytest.mark.parametrize(
     ("mode", "expected_condition"),
     [
         ("IsOpenByInstanceOrHandle", "AutomationWindow2.exists()"),
