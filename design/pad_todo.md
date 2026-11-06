@@ -755,8 +755,11 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
   ボタンID(OK=1等)がPAD実機の`FormMessageBox`のDialogResultと完全一致することをdecompileで
   確認済み。兄弟セレクタ`ShowMessageWithTimeout`(タイムアウト時の挙動が標準API/未documented
   APIいずれでも忠実に再現不能なため)は`NotImplementedError`のまま意図的に未実装。
-  同DLL内の兄弟アクション(`InputDialog`・`SelectDateDialog`・`SelectFileDialog`・
-  `SelectFolderDialog`・`SelectFromListDialog`・`ShowCustomDialog`)と、新規発見した
+  同tick内の追補で`Display.SelectFolder`(`SelectFolderDialog`、フラットなaction、
+  標準`FolderBrowserDialog`→`tkinter.filedialog.askdirectory()`で1対1対応)も実装・
+  結線済み。残る兄弟アクション(`InputDialog`・`SelectDateDialog`・`SelectFileDialog`・
+  `SelectFromListDialog`・`ShowCustomDialog`、いずれもファイルフィルタ文字列のパース・
+  パスワード/複数行入力・JSON Adaptive Card等でより複雑)と、新規発見した
   `Microsoft.Flow.RPA.Desktop.Modules.System.Actions.dll`は未調査のまま次回以降に残す。
 - [ ] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
   (SMTP送受信)・`Outlook`(ライブCOM経由)・`FTP`/`SFTP`・`Printer`・`Registry`・

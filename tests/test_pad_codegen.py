@@ -5660,3 +5660,57 @@ def test_generate_python_keeps_show_message_with_timeout_as_todo() -> None:
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessageWithTimeout" in code
+
+
+def test_generate_python_from_display_select_folder_converts() -> None:
+    # design/dsl_format_findings.md 知見185追補: 兄弟セレクタの無いフラットなaction
+    # `Display.SelectFolder`(`[Action(Name = "SelectFolder")]`、知見162/179で確認済みの
+    # 「Id属性が無ければNameがEffectiveId」というSDK一般ルールをそのまま適用)。
+    # 実際にダイアログを表示せず検証するため`tkinter`を偽装注入する。
+    import sys
+    import types
+
+    dsl = (
+        "Display.SelectFolder Description: $'''Pick one''' InitialDirectory: $'''C:\\\\''' "
+        "IsTopMost: False SelectedFolder=> SelectedFolder ButtonPressed=> ButtonPressed"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "SelectedFolder, ButtonPressed = display_actions.show_select_folder_dialog("
+        "'Pick one', 'C:\\\\', is_topmost=False)" in code
+    )
+
+    fake_tkinter = types.ModuleType("tkinter")
+
+    class _FakeTk:
+        def withdraw(self) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    fake_tkinter.Tk = _FakeTk  # type: ignore[attr-defined]
+    fake_filedialog = types.ModuleType("tkinter.filedialog")
+
+    def _askdirectory(**kwargs: object) -> str:
+        assert kwargs == {"title": "Pick one", "initialdir": "C:\\"}
+        return "C:\\chosen"
+
+    fake_filedialog.askdirectory = _askdirectory  # type: ignore[attr-defined]
+    fake_tkinter.filedialog = fake_filedialog  # type: ignore[attr-defined]
+
+    import pytest as _pytest
+
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setitem(sys.modules, "tkinter", fake_tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake_filedialog)
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["SelectedFolder"] == "C:\\chosen"
+        assert namespace["ButtonPressed"] == "OK"
+    finally:
+        monkeypatch.undo()

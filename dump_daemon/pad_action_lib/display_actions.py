@@ -19,6 +19,10 @@ Windows上でのみ実行される前提のため、他のモジュール(`win32
 結果)を返す仕様だが、標準のWin32 `MessageBoxW`にはタイムアウト機能が無く、非公開API
 `MessageBoxTimeoutW`はタイムアウト時に別の戻り値(`32000`)を返すため正確な再現が
 できない——でっち上げず`NotImplementedError`のままにする。
+
+`Display.SelectFolder`(`SelectFolderDialog`、兄弟セレクタの無いフラットなaction)も
+同DLLに実装済み——`tkinter.filedialog.askdirectory()`がWindows上でPAD実機と同じ
+ネイティブフォルダ選択ダイアログを呼び出す(知見185追補)。
 """
 from __future__ import annotations
 
@@ -117,3 +121,51 @@ def show_message_dialog_with_timeout(*_args: object, **_kwargs: object) -> str:
         "(32000) on timeout rather than the default button's result, so this "
         "cannot be faithfully reproduced without further investigation"
     )
+
+
+class SelectFolderDialogError(PadActionError):
+    pass
+
+
+def show_select_folder_dialog(
+    description: str = "",
+    initial_directory: str = "",
+    is_topmost: bool = False,
+) -> tuple[str, str]:
+    """`Display.SelectFolder`(フラットなaction、`SelectFolderDialog`クラス)。
+
+    design/dsl_format_findings.md 知見185追補: decompile確認済みの
+    `FormDialogFocus.ShowSelectFolderDialog()`は、標準`System.Windows.Forms.
+    FolderBrowserDialog`(.NET既定でAutoUpgradeEnabled=true、モダンな
+    Explorer風フォルダ選択ダイアログ)をそのまま表示するだけで、OK時は
+    選択パス+`ButtonPressed="OK"`、Cancel時は空文字列+`ButtonPressed="Cancel"`
+    (いずれも`DialogResult.ToString()`相当)。`tkinter.filedialog.askdirectory()`
+    はWindows上でこの同じネイティブフォルダ選択ダイアログを呼び出すため、
+    戻り値の対応が一対一で確定できる(でっち上げ無し)。
+
+    戻り値は`(selected_folder, button_pressed)`のタプル。
+    """
+    try:
+        import tkinter
+        from tkinter import filedialog
+    except Exception as exc:
+        raise SelectFolderDialogError(str(exc)) from exc
+
+    try:
+        root = tkinter.Tk()
+        root.withdraw()
+        if is_topmost:
+            root.attributes("-topmost", True)
+        try:
+            selected = filedialog.askdirectory(
+                title=description or None,
+                initialdir=initial_directory or None,
+            )
+        finally:
+            root.destroy()
+    except Exception as exc:
+        raise SelectFolderDialogError(str(exc)) from exc
+
+    if selected:
+        return selected, "OK"
+    return "", "Cancel"

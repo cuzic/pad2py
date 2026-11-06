@@ -4,7 +4,9 @@ design/dsl_format_findings.md 知見184/185: `ctypes.windll`はWindows以外に�
 存在しないため(`display_actions`モジュール自体のimportはどのOSでも成功するが、
 `show_message_dialog()`の呼び出しはWindows専用)、フラグ計算・戻り値変換の純粋な
 ロジックは直接テストし、実際のOS呼び出し経路は`ctypes.windll`を偽装注入して
-(実際にダイアログを表示せず)配線のみを検証する。
+(実際にダイアログを表示せず)配線のみを検証する。`show_select_folder_dialog()`も
+同様に、`sys.modules`へ偽装した`tkinter`/`tkinter.filedialog`を注入し、実際の
+GUIダイアログを一切表示せずに配線を検証する。
 """
 from __future__ import annotations
 
@@ -96,3 +98,101 @@ def test_show_message_dialog_wraps_os_level_failure(monkeypatch: pytest.MonkeyPa
 def test_show_message_dialog_with_timeout_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         da.show_message_dialog_with_timeout()
+
+
+class _FakeTk:
+    instances: list["_FakeTk"] = []
+
+    def __init__(self) -> None:
+        self.destroyed = False
+        self.attributes_calls: list[tuple] = []
+        _FakeTk.instances.append(self)
+
+    def withdraw(self) -> None:
+        pass
+
+    def attributes(self, *args: object) -> None:
+        self.attributes_calls.append(args)
+
+    def destroy(self) -> None:
+        self.destroyed = True
+
+
+def _install_fake_tkinter(monkeypatch: pytest.MonkeyPatch, askdirectory_return: str) -> list[dict]:
+    import sys
+    import types
+
+    _FakeTk.instances.clear()
+    fake_tkinter = types.ModuleType("tkinter")
+    fake_tkinter.Tk = _FakeTk  # type: ignore[attr-defined]
+
+    fake_filedialog = types.ModuleType("tkinter.filedialog")
+    calls: list[dict] = []
+
+    def _askdirectory(**kwargs: object) -> str:
+        calls.append(kwargs)
+        return askdirectory_return
+
+    fake_filedialog.askdirectory = _askdirectory  # type: ignore[attr-defined]
+    fake_tkinter.filedialog = fake_filedialog  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "tkinter", fake_tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake_filedialog)
+    return calls
+
+
+def test_show_select_folder_dialog_returns_selected_path_and_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _install_fake_tkinter(monkeypatch, askdirectory_return="C:\\Users\\test\\Documents")
+
+    folder, button = da.show_select_folder_dialog(description="Pick a folder", initial_directory="C:\\")
+
+    assert folder == "C:\\Users\\test\\Documents"
+    assert button == "OK"
+    assert calls == [{"title": "Pick a folder", "initialdir": "C:\\"}]
+    assert _FakeTk.instances[0].destroyed is True
+
+
+def test_show_select_folder_dialog_returns_empty_and_cancel_when_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_tkinter(monkeypatch, askdirectory_return="")
+
+    folder, button = da.show_select_folder_dialog()
+
+    assert folder == ""
+    assert button == "Cancel"
+
+
+def test_show_select_folder_dialog_sets_topmost_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_tkinter(monkeypatch, askdirectory_return="")
+
+    da.show_select_folder_dialog(is_topmost=True)
+
+    assert _FakeTk.instances[0].attributes_calls == [("-topmost", True)]
+
+
+def test_show_select_folder_dialog_wraps_tkinter_import_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "tkinter", None)
+
+    with pytest.raises(da.SelectFolderDialogError):
+        da.show_select_folder_dialog()
+
+
+def test_show_select_folder_dialog_wraps_dialog_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    import types
+
+    fake_tkinter = types.ModuleType("tkinter")
+
+    class _BrokenTk:
+        def __init__(self) -> None:
+            raise RuntimeError("no display")
+
+    fake_tkinter.Tk = _BrokenTk  # type: ignore[attr-defined]
+    fake_filedialog = types.ModuleType("tkinter.filedialog")
+    fake_tkinter.filedialog = fake_filedialog  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tkinter", fake_tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake_filedialog)
+
+    with pytest.raises(da.SelectFolderDialogError):
+        da.show_select_folder_dialog()
