@@ -633,3 +633,62 @@ def test_resize_columns_or_rows_unknown_target_raises() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(ValueError):
         xl.resize_columns_or_rows(instance, 10, resize_target="NotATarget")
+
+
+def test_delete_cells_single_cell_shift_left() -> None:
+    # design/dsl_format_findings.md 知見197(decompile確認済み): COMの
+    # `Range.Delete(Shift:=xlShiftToLeft)`相当——削除範囲の右側のセルが左へ詰まる。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "a"
+    sheet["B1"] = "b"
+    sheet["C1"] = "c"
+
+    xl.delete_cells(instance, mode="SingleCell", start_column="A", start_row=1, shift_direction="Left")
+
+    assert [sheet.cell(row=1, column=c).value for c in range(1, 4)] == ["b", "c", None]
+
+
+def test_delete_cells_single_cell_shift_up() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "a"
+    sheet["A2"] = "b"
+    sheet["A3"] = "c"
+
+    xl.delete_cells(instance, mode="SingleCell", start_column="A", start_row=1, shift_direction="Up")
+
+    assert [sheet.cell(row=r, column=1).value for r in range(1, 4)] == ["b", "c", None]
+
+
+def test_delete_cells_range_shift_up_preserves_style() -> None:
+    from openpyxl.styles import Font
+
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"], sheet["B1"] = "1", "2"
+    sheet["A2"], sheet["B2"] = "3", "4"
+    sheet["A3"], sheet["B3"] = "5", "6"
+    sheet["A3"].font = Font(bold=True)
+
+    xl.delete_cells(
+        instance, mode="RangeOfCells", start_column="A", start_row=1, end_column="B", end_row=2,
+        shift_direction="Up",
+    )
+
+    assert sheet["A1"].value == "5"
+    assert sheet["B1"].value == "6"
+    assert sheet["A1"].font.bold is True
+    assert sheet["A2"].value is None
+
+
+def test_delete_cells_unknown_mode_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(ValueError):
+        xl.delete_cells(instance, mode="NotAMode")
+
+
+def test_delete_cells_unknown_shift_direction_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(ValueError):
+        xl.delete_cells(instance, mode="SingleCell", shift_direction="Right")

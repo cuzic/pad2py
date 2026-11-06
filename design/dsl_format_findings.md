@@ -3156,3 +3156,15 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 - **`WindowToContainText`/`WindowToNotContainText`**: テキスト内容マッチの正確な意味論(部分一致か完全一致か・大文字小文字区別・検索対象の範囲)が実機未確認で、既存の確立済みパターン(`exists()`/`is_enabled()`)の単純な延長では済まないため、依然保留のまま次回以降の調査対象として記録する。
 
 実装: `tests/fake_pywinauto.py`に`.is_enabled()`(`FakeWrapperObject`)・`set_enabled()`(`FakeRegistry`)を追加(既存の`.is_active()`/`set_active()`と同じ仕組み)。`pad_codegen/actions/wait.py`に`WindowToNotContainElement`(`_WAIT_ACTION_TARGETS`への追加)・`WindowToContainElementInState`(専用の分岐、`enum_last()`で`State`を読む)を追加。テストは`tests/test_pad_codegen.py`に2件追加(既存の実機キャプチャフィクスチャのDSL行を文字列置換して再利用、`fake_pywinauto`での実行確認込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1124 passed, 28 skippedを確認(VM不要)。
+
+## 197. `Excel.DeleteCellsAction`を新規実装・結線——知見194での「`openpyxl`に対応APIが無いため見送り」という自分の判断を、`docs-local`の過去の調査記録(「技術的には可能」)の再発見により訂正
+
+知見194で`DeleteCellsAction`を「`openpyxl`に部分範囲シフト削除の対応APIが無い...手動実装は結合セル・書式の追従等の詳細を取り違えるリスクが大きい」として見送った。今tick、`docs-local/pad_excel_findings.md`(本セッション以前の、より早期の逆コンパイル調査記録、gitには追跡されないローカル参照資料)を読み直したところ、`DeleteCellsAction`は「`openpyxl`で**技術的には可能**だが、ユーザー指定スコープ『読み書き・基本書式・静的数式』の範囲を超えるため見送り」と明記されていたと判明した——知見194の「技術的に不可能」という自分の判断は誤りで、実際には「過去に一度、別の理由(保守的なスコープ境界)で見送られていた」というのが正しい経緯だった。
+
+本セッションでは既に`GetTableRange`(知見180)・`ReadCellFormula`(知見190)・`CopyExcelWorksheet`(知見193)・`ClearCellsFromExcel`(知見194)・`ResizeColumnsOrRows`CustomSize側(知見195)と、`docs-local`が当初「スコープ外」としていた項目を次々と「ライブCOM専用ではなく値の読み書き・基本ワークシート操作の範囲内」と再評価して結線してきた——この同じ論法を`DeleteCellsAction`にも適用すべきと判断し、実際に実装した。
+
+`DeleteCellsAction.Execute()`(COMの`Range.Delete(Shift:=xlShiftToLeft/xlShiftUp)`)をdecompileし、`ShiftCellsDirection`列挙値が`Left`/`Up`の2値のみ(`Right`/`Down`は存在しない)と確定した。`openpyxl`には`Range.Delete`相当の単一APIが無いため、削除範囲の右側(`Left`)/下側(`Up`)にある全セルを1セルずつ値+書式(フォント/塗りつぶし/枠線/配置/数値書式/保護)ごとコピーし、末尾を空にする素朴な実装で近似した——シート上の使用範囲(`sheet.max_column`/`max_row`)はシフト操作の**前**に1回だけ評価して固定する(シフト自体が新しいセルへアクセスして使用範囲を動的に広げてしまい、末尾クリアの範囲がズレるバグを実際に発見・修正済み)。結合セルがシフト経路に絡む場合の挙動は実機未確認のため対応しない。
+
+実装: `pad_action_lib/excel_actions.py`に`DeleteCellsError`・`_copy_cell()`・`delete_cells()`を追加。`pad_codegen/actions/excel.py`に`Excel.DeleteCells.DeleteCell`/`DeleteCells`の分岐を追加(`[Action(Id = "DeleteCells")]`がクラス名`DeleteCellsAction`の`...Action`接尾辞を取り除く、知見195と同じパターン)。テストは`tests/test_pad_action_lib_excel.py`に5件追加、`tests/test_pad_codegen.py`に1件追加(exec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1134 passed, 28 skippedを確認(VM不要)。
+
+これで知見190以来追跡してきたExcelの全既知候補(フィルタ・ソート・オートフィット・マクロ実行・セル色設定・コピペ・検索置換・ルックアップ・ライブ選択状態というユーザー指定スコープ外を除く)の結線が完了した。**教訓**: `docs-local/`配下の過去の調査記録(gitに追跡されないローカル参照資料)は、現在のスコープ判断の根拠が「技術的制約」か「過去の保守的な境界設定」かを区別する重要な一次資料であり、`NotImplementedError`で見送る判断をする際は、まず`docs-local`に既存の調査記録が無いか確認すべきだった(知見183の「既存関数を再利用する前に知見ログをgrepする」という教訓と同種、対象を`docs-local`にも広げる必要がある)。

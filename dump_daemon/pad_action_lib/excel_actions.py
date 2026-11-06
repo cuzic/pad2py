@@ -13,6 +13,7 @@ Excelの数式エンジンを持たないため計算結果は保持されない
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import openpyxl
@@ -880,3 +881,80 @@ def resize_columns_or_rows(
         raise
     except Exception as exc:
         raise ResizeColumnsOrRowsError(str(exc)) from exc
+
+
+class DeleteCellsError(PadActionError):
+    pass
+
+
+def _copy_cell(source: object, target: object) -> None:
+    target.value = source.value
+    target.font = copy.copy(source.font)
+    target.fill = copy.copy(source.fill)
+    target.border = copy.copy(source.border)
+    target.alignment = copy.copy(source.alignment)
+    target.number_format = source.number_format
+    target.protection = copy.copy(source.protection)
+
+
+def delete_cells(
+    instance: ExcelInstanceHandle,
+    mode: str = "SingleCell",
+    start_column: str = "A",
+    start_row: int = 1,
+    end_column: str = "A",
+    end_row: int = 1,
+    shift_direction: str = "Left",
+) -> None:
+    """design/dsl_format_findings.md 知見197(decompile確認済み、docs-local/pad_excel_findings.md
+    の「技術的には可能」という以前の評価を本セッションで実際に実装): `DeleteCellsAction`は
+    COMの`Range.Delete(Shift:=xlShiftToLeft/xlShiftUp)`——`ShiftCellsDirection`列挙値は
+    `Left`/`Up`の2値のみ(decompile確認済み、`Right`/`Down`は存在しない)。削除範囲の右側
+    (`Left`)/下側(`Up`)にある全セルを値・書式ともに1セル分シフトし、末尾を空にする。
+
+    `openpyxl`には`Range.Delete`相当の単一APIが無いため、シート上の現在の使用範囲
+    (`sheet.max_column`/`max_row`、シフト操作の*前*に1回だけ評価して固定する——シフト
+    自体が新しいセルへアクセスして使用範囲を広げてしまうのを避けるため)を基準に、
+    セル単位で値・書式(フォント/塗りつぶし/枠線/配置/数値書式/保護)を1つ先から
+    コピーする素朴な実装で近似する。結合セルがシフト経路に絡む場合の挙動は実機未確認
+    のため対応しない(`openpyxl`側で例外になる可能性がある、でっち上げない)。
+    常にアクティブシートのみを操作する(知見180/190/192と同じ確認済みの挙動)。
+    """
+    try:
+        sheet = instance.active_sheet
+        if mode == "SingleCell":
+            min_col = max_col = column_index_from_string(start_column)
+            min_row = max_row = start_row
+        elif mode == "RangeOfCells":
+            min_col, max_col = column_index_from_string(start_column), column_index_from_string(end_column)
+            min_row, max_row = start_row, end_row
+        else:
+            raise ValueError(f"Unknown DeleteCellsMode: {mode!r}")
+
+        width = max_col - min_col + 1
+        height = max_row - min_row + 1
+
+        if shift_direction == "Left":
+            original_max_col = sheet.max_column
+            for row in range(min_row, max_row + 1):
+                for col in range(min_col, original_max_col + 1):
+                    _copy_cell(sheet.cell(row=row, column=col + width), sheet.cell(row=row, column=col))
+                for col in range(original_max_col + 1, original_max_col + 1 + width):
+                    cell = sheet.cell(row=row, column=col)
+                    cell.value = None
+                    cell.style = "Normal"
+        elif shift_direction == "Up":
+            original_max_row = sheet.max_row
+            for col in range(min_col, max_col + 1):
+                for row in range(min_row, original_max_row + 1):
+                    _copy_cell(sheet.cell(row=row + height, column=col), sheet.cell(row=row, column=col))
+                for row in range(original_max_row + 1, original_max_row + 1 + height):
+                    cell = sheet.cell(row=row, column=col)
+                    cell.value = None
+                    cell.style = "Normal"
+        else:
+            raise ValueError(f"Unknown ShiftCellsDirection: {shift_direction!r}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise DeleteCellsError(str(exc)) from exc

@@ -580,4 +580,37 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
                 args.append(f"start_row={start_row}, end_row={end_row}")
         return [f"{prefix}excel_actions.resize_columns_or_rows({', '.join(args)})"]
 
+    if action_id in ("Excel.DeleteCells.DeleteCell", "Excel.DeleteCells.DeleteCells"):
+        # design/dsl_format_findings.md 知見197: `[Action(Id = "DeleteCells")]`が
+        # クラス名`DeleteCellsAction`の`...Action`接尾辞を取り除く(知見195と同じパターン)。
+        instance = safe_render(p.get("Instance"))
+        if instance is None:
+            return None
+        if action_id == "Excel.DeleteCells.DeleteCell":
+            start_column = safe_render(p.get("StartColumn"))
+            start_row = safe_render(p.get("StartRow"))
+            if start_column is None or start_row is None:
+                return None
+            args = [instance, "mode='SingleCell'", f"start_column={start_column}", f"start_row={start_row}"]
+        else:
+            start_column = safe_render(p.get("StartColumn"))
+            start_row = safe_render(p.get("StartRow"))
+            end_column = safe_render(p.get("EndColumn"))
+            end_row = safe_render(p.get("EndRow"))
+            if None in (start_column, start_row, end_column, end_row):
+                return None
+            args = [
+                instance,
+                "mode='RangeOfCells'",
+                f"start_column={start_column}",
+                f"start_row={start_row}",
+                f"end_column={end_column}",
+                f"end_row={end_row}",
+            ]
+        shift_direction = _enum_arg(p, "ShiftCellsDirection", "Left")
+        if shift_direction is None:
+            return None
+        args.append(f"shift_direction={shift_direction}")
+        return [f"{prefix}excel_actions.delete_cells({', '.join(args)})"]
+
     return None

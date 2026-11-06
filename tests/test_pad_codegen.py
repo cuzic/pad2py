@@ -3481,6 +3481,38 @@ def test_generate_python_from_excel_autofit_falls_back_to_todo() -> None:
     assert "# TODO: map PAD action: Excel.ResizeColumnsOrRows.AutofitSingleColumn" in code
 
 
+def test_generate_python_from_excel_delete_cell_converts() -> None:
+    # design/dsl_format_findings.md 知見197: `[Action(Id = "DeleteCells")]`が
+    # クラス名の`...Action`接尾辞を取り除く(知見195と同じパターン)。
+    setup_dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''a''' "
+        "Column: $'''A''' Row: 1\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''b''' "
+        "Column: $'''B''' Row: 1"
+    )
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = (
+        "Excel.DeleteCells.DeleteCell Instance: ExcelInstance StartColumn: $'''A''' StartRow: 1 "
+        "ShiftCellsDirection: Excel.ShiftCellsDirection.Left"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "excel_actions.delete_cells(ExcelInstance, mode='SingleCell', start_column='A', "
+        "start_row=1, shift_direction='Left')" in code
+    )
+
+    exec(code, namespace)
+    sheet = namespace["ExcelInstance"].active_sheet
+    assert sheet["A1"].value == "b"
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、
