@@ -55,6 +55,20 @@ def test_open_cmd_session_change_code_page_unsupported_encoding_raises() -> None
         _open_sh_session(change_code_page=True, encoding="not_a_real_encoding")
 
 
+def test_open_cmd_session_change_code_page_pads_sub_100_codepage_for_python_codec() -> None:
+    # セルフレビューで発見: `_ENCODING_CODEPAGES["IBM037"] == 37`のような3桁未満の
+    # コードページは、Pythonのコーデック名では"cp037"のように0埋めされる必要がある
+    # (`codecs.lookup("cp37")`は`LookupError`になる、`"cp037"`のみ有効)。`chcp`へは
+    # 0埋めせず整数のコードページ番号そのもの("37")を送る(知見153、.NET側の`chcp`
+    # 引数はPythonのコーデック命名規則と無関係)。
+    assert cmd._ENCODING_CODEPAGES["IBM037"] == 37
+    session = _open_sh_session(change_code_page=True, encoding="IBM037")
+    try:
+        assert session._process.stdout.encoding.lower() in ("cp037", "ibm037")
+    finally:
+        session.close()
+
+
 def test_write_then_read_returns_combined_output_by_default() -> None:
     session = _open_sh_session()
     try:

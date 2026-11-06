@@ -101,6 +101,13 @@ def _get_download_file_path(
         if path == "/":
             extension = ".html"
             file_name = response.url.host
+        elif path.endswith("/"):
+            # セルフレビューで発見: .NETの`Uri.Segments`は末尾が`/`の非ルートパス
+            # (例: "/downloads/")でも最後のセグメント自体に末尾の`/`を含める
+            # (segments=["/", "downloads/"])——`rsplit("/", 1)[-1]`だけだと空文字列に
+            # なってしまう(`_sanitize_file_name()`で`/`自体はどちらにせよ`_`に置換
+            # されるため、最終的な見た目は`downloads_`になる)。
+            file_name = path[:-1].rsplit("/", 1)[-1] + "/"
         else:
             file_name = path.rsplit("/", 1)[-1]
     file_name = _sanitize_file_name(file_name)

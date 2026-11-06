@@ -197,7 +197,9 @@ def open_cmd_session(
         codepage = _ENCODING_CODEPAGES.get(encoding)
         if codepage is None:
             raise OpenCmdError(f"Unsupported encoding: {encoding!r}")
-        python_encoding = f"cp{codepage}"
+        # Pythonのcp*コーデック名は3桁未満のコードページ(例: IBM037=37)を"037"のように
+        # 0埋めする(`codecs.lookup("cp37")`は失敗する)——セルフレビューで発見・修正。
+        python_encoding = f"cp{codepage:03d}"
     else:
         # `ChangeCodePage=False`(`Open`)では`Encoding`パラメータ自体がDSL上に
         # 存在せず、常にOS既定のANSIコードページ(`Encoding.Default`)が使われる

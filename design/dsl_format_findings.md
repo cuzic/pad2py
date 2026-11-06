@@ -2729,3 +2729,13 @@ public abstract class ActionAttributeBase : Attribute
 `Name`プロパティには`[Obsolete("Use ActionAttribute.Id instead.")]`という明示的な非推奨注記があり、これは「`Id`の旧名であり同じ役割を持つ(SDKのバージョンが上がる過程で`Name`→`Id`へ改名されたが、後方互換のため両方のプロパティが残っている)」ことを意味する——`Id`が未設定で`Name`のみ設定されているクラス(`ExtractPagesToNewPDFAction`の`Name = "ExtractPages"`、`MergeFiles`クラスの`Name = "MergeFiles"`)は、`Name`の値がそのまま中間セグメントとして使われると確定した(値を読み取る側のEngine/Runtime実装は本SDK dllには無く別アセンブリだが、`Obsolete`注記自体が「同じ用途の後継プロパティ」であることを明確に示しており、これ以上の裏付けを待たずに安全に確定できる水準の確証)。
 
 結論: 既存の`pad_codegen/actions/pdf.py`の`Pdf.ExtractPages`/`Pdf.MergeFiles`という結線(フラットな2セグメント形式)は、当初から正しかったと確定した——修正は不要。`design/pad_todo.md`の残課題注記を解消する。
+
+## 163. セルフレビューで知見153・152の実装に2件の潜在バグを発見・修正——Pythonコーデック命名規則とdecompile由来の`Uri.Segments`仕様の見落とし
+
+今セッションの一連のコミット(a20e304〜d584d53)を自己レビューした結果、decompileの解釈自体は正しかったがPython側への変換に見落としがあった2件を発見した。
+
+**1件目(`cmd_actions.py`、知見153)**: `open_cmd_session()`が`python_encoding = f"cp{codepage}"`でPythonコーデック名を組み立てていたが、`_ENCODING_CODEPAGES`の150メンバー中`IBM037=37`だけが3桁未満のコードページ番号で、Pythonの実際のコーデック名は`"cp037"`(0埋め済み)であり`"cp37"`は`codecs.lookup()`が`LookupError`になる(`codecs.lookup("cp37")`→失敗、`codecs.lookup("cp037")`→成功、を実際に確認)。既存テストは`utf_8`/`shift_jis`/`Windows_1252`/`ibm850`(いずれも3桁以上)だけを確認していたため見逃していた。`f"cp{codepage:03d}"`に修正(`chcp`へ送る整数自体は0埋め不要、知見153通り変更無し)。
+
+**2件目(`web_actions.py`、知見152)**: `_get_download_file_path()`が、末尾が`/`で終わる**非ルート**パス(例: `/downloads/`)の場合に`path.rsplit("/", 1)[-1]`で空文字列を返していた——decompileした.NETの`Uri.Segments`は、このケースでも最後のセグメント自体に末尾の`/`を含める(`segments = ["/", "downloads/"]`)ため、正しい変換は`"downloads/"`(その後`_sanitize_file_name()`で`/`自体が`_`に置換されるため最終的には`"downloads_"`)。真のルートパス(`path == "/"`)のケースは既に正しく処理されていたが、「非ルートかつ末尾が`/`」という中間ケースが未対応だった。
+
+両方とも、実際のPAD/pywinauto実行では発生しにくいエッジケース(IBM037は稀な中国語/EBCDIC系コードページ、末尾スラッシュのダウンロードURLは非典型)だが、decompileした.NET側の仕様とPython実装の間の不一致という意味では紛れもないバグだったため修正し、再発防止のテストを追加した。

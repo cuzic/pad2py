@@ -86,6 +86,24 @@ def test_download_from_web_to_folder_derives_filename_from_url_when_no_content_d
     assert result == str(tmp_path / "data.csv")
 
 
+def test_download_from_web_to_folder_non_root_path_with_trailing_slash_keeps_segment(
+    tmp_path: Path,
+) -> None:
+    # セルフレビューで発見: 末尾が`/`の非ルートパス(例: "/downloads/")は、.NETの
+    # `Uri.Segments`仕様では最後のセグメント自体に末尾の`/`を含める("downloads/")——
+    # 単純な`rsplit("/", 1)[-1]`だけだと空文字列になってしまう潜在バグだった。
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x")
+
+    result = web.download_from_web(
+        "http://example.test/downloads/",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    assert result == str(tmp_path / "downloads_")
+
+
 def test_download_from_web_to_folder_root_path_falls_back_to_host_html(tmp_path: Path) -> None:
     # 知見152: URLパスがルート(`/`)の場合はホスト名+`.html`になる
     # (`WebActions.GetDownloadFilePath()`のdecompile確認通り)。
