@@ -111,12 +111,14 @@ from ..uipath_dsl.types import (
     LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
+    MoveFileNode,
     MultipleAssignNode,
     Node,
     OpenApplicationNode,
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    PathExistsNode,
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -332,8 +334,9 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import smtplib")
     if any("email.mime.text.MIMEText(" in line for line in body):
         imports.append("import email.mime.text")
-    # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117)も同様。
-    if any("shutil.copy(" in line for line in body):
+    # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117。
+    # `MoveFile`→`shutil.move(...)`変換先、知見188)も同様。
+    if any("shutil.copy(" in line or "shutil.move(" in line for line in body):
         imports.append("import shutil")
     # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)も
     # 同じ`os`モジュールのため同じ条件にまとめる。
@@ -578,6 +581,10 @@ def _generate_node(
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
         return _generate_copy_file(node, indent)
+    if isinstance(node, MoveFileNode):
+        return _generate_move_file(node, indent)
+    if isinstance(node, PathExistsNode):
+        return _generate_path_exists(node, indent)
     if isinstance(node, BuildDataTableNode):
         return _generate_build_data_table(node, indent)
     if isinstance(node, HttpClientNode):
@@ -3278,6 +3285,93 @@ def _generate_copy_file_body(node: CopyFileNode, indent: int) -> list[str]:
         lines.append(f"{INDENT * (indent + 1)}raise FileExistsError(_dest)")
     lines.append(f"{prefix}shutil.copy(_src, _dest)")
     return lines
+
+
+# 知見188: `ui:MoveFile`(`CopyFile`知見117の正反対)。`shutil.move()`が
+# 直接対応する——`CopyFile`と同じ「移動先が既存のディレクトリなら
+# ファイル名を付加する」解決ロジック+`Overwrite="False"`時の事前
+# 存在チェックをそのまま再利用する(プラットフォーム依存の`shutil.
+# move`自体の上書き挙動に頼らず、明示的で予測可能なチェックに揃える)。
+def _generate_move_file(node: MoveFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_move_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_move_file_body(node: MoveFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None or node.destination is None:
+        return [f"{prefix}# TODO: MoveFile with missing Path/Destination"]
+    if node.destination_resource is not None or node.path_resource is not None:
+        return [
+            f"{prefix}# TODO: MoveFile with DestinationResource/PathResource "
+            "set — Integration Service resource handling not confirmed, "
+            "refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: MoveFile with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.overwrite not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: MoveFile with unrecognized/unset Overwrite "
+            f"({node.overwrite!r}) — true default behavior not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    destination = _render_value_or_todo(node.destination, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_src = {path}",
+        f"{prefix}_dest = {destination}",
+        f"{prefix}if os.path.isdir(_dest):",
+        f"{INDENT * (indent + 1)}_dest = os.path.join(_dest, os.path.basename(_src))",
+    ]
+    if node.overwrite == "False":
+        lines.append(f"{prefix}if os.path.exists(_dest):")
+        lines.append(f"{INDENT * (indent + 1)}raise FileExistsError(_dest)")
+    lines.append(f"{prefix}shutil.move(_src, _dest)")
+    return lines
+
+
+# 知見188: `ui:PathExists`。`PathType="File"`は`os.path.isfile()`、
+# `"Folder"`は`os.path.isdir()`(いずれもPython標準の確認済みAPI)が
+# UiPathの種別を区別する意味論に正確に対応する。
+def _generate_path_exists(node: PathExistsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_path_exists_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_path_exists_body(node: PathExistsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: PathExists with no Path captured"]
+    if node.exists is None:
+        return [f"{prefix}# TODO: PathExists with no output Exists captured"]
+    if node.resource is not None:
+        return [
+            f"{prefix}# TODO: PathExists with Resource set "
+            f"({_describe_expr_for_comment(node.resource)}) — Integration "
+            "Service resource handling not confirmed, refusing to guess"
+        ]
+    if node.path_type not in ("File", "Folder"):
+        return [
+            f"{prefix}# TODO: PathExists with unrecognized/unset PathType "
+            f"({node.path_type!r}) — only File/Folder are confirmed, "
+            "refusing to guess"
+        ]
+    check = "os.path.isfile" if node.path_type == "File" else "os.path.isdir"
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    target = _render_value_or_todo(node.exists, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = {check}({path})"]
 
 
 # 知見117: `ui:BuildDataTable`。`TableInfo`に埋め込まれた.NET `DataSet`の

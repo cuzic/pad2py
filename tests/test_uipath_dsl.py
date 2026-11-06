@@ -61,11 +61,13 @@ from dump_daemon.uipath_dsl import (
     LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
+    MoveFileNode,
     MultipleAssignNode,
     OpenApplicationNode,
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    PathExistsNode,
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -1563,6 +1565,51 @@ def test_retry_scope_with_non_empty_condition():
     assert isinstance(node, RetryScopeNode)
     assert node.condition_has_body is True
     assert node.retry_interval == Literal(value="00:10:00")
+
+
+def test_move_file_properties():
+    """知見188: `ui:MoveFile`(`CopyFile`知見117の正反対、GitHub code
+    searchで575件ヒット)。実機`cameronmcnz/uipath-tutorials`で確認した
+    実例。"""
+    xml = (
+        f"<ui:MoveFile {_UI_XMLNS} DisplayName=\"Move File\" "
+        'ContinueOnError="{x:Null}" Overwrite="False" '
+        'Path="[file.ToString]" Destination="processed" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MoveFileNode)
+    assert node.path == VbExpr(text="file.ToString")
+    assert node.destination == Literal(value="processed")
+    assert node.overwrite == "False"
+    assert node.continue_on_error is None
+
+
+def test_path_exists_with_file_path_type():
+    """知見188: `ui:PathExists`(GitHub code searchで558件ヒット)。
+    実機`PacktPublishing/Robotic-Process-Automation-Projects`で確認した
+    `PathType="File"`の実例。"""
+    xml = (
+        f"<ui:PathExists {_UI_XMLNS} DisplayName=\"Path Exists\" "
+        'Exists="[boolFileExists]" Path="[path]" PathType="File" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, PathExistsNode)
+    assert node.path == VbExpr(text="path")
+    assert node.exists == VbExpr(text="boolFileExists")
+    assert node.path_type == "File"
+    assert node.resource is None
+
+
+def test_path_exists_with_folder_path_type():
+    """実機`cristinegulescu/startUiPathFromSalesforce`で確認した
+    `PathType="Folder"`の実例。"""
+    xml = (
+        f"<ui:PathExists {_UI_XMLNS} DisplayName=\"Path Exists\" "
+        'Exists="[found]" Path="[folder]" PathType="Folder" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, PathExistsNode)
+    assert node.path_type == "Folder"
 
 
 def test_log_message_properties():

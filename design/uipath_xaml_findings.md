@@ -8886,6 +8886,41 @@ scope`の関数シグネチャを`_generate_try_catch`と同じ形に揃えた�
 2件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全812件
 通過、リポジトリ全体で全1871件通過。
 
+## 188. `ui:MoveFile`+`ui:PathExists`を新規実装——`MoveFile`は`CopyFile`(知見117)の正反対として実装を丸ごと再利用、`PathExists`は`PathType`の値(File/Folder)で`os.path.isfile()`/`isdir()`を正確に切り分け
+
+知見187の`ui:RetryScope`から離れ、ファイルシステム操作系の基本活動
+`ui:MoveFile`(GitHub code searchで575件ヒット)+`ui:PathExists`
+(558件ヒット)を調査した。`UiPath/skills`公式リポジトリのStudio実機
+ground-truthコーパス+実機4件(`PacktPublishing/Robotic-Process-
+Automation-Projects`・`cameronmcnz/uipath-tutorials`・
+`cristinegulescu/startUiPathFromSalesforce`)で確認した。
+
+`ui:MoveFile`は`ui:CopyFile`(知見117)と**完全に同一の属性構成**
+(`Path`+`Destination`+`Overwrite`+`DestinationResource`/
+`PathResource`+`ContinueOnError`)だった——実装は`CopyFile`の
+decline判定・移動先ディレクトリ解決ロジック・`Overwrite="False"`時の
+事前存在チェックをそのまま丸ごと再利用し、最後の1行だけ`shutil.
+copy()`→`shutil.move()`に変える形で済んだ。移動先が既に存在する場合
+の`shutil.move()`自体の挙動はOS・Pythonバージョンに依存する
+(Windowsの`os.rename()`は上書きに失敗するが、`shutil.move`内部の
+フォールバック経路で上書きされる場合がある)ため、このプラット
+フォーム依存の挙動に頼らず、`CopyFile`と同じ明示的で予測可能な
+事前チェックに揃えた判断。
+
+`ui:PathExists`は`Path`+`Exists`(出力)+`Resource`(未モデル化)+
+`PathType`——実機2件で確認した値は`"File"`/`"Folder"`の2種のみ。
+`os.path.exists()`のような種別を問わない汎用チェックではなく、
+`PathType="File"`は`os.path.isfile()`・`"Folder"`は`os.path.isdir()`
+という、UiPathが明示的に区別している意味論に正確に対応させた——
+種別を無視した近似(`os.path.exists()`だけで済ませる)ではなく、
+確認できた語彙の範囲内で忠実に対応する判断。
+
+実機XAML4件で`generate_python()`+`compile()`を確認した
+(`MoveFile`は`Overwrite="True"`/`"False"`の両方、`PathExists`は
+`PathType="File"`/`"Folder"`の両方を実機で確認)。回帰テスト追加
+(`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`16件)、
+UiPath関連テスト全828件通過、リポジトリ全体で全1887件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

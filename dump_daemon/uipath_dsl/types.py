@@ -1014,6 +1014,56 @@ class RetryScopeNode:
 
 
 @dataclass
+class MoveFileNode:
+    """`<ui:MoveFile>`(知見188、`UiPath.System.Activities`、GitHub
+    code searchで575件ヒット)。`CopyFile`(知見117)と全く同じ属性
+    構成(`Path`+`Destination`+`Overwrite`+`DestinationResource`/
+    `PathResource`+`ContinueOnError`)——`UiPath/skills`公式リポジトリ
+    のStudio実機ground-truthコーパス+実機4件(`PacktPublishing/
+    Robotic-Process-Automation-Projects`・`cameronmcnz/uipath-
+    tutorials`)で確認。`shutil.move()`(`CopyFile`の`shutil.copy()`と
+    対になる標準API)が直接対応する——`CopyFile`と同じ「移動先が既存の
+    ディレクトリならファイル名を付加する」解決ロジック+
+    `Overwrite="False"`時の事前存在チェックをそのまま再利用する
+    (移動先が既に存在する場合の`shutil.move`自体の挙動はOSごとに
+    異なる——Windowsの`os.rename`は上書きせず失敗するが`shutil.move`
+    内部のフォールバック経路では上書きされる場合がある——という
+    プラットフォーム依存の挙動に頼らず、`CopyFile`と同じ明示的で
+    予測可能なチェックに揃える判断)。"""
+
+    path: Expr = None
+    destination: Expr = None
+    overwrite: str | None = None
+    destination_resource: Expr = None
+    path_resource: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class PathExistsNode:
+    """`<ui:PathExists>`(知見188、`UiPath.System.Activities`、GitHub
+    code searchで558件ヒット)。`UiPath/skills`公式リポジトリのStudio
+    実機ground-truthコーパス+実機2件(`PacktPublishing/Robotic-
+    Process-Automation-Projects`・`cristinegulescu/
+    startUiPathFromSalesforce`)で確認した構成は`Path`+`Exists`
+    (出力)+`Resource`(Integration Service連携用、未モデル化)+
+    `PathType`(実機確認済みの値は`"File"`/`"Folder"`の2種)。
+
+    `PathType="File"`の場合は`os.path.isfile()`、`"Folder"`の場合は
+    `os.path.isdir()`(いずれもPython標準の確認済みAPI)が直接対応
+    する——`os.path.exists()`のような種別を問わない汎用チェックでは
+    なく、UiPathの`PathType`が明示的に区別している意味論に正確に
+    対応させる。"""
+
+    path: Expr = None
+    exists: Expr = None
+    resource: Expr = None
+    path_type: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2130,6 +2180,8 @@ Node = (
     | WriteCsvFileNode
     | InvokePowerShellNode
     | RetryScopeNode
+    | MoveFileNode
+    | PathExistsNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

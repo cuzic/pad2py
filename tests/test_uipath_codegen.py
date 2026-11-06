@@ -86,11 +86,13 @@ from dump_daemon.uipath_dsl import (
     LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
+    MoveFileNode,
     MultipleAssignNode,
     OpenApplicationNode,
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    PathExistsNode,
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -3300,6 +3302,178 @@ def test_retry_scope_with_log_retried_exceptions_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: RetryScope with LogRetriedExceptions set" in code
+    _compiles(code)
+
+
+def test_move_file_moves_via_shutil():
+    """知見188: `ui:MoveFile`(`CopyFile`知見117の正反対)。
+    `shutil.move()`が直接対応する——移動先が既存のディレクトリなら
+    ファイル名を付加する解決ロジックは`CopyFile`と同じ。"""
+    wf = _wrap(
+        [
+            MoveFileNode(
+                path=Literal(value="a.txt"),
+                destination=Literal(value="b.txt"),
+                overwrite="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "shutil.move(_src, _dest)" in code
+    assert "import shutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_move_file_with_overwrite_false_checks_existence():
+    wf = _wrap(
+        [
+            MoveFileNode(
+                path=Literal(value="a.txt"),
+                destination=Literal(value="b.txt"),
+                overwrite="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if os.path.exists(_dest):" in code
+    assert "raise FileExistsError(_dest)" in code
+    _compiles(code)
+
+
+def test_move_file_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            MoveFileNode(
+                path=Literal(value="a.txt"),
+                destination=Literal(value="b.txt"),
+                overwrite="True",
+                display_name="Move File",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Move File" in code
+    assert "shutil.move(" in code
+    _compiles(code)
+
+
+def test_move_file_with_missing_path_or_destination_is_todo():
+    wf = _wrap([MoveFileNode(path=None, destination=Literal(value="b.txt"))])
+    code = generate_python(wf)
+    assert "# TODO: MoveFile with missing Path/Destination" in code
+    _compiles(code)
+
+
+def test_move_file_with_unrecognized_overwrite_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            MoveFileNode(
+                path=Literal(value="a.txt"),
+                destination=Literal(value="b.txt"),
+                overwrite=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: MoveFile with unrecognized/unset Overwrite" in code
+    _compiles(code)
+
+
+def test_move_file_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            MoveFileNode(
+                path=Literal(value="a.txt"),
+                destination=Literal(value="b.txt"),
+                overwrite="True",
+                continue_on_error=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: MoveFile with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_path_exists_with_file_type_uses_isfile():
+    """知見188: `ui:PathExists`(GitHub code searchで558件ヒット)。
+    `PathType="File"`は`os.path.isfile()`が直接対応する。"""
+    wf = _wrap(
+        [PathExistsNode(path=Literal(value="a.txt"), exists=VbExpr(text="found"), path_type="File")]
+    )
+    code = generate_python(wf)
+    assert "found = os.path.isfile(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_path_exists_with_folder_type_uses_isdir():
+    wf = _wrap(
+        [
+            PathExistsNode(
+                path=Literal(value="dir"), exists=VbExpr(text="found"), path_type="Folder"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "found = os.path.isdir(" in code
+    _compiles(code)
+
+
+def test_path_exists_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            PathExistsNode(
+                path=Literal(value="a.txt"),
+                exists=VbExpr(text="found"),
+                path_type="File",
+                display_name="Path Exists",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Path Exists" in code
+    assert "os.path.isfile(" in code
+    _compiles(code)
+
+
+def test_path_exists_with_no_path_is_todo():
+    wf = _wrap([PathExistsNode(path=None, exists=VbExpr(text="found"), path_type="File")])
+    code = generate_python(wf)
+    assert "# TODO: PathExists with no Path captured" in code
+    _compiles(code)
+
+
+def test_path_exists_with_no_output_exists_is_todo():
+    wf = _wrap([PathExistsNode(path=Literal(value="a.txt"), exists=None, path_type="File")])
+    code = generate_python(wf)
+    assert "# TODO: PathExists with no output Exists captured" in code
+    _compiles(code)
+
+
+def test_path_exists_with_resource_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            PathExistsNode(
+                path=Literal(value="a.txt"),
+                exists=VbExpr(text="found"),
+                path_type="File",
+                resource=VbExpr(text="res"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: PathExists with Resource set" in code
+    _compiles(code)
+
+
+def test_path_exists_with_unrecognized_path_type_is_todo_not_guessed():
+    wf = _wrap(
+        [PathExistsNode(path=Literal(value="a.txt"), exists=VbExpr(text="found"), path_type=None)]
+    )
+    code = generate_python(wf)
+    assert "# TODO: PathExists with unrecognized/unset PathType" in code
     _compiles(code)
 
 

@@ -73,12 +73,14 @@ from .types import (
     LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
+    MoveFileNode,
     MultipleAssignNode,
     Node,
     OpenApplicationNode,
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    PathExistsNode,
     ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
@@ -933,6 +935,28 @@ def _parse_retry_scope(elem: etree._Element) -> RetryScopeNode:
         condition_has_body=condition_has_body,
         log_retried_exceptions=_attr_expr(elem, "LogRetriedExceptions"),
         retried_exceptions_log_level=_attr_expr(elem, "RetriedExceptionsLogLevel"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_move_file(elem: etree._Element) -> MoveFileNode:
+    return MoveFileNode(
+        path=_attr_expr(elem, "Path"),
+        destination=_attr_expr(elem, "Destination"),
+        overwrite=_attr_or_none(elem, "Overwrite"),
+        destination_resource=_attr_expr(elem, "DestinationResource"),
+        path_resource=_attr_expr(elem, "PathResource"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_path_exists(elem: etree._Element) -> PathExistsNode:
+    return PathExistsNode(
+        path=_attr_expr(elem, "Path"),
+        exists=_attr_expr(elem, "Exists"),
+        resource=_attr_expr(elem, "Resource"),
+        path_type=_attr_or_none(elem, "PathType"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1863,6 +1887,8 @@ _DISPATCH = {
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,
+    (UI_NS, "MoveFile"): _parse_move_file,
+    (UI_NS, "PathExists"): _parse_path_exists,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

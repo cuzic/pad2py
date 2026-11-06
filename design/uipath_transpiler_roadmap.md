@@ -2432,3 +2432,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`6件)、UiPath関連テスト全812件通過、
      リポジトリ全体で全1871件通過。
+
+146. **(完了、2026-11-06)** `ui:MoveFile`+`ui:PathExists`を新規実装
+     (知見188): `MoveFile`は`CopyFile`(知見117)と完全に同一の属性
+     構成のため、decline判定・ディレクトリ解決ロジック・事前存在
+     チェックを丸ごと再利用し`shutil.copy()`→`shutil.move()`のみ
+     変更。`PathExists`は`PathType`(File/Folder)で`os.path.isfile()`/
+     `isdir()`を正確に切り分ける(`os.path.exists()`のような種別を
+     問わない近似はしない)。実機XAML4件で両方の分岐を確認。回帰
+     テスト追加(`tests/test_uipath_dsl.py`4件・`tests/
+     test_uipath_codegen.py`16件)、UiPath関連テスト全828件通過、
+     リポジトリ全体で全1887件通過。
