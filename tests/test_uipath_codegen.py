@@ -711,11 +711,14 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
             "Importance=None, Sensitivity=None, IsBodyHtml=None, IsDraft=None)",
         ),
         (
-            # 知見96: 単純な構成(Body未設定・コレクション全て空)はもはや
+            # 知見96・104: 単純な構成(コレクション全て空)はもはや
             # unresolvedに倒れず実際のrequestsコードを生成するため、ここでは
-            # Bodyを設定してunresolvedへのフォールバックを明示的に発生させる。
-            HttpClientNode(endpoint=VbExpr(text="url"), method="POST", body=Literal(value="x")),
-            "(EndPoint=[url], Method='POST', Body='x')",
+            # `Cookies`等が空でないことにしてフォールバックを明示的に
+            # 発生させる。
+            HttpClientNode(
+                endpoint=VbExpr(text="url"), method="POST", has_populated_collections=True
+            ),
+            "(EndPoint=[url], Method='POST', Body=(not set))",
         ),
     ],
 )
@@ -751,9 +754,10 @@ def test_http_client_converts_timeout_ms_to_seconds():
     _compiles(code)
 
 
-def test_http_client_falls_back_to_todo_with_populated_headers():
-    """知見96: `Headers`等に1件以上のエントリがある場合は実直列化形が
-    実機未確認のため、でっち上げず`# TODO`に倒す。"""
+def test_http_client_falls_back_to_todo_with_populated_fallback_collections():
+    """知見96・104: `Cookies`/`Parameters`/`UrlSegments`/`Attachments`
+    (`Headers`は知見104で専用対応済み)に1件以上のエントリがある場合は
+    populated時の意味論が実機未確認のため、でっち上げず`# TODO`に倒す。"""
     node = HttpClientNode(
         endpoint=Literal(value="https://example.com/api"),
         method="POST",
@@ -763,6 +767,42 @@ def test_http_client_falls_back_to_todo_with_populated_headers():
     code = generate_python(wf)
     assert "# TODO: unsupported in v1 codegen: HttpClientNode" in code
     assert "requests.request(" not in code
+    _compiles(code)
+
+
+def test_http_client_with_body_generates_data_kwarg():
+    """知見104: `Body`が設定されている場合(`gh api search/code`で確認済み
+    の実例、`vajrang-b/UiPathIn30Days`のPOSTリクエスト)は`requests`の
+    `data=`引数へ変換する——もはや`# TODO`に倒れない。"""
+    node = HttpClientNode(
+        endpoint=Literal(value="https://example.com/api"),
+        method="POST",
+        body=VbExpr(text="text"),
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "requests.request('POST', 'https://example.com/api', data=_vb_cstr(text))" in code
+    _compiles(code)
+
+
+def test_http_client_with_headers_generates_headers_kwarg():
+    """知見104: `Headers`が1件以上のエントリを持つ場合(`gh api search/
+    code`で確認済みの実例、`VamsiyadavChakka/OrchestratorAPI-s`の実際の
+    `Content-Type`/カスタムヘッダー)は`requests`の`headers=`引数(辞書
+    リテラル)へ変換する——もはや`# TODO`に倒れない。"""
+    node = HttpClientNode(
+        endpoint=Literal(value="https://example.com/api"),
+        method="POST",
+        headers={"content-Type": Literal(value="application/json")},
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert (
+        "requests.request('POST', 'https://example.com/api', "
+        "headers={'content-Type': _vb_cstr('application/json')})"
+    ) in code
     _compiles(code)
 
 
@@ -796,19 +836,20 @@ def test_http_client_todo_includes_extra_attrs():
     """知見92: `extra_attrs`(`EndPoint`/`Method`/`Body`/`TimeoutMS`以外の
     全属性、実機フィクスチャでは`AcceptFormat`等)は`xaml_tree._parse_http_client`
     が既に捕捉済みだったが、`# TODO`コメントへ一度も出ていなかった——知見75と
-    同じ「捕捉済みデータの未活用」パターンの追加分。`Body`を設定して知見96の
-    実コード生成パスではなくunresolvedフォールバックを明示的に発生させる。"""
+    同じ「捕捉済みデータの未活用」パターンの追加分。`has_populated_collections`
+    を設定して知見96・104の実コード生成パスではなくunresolvedフォールバック
+    を明示的に発生させる。"""
     node = HttpClientNode(
         endpoint=VbExpr(text="url"),
         method="POST",
-        body=Literal(value="payload"),
+        has_populated_collections=True,
         extra_attrs={"AcceptFormat": "JSON"},
     )
     wf = _wrap([node])
     code = generate_python(wf)
     assert (
         "# TODO: unsupported in v1 codegen: HttpClientNode (EndPoint=[url], "
-        "Method='POST', Body='payload', ExtraAttrs={'AcceptFormat': 'JSON'})"
+        "Method='POST', Body=(not set), ExtraAttrs={'AcceptFormat': 'JSON'})"
     ) in code
     _compiles(code)
 

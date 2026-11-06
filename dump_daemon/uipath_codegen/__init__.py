@@ -1076,27 +1076,40 @@ def _generate_send_outlook_mail(node: SendOutlookMailNode, indent: int) -> list[
 
 def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
     """知見96: `HttpClientNode`は知見29以来常に`_generate_unresolved_
-    activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
-    (`Headers`/`Cookies`/`Parameters`/`UrlSegments`/`Attachments`が全て空、
-    `Body`も未設定(`{x:Null}`))に限り`requests`ライブラリへの実変換を行う。
+    activity`へ倒れていたが、`requests`ライブラリへの実変換を行う。
 
     `TimeoutMS`(UiPath公式ドキュメント docs.uipath.com/activities/other/
     latest/developer/http-request、既定値6000ms——実機フィクスチャの値と
     一致)はミリ秒からrequestsの`timeout`引数(秒)へ単位変換するだけで、
     複雑な解釈は挟まない。
 
-    `Body`が設定されている場合、または上記いずれかのコレクションに
-    1件以上のエントリがある場合は、その実直列化形(キー/値のXML表現、
-    `AcceptFormat`/`BodyFormat`がヘッダーにどう反映されるか)が実機未確認
-    のため、でっち上げず`_generate_unresolved_activity`の`# TODO`(知見75・
-    92)へ委ねる——`Method`/`EndPoint`は確認済みのため、そちらにも
-    引き続き同じ詳細情報が出る。
+    知見104: `Body`(`requests`の`data=`引数へ)・`Headers`(`requests`の
+    `headers=`引数へ、辞書リテラル)も実コード生成する——`gh api
+    search/code`でGitHub上の実機保存済みXAMLから、`Body`が実際に設定
+    される実例(POSTリクエスト)と`Headers`のpopulated時の実直列化形を
+    確認した(VM不使用)。`BodyFormat`/`AcceptFormat`がHTTPヘッダーへどう
+    反映されるか(例: `Content-Type`の自動設定)はコミュニティ情報が
+    相互に矛盾しており未確認のため、でっち上げた自動注入はしない——
+    `Headers`に明示的に`Content-Type`が無ければ`requests`自身の既定動作
+    (未設定)に委ねる。
+
+    `Cookies`/`Parameters`/`UrlSegments`/`Attachments`のいずれかに1件
+    以上のエントリがある場合は、populated時の意味論(`Parameters`がクエリ
+    文字列かフォームデータか等)が実機未確認のため、でっち上げず
+    `_generate_unresolved_activity`の`# TODO`(知見75・92)へ委ねる——
+    `Method`/`EndPoint`は確認済みのため、そちらにも引き続き同じ詳細情報
+    が出る。
     """
     prefix = INDENT * indent
-    if node.has_populated_collections or node.body is not None:
+    if node.has_populated_collections:
         return _generate_unresolved_activity(node, indent)
     todo: list[str] = []
     endpoint = _render_value_or_todo(node.endpoint, prefix, todo)
+    body_arg = _render_value_or_todo(node.body, prefix, todo) if node.body is not None else None
+    header_items = [
+        f"{key!r}: {VB_CSTR_HELPER_NAME}({_render_value_or_todo(expr, prefix, todo)})"
+        for key, expr in node.headers.items()
+    ]
     if todo:
         return todo
     kwargs = [repr(node.method), endpoint]
@@ -1105,6 +1118,10 @@ def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
             kwargs.append(f"timeout={float(node.timeout_ms) / 1000.0!r}")
         except ValueError:
             pass
+    if body_arg is not None:
+        kwargs.append(f"data={VB_CSTR_HELPER_NAME}({body_arg})")
+    if header_items:
+        kwargs.append(f"headers={{{', '.join(header_items)}}}")
     return [f"{prefix}requests.request({', '.join(kwargs)})"]
 
 

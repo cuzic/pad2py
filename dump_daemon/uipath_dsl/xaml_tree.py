@@ -486,21 +486,50 @@ def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
     )
 
 
-_HTTP_CLIENT_COLLECTION_PROPS = ("Headers", "Cookies", "Parameters", "UrlSegments", "Attachments")
+_HTTP_CLIENT_FALLBACK_COLLECTION_PROPS = ("Cookies", "Parameters", "UrlSegments", "Attachments")
+
+
+def _http_client_dict_entries(prop_elem: etree._Element | None) -> dict[str, Expr]:
+    """知見104: `ui:HttpClient.Headers`が空でない場合の実直列化形
+    (`gh api search/code`でGitHub上の実機保存済みXAMLから確認、VM不使用)。
+    空の場合は`<scg:Dictionary x:TypeArguments="x:String,
+    InArgument(x:String)" />`(子要素なしの自己終了タグ)だが、populated時は
+    この`scg:Dictionary`ラッパー自体が無くなり、各エントリが直接の子
+    `<InArgument x:Key="...">`になる——値は直接テキスト形
+    (`<InArgument x:Key="content-Type">application/json</InArgument>`、
+    `VamsiyadavChakka/OrchestratorAPI-s`の実例)とネストした`<Literal>`
+    子要素形(`<InArgument x:Key="Content-Type"><Literal>text/plain
+    </Literal></InArgument>`、`vajrang-b/UiPathIn30Days`の実例)の両方が
+    実在するため、両対応する。"""
+    if prop_elem is None:
+        return {}
+    entries: dict[str, Expr] = {}
+    for child in _direct_children(prop_elem):
+        key = _attr(child, "Key", X_NS) or _attr(child, "Key")
+        if key is None:
+            continue
+        nested = _direct_children(child)
+        text = nested[0].text if nested else child.text
+        entries[key] = _parse_expr(text)
+    return entries
 
 
 def _parse_http_client(elem: etree._Element) -> HttpClientNode:
     """知見96: `Body`/`TimeoutMS`も`EndPoint`/`Method`と同じく専用フィールドへ
-    昇格する(それまでは`extra_attrs`の生文字列止まりだった)。`Headers`等の
-    `scg:Dictionary`プロパティ要素(実機フィクスチャでは全て空、`<ui:HttpClient.
-    Headers><scg:Dictionary .../></ui:HttpClient.Headers>`で子要素なし)は、
-    1件以上のエントリを持つかどうかだけを`has_populated_collections`として
-    記録する——populated時のエントリ直列化形は実機未確認のため、中身の
-    パースはしない(でっち上げ回避)。"""
+    昇格する(それまでは`extra_attrs`の生文字列止まりだった)。
+
+    知見104: `Headers`は実際にpopulated時の直列化形を確認できたため
+    `headers`フィールドへパースする。`Cookies`/`Parameters`/
+    `UrlSegments`/`Attachments`(同じ`InArgument x:Key`形のはずだが、
+    populated時の意味論——`Parameters`がクエリ文字列かフォームデータか等
+    ——がまだ未確認)は引き続き「1件以上のエントリを持つかどうか」だけを
+    `has_populated_collections`として記録し、中身のパースはしない
+    (でっち上げ回避)。"""
     known = {"EndPoint", "Method", "Body", "TimeoutMS"}
     extra = {k: v for k, v in elem.attrib.items() if _split_tag(k)[1] not in known}
+    headers = _http_client_dict_entries(_find_property_element(elem, "Headers"))
     has_populated = False
-    for prop_name in _HTTP_CLIENT_COLLECTION_PROPS:
+    for prop_name in _HTTP_CLIENT_FALLBACK_COLLECTION_PROPS:
         prop_elem = _find_property_element(elem, prop_name)
         if prop_elem is None:
             continue
@@ -512,6 +541,7 @@ def _parse_http_client(elem: etree._Element) -> HttpClientNode:
         method=_attr(elem, "Method") or "GET",
         body=_attr_expr(elem, "Body"),
         timeout_ms=_attr(elem, "TimeoutMS"),
+        headers=headers,
         has_populated_collections=has_populated,
         extra_attrs=extra,
     )

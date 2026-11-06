@@ -1180,3 +1180,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     に添付がある場合のみ引き続き`# TODO`——これが唯一残る未対応ケース。
     回帰テスト更新・追加、UiPath関連テスト全302件通過、リポジトリ全体で
     全1073件通過。
+63. **(完了、2026-11-05)** `HttpClientNode`の`Body`・`Headers`(populated
+    時)の実コード生成に対応(VM不使用、知見104——知見102・103に続き
+    知見100の手法を再適用): `Body="[text]"`の実例(POST)、`Headers`
+    populated時の実直列化形(`scg:Dictionary`ラッパーが無くなり直接の子
+    `<InArgument x:Key="...">`になる、値は直接テキスト形・ネストした
+    `<Literal>`子要素形の両方が実在)をGitHub上の実機保存済みXAMLで確認。
+    `requests`の`data=`/`headers=`引数へマッピング。`BodyFormat`/
+    `AcceptFormat`のヘッダーへの自動反映はコミュニティ情報が矛盾しており
+    未確認のため、でっち上げた自動注入はしない。`Cookies`/`Parameters`/
+    `UrlSegments`/`Attachments`は引き続き`# TODO`。回帰テスト更新・追加、
+    UiPath関連テスト全304件通過、リポジトリ全体で全1075件通過。

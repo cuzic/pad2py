@@ -4918,6 +4918,53 @@ VALUES`/`_OUTLOOK_SENSITIVITY_VALUES`(知見98で確認済みの整数マッピ�
 Confidential)/IsBodyHtml/IsDraftそれぞれの実コード生成確認)、UiPath
 関連テスト全302件通過、リポジトリ全体で全1073件通過。
 
+## 104. `HttpClientNode`の`Body`・`Headers`(populated時)を実機XAML(GitHub実例)で確認し、実コード生成に対応(VM不使用、知見100の手法を再適用)
+
+知見102・103に続き、「GitHub上の実機保存済みXAMLを直接検索する」手法を
+`HttpClientNode`(知見96で`Headers`等のコレクションが全て空・`Body`
+未設定という最も単純な構成のみに限定していた)へ再適用した。
+
+**`Body`の実例**(`vajrang-b/UiPathIn30Days`の`MistralApi/Main.xaml`):
+`Body="[text]"`というVB式属性が実際に設定されたPOSTリクエストの実例を
+確認——`BodyFormat="application/json"`と組み合わせて使われていた。
+
+**`Headers`のpopulated時の実直列化形**(2つの異なる実例で確認):
+`<ui:HttpClient.Headers>`が空の場合は`<scg:Dictionary x:TypeArguments=
+"x:String, InArgument(x:String)" />`(子要素なしの自己終了タグ)だが、
+populated時はこの`scg:Dictionary`ラッパー自体が無くなり、各エントリが
+直接の子`<InArgument x:Key="...">`になる——値の直列化形は2つの実例で
+異なっており、両方が実在する:
+- 直接テキスト形: `<InArgument x:TypeArguments="x:String" x:Key=
+  "content-Type">application/json</InArgument>`
+  (`VamsiyadavChakka/OrchestratorAPI-s`の実例、同じ要素が`Parameters`
+  にも全く同じ形で使われていた)
+- ネストした`<Literal>`子要素形: `<InArgument x:TypeArguments="x:String"
+  x:Key="Content-Type"><Literal x:TypeArguments="x:String">text/plain
+  </Literal></InArgument>`(`vajrang-b/UiPathIn30Days`の実例)
+
+**修正**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `HttpClientNode.headers: dict[str, Expr]`
+を新設。`_http_client_dict_entries()`が両方の値直列化形に対応して
+パースする。`_generate_http_client`は`Body`を`requests`の`data=`引数へ、
+`headers`を辞書リテラルの`headers=`引数へ変換する——`BodyFormat`/
+`AcceptFormat`がHTTPヘッダーへどう反映されるか(`Content-Type`の自動
+設定等)はコミュニティ情報が相互に矛盾しており未確認のため、でっち上げた
+自動注入はしない(`Headers`に明示的に無ければ`requests`自身の既定動作
+(未設定)に委ねる)。`Cookies`/`Parameters`/`UrlSegments`/`Attachments`
+(`Parameters`は`Headers`と全く同じ`InArgument x:Key`形と確認できたが、
+populated時の意味論——クエリ文字列かフォームデータか等——は未確認の
+ため、今回は対象外のまま)のいずれかにエントリがある場合のみ、引き続き
+`# TODO`へ倒す。
+
+回帰テスト更新・追加(Body/Headers単体それぞれの実コード生成確認)、
+UiPath関連テスト全304件通過、リポジトリ全体で全1075件通過。
+
+**この知見で確定したこと**: 知見100で確立した調査手法(GitHub実例検索)
+は、知見102(Click)・知見103(SendOutlookMail)・本知見(HttpClient)と
+4回連続で異なるアクティビティに対して実証的に有効だった——「実機確認が
+無く`# TODO`に倒していた属性値」という本プロジェクト全体に共通するパターン
+に対する、汎用的で安価な調査手法として確立したと言える。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

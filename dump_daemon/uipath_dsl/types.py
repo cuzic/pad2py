@@ -341,16 +341,22 @@ class HttpClientNode:
 
     `body`/`timeout_ms`は知見96でコード生成対象に追加した属性
     (`Body`/`TimeoutMS`、実機確認済みの既定値は`{x:Null}`/`"6000"`)。
-    `has_populated_collections`は`Headers`/`Cookies`/`Parameters`/
-    `UrlSegments`/`Attachments`(いずれも`scg:Dictionary`プロパティ要素、
-    実機フィクスチャでは全て空)のいずれかに1件以上のエントリがあるかを
-    示す——populated時の実直列化形(キー/値のXML表現)は実機未確認のため、
-    空の場合のみコード生成し、それ以外は`# TODO`へ倒す(知見96)。"""
+
+    `headers`は知見104で追加——`gh api search/code`でGitHub上の実機保存
+    済みXAMLから、populated時の実直列化形(`<InArgument x:Key="...">`、
+    値は直接テキスト形・ネストした`<Literal>`子要素形の両方が実在)を
+    確認し、`dict[str, Expr]`へパースする。`has_populated_collections`は
+    `Cookies`/`Parameters`/`UrlSegments`/`Attachments`(`Headers`は専用
+    フィールドに昇格したため対象外)のいずれかに1件以上のエントリが
+    あるかを示す——これらのpopulated時の意味論(`Parameters`がクエリ
+    文字列かフォームデータか等)はまだ未確認のため、空の場合のみ
+    コード生成し、それ以外は`# TODO`へ倒す(知見96)。"""
 
     endpoint: Expr
     method: str = "GET"
     body: Expr = None
     timeout_ms: str | None = None
+    headers: dict[str, Expr] = field(default_factory=dict)
     has_populated_collections: bool = False
     extra_attrs: dict[str, str] = field(default_factory=dict)
 
