@@ -646,10 +646,10 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
         # 追記することの回帰テスト(人間が手動でポートする際の手がかり)。
         (InvokeCodeNode(code="content=content.ToUpper()"), "(Code='content=content.ToUpper()')"),
         (
-            ExcelApplicationScopeNode(workbook_path="book.xlsx"),
-            "(WorkbookPath='book.xlsx', ScopeVar='ExcelWorkbookScope')",
-        ),
-        (
+            # 知見97: `ExcelApplicationScopeNode`はもはやunresolvedに倒れず
+            # `openpyxl`への実コード生成を行うため、ここでは除いた——下記の
+            # Excel専用テスト群を参照。`ExcelWriteCellNode`はスコープの
+            # 外側(単独)の場合のみこのフォールバックに残る。
             ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi")),
             "(Cell='A1', SheetName='Sheet1', Text='hi')",
         ),
@@ -727,16 +727,17 @@ def test_http_client_real_fixture_now_generates_real_code():
     assert "# TODO: unsupported in v1 codegen: HttpClientNode" not in code
 
 
-def test_excel_application_scope_todo_includes_custom_scope_var():
-    """知見94: デフォルト値(`ExcelWorkbookScope`)と異なる`scope_var`
-    (`DelegateInArgument.Name`)でも正しく捕捉・表示されることの回帰テスト。"""
+def test_excel_application_scope_uses_custom_scope_var_as_real_variable_name():
+    """知見94→知見97: デフォルト値(`ExcelWorkbookScope`)と異なる`scope_var`
+    (`DelegateInArgument.Name`)は、知見94の時点ではTODOコメント内の文字列
+    でしかなかったが、知見97の実コード生成では実際にPython変数名として
+    使われることを確認する。"""
     node = ExcelApplicationScopeNode(workbook_path="book.xlsx", scope_var="myWorkbook")
     wf = _wrap([node])
     code = generate_python(wf)
-    assert (
-        "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode "
-        "(WorkbookPath='book.xlsx', ScopeVar='myWorkbook')"
-    ) in code
+    assert "myWorkbook = openpyxl.load_workbook('book.xlsx')" in code
+    assert "myWorkbook.save('book.xlsx')" in code
+    _compiles(code)
     _compiles(code)
 
 
@@ -816,12 +817,13 @@ def test_invoke_code_todo_includes_arguments_when_present():
 
 
 def test_excel_application_scope_still_generates_its_child_activities():
-    """知見84: `ExcelApplicationScopeNode`は唯一子アクティビティを持つ
-    未対応アクティビティ——スコープ自体を`# TODO`に倒しても、スコープ内の
-    子アクティビティ(スコープとは無関係に正しく生成できるもの)まで
-    サイレントに失ってはいけない。`MessageBox`のような独立して生成可能な
-    子は、スコープのTODOに続けて実際に`print()`として生成されることを
-    確認する。"""
+    """知見84(いまは知見97の`_generate_excel_application_scope`に移った):
+    `ExcelApplicationScopeNode`は子アクティビティ(`node.body`)を持つ——
+    スコープ自体が(今は実コード生成されるようになったが)、スコープ内の
+    子アクティビティ(スコープとは無関係に正しく生成できるもの)を
+    失ってはいけないという教訓は引き続き有効。`MessageBox`のような
+    独立して生成可能な子が、`openpyxl`のopen/saveに挟まれて実際に
+    `print()`として生成されることを確認する。"""
     wf = _wrap(
         [
             ExcelApplicationScopeNode(
@@ -831,16 +833,18 @@ def test_excel_application_scope_still_generates_its_child_activities():
         ]
     )
     code = generate_python(wf)
-    assert "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode" in code
+    assert "openpyxl.load_workbook('wb.xlsx')" in code
     assert "print('status')" in code
+    assert ".save('wb.xlsx')" in code
     _compiles(code)
 
 
-def test_excel_application_scope_with_unsupported_child_shows_both_todos():
-    """知見84: 知見70で発見した5つの未対応アクティビティの1つ
-    (`ExcelWriteCellNode`)が子として入っている実機確認済みの実例
-    (`Main.xaml`)でも、親スコープのTODOと子のTODOの両方が出ることを
-    確認する(修正前は子のTODOが完全に失われていた)。"""
+def test_excel_application_scope_with_write_cell_generates_real_code_together():
+    """知見97: `ExcelApplicationScopeNode`+`ExcelWriteCellNode`という知見22で
+    確認済みの実機構造(スコープの直接の子としてのWrite Cell)は、両方とも
+    実コード生成されるようになった——`scope_var`を介してセルへの実際の
+    代入文になることを確認する(知見84では「子のTODOが失われない」ことの
+    確認に使っていたが、今はそもそもTODOにならない)。"""
     wf = _wrap(
         [
             ExcelApplicationScopeNode(
@@ -850,8 +854,29 @@ def test_excel_application_scope_with_unsupported_child_shows_both_todos():
         ]
     )
     code = generate_python(wf)
-    assert "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode" in code
-    assert "# TODO: unsupported in v1 codegen: ExcelWriteCellNode" in code
+    assert "ExcelWorkbookScope = openpyxl.load_workbook('wb.xlsx')" in code
+    assert "ExcelWorkbookScope['Sheet1']['A1'] = _vb_cstr('hi')" in code
+    assert "ExcelWorkbookScope.save('wb.xlsx')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_excel_application_scope_with_genuinely_unsupported_child_shows_its_todo():
+    """知見84の教訓(子の`# TODO`を失わない)を、今も実際に未対応な子
+    (`InvokeCodeNode`、知見にてライブラリ選定ではなく文単位コード変換
+    自体が未解決、見送り決定済み)で確認する——スコープ自体はもう
+    `# TODO`にならないが、子の`# TODO`は引き続き正しく出る。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[InvokeCodeNode(code="content=content.ToUpper()")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook('wb.xlsx')" in code
+    assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
     _compiles(code)
 
 
@@ -933,10 +958,14 @@ def test_main_xaml_pipeline_smoke():
     # 知見92: Library呼び出し(p:NewActivity)の引数(in_greeting)は`attrs`
     # 経由でしか見えない捕捉済みデータ——TODOコメントに実際に出ることを確認。
     assert "in_greeting" in code and "hellofromlib" in code
-    # 知見93: ExcelWriteCell.Text/SendOutlookMail.Bodyも捕捉済みなのに
-    # 従来は未表示だった——TODOコメントに実際に出ることを確認。
-    assert "Text='hello'" in code
+    # 知見93: SendOutlookMail.Bodyも捕捉済みなのに従来は未表示だった——
+    # TODOコメントに実際に出ることを確認(SendOutlookMailは見送り決定済み
+    # のため引き続きTODO)。
     assert "Body='body'" in code
+    # 知見97: ExcelWriteCell.Textはもはや知見93のTODOコメントではなく、
+    # `openpyxl`への実際のセル代入として生成されることを確認。
+    assert "openpyxl.load_workbook('wb.xlsx')" in code
+    assert "['Sheet1']['A1'] = _vb_cstr('hello')" in code
 
 
 def test_realistic_workflow_actually_executes_correctly():

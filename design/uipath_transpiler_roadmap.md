@@ -38,8 +38,9 @@ Switch/While/DoWhile/Break/Parallel)・Variables/Argumentsの既定値初期化�
 (1) Flowchartは実装する(Phase 1の決定文を実装に合わせて黙って狭めるのではなく、
 実際にIR・コード生成を追加する)、(2) Excel=`openpyxl`・Outlook=`win32com`で
 実装する、(3) HttpClientのHeaders/Bodyパースを先に進める(知見96で着手・
-最も単純な構成は解消済み)、(4) InvokeCodeは今回は見送る。残る実質的なタスクは
-Flowchart本体の実装・Excel/Outlookのコード生成実装の2つ——それ以外は実データ
+最も単純な構成は解消済み)、(4) InvokeCodeは今回は見送る。Excel(知見97、
+openpyxl)も完了済み。残る実質的なタスクはFlowchart本体の実装・Outlookの
+コード生成実装の2つ——それ以外は実データ
 での需要が出るまで意図的に見送っている既知の限界(セレクタ属性・配列添字
 曖昧性・相対パス等)であり、v1「完成」の障害とはみなさない。
 
@@ -406,8 +407,11 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
    コレクションが全て空、`Body`未設定)は実際にコード生成されるように
    なった(カバレッジ72%→76%)。`Body`設定時・コレクション非空時の
    実直列化形は依然未確認のため、その場合は引き続き`# TODO`。
-3. `ExcelApplicationScopeNode`+`ExcelWriteCellNode`: `openpyxl`で実装する
-   (ユーザー決定、2026-11-05)——未着手
+3. **(完了、知見97)** `ExcelApplicationScopeNode`+`ExcelWriteCellNode`:
+   `openpyxl`で実装した(ユーザー決定、2026-11-05)——スコープの直接の子
+   としての`Write Cell`(知見22で確認済みの実機構造)に限り実コード生成
+   (カバレッジ76%→79%)。If/Switch/ループ越しにネストした場合は
+   `scope_var`文脈を失うため安全に`# TODO`のまま。
 4. `SendOutlookMailNode`: `win32com`で実装する(ユーザー決定、2026-11-05)
    ——未着手
 5. `InvokeCodeNode`: 今回は見送る(ユーザー決定、2026-11-05)——インライン
@@ -1077,3 +1081,13 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
     カバレッジ72%→76%(22/29)に向上、知見70の未対応5活動は4件に減少。
     回帰テスト5件追加、既存のTODO系テスト・カバレッジ閾値テストを更新、
     UiPath関連テスト全280件通過、リポジトリ全体で全1013件通過。
+57. **(完了、2026-11-05)** `ExcelApplicationScopeNode`+`ExcelWriteCellNode`
+    の`openpyxl`への実コード生成を実装(VM不使用、知見97——知見96に続く
+    残タスクB着手): PAD側`pad_action_lib.excel_actions`と同じ「開く→
+    操作→保存」モデル(`openpyxl.load_workbook`/`.save`)を踏襲し、
+    `scope_var`(知見94)を実際のPython変数名として使う。知見22で確認済みの
+    実機構造(Write Cellがスコープの直接の子)に限り`{var}[sheet][cell] =
+    _vb_cstr(value)`を生成、それ以外は安全に`# TODO`。カバレッジ76%→79%
+    (23/29)。知見84の子再帰生成ロジックは専用関数へ完全に移行したため
+    死んだコードとして削除。回帰テスト更新・追加、UiPath関連テスト全280件
+    通過、リポジトリ全体で全1014件通過。

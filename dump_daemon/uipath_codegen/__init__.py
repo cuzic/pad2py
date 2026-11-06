@@ -204,6 +204,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
+    # `openpyxl`(`ExcelApplicationScope`→`openpyxl.load_workbook(...)`変換先、
+    # 知見97)も同様。
+    if any("openpyxl.load_workbook(" in line for line in body):
+        imports.append("import openpyxl")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -320,9 +324,10 @@ def _generate_node(
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
         return _generate_http_client(node, indent)
-    if isinstance(node, (InvokeCodeNode, ExcelApplicationScopeNode, ExcelWriteCellNode,
-                          SendOutlookMailNode)):
-        return _generate_unresolved_activity(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, ExcelApplicationScopeNode):
+        return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode, SendOutlookMailNode)):
+        return _generate_unresolved_activity(node, indent)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
     raise TypeError(f"Unsupported node type for codegen: {type(node)!r}")
@@ -804,6 +809,66 @@ def _generate_invoke_workflow_file(
     return [*todo, *warning, f"{prefix}{func_name}({', '.join(kwargs)})"]
 
 
+def _generate_excel_application_scope(
+    node: ExcelApplicationScopeNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見97: `ExcelApplicationScopeNode`は知見22以来常に`_generate_
+    unresolved_activity`(知見84以降はその中で子を再帰生成するだけ)へ
+    倒れていたが、ユーザー決定(2026-11-05、AskUserQuestion)により
+    `openpyxl`(ファイルベース、Excelプロセス不要)への実コード生成に
+    対応した——`openpyxl.load_workbook(workbook_path)`でスコープ先頭に
+    開き、スコープ末尾で`.save(workbook_path)`する(PAD側の
+    `pad_action_lib.excel_actions.launch_excel`/`save_excel`と同じ
+    「ファイルを開く→操作→保存」モデル、ライブマクロ実行や開いたまま
+    の対話操作は再現できないという同じ既知の限界を引き継ぐ)。
+
+    `scope_var`(知見94)は実際にこのopenpyxl `Workbook`を束縛するPython
+    変数名として使う——これまでコメントの中の値でしかなかったものが、
+    初めて実際の生成コードの一部になる。
+
+    直接の子が`ExcelWriteCellNode`(知見22でこの構造が実機確認済み唯一の
+    「スコープと連動する」子活動)の場合のみ`scope_var`を使った実際の
+    セル書き込みコードを生成する(`_generate_excel_write_cell_in_scope`)。
+    それ以外の子は`scope_var`と無関係に汎用ディスパッチ(`_generate_node`)
+    へそのまま委ねる——`ExcelWriteCellNode`がIf/Switch/ループ越しにネスト
+    している場合はこの汎用ディスパッチ経由になり`scope_var`の文脈を失う
+    (実機未確認のためその場合は`_generate_unresolved_activity`の
+    `# TODO`へ安全に倒れる、知見84の「でっち上げず正直に倒す」方針を継承)。
+    """
+    prefix = INDENT * indent
+    var = node.scope_var
+    lines = [f"{prefix}{var} = openpyxl.load_workbook({node.workbook_path!r})"]
+    for child in node.body:
+        if isinstance(child, ExcelWriteCellNode):
+            lines.extend(_generate_excel_write_cell_in_scope(child, indent, var))
+        else:
+            lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
+    lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
+    return lines
+
+
+def _generate_excel_write_cell_in_scope(
+    node: ExcelWriteCellNode, indent: int, scope_var: str
+) -> list[str]:
+    """知見97: `scope_var`(囲む`ExcelApplicationScopeNode`が開いた
+    `openpyxl.Workbook`変数)へのセル書き込み。`openpyxl`の
+    `workbook[sheet_name][cell] = value`代入記法(`Worksheet.__setitem__`、
+    インストール済みの実`openpyxl`で実際に動作確認済み)を使う。`Text`は
+    他の文字列出力先(`Append Line`/`Set To Clipboard`/`MessageBox`、知見46)
+    と同じ`_vb_cstr()`経由でVBの文字列化規則に合わせる。"""
+    prefix = INDENT * indent
+    todo: list[str] = []
+    value = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{scope_var}[{node.sheet_name!r}][{node.cell!r}] = "
+        f"{VB_CSTR_HELPER_NAME}({value})"
+    ]
+
+
 def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
     """知見96: `HttpClientNode`は知見29以来常に`_generate_unresolved_
     activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
@@ -853,25 +918,17 @@ def _describe_expr_for_comment(expr: Expr) -> str:
     return repr(expr)
 
 
-def _generate_unresolved_activity(
-    node, indent: int, invoke_resolver: dict[str, str] | None = None,
-    out_arg_resolver: dict[str, frozenset[str]] | None = None,
-) -> list[str]:
+def _generate_unresolved_activity(node, indent: int) -> list[str]:
     """design/uipath_transpiler_roadmap.md Phase 4で未解決と明記した項目
     (インラインコード・ライブExcel/Outlook連携・`HttpClient`のHeaders等
     プロパティ要素未パース)——架空の変換をでっち上げず`# TODO`に倒す。
     `Invoke Workflow File`自体は`_generate_invoke_workflow_file`が担当する
     (`generate_project_python()`経由であれば実関数呼び出しへ解決される)。
 
-    知見84: `ExcelApplicationScopeNode`は唯一、子アクティビティ
-    (`node.body`)を持つ——これを無視して丸ごと1行の`# TODO`に潰すと、
-    スコープ内にたまたま含まれる他の(スコープ自体とは無関係に正しく
-    生成できる)子アクティビティまでサイレントに失われる(例:
-    状態を`print()`するだけの`MessageBox`がスコープ内にあっても、
-    スコープ全体のTODO化で一緒に消えてしまう)。スコープ自体の
-    `# TODO`は変えず、その直後に子アクティビティを通常通り再帰生成する
-    (子がさらに未対応なら、子自身の`# TODO`が個別に出るだけで、親の
-    TODOと二重に情報を失うことはない)。
+    知見84/88: `ExcelApplicationScopeNode`はかつて子アクティビティ
+    (`node.body`)を持つ唯一の未対応アクティビティとしてここで特別扱い
+    していたが、知見97で`openpyxl`への実コード生成に対応し、専用の
+    `_generate_excel_application_scope`へ移った(この関数には到達しない)。
 
     知見75: 捕捉済みの主要フィールドをコメントへ追記する——`# TODO`へ
     倒れた後に人間が手動でポートする際、生成コードだけを見て元のXAMLを
@@ -896,11 +953,6 @@ def _generate_unresolved_activity(
             detail = f" (Code={node.code!r}, Arguments={{{args_desc}}})"
         else:
             detail = f" (Code={node.code!r})"
-    elif isinstance(node, ExcelApplicationScopeNode):
-        # 知見94: `node.scope_var`(`DelegateInArgument.Name`、スコープ内で
-        # ワークブックを指す変数名)も`WorkbookPath`と同じく捕捉済みなのに
-        # 未表示だった——知見92・93と同じパターンの追加分。
-        detail = f" (WorkbookPath={node.workbook_path!r}, ScopeVar={node.scope_var!r})"
     elif isinstance(node, ExcelWriteCellNode):
         # 知見93: `node.text`(書き込む値そのもの)も知見75で`Cell`/
         # `SheetName`だけを追記した際に見落としていた捕捉済みフィールド
@@ -931,10 +983,7 @@ def _generate_unresolved_activity(
             f"Method={node.method!r}, Body={_describe_expr_for_comment(node.body)}"
             f"{f', ExtraAttrs={extra!r}' if extra else ''})"
         )
-    lines = [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
-    if isinstance(node, ExcelApplicationScopeNode) and node.body:
-        lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
-    return lines
+    return [f"{prefix}# TODO: unsupported in v1 codegen: {type(node).__name__}{detail}"]
 
 
 def _generate_unknown(node: UnknownActivityNode, indent: int) -> list[str]:

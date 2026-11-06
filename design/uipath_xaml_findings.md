@@ -4514,6 +4514,54 @@ Outlook/InvokeCodeより先に、ライブラリ選定という意思決定す�
 Outlook=win32com、ユーザー決定済み)またはより大きな設計判断
 (InvokeCodeの文単位コード変換、見送り決定済み)が必要。
 
+## 97. `ExcelApplicationScopeNode`+`ExcelWriteCellNode`を実際に`openpyxl`へ変換するコード生成を実装——知見70以来TODO固定だった5活動のうち2件目を解消(VM不使用、ユーザーの明示的な意思決定を受けて着手)
+
+知見96(HttpClient)に続き、ユーザー決定済みの`openpyxl`でExcel連携の
+コード生成に着手した。
+
+**設計**: PAD側`dump_daemon/pad_action_lib/excel_actions.py`の既存方針
+(ファイルベース`openpyxl`、ライブExcelプロセス・マクロ実行・開いたまま
+の対話操作は再現不可能という既知の限界を明示)をそのまま踏襲——「開く→
+操作→保存」モデルで`openpyxl.load_workbook(workbook_path)`をスコープ
+先頭、`.save(workbook_path)`をスコープ末尾に生成する。`scope_var`
+(知見94で捕捉済みだったがコメント内の文字列止まりだった`DelegateInArgument.
+Name`)を、実際にこのワークブックを束縛するPython変数名として初めて使う。
+
+**`ExcelWriteCellNode`との連携方法**: 知見22で確認済みの実機構造(`Write
+Cell`はスコープの直接の子)に限って対応する——`_generate_excel_
+application_scope`が`node.body`を直接走査し、`ExcelWriteCellNode`の
+場合のみ`scope_var`を使った`{var}[sheet_name][cell] = _vb_cstr(value)`
+という代入文を生成する(`openpyxl.Worksheet.__setitem__`代入記法、
+インストール済みの実`openpyxl`で`wb['Sheet1']['A1'] = 'hello'`→
+`wb['Sheet1']['A1'].value == 'hello'`と実際に動作確認済み——Pythonライブラリ
+に対する「実機確認」に相当)。それ以外の子(If/Switch/ループ越しに
+ネストした`ExcelWriteCellNode`含む)は汎用ディスパッチへ委ね、
+`scope_var`文脈を失う場合は安全に`# TODO`へ倒す(実機未確認のケースを
+でっち上げない)。
+
+**知見84/88の扱い**: `ExcelApplicationScopeNode`はもはや
+`_generate_unresolved_activity`へ到達しないため、その中にあった知見84の
+子再帰生成ロジック(と知見94のTODO詳細分岐)は死んだコードとして削除した
+——専用の`_generate_excel_application_scope`に機能が完全に移った。
+知見88(`_child_node_lists`へのExcelApplicationScopeNode分岐、複数ファイル
+発見用)は別の関心事(静的呼び出しグラフ解析)のため変更不要、そのまま
+機能する。
+
+**カバレッジツールでの見え方(重要な注記)**: `ExcelWriteCellNode`は
+`uipath_codegen_coverage`では引き続き`TODO`と判定される——このツールは
+各ノード型を`_strip_children`で単独に切り出して測定するため、`scope_var`
+文脈に依存する知見97の対応は単独評価では(安全側に倒れる設計なので)
+`# TODO`経路に入る。実際の`Main.xaml`全体(スコープに正しくネストした
+状態)では実コード生成されることは別途ユニットテストで確認済み——
+バグではなく、カバレッジツールの測定方法の限界として記録する。
+
+**結果**: カバレッジ76%(22/29、知見96)→79%(23/29)へ向上。知見70の
+未対応5活動は残り3件(ExcelWriteCellNode(※単独評価のみ)/InvokeCodeNode/
+SendOutlookMailNode)。回帰テストを更新・追加(スコープ単体でのカスタム
+`scope_var`使用確認・Scope+WriteCell連携の実コード生成確認・
+真に未対応な子(InvokeCode)のTODOが引き続き出ることの確認)、UiPath関連
+テスト全280件通過、リポジトリ全体で全1014件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
