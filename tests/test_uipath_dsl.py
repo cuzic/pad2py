@@ -53,6 +53,7 @@ from dump_daemon.uipath_dsl import (
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
+    LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
@@ -1165,6 +1166,22 @@ def test_get_password_with_no_result_captured():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, GetPasswordNode)
     assert node.result is None
+
+
+def test_load_image_properties():
+    """知見178: `ui:LoadImage`(GitHub code searchで58件ヒット、OCR系
+    活動の入力として使われる)。実機`cameronmcnz/uipath-tutorials`で
+    確認した`FileName="[file.ToString]"`+`Image="[memeImage]"`の
+    実例。"""
+    xml = (
+        f"<ui:LoadImage {_UI_XMLNS} DisplayName=\"Load Image\" "
+        'FileName="[file.ToString]" Image="[memeImage]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, LoadImageNode)
+    assert node.file_name == VbExpr(text="file.ToString")
+    assert node.image == VbExpr(text="memeImage")
+    assert node.display_name == "Load Image"
 
 
 def test_log_message_properties():

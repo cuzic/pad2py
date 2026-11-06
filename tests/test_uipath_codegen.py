@@ -78,6 +78,7 @@ from dump_daemon.uipath_dsl import (
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
+    LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
@@ -2306,6 +2307,50 @@ def test_get_password_with_no_result_is_todo():
     wf = _wrap([GetPasswordNode(result=None)])
     code = generate_python(wf)
     assert "# TODO: GetPassword with no output Result captured" in code
+    _compiles(code)
+
+
+def test_load_image_opens_file_via_pillow():
+    """知見178: `ui:LoadImage`(GitHub code searchで58件ヒット)。
+    Pillow(`PIL.Image.open()`)が標準でサポートする「ファイルから
+    画像を読み込む」操作そのものに直接対応する。"""
+    wf = _wrap(
+        [LoadImageNode(file_name=Literal(value="img.png"), image=VbExpr(text="img"))]
+    )
+    code = generate_python(wf)
+    assert "img = PIL.Image.open(" in code
+    assert "import PIL.Image" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_load_image_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            LoadImageNode(
+                file_name=Literal(value="img.png"),
+                image=VbExpr(text="img"),
+                display_name="Load Image",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Load Image" in code
+    assert "PIL.Image.open(" in code
+    _compiles(code)
+
+
+def test_load_image_with_no_file_name_is_todo():
+    wf = _wrap([LoadImageNode(file_name=None, image=VbExpr(text="img"))])
+    code = generate_python(wf)
+    assert "# TODO: LoadImage with no FileName captured" in code
+    _compiles(code)
+
+
+def test_load_image_with_no_image_is_todo():
+    wf = _wrap([LoadImageNode(file_name=Literal(value="img.png"), image=None)])
+    code = generate_python(wf)
+    assert "# TODO: LoadImage with no output Image captured" in code
     _compiles(code)
 
 

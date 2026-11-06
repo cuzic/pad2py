@@ -103,6 +103,7 @@ from ..uipath_dsl.types import (
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
+    LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
@@ -270,6 +271,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 指定しないグローバルなキー送信)も同様。
     if any("send_keys(" in line for line in body):
         imports.append("from pywinauto.keyboard import send_keys")
+    # `PIL.Image`(`LoadImage`→`PIL.Image.open(...)`変換先、知見178)も
+    # 同様。Pillowは`pad_codegen`で既に確認済みの依存。
+    if any("PIL.Image.open(" in line for line in body):
+        imports.append("import PIL.Image")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -503,6 +508,8 @@ def _generate_node(
         return _generate_get_attribute(node, indent)
     if isinstance(node, GetPasswordNode):
         return _generate_get_password(node, indent)
+    if isinstance(node, LoadImageNode):
+        return _generate_load_image(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
@@ -1698,6 +1705,31 @@ def _generate_get_password_body(node: GetPasswordNode, indent: int) -> list[str]
         "DPAPI-encrypted blob tied to the original Windows user/machine "
         "(CryptProtectData), cannot be decrypted portably, refusing to guess"
     ]
+
+
+# 知見178: `ui:LoadImage`(GitHub code searchで58件ヒット、OCR系活動の
+# 入力として使われる)。`FileName`で指定した画像ファイルを読み込み
+# `Image`へ代入する——Pillow(`PIL.Image.open()`)が標準でサポートする
+# 操作そのもので、`pad_codegen`で既にPillowを確認済みの依存として
+# 使っているため新しい依存の追加判断は不要。
+def _generate_load_image(node: LoadImageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_load_image_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_load_image_body(node: LoadImageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: LoadImage with no FileName captured"]
+    if node.image is None:
+        return [f"{prefix}# TODO: LoadImage with no output Image captured"]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.image, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = PIL.Image.open({file_name})"]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

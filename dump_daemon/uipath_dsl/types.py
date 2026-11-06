@@ -610,6 +610,32 @@ class GetPasswordNode:
 
 
 @dataclass
+class LoadImageNode:
+    """`<ui:LoadImage FileName="..." Image="..." />`(知見178、GitHub
+    code searchで58件ヒット)。`UiPath/skills`公式リポジトリの
+    Studio実機ground-truthコーパス(`UiPath.UIAutomation.Activities/
+    25.10/LoadImage.xaml`)+実機3件(`cameronmcnz/uipath-tutorials`・
+    `pdmorale/OCR_Statistics`・`tosigoto/UiPath-SimpleOCR`、いずれも
+    OCR活動への入力として使われる)で確認した構成は`FileName`(画像
+    ファイルパス)+`Image`(出力、`UiPath.Core.Image`型)+`DisplayName`
+    のみ——`ContinueOnError`はground-truth・実機のどちらでも一度も
+    確認できなかった。
+
+    `FileName`で指定したファイルから画像を読み込み`Image`へ代入する
+    という意味論は、PythonのPillow(`PIL.Image.open()`)が標準的に
+    サポートする操作そのもの——`pad_codegen/actions/ui_element.py`の
+    `capture_as_image()`(pywinautoがPIL Imageを返す)で本プロジェクト
+    が既にPillowを確認済みの依存として使っているため、新しい依存の
+    追加判断は不要。`PIL.Image.open()`はファイルが存在しない/画像
+    として読めない場合に例外を投げる標準的な挙動のままにする(UiPath
+    側の失敗時挙動を独自に模倣するような分岐は追加しない)。"""
+
+    file_name: Expr = None
+    image: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1713,6 +1739,7 @@ Node = (
     | WindowStateNode
     | GetAttributeNode
     | GetPasswordNode
+    | LoadImageNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

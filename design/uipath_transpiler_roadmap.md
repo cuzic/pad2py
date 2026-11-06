@@ -2300,3 +2300,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      という文脈依存の2段構え)だと判明(知見177)。修正不要、コード
      変更無し——着手前にdocstringを確認したことで誤った「修正」を
      避けられた。
+
+136. **(完了、2026-11-06)** `ui:LoadImage`(GitHub code searchで58件
+     ヒット、OCR系活動の入力)を新規実装(知見178): `FileName`+
+     `Image`+`DisplayName`のみという構成。Pillow(`PIL.Image.open()`)
+     が標準でサポートする「ファイルから画像を読み込む」操作そのものに
+     直接対応——`pad_codegen`で既にPillowを確認済みの依存として使って
+     いるため新しい依存の追加判断は不要だった。`ReadTextFile`(知見16)
+     と同じ「targetへ代入する」パターンを踏襲。実機XAML3件で
+     `parse_activity()`+`_generate_node()`、`_collect_imports`への
+     `import PIL.Image`検出条件追加により完全な`compile()`も確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`4件)、UiPath関連テスト全740件通過、
+     リポジトリ全体で全1784件通過。

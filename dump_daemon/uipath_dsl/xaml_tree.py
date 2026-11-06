@@ -65,6 +65,7 @@ from .types import (
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
+    LoadImageNode,
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
@@ -708,6 +709,14 @@ def _parse_get_password(elem: etree._Element) -> GetPasswordNode:
     return GetPasswordNode(
         display_name=_attr(elem, "DisplayName"),
         result=result,
+    )
+
+
+def _parse_load_image(elem: etree._Element) -> LoadImageNode:
+    return LoadImageNode(
+        file_name=_attr_expr(elem, "FileName"),
+        image=_attr_expr(elem, "Image"),
+        display_name=_attr(elem, "DisplayName"),
     )
 
 
@@ -1628,6 +1637,7 @@ _DISPATCH = {
     (UI_NS, "MinimizeWindow"): _parse_minimize_window,
     (UI_NS, "RestoreWindow"): _parse_restore_window,
     (UI_NS, "KillProcess"): _parse_kill_process,
+    (UI_NS, "LoadImage"): _parse_load_image,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

@@ -8424,6 +8424,41 @@ AssignmentsBOT`)で`parse_activity()`+`_generate_node()`を実行し、
 幸い実際の修正(スコープ外の変更)に着手する前に気づけたが、一歩
 踏み出す前の確認を怠れば、意図的な安全策を破壊する誤った「修正」を
 加えてしまうリスクがあった。
+
+## 178. `ui:LoadImage`(GitHub code searchで58件ヒット、OCR系活動の入力として使われる)を新規実装——Pillow(`PIL.Image.open()`)が標準でサポートする操作そのものに直接対応、新しい依存の追加判断は不要
+
+知見177の訂正作業の次に、`UiPath/skills`公式リポジトリのStudio実機
+ground-truthコーパス(`UiPath.UIAutomation.Activities/25.10/
+LoadImage.xaml`)+実機3件(`cameronmcnz/uipath-tutorials`・
+`pdmorale/OCR_Statistics`・`tosigoto/UiPath-SimpleOCR`、いずれもOCR
+活動(Tesseract/Google Vision等)への入力として使われる文脈)で
+`ui:LoadImage`(GitHub code searchで58件ヒット)を調査した。確認した
+構成は`FileName`(画像ファイルパス)+`Image`(出力、`UiPath.Core.
+Image`型)+`DisplayName`のみ——`ContinueOnError`はground-truth・
+実機のどちらでも一度も確認できなかった。
+
+`FileName`で指定したファイルから画像を読み込み`Image`へ代入すると
+いう意味論は、Pythonの標準的な画像処理ライブラリPillow
+(`PIL.Image.open()`)がサポートする操作そのもの——本トランスパイラが
+新しい依存を追加判断する必要は無い。`pad_codegen/actions/
+ui_element.py`の`capture_as_image()`(pywinautoの画面キャプチャが
+PIL Imageを返す)で、本プロジェクトが既にPillowを確認済みの依存として
+使っていることを確認した上での判断。知見169(`taskkill`)・知見168
+(`webbrowser`)のような「確認済み標準ライブラリへの直接対応」と同じ
+判断パターンだが、今回は標準ライブラリではなく既存の確認済み
+サードパーティ依存(Pillow)への対応という、わずかに異なるバリエー
+ション。`ReadTextFile`(知見16)と同じ「targetへ代入する」パターン
+(`_render_value_or_todo`を入出力両方に適用し、`todo`が1件でもあれば
+代入文自体を生成しない、知見138の規約)を踏襲した。
+
+実機XAML3件で`parse_activity()`+`_generate_node()`を実行し、
+`memeImage = PIL.Image.open(_vb_cstr(file))`のような正しいコードが
+生成されることを確認し、`_collect_imports`に`import PIL.Image`の
+検出条件を追加して完全な`compile()`も確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
+UiPath関連テスト全740件通過、リポジトリ全体で全1784件通過。
+
+## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造
