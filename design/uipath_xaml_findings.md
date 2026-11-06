@@ -4882,6 +4882,42 @@ XAMLを直接検索する」手法は、Flowchart固有の問題ではなく、U
 `DelayMS`/`SendWindowMessages`/`SimulateClick`)や、他のアクティビティの
 未確認の値についても、同じ手法で追加調査する価値がある。
 
+## 103. `SendOutlookMailNode`の`Importance`/`Sensitivity`非既定値・`IsBodyHtml`/`IsDraft="True"`・`Cc`/`Bcc`を実機XAML(GitHub実例)で確認し、実コード生成に対応(VM不使用、知見102の手法を再適用)
+
+知見102に続き、「GitHub上の実機保存済みXAMLを直接検索する」手法を
+`SendOutlookMailNode`(知見98で`Cc`/`Bcc`未設定・既定値構成のみに限定
+していた)へ再適用した。`gh api search/code`で以下が実際にUiPath
+Studioが保存した公開済みXAMLで確認できた(`d6wv28/RPA_Repo`の
+`SendEmailDuplicatesAndExceptions.xaml`が1つの要素で`Importance="High"`・
+`IsBodyHtml="True"`・`Cc`設定済みを同時に示す決定的な実例):
+
+- `Importance="High"`(6件)/`"Low"`(1件)
+- `Sensitivity="Personal"`(4件)/`"Confidential"`(1件)
+- `IsBodyHtml="True"`(上記実例で確認)
+- `IsDraft="True"`(10件)
+- `Cc`/`Bcc`が実際に設定されている実例(`Cc="[in_Config(&quot;
+  ExceptionEmailTo&quot;).ToString]"`)
+
+**Outlook側の確認**(Microsoft Learn Outlook VBAリファレンス、VM不使用):
+`MailItem.CC`/`.BCC`(Stringプロパティ、Read/write、表示名のカンマ/
+セミコロン区切りリスト)・`MailItem.HTMLBody`(Stringプロパティ、
+`Body`の代わりに使うとHTML本文になる)・`MailItem.Save`(新規アイテムを
+既定フォルダ(Drafts)へ保存するだけで送信しない——`IsDraft="True"`時の
+挙動として確定)。
+
+**修正**(`dump_daemon/uipath_codegen/__init__.py`): `_OUTLOOK_IMPORTANCE_
+VALUES`/`_OUTLOOK_SENSITIVITY_VALUES`(知見98で確認済みの整数マッピング
+全体を解放、以前は`"Normal"`のみ許可)・`_OUTLOOK_BOOL_VALUES`を新設。
+`_generate_send_outlook_mail`が`IsBodyHtml`に応じて`.Body`/`.HTMLBody`
+を切り替え、`Cc`/`Bcc`が設定されていれば`.CC`/`.BCC`へ代入、`IsDraft`に
+応じて`.Send()`/`.Save()`を切り替えるよう変更。`Files`に添付がある
+場合のみ(添付の追加方法が実機未確認のため)`# TODO`へ倒す——これが
+`SendOutlookMailNode`の唯一残る未対応ケースになった。
+
+回帰テスト更新・追加(Cc/Bcc/Importance(Low/High)/Sensitivity(Personal/
+Confidential)/IsBodyHtml/IsDraftそれぞれの実コード生成確認)、UiPath
+関連テスト全302件通過、リポジトリ全体で全1073件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

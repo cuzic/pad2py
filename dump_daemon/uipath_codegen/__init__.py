@@ -1005,58 +1005,73 @@ def _generate_excel_write_cell_in_scope(
     ]
 
 
-# 知見98: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/
-# `IsDraft`は実機フィクスチャで確認済みの値(いずれもStudioの既定値)
-# 以外は未確認のため、確認済みの値の場合のみ実コード生成する(知見96の
-# HttpClientと同じ「確認済みの既定値のみ対応」方針)——UiPathの`ClickType`/
-# `MouseButton`(知見71)が.NET/Outlookの一般的な語彙とは異なる独自の
-# トークン名(`CLICK_SINGLE`等)だったのと同じ教訓により、"Low"/"High"等の
-# 未確認の値をOutlook VBAのOlImportance等の語彙から類推してでっち上げない。
-_OUTLOOK_IMPORTANCE_CONFIRMED = (None, "Normal")
-_OUTLOOK_SENSITIVITY_CONFIRMED = (None, "Normal")
-_OUTLOOK_BOOL_CONFIRMED = (None, "False")
+# 知見102: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/
+# `IsDraft`/`Cc`/`Bcc`は、知見98では実機フィクスチャで確認できた唯一の
+# 既定値構成のみに対応していたが、知見100で確立した「GitHub上の実機
+# 保存済みXAMLを`gh api search/code`で直接検索する」手法で非既定値が
+# 実在すると確認できたため対応を広げた(VM不使用)。`Importance="High"`
+# (`d6wv28/RPA_Repo`の実例で確認、同じ要素内に`Cc`設定済み・
+# `IsBodyHtml="True"`も実在することを確認)・`Sensitivity="Personal"`/
+# `"Confidential"`・`IsDraft="True"`もいずれも実在。整数値(Microsoft
+# Learn Outlook VBAリファレンス、知見98で確認済み)・`.HTMLBody`
+# (`Body`ではなく)・`.Save()`(`Send()`ではなく)・`.CC`/`.BCC`
+# (いずれもMailItemの標準プロパティ、Microsoft Learnで確認済み)へ
+# マッピングする。
+_OUTLOOK_IMPORTANCE_VALUES = {"Low": 0, "Normal": 1, "High": 2}
+_OUTLOOK_SENSITIVITY_VALUES = {"Normal": 0, "Personal": 1, "Private": 2, "Confidential": 3}
+_OUTLOOK_BOOL_VALUES = {"True": True, "False": False}
 
 
 def _generate_send_outlook_mail(node: SendOutlookMailNode, indent: int) -> list[str]:
-    """知見98: `SendOutlookMailNode`は知見24以来常に`_generate_unresolved_
-    activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
-    (`Cc`/`Bcc`未設定、`Files`空、`Importance`/`Sensitivity`/`IsBodyHtml`/
-    `IsDraft`がStudio既定値のまま)に限り`win32com.client`経由で実際の
+    """知見98・102: `SendOutlookMailNode`は知見24以来常に`_generate_
+    unresolved_activity`へ倒れていたが、`win32com.client`経由で実際の
     Outlookへの送信コードを生成する——ユーザー決定(2026-11-05)により
     `win32com`(実際のOutlookクライアント経由、UiPathの実行時挙動に近い)
     を選択。`CreateItem(0)`(`olMailItem`、Microsoft Learn
-    `Outlook.OlItemType`で確認済み)でメールアイテムを作成し、`Send()`する。
+    `Outlook.OlItemType`で確認済み)でメールアイテムを作成する。
 
-    `Cc`/`Bcc`設定済み、`Files`に添付ファイルあり、または`Importance`等が
-    確認済み既定値以外の場合は、実際の変換規則(添付の追加方法、`Low`/
-    `High`等の文字列トークンが実際にXAMLでどう直列化されるか)が実機未確認
-    のため、でっち上げず`_generate_unresolved_activity`の`# TODO`へ倒す。
+    `Files`に添付ファイルがある場合のみ、添付の追加方法の実直列化形が
+    実機未確認のため`_generate_unresolved_activity`の`# TODO`へ倒す
+    (知見75・92〜95と同じ「捕捉済みデータを隠さない」フォールバック)。
     """
     prefix = INDENT * indent
+    importance = node.importance if node.importance is not None else "Normal"
+    sensitivity = node.sensitivity if node.sensitivity is not None else "Normal"
+    is_body_html = node.is_body_html if node.is_body_html is not None else "False"
+    is_draft = node.is_draft if node.is_draft is not None else "False"
     if (
-        node.cc is not None
-        or node.bcc is not None
-        or node.has_populated_files
-        or node.importance not in _OUTLOOK_IMPORTANCE_CONFIRMED
-        or node.sensitivity not in _OUTLOOK_SENSITIVITY_CONFIRMED
-        or node.is_body_html not in _OUTLOOK_BOOL_CONFIRMED
-        or node.is_draft not in _OUTLOOK_BOOL_CONFIRMED
+        node.has_populated_files
+        or importance not in _OUTLOOK_IMPORTANCE_VALUES
+        or sensitivity not in _OUTLOOK_SENSITIVITY_VALUES
+        or is_body_html not in _OUTLOOK_BOOL_VALUES
+        or is_draft not in _OUTLOOK_BOOL_VALUES
     ):
         return _generate_unresolved_activity(node, indent)
     todo: list[str] = []
     to = _render_value_or_todo(node.to, prefix, todo)
     subject = _render_value_or_todo(node.subject, prefix, todo)
     body = _render_value_or_todo(node.body, prefix, todo)
+    cc = _render_value_or_todo(node.cc, prefix, todo) if node.cc is not None else None
+    bcc = _render_value_or_todo(node.bcc, prefix, todo) if node.bcc is not None else None
     if todo:
         return todo
-    return [
+    body_prop = "HTMLBody" if _OUTLOOK_BOOL_VALUES[is_body_html] else "Body"
+    lines = [
         f"{prefix}_outlook = win32com.client.Dispatch('Outlook.Application')",
         f"{prefix}_mail = _outlook.CreateItem(0)",
         f"{prefix}_mail.To = {VB_CSTR_HELPER_NAME}({to})",
         f"{prefix}_mail.Subject = {VB_CSTR_HELPER_NAME}({subject})",
-        f"{prefix}_mail.Body = {VB_CSTR_HELPER_NAME}({body})",
-        f"{prefix}_mail.Send()",
+        f"{prefix}_mail.{body_prop} = {VB_CSTR_HELPER_NAME}({body})",
     ]
+    if cc is not None:
+        lines.append(f"{prefix}_mail.CC = {VB_CSTR_HELPER_NAME}({cc})")
+    if bcc is not None:
+        lines.append(f"{prefix}_mail.BCC = {VB_CSTR_HELPER_NAME}({bcc})")
+    lines.append(f"{prefix}_mail.Importance = {_OUTLOOK_IMPORTANCE_VALUES[importance]}")
+    lines.append(f"{prefix}_mail.Sensitivity = {_OUTLOOK_SENSITIVITY_VALUES[sensitivity]}")
+    send_method = "Save" if _OUTLOOK_BOOL_VALUES[is_draft] else "Send"
+    lines.append(f"{prefix}_mail.{send_method}()")
+    return lines
 
 
 def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:

@@ -1169,3 +1169,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     区切り文字やドラッグ操作との組み合わせが未確認のため引き続き`# TODO`。
     回帰テスト追加、UiPath関連テスト全300件通過、リポジトリ全体で全1071件
     通過。
+62. **(完了、2026-11-05)** `SendOutlookMailNode`の`Importance`/
+    `Sensitivity`非既定値・`IsBodyHtml`/`IsDraft="True"`・`Cc`/`Bcc`の
+    実コード生成に対応(VM不使用、知見103——知見102の手法をSendOutlookMail
+    へ再適用): `Importance="High"`/`"Low"`・`Sensitivity="Personal"`/
+    `"Confidential"`・`IsBodyHtml="True"`・`IsDraft="True"`・`Cc`/`Bcc`
+    設定済みの実例をGitHub上の実機保存済みXAMLで確認。`.HTMLBody`
+    (`IsBodyHtml`時)・`.CC`/`.BCC`・`.Save()`(`IsDraft`時)へマッピング
+    (いずれもMicrosoft Learn Outlook VBAリファレンスで確認済み)。`Files`
+    に添付がある場合のみ引き続き`# TODO`——これが唯一残る未対応ケース。
+    回帰テスト更新・追加、UiPath関連テスト全302件通過、リポジトリ全体で
+    全1073件通過。

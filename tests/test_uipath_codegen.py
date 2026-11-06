@@ -697,17 +697,17 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
             "(Cell='A1', SheetName='Sheet1', Text='hi')",
         ),
         (
-            # 知見98: 単純な構成(Cc/Bcc未設定・Files空・Importance等が確認
-            # 済み既定値)はもはやunresolvedに倒れず実際のwin32comコードを
-            # 生成するため、ここではCcを設定してフォールバックを明示的に
-            # 発生させる(詳細は下記のOutlook専用テスト群を参照)。
+            # 知見98・102: 単純な構成はもはやunresolvedに倒れず実際の
+            # win32comコードを生成するため、ここでは`Files`に添付がある
+            # ことにしてフォールバックを明示的に発生させる(詳細は下記の
+            # Outlook専用テスト群を参照)。
             SendOutlookMailNode(
                 to=Literal(value="a@b.com"),
                 subject=Literal(value="Hi"),
                 body=Literal(value="x"),
-                cc=Literal(value="c@d.com"),
+                has_populated_files=True,
             ),
-            "(To='a@b.com', Subject='Hi', Body='x', Cc='c@d.com', Bcc=(not set), "
+            "(To='a@b.com', Subject='Hi', Body='x', Cc=(not set), Bcc=(not set), "
             "Importance=None, Sensitivity=None, IsBodyHtml=None, IsDraft=None)",
         ),
         (
@@ -834,30 +834,74 @@ def test_send_outlook_mail_generates_real_win32com_call_for_simple_case():
     _compiles(code)
 
 
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"cc": Literal(value="c@d.com")},
-        {"bcc": Literal(value="c@d.com")},
-        {"has_populated_files": True},
-        {"importance": "High"},
-        {"sensitivity": "Confidential"},
-        {"is_body_html": "True"},
-        {"is_draft": "True"},
-    ],
-)
-def test_send_outlook_mail_falls_back_to_todo_for_unconfirmed_fields(kwargs):
-    """知見98: `Cc`/`Bcc`設定済み・`Files`に添付あり・`Importance`等が
-    確認済み既定値以外、のいずれの場合も実直列化形・正確な挙動が実機
-    未確認のため、でっち上げず`# TODO`に倒す(知見71のClickTypeと同じ
-    「確認済みの値だけ安全に対応する」方針)。"""
+def test_send_outlook_mail_falls_back_to_todo_for_populated_files():
+    """`Files`に添付がある場合は、添付の追加方法の実直列化形が実機未確認
+    のため、でっち上げず`# TODO`に倒す。"""
     node = SendOutlookMailNode(
-        to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x"), **kwargs
+        to=Literal(value="a@b.com"),
+        subject=Literal(value="Hi"),
+        body=Literal(value="x"),
+        has_populated_files=True,
     )
     wf = _wrap([node])
     code = generate_python(wf)
     assert "# TODO: unsupported in v1 codegen: SendOutlookMailNode" in code
     assert "_mail.Send()" not in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_lines"),
+    [
+        (
+            # 知見102: `gh api search/code`でGitHub上の実機保存済みXAML
+            # (`d6wv28/RPA_Repo`)から直接確認した実在する値(VM不使用)。
+            {"cc": Literal(value="c@d.com")},
+            ["_mail.CC = _vb_cstr('c@d.com')"],
+        ),
+        ({"bcc": Literal(value="c@d.com")}, ["_mail.BCC = _vb_cstr('c@d.com')"]),
+        (
+            {"importance": "High"},
+            ["_mail.Importance = 2"],
+        ),
+        (
+            {"importance": "Low"},
+            ["_mail.Importance = 0"],
+        ),
+        (
+            {"sensitivity": "Confidential"},
+            ["_mail.Sensitivity = 3"],
+        ),
+        (
+            {"sensitivity": "Personal"},
+            ["_mail.Sensitivity = 1"],
+        ),
+        (
+            # Microsoft Learn「MailItem.HTMLBody property」で確認済み——
+            # `Body`ではなく`HTMLBody`へ代入する。
+            {"is_body_html": "True"},
+            ["_mail.HTMLBody = _vb_cstr('x')"],
+        ),
+        (
+            # Microsoft Learn「MailItem.Save method」で確認済み——
+            # `Send()`ではなく`Save()`(ドラフト保存)。
+            {"is_draft": "True"},
+            ["_mail.Save()"],
+        ),
+    ],
+)
+def test_send_outlook_mail_generates_real_code_for_confirmed_nondefault_fields(kwargs, expected_lines):
+    """知見102: `Cc`/`Bcc`設定済み・`Importance`/`Sensitivity`の非既定値・
+    `IsBodyHtml`/`IsDraft`の`"True"`は、いずれも実機保存済みXAML(GitHub上の
+    実例)で確認済みの実在する値——もはや`# TODO`に倒れず実コード生成する。"""
+    node = SendOutlookMailNode(
+        to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x"), **kwargs
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    for line in expected_lines:
+        assert line in code
     _compiles(code)
 
 
