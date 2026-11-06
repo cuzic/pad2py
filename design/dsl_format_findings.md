@@ -2779,3 +2779,13 @@ VM上で`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラス
 `Excel.GetTableRange`(`IsPivot`フラグで`GetTableRange`/`GetPivotTableRange`のどちらかをネイティブに呼ぶ)は保留を継続する——`openpyxl`は名前付きTable自体は`Worksheet.tables[name].ref`で読めるが(1)PADの`Instance`はワークブック全体を指す一方Table名はワークシートをまたいで検索する必要があり既存コードに前例の無い探索が要る、(2)`IsPivot=True`のPivotTableレンジ取得は`openpyxl`に対応するAPIが無い(ライブExcel COM専用の機能)——`IsPivot`分岐の半分だけ実装するのはでっち上げに近いため、両分岐とも未着手のまま`design/pad_todo.md`に残す。
 
 実装: `dump_daemon/pad_action_lib/excel_actions.py`に`delete_column`/`insert_column`/`delete_row`/`insert_row`と対応する例外(`ColumnNotFoundError`/`DeleteColumnError`/`InsertColumnError`/`RowNotFoundError`/`DeleteRowError`/`InsertRowError`)を追加。`dump_daemon/pad_codegen/actions/excel.py`に`Excel.DeleteColumn`/`Excel.InsertColumn`/`Excel.DeleteRow`/`Excel.InsertRow`の4フラットaction_idを新規結線。テストは`tests/test_pad_action_lib_excel.py`に単体テスト8件、`tests/test_pad_codegen.py`の既存Excel全スコープバッチテストに4行追加して検証した。
+
+## 167. 知見164の残課題`PressWindowButton`(→`UIAutomation.PressButton`)を新規結線——`Simulate`で`.invoke()`/`.click_input()`を切り替え
+
+知見164で「`PressWindowButton`は低リスクだが`.invoke()`の`tests/fake_pywinauto.py`フェイクが未整備」と記録していた残課題を解消した。`pad2py-pad-host`のVMが他セッション(`pad2py-57`)でbusyだったため、VM非依存の純粋なdecompile再精査+ローカルコード実装という方針を選んだ(既にセッション前半で取得済みの`UIAutomation.Actions.dll`の decompile結果をそのまま再利用、新規のVM操作は無し)。
+
+`PressWindowButton`クラス(`[Action(Name = "PressButton", Category = "FormFilling")]`、知見162確認済みの`Name`=`Id`の旧名——`tools/selector_dumps/UIAutomation_flat_actions.txt`で`EffectiveId=PressButton`と確認——action_idは`UIAutomation.PressButton`)の`Execute()`をdecompile精査した: `Button`パラメータ(`UIControl`型、`Click.Click`の`Element`と全く同じ`UiElementRef`機構)で特定した要素に対し、`Simulate`(bool、既定`False`)で2つの完全に異なるネイティブ呼び出しを切り替えるだけだと確認した——`Simulate=False`→`PressButtonInWindow`(UIAの`InvokePattern`経由、pywinauto標準APIの`.invoke()`に1:1対応)、`Simulate=True`→`SimulateClickElementInWindow`(既に`Click.Click`で実機確認済みの`.click_input()`と同じ合成マウスクリック)。いずれも単一の曖昧さ無しライブラリ呼び出しで、知見161/164/166で確立した低リスク追加の基準を満たすため、実機未確認のまま安全に新規結線した。
+
+`tests/fake_pywinauto.py`の`FakeControl`に`.invoke()`(呼び出しログに`"invoke"`を記録するだけの最小フェイク)を追加——ドキュメント先頭の「対応しているAPI表面」リストも更新した。
+
+実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.PressButton`の分岐を追加(`Simulate`の真偽で`method = "click_input" if simulate else "invoke"`)。テストは`tests/test_pad_codegen.py`に`Simulate=False`/`Simulate=True`両方のexec検証テストを追加した。

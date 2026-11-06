@@ -17,7 +17,7 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
 `.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
-`.window_text()`/`.capture_as_image().save()`)のみ——新しい呼び出し形が出てきたら、
+`.window_text()`/`.capture_as_image().save()`/`.invoke()`)のみ——新しい呼び出し形が出てきたら、
 その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
 `AttributeError`で気づけるようにする)。
 """
@@ -82,6 +82,9 @@ class FakeControl:
 
     def set_focus(self) -> None:
         self._registry.record("set_focus", self._full_path(), {})
+
+    def invoke(self) -> None:
+        self._registry.record("invoke", self._full_path(), {})
 
     def close(self) -> None:
         self._registry.record("close", self._full_path(), {})

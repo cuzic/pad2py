@@ -186,4 +186,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if selector_expr is None:
             return None
         return [f"{prefix}{selector_expr}.set_focus()"]
+    if node.action_id == "UIAutomation.PressButton":
+        # design/dsl_format_findings.md 知見167(decompile確認済み): `PressWindowButton`
+        # (`[Action(Name = "PressButton")]`、知見162確認済みの`Name`=`Id`の旧名)は
+        # `Button`パラメータが`Click.Click`の`Element`と同じ`UiElementRef`機構で、
+        # `Simulate`(bool)で実行内容が完全に切り替わる——`Simulate=False`(既定)は
+        # UIAの`InvokePattern`経由(`PressButtonInWindow`、pywinautoの標準`.invoke()`)、
+        # `Simulate=True`はシミュレートクリック(`SimulateClickElementInWindow`、
+        # 既に`Click.Click`で実機確認済みの`.click_input()`)——いずれも単一の
+        # 曖昧さ無しライブラリ呼び出しなので実機未確認でも安全に結線できる。
+        element = node.params.get("Button")
+        simulate = node.params.get("Simulate", False)
+        if not isinstance(element, UiElementRef):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        method = "click_input" if simulate else "invoke"
+        return [f"{prefix}{selector_expr}.{method}()"]
     return None

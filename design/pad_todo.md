@@ -117,11 +117,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   この盲点のため氷山の一角だった。`FocusTextFieldInWindow`(→`UIAutomation.
   FocusTextField`)は`TakeScreenshotOfUIElement`(知見161)と同じ低リスク条件
   (`UiElementRef`機構+曖昧さの無い`.set_focus()`)を満たすため新規結線した。
+  - [x] 💻 `PressWindowButton`(→`UIAutomation.PressButton`) — 知見167でdecompile
+    再精査・新規結線完了。`Button`(`UiElementRef`)+`Simulate`(bool)で`.invoke()`/
+    `.click_input()`を切り替えるだけ。`tests/fake_pywinauto.py`に`.invoke()`フェイクを
+    追加して検証した。
   - [ ] 💻🖥️ **残課題(知見164で精査・分類)**:
-    - `PressWindowButton`(→`PressButton`): `Button`パラメータ(同じ`UiElementRef`)+
-      `Simulate`(bool)で`.invoke()`(UIAの`InvokePattern`、知見81のRun実行アドホック
-      スクリプトで使用実績あり)/`.click_input()`を動的に切り替えるだけで実装可能——
-      低リスクだが`.invoke()`の`tests/fake_pywinauto.py`フェイクが未整備。
     - `HoverOnElementInWindow`/`SelectTabInWindow`/`SelectMenuOptionInWindow`/
       `SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/
       `ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`: 未精査

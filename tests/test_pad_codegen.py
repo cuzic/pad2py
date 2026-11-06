@@ -1390,6 +1390,76 @@ def test_generate_python_from_focus_text_field_converts() -> None:
     ]
 
 
+def test_generate_python_from_press_button_invokes_by_default() -> None:
+    # design/dsl_format_findings.md 知見167(decompile確認済み): `PressWindowButton`
+    # (`[Action(Name = "PressButton")]`、知見162の`Name`=`Id`)は`Button`パラメータが
+    # `Click.Click`の`Element`と同じ`UiElementRef`機構。`Simulate=False`(既定)は
+    # UIAの`InvokePattern`(pywinautoの`.invoke()`)に対応する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.PressButton "
+        "Button: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "Simulate: False\n\n" + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').invoke()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("invoke", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
+def test_generate_python_from_press_button_simulate_true_clicks() -> None:
+    # 知見167: `Simulate=True`はシミュレートクリック(`SimulateClickElementInWindow`)
+    # に対応し、既に`Click.Click`で実機確認済みの`.click_input()`を使う。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.PressButton "
+        "Button: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "Simulate: True\n\n" + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').click_input()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("click_input", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別
