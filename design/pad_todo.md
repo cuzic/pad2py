@@ -455,13 +455,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `decrypt_to_file()`の`salt`/`iv`引数がそのまま対応できた。実装中に
       `node.output_var`の多重出力での不定動作による自己発見バグも即座に修正した
       (`output_vars`辞書の明示キー指定に変更)。
-    - `Web.Actions.dll`(46セレクタ、現存既知結線は`Download`本体1件のみ):
-      `Download`系9(通常/ToFile/ToFolder×UseAuth/UsePost組み合わせ)・
-      `InvokeSoapService`系2(通常/UseAuth)・`InvokeWebService`系35
-      (GET/POST/PUT×SaveToFile/SaveToFolder×UseAuth×Upload、組み合わせ爆発)。
-      既存の知見94-96(`UserAgent`/`FollowRedirection`/`EncodeRequestBody`等)は
-      どのセレクタに対応するか要確認——このモジュールは組み合わせが非常に多く、
-      全件結線より「よく使われる組み合わせから優先的に」が現実的。
+    - [~] `Web.Actions.dll`(46セレクタ、組み合わせが非常に多いため段階的に対応)。
+      ✅ **決着(知見144、Download系12セレクタのうち8件)**: `DownloadFromWeb`クラスの
+      `SaveResponse`(ToVariable/ToFile)×`Method`(Get/Post)×`UseCredentials`の
+      8組み合わせ(`FileName=SpecifyFullPath`、直接パス指定の場合)を新規結線完了。
+      副産物として既存`download_from_web()`の`SaveResponse=ToFile`時に`DownloadedFile`
+      出力が常に`None`になる潜在バグも発見・修正した。
+      - [ ] 💻🖥️ **残課題**: `DownloadToFolder`系4セレクタ(`FileName=KeepOriginal`、
+        レスポンスからファイル名を自動決定——決定方法が実機/decompile未確認のため
+        見送り)・`InvokeSoapService`系2(通常/UseAuth)・`InvokeWebService`系35
+        (GET/POST/PUT×SaveToFile/SaveToFolder×UseAuth×Upload、組み合わせ爆発、
+        既存の知見94-96がどのセレクタに対応するか要確認)。
     監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
     所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
     再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。

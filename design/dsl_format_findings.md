@@ -2500,3 +2500,13 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 **自己発見バグ(実装中に発見・即修正)**: 最初の実装で、Encrypt側の主出力(`EncryptedText`)を`node.output_var`から取得していたが、`node.output_var`は`pad_dsl.line_parser`のコメントの通り「複数の`=>`出力がある場合、最後に見つかったものを保持する」という後方互換用の単一値アクセサであり、Encrypt+Salt+IVのように複数の出力バインディングがある場合は**意図しない方(最後に見つかったSalt/IV)を指してしまう**。実際にexec()するテストを書いた段階で`NameError: name 'Enc' is not defined`として即座に検出でき、`node.output_vars.get("EncryptedText")`(辞書の明示的なキー指定)に修正した——`CropText`/`ParseText`等の既存の多重出力アクションが最初から`output_vars`辞書のみを使っていた理由を、自分で同じ罠を踏んで再確認した形になった。
 
 テストは`tests/test_pad_codegen.py`に、UseSalt/UseIV/UseSaltAndIVの3パターンでEncrypt→Decryptの往復を実際に`exec()`し、復号結果が元の平文に一致することまで検証するテストを追加した。
+
+## 144. 知見139のWeb.Actions.dll分(Download系)を結線完了——8件を新規結線、既存`download_from_web()`の`SaveResponse=ToFile`潜在バグも発見・修正
+
+知見139でWeb.Actions.dllの未結線セレクタ(46セレクタ中、組み合わせが非常に多いため後回しにしていた)のうち、最も安全に結線できるDownload系12セレクタに着手した。VM上で確認したところ、12セレクタ全てが**同一の`DownloadFromWeb`クラス**で、`SaveResponse`(`ToVariable`/`ToFile`、2値)×`DownloadMethod`(`Get`/`Post`)×`UseCredentials`(Boolean)の組み合わせをセレクタ自体が固定していると判明した——`FileName`(`KeepOriginal`/`SpecifyFullPath`)という3つ目の軸も発見したが、これは`SaveResponse=ToFile`のサブモードで、`DownloadToFolder`系(`KeepOriginal`、レスポンスからファイル名を自動決定)は決定方法が実機/decompile未確認のため見送り、`SpecifyFullPath`(`FilePath`で直接パス指定)の8通りのみ新規結線した。既存の`download_from_web()`の`save_response`/`destination_path`/`method`/`use_credentials`引数が元から対応済みだったため、呼び分けのみで済んだ。
+
+**既存バグの発見・修正**: `download_from_web()`は`save_response="ToFile"`時に常に`None`を返していた(`DownloadedFile`出力が元々どのcodegen経路からも使われていなかったため、今まで気づかれなかった)——知見129(`Compression.ZipFiles`)・知見130(`Folder.Copy`)と同種の「呼び出し側が指定したパスをそのまま返すべき出力」パターンに合わせ、`destination_path`をそのまま返すよう修正した。既存の単体テスト(`result is None`というアサーション)もこの修正に合わせて更新した。
+
+`ActionName`がクラス名と一致しない2件(`DownloadUseAuthUsePost`クラス→ActionName=`DownloadUsePostAndAuth`、`DownloadToFileUsePostUseAuth`クラス→ActionName=`DownloadToFileUsePostAndAuth`)を実装前に発見し、正しいActionNameで結線した(これを見逃すと誤ったaction_id文字列を使うことになっていた)。
+
+テストは`tests/test_pad_codegen.py`に7件追加(ToVariable系3パターン・ToFile系4パターン、実ネットワークを使わず`web_actions.download_from_web`自体をフェイクに差し替えて呼び出し引数と出力値を検証)。残るInvokeWebService(32セレクタ)・InvokeSoapService(2セレクタ)・DownloadToFolder系(4セレクタ)は次回以降の対象として記録する。

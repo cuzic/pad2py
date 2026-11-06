@@ -44,7 +44,9 @@ def test_download_from_web_to_file_writes_bytes(tmp_path: Path) -> None:
         destination_path=str(dest),
         client=_client(handler),
     )
-    assert result is None
+    # 知見144: `DownloadedFile`出力として使えるよう、保存先パスをそのまま返す
+    # (ZipFiles/PDF結合等と同じ「呼び出し側が指定した値をそのまま返す」パターン)。
+    assert result == str(dest)
     assert dest.read_bytes() == b"binary-data"
 
 

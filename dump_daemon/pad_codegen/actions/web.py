@@ -16,6 +16,25 @@ httpxの既定`follow_redirects=False`のままPADの既定`True`と食い違っ
 (`web_actions.invoke_web_service()`の`encode_request_body`引数に委譲)。
 `InvokeSoapService`には存在しないパラメータ(SOAPボディは常にXMLのため不要)。
 
+知見139・144(`ActionSelectorBase`一括列挙監査をWeb.Actions.dllに適用、VM上で
+`DownloadFromWeb`クラスのプロパティ・`SaveResponse`/`DownloadMethod`/`FileName`
+列挙値を確認): `Download`系12セレクタは全て**同一の`DownloadFromWeb`クラス**で、
+`SaveResponse`(`ToVariable`/`ToFile`)×`Method`(`Get`/`Post`)×`UseCredentials`
+(Boolean)の組み合わせをセレクタ自体が固定する。このうち`SaveResponse=ToFile`
+かつ`FileName=SpecifyFullPath`(`FilePath`プロパティで直接パス指定)の8通り
+(`ToVariable`/`ToFile`×`Get`/`Post`×認証有無)を既存の`download_from_web()`
+(`save_response`/`destination_path`/`method`/`use_credentials`引数が元から
+対応済み)で結線した。`FileName=KeepOriginal`(フォルダ指定+レスポンスから
+ファイル名を自動決定、`DownloadToFolder`系4セレクタ)は、PADが実際に
+どうファイル名を決定するか(Content-Dispositionヘッダ?URLパスの末尾?)が
+実機/decompile未確認のため見送った——`download_from_web()`は呼び出し側が
+渡した正確なパスへ書き込むだけで、ファイル名の自動決定ロジックは持たない。
+副産物として、既存の`download_from_web()`が`SaveResponse=ToFile`時に常に`None`
+を返していた(`DownloadedFile`出力が使われていなかったため今まで気づかれな
+かった)潜在バグを発見・修正した——他の出力ファイルパス系アクション
+(知見129のZipFile等)と同じ「呼び出し側が指定したパスをそのまま返す」規約に
+揃えた。
+
 `ClearCookies`は依然意図的に未対応としてフォールバックに委ねる(でっち上げを
 避ける): 知見96のdecompileで`CompiledJob.CookieContainer`というフロー実行
 全体で共有される永続的なCookieジャーの存在を確認した(`ClearCookies: True`で
@@ -39,21 +58,60 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
     prefix = INDENT * indent
     p = node.params
 
-    if action_id == "Web.DownloadFromWeb.Download":
+    # 知見139・144: `DownloadFromWeb`クラスの兄弟セレクタ8件(ToVariable/ToFile(exact
+    # path)×Get/Post×認証有無)。既存の`Download`(ToVariable/Get/NoAuth)もこの
+    # ディスパッチ表に統合する。
+    _DOWNLOAD_VARIANTS = {
+        "Web.DownloadFromWeb.Download": ("ToVariable", "Get", False),
+        "Web.DownloadFromWeb.DownloadUseAuth": ("ToVariable", "Get", True),
+        "Web.DownloadFromWeb.DownloadUsePost": ("ToVariable", "Post", False),
+        "Web.DownloadFromWeb.DownloadUsePostAndAuth": ("ToVariable", "Post", True),
+        "Web.DownloadFromWeb.DownloadToFile": ("ToFile", "Get", False),
+        "Web.DownloadFromWeb.DownloadToFileUseAuth": ("ToFile", "Get", True),
+        "Web.DownloadFromWeb.DownloadToFileUsePost": ("ToFile", "Post", False),
+        "Web.DownloadFromWeb.DownloadToFileUsePostAndAuth": ("ToFile", "Post", True),
+    }
+    if action_id in _DOWNLOAD_VARIANTS:
+        save_response, method, use_auth = _DOWNLOAD_VARIANTS[action_id]
         url = safe_render(p.get("Url"))
         timeout = safe_render(p.get("ConnectionTimeout"))
         follow = safe_render(p.get("FollowRedirection"))
         user_agent = safe_render(p.get("UserAgent"))
         accept_untrusted = safe_render(p.get("AcceptUntrustedCertificates"))
         encoding = enum_last(p.get("Encoding"))
-        if None in (url, timeout, follow, user_agent, accept_untrusted, encoding) or not node.output_var:
+        if None in (url, timeout, follow, user_agent, accept_untrusted, encoding):
             return None
         if encoding != "AutoDetect":
             return None
+        extra_args = ""
+        if method == "Post":
+            extra_args += ", method='Post'"
+        if use_auth:
+            username = safe_render(p.get("UserName"))
+            password = safe_render(p.get("Password"))
+            if username is None or password is None:
+                return None
+            extra_args += f", use_credentials=True, username={username}, password={password}"
+        if save_response == "ToFile":
+            dest_var = node.output_vars.get("DownloadedFile")
+            file_path = safe_render(p.get("FilePath"))
+            if not dest_var or file_path is None:
+                return None
+            return [
+                f"{prefix}{dest_var} = web_actions.download_from_web({url}, "
+                f"save_response='ToFile', destination_path={file_path}, "
+                f"connection_timeout={timeout}, follow_redirection={follow}, "
+                f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
+                f"{extra_args})"
+            ]
+        text_var = node.output_vars.get("WebPageText")
+        if not text_var:
+            return None
         return [
-            f"{prefix}{node.output_var} = web_actions.download_from_web({url}, "
+            f"{prefix}{text_var} = web_actions.download_from_web({url}, "
             f"connection_timeout={timeout}, follow_redirection={follow}, "
-            f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted})"
+            f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
+            f"{extra_args})"
         ]
 
     if action_id == "Web.InvokeWebService.InvokeWebService":

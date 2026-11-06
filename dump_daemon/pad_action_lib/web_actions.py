@@ -101,7 +101,10 @@ def download_from_web(
             if not dest.parent.is_dir():
                 raise DirectoryDoesNotExistError(str(dest.parent))
             dest.write_bytes(response.content)
-            return None
+            # 知見129・130と同じパターン: `DownloadedFile`出力は呼び出し側が指定した
+            # 保存先そのものを指す(他に特定する手段が無い)——Noneを返すと出力変数が
+            # 常にNoneになる潜在バグになる。
+            return str(dest)
         return response.text
     except httpx.HTTPError as exc:
         raise DownloadFromWebError(str(exc)) from exc

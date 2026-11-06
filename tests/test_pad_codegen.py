@@ -4092,3 +4092,98 @@ def test_generate_python_from_cryptography_encrypt_decrypt_text_with_salt_iv_rou
         assert namespace["SaltVal"]
     if use_iv:
         assert namespace["IVVal"]
+
+
+@pytest.mark.parametrize(
+    ("action_suffix", "method", "use_auth"),
+    [
+        ("UseAuth", "Get", True),
+        ("UsePost", "Post", False),
+        ("UsePostAndAuth", "Post", True),
+    ],
+)
+def test_generate_python_from_download_to_variable_siblings_converts(
+    action_suffix: str, method: str, use_auth: bool
+) -> None:
+    # design/dsl_format_findings.md 知見139・144: `ActionSelectorBase`一括列挙監査を
+    # Web.Actions.dllに適用して発見した、`Download`(`DownloadFromWeb`クラス)の兄弟
+    # セレクタ。既存の`download_from_web()`の`method`/`use_credentials`引数が
+    # そのまま対応できた。実ネットワークを使わず、`web_actions.download_from_web`
+    # 自体をフェイクに差し替えて呼び出し引数を検証する。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    auth_dsl = " UseCredentials: True UserName: $'''u''' Password: $'''p'''" if use_auth else ""
+    dsl = (
+        f"Web.DownloadFromWeb.Download{action_suffix} Url: $'''http://example.test/''' "
+        "ConnectionTimeout: 30 FollowRedirection: True UserAgent: $'''UA''' "
+        f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False{auth_dsl} "
+        "WebPageText=> T"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    calls = []
+
+    def fake_download_from_web(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        return "fake response"
+
+    original = web_actions.download_from_web
+    web_actions.download_from_web = fake_download_from_web
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        web_actions.download_from_web = original
+    assert namespace["T"] == "fake response"
+    assert len(calls) == 1
+    _, kwargs = calls[0]
+    if method == "Post":
+        assert kwargs.get("method") == "Post"
+    else:
+        assert "method" not in kwargs
+    if use_auth:
+        assert kwargs["use_credentials"] is True
+        assert kwargs["username"] == "u"
+        assert kwargs["password"] == "p"
+
+
+@pytest.mark.parametrize("action_suffix", ["", "UseAuth", "UsePost", "UsePostAndAuth"])
+def test_generate_python_from_download_to_file_siblings_converts(action_suffix: str) -> None:
+    # 知見144: `DownloadToFile`(`SaveResponse=ToFile`)系。実際にexec()し、
+    # `DownloadedFile`出力が保存先パスそのものになることまで検証する(知見144で
+    # 修正した`download_from_web()`の潜在バグの回帰防止)。
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "out.bin"
+        auth_dsl = " UseCredentials: True UserName: $'''u''' Password: $'''p'''" if "Auth" in action_suffix else ""
+        dsl = (
+            f"Web.DownloadFromWeb.DownloadToFile{action_suffix} Url: $'''http://example.test/''' "
+            "ConnectionTimeout: 30 FollowRedirection: True UserAgent: $'''UA''' "
+            f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False{auth_dsl} "
+            f"FilePath: $'''{dest}''' DownloadedFile=> F"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+
+        import dump_daemon.pad_action_lib.web_actions as web_actions
+
+        calls = []
+
+        def fake_download_from_web(url, *args, **kwargs):
+            calls.append((url, kwargs))
+            Path(kwargs["destination_path"]).write_bytes(b"data")
+            return kwargs["destination_path"]
+
+        original = web_actions.download_from_web
+        web_actions.download_from_web = fake_download_from_web
+        try:
+            namespace: dict[str, object] = {}
+            exec(code, namespace)
+        finally:
+            web_actions.download_from_web = original
+        assert namespace["F"] == str(dest)
+        assert len(calls) == 1
