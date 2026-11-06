@@ -166,7 +166,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。`tools/check_exec_assertions.py`で慣習をツール化済み(手動実行のレビュー補助、CI gateではない)——`tests/test_pad_codegen.py`全件への初回実行で実際に1件の見逃しを発見・修正した。ただし既存テストの遡及棚卸しは(今回の1件を除き)まだ実施していない | **部分的だが前進**。新規分は良い状態、ツールで能動的に見逃しを探せるようになった |
 | 5. ランタイムサービス地図 | `design/pad_runtime_services.md`に8項目(比較エンジン・数値文字列認識・`/`/`mod`・CSV・`IListIndexService`・DPAPI・Filter/JoinParameters・DateTimeタイムゾーン)を集約済み。「他にどんなサービスがあるか」の先回り探索(Web Cookieジャー等、横断性が弱いものは意図的に対象外)は依然未実施 | **集約完了**。新サービス発見時の追記が今後の運用 |
-| 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
+| 6. 知見ログ/TODOのメタ規約 | `design/KNOWLEDGE_LOG_CONVENTIONS.md`に規約とファイル対応表を明文化済み。次にもう1つツールを調査する際、この1ページを指し示せる状態になった | **ドキュメント化完了** |
 | 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)・`tests/fake_pyautogui.py`(pyautogui)の3モジュールを実装し、Window/Click/IfWindow/WaitForWindow系・MouseAndKeyboard系で計30件超のcodegenテストを文字列検査のみ→実際の`exec()`検証へ移行済み。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)かなり充実、(a)(d)は未着手** |
 
 ---
@@ -184,7 +184,12 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   85・86・88・90・91・92・97・98・99・100-107・112・116・127・128・132・133・138)から
   集約した。新しい事実の確認は行っていない(既存知見の再配置のみ)。
 - [ ] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる
-- [ ] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める
+- [x] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める。
+  **2026-11-05実施**: 「番号は不変・追記専用、訂正は新しい知見番号で行う」という規約を
+  git履歴で実証確認(知見97が知見91を書き換えずに訂正していることを確認)した上で明記。
+  PAD/UiPathのファイル対応表(知見ログ↔TODO↔段階計画↔式変換ドキュメント)、および
+  どちらのトラックにも属さない横断ドキュメント(本roadmap・runtime_services・
+  CI検証系)の位置付けも整理した。
 - [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
 - [x] **層7(b)着手**: `tests/fake_pywinauto.py`を新設(`Desktop`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`のフェイク)、`UIAutomation.Click.Click`の既存codegenテストを実際に`exec()`する形へ1件移行。`set_active()`(ウィンドウごとの`is_active()`状態をレジストリ側で保持——`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため個々のオブジェクトでは状態を持てない)を追加し、`UIAutomation.IfWindow.*`4モード×ウィンドウ存在/フォーカス状態10パターンを、生成された条件式を実際に`eval()`して真偽値まで検証するテストへ拡張(実機キャプチャのTHENブロックが`pass`のみで文字列検査では分岐の実際の真偽を観測できなかった穴を塞いだ)。`.close()`も追加し`FocusWindow`/`CloseWindow`の既存codegenテスト2件も`exec()`検証へ移行。
   また、`pywinauto.Desktop`の差し替え/復元をテストごとに手書きしていた重複(4箇所)を
