@@ -165,7 +165,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 2. 型での契約強制 | 両トラックとも`return None`→汎用TODO、という同じ「規約」を持つが、PAD側は1箇所に集約されたTODOレンダラ、UiPath側は呼び出し箇所ごとに手書きの自由文字列。理由コードは両方とも無し(自由文字列のみ) | **部分的**。規約はあるが型で強制されていない、理由の構造化なし |
 | 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。`tools/check_exec_assertions.py`で慣習をツール化済み(手動実行のレビュー補助、CI gateではない)——`tests/test_pad_codegen.py`全件への初回実行で実際に1件の見逃しを発見・修正した。ただし既存テストの遡及棚卸しは(今回の1件を除き)まだ実施していない | **部分的だが前進**。新規分は良い状態、ツールで能動的に見逃しを探せるようになった |
-| 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
+| 5. ランタイムサービス地図 | `design/pad_runtime_services.md`に8項目(比較エンジン・数値文字列認識・`/`/`mod`・CSV・`IListIndexService`・DPAPI・Filter/JoinParameters・DateTimeタイムゾーン)を集約済み。「他にどんなサービスがあるか」の先回り探索(Web Cookieジャー等、横断性が弱いものは意図的に対象外)は依然未実施 | **集約完了**。新サービス発見時の追記が今後の運用 |
 | 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
 | 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)・`tests/fake_pyautogui.py`(pyautogui)の3モジュールを実装し、Window/Click/IfWindow/WaitForWindow系・MouseAndKeyboard系で計30件超のcodegenテストを文字列検査のみ→実際の`exec()`検証へ移行済み。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)かなり充実、(a)(d)は未着手** |
 
@@ -177,7 +177,12 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 
 ### Phase 0: ドキュメント化・資産化のみ(コード変更ゼロ、両トラックへの影響ゼロ)
 
-- [ ] `design/pad_runtime_services.md`を新設し、既知のランタイムサービス(`IListIndexService`/DPAPI/比較エンジン/`CSVUtilities`等)を1ページに集約する(層5)
+- [x] `design/pad_runtime_services.md`を新設し、既知のランタイムサービス(`IListIndexService`/DPAPI/比較エンジン/`CSVUtilities`等)を1ページに集約する(層5)。
+  **2026-11-05実施**: 比較エンジン・数値文字列認識規則・`/`/`mod`の意味論・CSV区切り文字と
+  固定長パース・`IListIndexService`(0始まり確定)・DPAPI復号・`FilterParameters`/
+  `JoinParameters`スキーマ・DateTimeタイムゾーン対応表の8項目を、既存知見(知見65・81・83・
+  85・86・88・90・91・92・97・98・99・100-107・112・116・127・128・132・133・138)から
+  集約した。新しい事実の確認は行っていない(既存知見の再配置のみ)。
 - [ ] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる
 - [ ] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める
 - [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
