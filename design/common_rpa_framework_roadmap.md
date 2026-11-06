@@ -274,7 +274,25 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   (本物のPAD DSLは本体を必ずインデントするため実害は無いが、テストの書き方としては
   罠)。既存の`IfFile.DoesNotExist`/`IfFolderExists.DoesNotExist`テストに偽の分岐の
   検証を追加し、この罠を`tests/test_pad_codegen.py`の冒頭docstringに明記した。
-- [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
+- [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する。
+  **2026-11-05追記(設計検討のみ、まだ未着手)**: `design/schemas/`には既に
+  `ir_trace.schema.json`/`ui_tree_snapshot.schema.json`(G1/G2検証プロトコル用、
+  UIツリー・スクリーンショットの実行トレース記録)が存在するが、これは層7(a)が
+  想定する「VM確認済みの事実の再利用」とは**別の目的**(1回の実行の挙動キャプチャ)
+  であり代替にはならないと確認した。一方、層7(a)が本当に欲しいもの
+  (`IListIndexService.ConvertInput()`の挙動、`CSVColumnsSeparator`マッピング等)は
+  既に`design/pad_runtime_services.md`(層5、本セッションで新設)と、確認済みの値を
+  直接埋め込んだPythonコード自身(`_NUMERIC_STRING_RE`/`_DPAPI_ENTROPY`/
+  `_support.py`のマッピング辞書等、いずれも知見番号を引用するdocstring付き)という
+  形で**既に十分に再利用可能**になっている——これらはまさに「もう一度VMに聞き直す
+  必要がない」状態そのもの。層7(a)として**本当に未解決なまま残っている**のは、
+  知見135-137の`ActionSelectorBase`一括列挙監査(層3)のような**生のリフレクション
+  列挙結果**(例: `Database.Actions.dll`の全セレクタ名一覧)で、これは実行するたびに
+  VM上で再列挙しているため、取得結果をJSONとして保存すれば次回から再列挙不要になる
+  ——つまり層7(a)と層3(発見ツールの`tools/`化、VM依存のため未着手)は実質的に
+  同じ前提(VMアクセス)に依存する一体の投資だと判明した。両方ともVMが実際に使える
+  タイミングで、監査スクリプトの出力を構造化JSONとして保存する形で同時に着手するのが
+  筋が良い(設計方針の確定、実装はVM待ち)。
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。
   `win32gui`/`win32con`はpywinautoと違いLinuxでは`import`自体が失敗するため、属性の
