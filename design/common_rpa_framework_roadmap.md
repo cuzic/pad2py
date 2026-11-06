@@ -164,7 +164,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 1. 共通IR | `Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は`rpa_ir`へ移行済み(PAD側、UiPath側は見送り中)。`SwitchNode`は見た目ほど同形ではないと判明(PADは比較演算子付き`CASE`、UiPathは等価専用)——共通`Arm`型に`operator: str | None`を加える設計は決定済みだが実装は未着手。`ConditionalNode`(N-ary)↔`IfNode`(binary)は**統合しない方針で確定**(構築コストが非対称、どちらのcodegenも得をしないため)。`GuardedNode`(遡及付与)↔`TryCatchNode`(先頭包含)は構築方向こそ逆だが、`ErrorHandlingNode`+`attachment`フィールドでの統合案は素描時点から決定済み(実装は未着手)。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass(未着手)。 | **Value系は着手済み、他は「統合しない」決定を含めて設計が進んだ** |
 | 2. 型での契約強制 | 両トラックとも`return None`→汎用TODO、という同じ「規約」を持つが、PAD側は1箇所に集約されたTODOレンダラ、UiPath側は呼び出し箇所ごとに手書きの自由文字列。理由コードは両方とも無し(自由文字列のみ) | **部分的**。規約はあるが型で強制されていない、理由の構造化なし |
 | 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
-| 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
+| 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。`tools/check_exec_assertions.py`で慣習をツール化済み(手動実行のレビュー補助、CI gateではない)——`tests/test_pad_codegen.py`全件への初回実行で実際に1件の見逃しを発見・修正した。ただし既存テストの遡及棚卸しは(今回の1件を除き)まだ実施していない | **部分的だが前進**。新規分は良い状態、ツールで能動的に見逃しを探せるようになった |
 | 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
 | 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
 | 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)・`tests/fake_pyautogui.py`(pyautogui)の3モジュールを実装し、Window/Click/IfWindow/WaitForWindow系・MouseAndKeyboard系で計30件超のcodegenテストを文字列検査のみ→実際の`exec()`検証へ移行済み。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)かなり充実、(a)(d)は未着手** |
@@ -249,7 +249,19 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 ### Phase 1: 追加のみ(既存の出力形式は変えずに内部だけ型を強化)
 
 - [ ] `pad_codegen`に理由コード付き`Unsupported`型を導入し、既存の`# TODO`コメント文字列はこの型からの射影として**同じ見た目を保ったまま**生成するようにリファクタ(層2)。外部から見た生成コードは変わらないので低リスク
-- [ ] 層4の規約をlint化する(`exec(code, namespace)`の後に`namespace[...]`へのアサートが続いているかを検出する簡易チェック)。既存テストへの遡及適用は別タスクとして切り出す
+- [x] 層4の規約をlint化する(`exec(code, namespace)`の後に`namespace[...]`へのアサートが続いているかを検出する簡易チェック)。
+  **2026-11-05実施**: `tools/check_exec_assertions.py`を新設(AST解析で`test_*`関数内の
+  `exec()`呼び出しを検出し、後続に`namespace[...]`/`.calls`/`eval(`/ファイル読み返し系
+  (`.read_text(`等)のいずれも無ければ報告する——CIを止めるハードgateではなく
+  `uv run python3 tools/check_exec_assertions.py`で手動実行するレビュー補助)。
+  `tests/test_pad_codegen.py`全件に実行したところ**実際に1件、本物の見逃しを発見**
+  (`test_generate_python_from_real_if_function_contains_batch_converts_all_four`——
+  コメントで「実際に真偽値として正しく評価できることまで確認する」と書きながら、
+  実際には`exec()`がクラッシュしないことしか見ていなかった)。4条件式を`eval()`して
+  期待する真偽値と一致することまで検証するよう修正した。残り2件(無期限ポーリングが
+  ハングせず即座に終了することだけを確認するテスト)は既知の妥当な例外としてツール
+  自身のdocstringに記録した。既存テストへの遡及適用(今回の1件の修正を除く)は
+  意図的に別タスクとして切り出したまま。
 - [ ] 既存テストの遡及棚卸し(知見129より前に書かれたexec()テストで、出力値を見ていないものを列挙し、1件ずつ追記)——有限のバックログタスク
 
 ### Phase 2: 共通IRの抽出(UiPathトラックと調整必須)

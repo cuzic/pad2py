@@ -2237,8 +2237,16 @@ def test_generate_python_from_real_if_function_contains_batch_converts_all_four(
     assert "# TODO" not in code
     assert "NotImplementedError" not in code
 
+    # tools/check_exec_assertions.py(design/common_rpa_framework_roadmap.md 層4)が検出した
+    # 穴: 以前はexec()がクラッシュしないことだけを見ており、コメントで「実際に真偽値として
+    # 正しく評価できることまで確認する」と書いていながら実際には確認していなかった。
+    # Var1="hello"/Var2="ell"という既知の値に対し、4本の条件式が実際に正しい真偽値になる
+    # ことまでeval()で確認する。
     namespace: dict[str, object] = {}
-    exec(code, namespace)  # 実際に真偽値として正しく評価できることまで確認する
+    exec(code, namespace)
+    condition_lines = [line.removeprefix("if ").removesuffix(":") for line in code.splitlines() if line.startswith("if ")]
+    assert condition_lines == ["Var2 in Var1", "Var2 not in Var1", "not Var1", "bool(Var1)"]
+    assert [eval(c, namespace) for c in condition_lines] == [True, False, False, True]
 
 
 def test_generate_python_from_unknown_function_condition_raises() -> None:
