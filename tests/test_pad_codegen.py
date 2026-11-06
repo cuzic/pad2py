@@ -621,6 +621,15 @@ def test_generate_python_maps_set_window_state_to_pywinauto() -> None:
     assert "from pywinauto import Desktop" in code
     assert "Desktop(backend='uia').window(title='Power Automate | g1g2_test').maximize()" in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: `.maximize()`/`.minimize()`/
+    # `.restore()`をfake_pywinautoに追加し、実際に`exec()`して呼ばれることまで検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    registry = FakeRegistry()
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [("maximize", [{"title": "Power Automate | g1g2_test"}], {})]
+
 
 def test_generate_python_leaves_set_window_state_as_todo_when_class_is_used() -> None:
     # Window classを併用するケース(未検証)は推測でマッピングしないこと。
@@ -1727,6 +1736,16 @@ def test_generate_python_from_set_window_state_control_based_converts() -> None:
     code = generate_python(tree, repository=repository)
     compile(code, "<generated>", "exec")
     assert "Desktop(backend=\"uia\").window(title='Untitled - Notepad').minimize()" in code
+
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: `Control`ベースの経路
+    # (Title/Classベースとは別のセレクタ解決ロジック)でも`.minimize()`が実際に
+    # 呼ばれることを検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    registry = FakeRegistry()
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [("minimize", [{"title": "Untitled - Notepad"}], {})]
     assert "# TODO: map PAD action: UIAutomation.SetWindowState.SetState" not in code
 
 

@@ -177,9 +177,13 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   (いずれも`Scripting.RunPythonScript`のハードコードされたWindowsパス書き込みを含む
   フィクスチャのため、既存の一時ディレクトリ退避パターンを適用)。`WaitForWindowContent.WindowToContainElement`(Element側のwait)もControlRepository
   ありの経路をexec検証する新規テストを追加した(`register_descendant()`で対象の
-  子孫コントロールを事前登録し、ループが即座に抜けることを確認)。層7(b)でまだ
-  exec検証していないcodegenテストの残りは、`.child_window()`を使う他のアクション
-  (UIAutomation系の一部)の棚卸しが次の拡張候補
+  子孫コントロールを事前登録し、ループが即座に抜けることを確認)。
+  **2026-11-05追記**: `fake_pywinauto.py`に`.maximize()`/`.minimize()`/`.restore()`
+  (`SetWindowState`、知見27)を追加し、Title/Classベース・Controlベース両方の
+  codegenテストをexec検証へ拡張した(呼び出しが正しいパス・引数で記録されることまで確認)。
+  層7(b)でまだexec検証していないcodegenテストの残りは、Click/IfWindow以外の
+  `UIAutomation.*`アクション(`GetWindow`の戻り値、多要素内部セレクタのチェーン等)の
+  棚卸しが次の拡張候補
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

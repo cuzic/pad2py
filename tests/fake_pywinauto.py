@@ -16,9 +16,9 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
-`.close()`/`.type_keys()`/`.wait()`/`.wait_not()`)のみ——新しい呼び出し形が出てきたら、その都度
-ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
-`AttributeError`で気づけるようにする)。
+`.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`)
+のみ——新しい呼び出し形が出てきたら、その都度ここに追加する(未対応の呼び出しをでっち上げて
+成功させるのではなく、素直に`AttributeError`で気づけるようにする)。
 """
 from __future__ import annotations
 
@@ -72,6 +72,15 @@ class FakeControl:
 
     def close(self) -> None:
         self._registry.record("close", self._full_path(), {})
+
+    def maximize(self) -> None:
+        self._registry.record("maximize", self._full_path(), {})
+
+    def minimize(self) -> None:
+        self._registry.record("minimize", self._full_path(), {})
+
+    def restore(self) -> None:
+        self._registry.record("restore", self._full_path(), {})
 
     def type_keys(self, keys: str, **kwargs: object) -> None:
         self._registry.record("type_keys", self._full_path(), {"keys": keys, **kwargs})
