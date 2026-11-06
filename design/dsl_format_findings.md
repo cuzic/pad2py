@@ -2953,4 +2953,6 @@ OOXMLでは`<w:bookmarkStart w:name="..." w:id="N"/>`と`<w:bookmarkEnd w:id="N"
 
 書き込み側(`WriteToWord`/`InsertImageToWord`のブックマーク相対モード)は、挿入位置の意味論(既存コンテンツの前後どちらに挿入されるか、`bookmarkStart`/`bookmarkEnd`自体を移動させる必要があるか等)がより複雑で未確認のため、今回は読み取り側のみ先行実装し、書き込み側は依然`NotImplementedError`のまま保留する。
 
+**書き込み側(`WriteTextOnBookmark`)を実際に精査した追記**: `decompile`した`WriteTextOnBookmark()`自体のロジック(ブックマーク未発見時は例外、空ブックマークなら`Range.InsertBefore`一択、非空なら`StartOfBookmark`→`InsertBefore`/`EndOfBookmark`→`InsertAfter`で両方ともマーカーに隣接する箇所へのraw文字列挿入)は構造としてlxmlで再現できそうに見えたが、**`AppendNewLine`(decompile確認済み: `WriteToWord`の既存のStartOfDocument/EndOfDocumentモードと同じく「テキストの前に`\r\n`を挿入する」仕様)が常にテキストへ埋め込みの`\r\n`を持ち込む**ため、Word COMの`Range.InsertBefore`/`InsertAfter`が埋め込み`\r\n`をブックマーク境界の相対位置で実際にどう段落分割するか(ブックマーク自体が複数段落に広がることになるか等)が実機未確認で、`AppendNewLine=True`という典型的な使い方のケースで安全に実装できないと判明した——単一行+`AppendNewLine=False`に絞れば実装は可能だが、実用上のカバー範囲が大きく狭まるため、今回は見送りのまま次の調査対象として記録する(読み取り側のような明確な「このまま完結する」実装ではなく、`AppendNewLine`絡みの段落構造への実機確認が追加で必要)。
+
 実装: `pad_action_lib/word_actions.py`に`_bookmark_range_text()`(lxml直接検索)を追加し、`read_from_word()`の`Bookmark`モードを無条件`NotImplementedError`から実装へ変更。`dump_daemon/pad_codegen/actions/word.py`に`Word.ReadFromWord.ReadBookmark`の分岐を追加。テストは`tests/test_pad_action_lib_word.py`に単体テスト4件(見つかる場合・空ブックマーク・見つからない場合・保存→再読込往復)、`tests/test_pad_codegen.py`にexec検証テスト1件を追加。VM不要。
