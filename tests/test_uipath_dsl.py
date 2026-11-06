@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     RefreshBrowserNode,
     RemoveDataRowNode,
     RethrowNode,
+    RetryScopeNode,
     SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -1507,6 +1508,61 @@ def test_invoke_powershell_with_non_empty_parameters():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, InvokePowerShellNode)
     assert node.has_parameters is True
+
+
+def test_retry_scope_with_empty_condition_properties():
+    """知見187: `ui:RetryScope`(GitHub code searchで3280件ヒット
+    ——`UiPath/skills`公式リポジトリのREFramework標準サブワークフロー
+    資産(`SetTransactionStatus.xaml`)で確認)。`Condition`が空の
+    `ActivityFunc`で、`ActivityBody`が`ui:LogMessage`を1件持つ単純な
+    実例。"""
+    xml = (
+        f"<ui:RetryScope {_UI_XMLNS} DisplayName=\"Retry\" "
+        'NumberOfRetries="3">'
+        "<ui:RetryScope.ActivityBody>"
+        "<ActivityAction>"
+        '<Sequence DisplayName="Action">'
+        '<ui:LogMessage DisplayName="Log" Level="Info" Message="[&quot;x&quot;]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:RetryScope.ActivityBody>"
+        "<ui:RetryScope.Condition>"
+        '<ActivityFunc x:TypeArguments="x:Boolean" />'
+        "</ui:RetryScope.Condition>"
+        "</ui:RetryScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RetryScopeNode)
+    assert node.number_of_retries == Literal(value="3")
+    assert node.condition_has_body is False
+    assert node.retry_interval is None
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], LogMessageNode)
+
+
+def test_retry_scope_with_non_empty_condition():
+    """実機`liamsrowley/UiPath-REFramework-CalculateClientSecurityHash`
+    で確認した、Modern活動による要素状態チェックを含む非空の
+    `Condition`の実例(合成データで再現)。"""
+    xml = (
+        f"<ui:RetryScope {_UI_XMLNS} DisplayName=\"Retry\" "
+        'NumberOfRetries="3" RetryInterval="00:10:00">'
+        "<ui:RetryScope.ActivityBody>"
+        "<ActivityAction>"
+        '<Sequence DisplayName="Action" />'
+        "</ActivityAction>"
+        "</ui:RetryScope.ActivityBody>"
+        "<ui:RetryScope.Condition>"
+        '<ActivityFunc x:TypeArguments="x:Boolean">'
+        '<ui:LogMessage DisplayName="Check" Level="Info" Message="[&quot;x&quot;]" />'
+        "</ActivityFunc>"
+        "</ui:RetryScope.Condition>"
+        "</ui:RetryScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RetryScopeNode)
+    assert node.condition_has_body is True
+    assert node.retry_interval == Literal(value="00:10:00")
 
 
 def test_log_message_properties():

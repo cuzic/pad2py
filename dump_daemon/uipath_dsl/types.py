@@ -978,6 +978,42 @@ class InvokePowerShellNode:
 
 
 @dataclass
+class RetryScopeNode:
+    """`<ui:RetryScope>`(知見187、`UiPath.System.Activities`、GitHub
+    code searchで3280件ヒット——`UiPath/skills`公式リポジトリの
+    REFramework標準サブワークフロー資産(`assets/stripped/
+    SetTransactionStatus.xaml`)で実際に使われている、知見169・179と
+    同じ最高水準の確証)。`ActivityBody`(`ActivityAction`→
+    `Sequence`、他のスコープ活動と同じ構造)+`NumberOfRetries`
+    (整数)+`RetryInterval`(TimeSpan、実機1件で`"00:10:00"`を確認した
+    が公式REFrameworkテンプレートでは省略=`{x:Null}`)+`Condition`
+    (`ActivityFunc<Boolean>`——公式REFrameworkテンプレートでは中身の
+    無い空の`ActivityFunc`、実機の別例(Modern活動を使う複雑な例)では
+    要素の状態チェックを含む非空の実装を確認)+`LogRetriedExceptions`/
+    `RetriedExceptionsLogLevel`。
+
+    公式REFrameworkテンプレート(`SetTransactionStatus.xaml`)での
+    使い方は、`ActivityBody`内部の`TryCatch`+`Rethrow`(`Catch`節で
+    ログを出してから明示的に再スローする、実機確認済みの構造)と
+    組み合わせ、`Condition`を空のままにする——これは「本体が例外無しで
+    完了するまで、最大`NumberOfRetries`回まで再試行し、全回失敗したら
+    最後の例外を伝播させる」という、最もシンプルで確認済みの意味論
+    だと判断した。`Condition`が空でない場合(Modern活動の要素状態
+    チェック等、未確認の価値ベース条件)・`RetryInterval`が設定されて
+    いる場合(再試行間隔の正確な待機時間変換が未確認)・
+    `LogRetriedExceptions`/`RetriedExceptionsLogLevel`が設定されている
+    場合は`# TODO`へ倒す。"""
+
+    body: list["Node"] = field(default_factory=list)
+    number_of_retries: Expr = None
+    retry_interval: Expr = None
+    condition_has_body: bool = False
+    log_retried_exceptions: Expr = None
+    retried_exceptions_log_level: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2093,6 +2129,7 @@ Node = (
     | ReadCsvFileNode
     | WriteCsvFileNode
     | InvokePowerShellNode
+    | RetryScopeNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

@@ -8835,6 +8835,57 @@ PowerShell Core (7+)の確認済み標準実行ファイル名。`check=True`を
 test_uipath_codegen.py`9件)、UiPath関連テスト全804件通過、
 リポジトリ全体で全1863件通過。
 
+## 187. `ui:RetryScope`(GitHub code searchで3280件ヒット)を新規実装——公式REFrameworkテンプレートのTryCatch+Rethrowパターンから「本体が例外無しで完了するまで再試行」という意味論を確立、本調査初の制御フロー系新規ノード型
+
+知見186の`ui:InvokePowerShell`に続き、`ui:RetryScope`
+(`UiPath.System.Activities`、GitHub code searchで3280件ヒット——
+本調査で遭遇した活動の中でも最高水準の頻度)を調査した。`UiPath/
+skills`公式リポジトリのREFramework標準サブワークフロー資産
+(`assets/stripped/SetTransactionStatus.xaml`)で実際に使われている
+ことを確認した、知見169・179と同じ最高水準の確証を得た制御フロー系
+活動——これまでの`GetTextNode`/`ClickNode`等のリーフ活動とは違い、
+`TryCatchNode`/`WhileNode`と同種の「本体(`body`)を持つノード型」を
+本調査で初めて新規実装することになった。
+
+構造は`ActivityBody`(`ActivityAction`→`Sequence`、他のスコープ活動と
+同じ構造)+`NumberOfRetries`(整数)+`RetryInterval`(TimeSpan)+
+`Condition`(`ActivityFunc<Boolean>`)+`LogRetriedExceptions`/
+`RetriedExceptionsLogLevel`。公式REFrameworkテンプレートでの実際の
+使い方を読み解くと、`ActivityBody`内部に`TryCatch`+`Rethrow`
+(`Catch`節でログを出してから明示的に再スローする、実機確認済みの
+構造)を置き、`Condition`は空の`ActivityFunc`(中身が一切無い)のまま
+にする——これは「本体が例外無しで完了するまで、最大
+`NumberOfRetries`回まで再試行し、全回失敗したら最後の例外を伝播
+させる」という最もシンプルで確認済みの意味論だと判断した。
+
+もう一方の実機例(`liamsrowley/UiPath-REFramework-
+CalculateClientSecurityHash`)ではModern活動(`uix:NCheckState`等)を
+使い、`Condition`に実際の要素状態チェックを含む非空の実装・
+`RetryInterval="00:10:00"`(再試行間隔の明示的な待機)を確認した——
+これはより複雑な「値ベースの再試行条件」パターンで、正確な意味論が
+未確認のため`# TODO`へ倒す(`Condition`の空判定には`_activity_func_
+has_body()`という新しいヘルパーを追加した)。
+
+実装は`for`+`try/except`のPythonループで表現する——`_retry_max =
+round(_vb_cdbl(number_of_retries))`で整数変換(知見182・183と同じ
+`CInt`相当の確認済み経路)した後、`for _retry_attempt in
+range(_retry_max): try: <body>; break except Exception: if
+_retry_attempt == _retry_max - 1: raise`という構造。`TryCatchNode`と
+同じ`invoke_resolver`/`out_arg_resolver`を本体生成に伝播させる必要が
+あり(本体内の`Invoke Workflow File`解決のため)、`_generate_retry_
+scope`の関数シグネチャを`_generate_try_catch`と同じ形に揃えた。
+
+実機XAML2件(公式REFrameworkテンプレート含む)+合成テストで
+`parse_activity()`+`_generate_node()`+`compile()`を実行し、合成
+データで実際にPythonとして`exec()`し、「2回目の試行で成功する」
+「全て失敗して最後の例外が伝播する」の両シナリオが正しく動作する
+ことを手動確認した(公式テンプレート側は本体内の`in_Config(...)`
+という別の未対応関数呼び出しにより`# TODO`へ倒れたが、`RetryScope`
+自体の構造解析・`NumberOfRetries`抽出・`Condition`空判定は正しく
+動作することを確認済み)。回帰テスト追加(`tests/test_uipath_dsl.py`
+2件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全812件
+通過、リポジトリ全体で全1871件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -2418,3 +2418,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`9件)、UiPath関連テスト全804件通過、
      リポジトリ全体で全1863件通過。
+
+145. **(完了、2026-11-06)** `ui:RetryScope`(GitHub code searchで
+     3280件ヒット)を新規実装(知見187): 公式REFrameworkテンプレート
+     (`SetTransactionStatus.xaml`)のTryCatch+Rethrowパターンから
+     「本体が例外無しで完了するまで最大`NumberOfRetries`回まで再試行、
+     全回失敗したら最後の例外を伝播」という意味論を確立。本調査で
+     初めて新規実装した制御フロー系ノード型(`for`+`try/except`で
+     表現、`TryCatchNode`と同じ`invoke_resolver`/`out_arg_resolver`
+     伝播)。`Condition`が非空(Modern活動の値ベース条件)・
+     `RetryInterval`設定時は`# TODO`。実機XAML2件(公式テンプレート
+     含む)+合成データでの`exec()`実行確認(2シナリオ)。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`6件)、UiPath関連テスト全812件通過、
+     リポジトリ全体で全1871件通過。

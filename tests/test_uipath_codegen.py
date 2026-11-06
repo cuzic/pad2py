@@ -96,6 +96,7 @@ from dump_daemon.uipath_dsl import (
     RefreshBrowserNode,
     RemoveDataRowNode,
     RethrowNode,
+    RetryScopeNode,
     SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -3196,6 +3197,109 @@ def test_invoke_powershell_with_pipeline_output_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: InvokePowerShell with PipelineOutput bound" in code
+    _compiles(code)
+
+
+def test_retry_scope_retries_body_until_success():
+    """知見187: `ui:RetryScope`(GitHub code searchで3280件ヒット)。
+    `Condition`が空の場合、「本体が例外無しで完了するまで最大
+    `NumberOfRetries`回まで再試行し、全回失敗したら最後の例外を
+    伝播させる」という確認済みの意味論(公式REFrameworkテンプレート
+    `SetTransactionStatus.xaml`のTryCatch+Rethrowパターン)を
+    実装する。"""
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=Literal(value="3"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_retry_max = round(_vb_cdbl('3'))" in code
+    assert "for _retry_attempt in range(_retry_max):" in code
+    assert "except Exception:" in code
+    assert "if _retry_attempt == _retry_max - 1:" in code
+    assert "raise" in code
+    assert "break" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict = {}
+    exec(code, namespace)
+
+
+def test_retry_scope_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=Literal(value="3"),
+                display_name="Retry",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Retry" in code
+    assert "for _retry_attempt in range(_retry_max):" in code
+    _compiles(code)
+
+
+def test_retry_scope_with_no_number_of_retries_is_todo():
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RetryScope with no NumberOfRetries captured" in code
+    _compiles(code)
+
+
+def test_retry_scope_with_non_empty_condition_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=Literal(value="3"),
+                condition_has_body=True,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RetryScope with a non-empty Condition" in code
+    _compiles(code)
+
+
+def test_retry_scope_with_retry_interval_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=Literal(value="3"),
+                retry_interval=Literal(value="00:10:00"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RetryScope with RetryInterval set" in code
+    _compiles(code)
+
+
+def test_retry_scope_with_log_retried_exceptions_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            RetryScopeNode(
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+                number_of_retries=Literal(value="3"),
+                log_retried_exceptions=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RetryScope with LogRetriedExceptions set" in code
     _compiles(code)
 
 

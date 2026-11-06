@@ -84,6 +84,7 @@ from .types import (
     RefreshBrowserNode,
     RemoveDataRowNode,
     RethrowNode,
+    RetryScopeNode,
     SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -904,6 +905,34 @@ def _parse_invoke_powershell(elem: etree._Element) -> InvokePowerShellNode:
         input=input_,
         errors=errors,
         pipeline_output=pipeline_output,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _activity_func_has_body(func_elem: etree._Element) -> bool:
+    """`<X.Condition><ActivityFunc ...>...</ActivityFunc></X.Condition>`
+    形の`ActivityFunc`が実際の活動本体を持つかどうかを判定する
+    (`Argument`等のプロパティ要素は無視し、実際の子活動のみを見る)。"""
+    return len(_activity_children(func_elem)) > 0
+
+
+def _parse_retry_scope(elem: etree._Element) -> RetryScopeNode:
+    body_elem = _find_property_element(elem, "ActivityBody")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    condition_has_body = False
+    condition_elem = _find_property_element(elem, "Condition")
+    if condition_elem is not None:
+        func_children = _activity_children(condition_elem)
+        if func_children:
+            condition_has_body = _activity_func_has_body(func_children[0])
+    return RetryScopeNode(
+        body=body,
+        number_of_retries=_attr_expr(elem, "NumberOfRetries"),
+        retry_interval=_attr_expr(elem, "RetryInterval"),
+        condition_has_body=condition_has_body,
+        log_retried_exceptions=_attr_expr(elem, "LogRetriedExceptions"),
+        retried_exceptions_log_level=_attr_expr(elem, "RetriedExceptionsLogLevel"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1833,6 +1862,7 @@ _DISPATCH = {
     (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
+    (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

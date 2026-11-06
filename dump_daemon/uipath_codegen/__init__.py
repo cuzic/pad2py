@@ -122,6 +122,7 @@ from ..uipath_dsl.types import (
     RefreshBrowserNode,
     RemoveDataRowNode,
     RethrowNode,
+    RetryScopeNode,
     SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -537,6 +538,8 @@ def _generate_node(
         return _generate_write_csv_file(node, indent)
     if isinstance(node, InvokePowerShellNode):
         return _generate_invoke_powershell(node, indent)
+    if isinstance(node, RetryScopeNode):
+        return _generate_retry_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -2321,6 +2324,72 @@ def _generate_invoke_powershell_body(node: InvokePowerShellNode, indent: int) ->
     if todo:
         return todo
     return [f'{prefix}subprocess.run(["pwsh", "-Command", {command_text}], check=True)']
+
+
+# 知見187: `ui:RetryScope`。公式REFrameworkテンプレート
+# (`SetTransactionStatus.xaml`)の使い方——`Condition`を空のままにし、
+# `ActivityBody`内部の`TryCatch`+`Rethrow`で例外を伝播させる——を
+# 「本体が例外無しで完了するまで最大`NumberOfRetries`回まで再試行し、
+# 全回失敗したら最後の例外を伝播させる」という確認済みの意味論として
+# 実装する。`Condition`が空でない・`RetryInterval`設定・
+# `LogRetriedExceptions`/`RetriedExceptionsLogLevel`設定の場合は
+# `# TODO`へ倒す。
+def _generate_retry_scope(
+    node: RetryScopeNode, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_retry_scope_body(node, indent, invoke_resolver, out_arg_resolver)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_retry_scope_body(
+    node: RetryScopeNode, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.condition_has_body:
+        return [
+            f"{prefix}# TODO: RetryScope with a non-empty Condition — "
+            "value-based retry conditions not modeled, refusing to guess"
+        ]
+    if node.retry_interval is not None:
+        return [
+            f"{prefix}# TODO: RetryScope with RetryInterval set "
+            f"({_describe_expr_for_comment(node.retry_interval)}) — exact "
+            "wait-time conversion not confirmed, refusing to guess"
+        ]
+    if node.log_retried_exceptions is not None:
+        return [
+            f"{prefix}# TODO: RetryScope with LogRetriedExceptions set "
+            f"({_describe_expr_for_comment(node.log_retried_exceptions)}) — "
+            "logging behavior not confirmed, refusing to guess"
+        ]
+    if node.retried_exceptions_log_level is not None:
+        return [
+            f"{prefix}# TODO: RetryScope with RetriedExceptionsLogLevel "
+            f"set ({_describe_expr_for_comment(node.retried_exceptions_log_level)}) "
+            "— logging behavior not confirmed, refusing to guess"
+        ]
+    if node.number_of_retries is None:
+        return [f"{prefix}# TODO: RetryScope with no NumberOfRetries captured"]
+    todo: list[str] = []
+    number_of_retries = _render_value_or_todo(node.number_of_retries, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    lines = [f"{prefix}_retry_max = round({VB_CDBL_HELPER_NAME}({number_of_retries}))"]
+    lines.append(f"{prefix}for _retry_attempt in range(_retry_max):")
+    lines.append(f"{inner}try:")
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 2, invoke_resolver, out_arg_resolver), indent + 2
+    )
+    lines.extend(body)
+    lines.append(f"{INDENT * (indent + 2)}break")
+    lines.append(f"{inner}except Exception:")
+    lines.append(f"{INDENT * (indent + 2)}if _retry_attempt == _retry_max - 1:")
+    lines.append(f"{INDENT * (indent + 3)}raise")
+    return lines
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
