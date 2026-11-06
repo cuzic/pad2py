@@ -62,17 +62,24 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
     # path)×Get/Post×認証有無)。既存の`Download`(ToVariable/Get/NoAuth)もこの
     # ディスパッチ表に統合する。
     _DOWNLOAD_VARIANTS = {
-        "Web.DownloadFromWeb.Download": ("ToVariable", "Get", False),
-        "Web.DownloadFromWeb.DownloadUseAuth": ("ToVariable", "Get", True),
-        "Web.DownloadFromWeb.DownloadUsePost": ("ToVariable", "Post", False),
-        "Web.DownloadFromWeb.DownloadUsePostAndAuth": ("ToVariable", "Post", True),
-        "Web.DownloadFromWeb.DownloadToFile": ("ToFile", "Get", False),
-        "Web.DownloadFromWeb.DownloadToFileUseAuth": ("ToFile", "Get", True),
-        "Web.DownloadFromWeb.DownloadToFileUsePost": ("ToFile", "Post", False),
-        "Web.DownloadFromWeb.DownloadToFileUsePostAndAuth": ("ToFile", "Post", True),
+        "Web.DownloadFromWeb.Download": ("ToVariable", "Get", False, False),
+        "Web.DownloadFromWeb.DownloadUseAuth": ("ToVariable", "Get", True, False),
+        "Web.DownloadFromWeb.DownloadUsePost": ("ToVariable", "Post", False, False),
+        "Web.DownloadFromWeb.DownloadUsePostAndAuth": ("ToVariable", "Post", True, False),
+        "Web.DownloadFromWeb.DownloadToFile": ("ToFile", "Get", False, False),
+        "Web.DownloadFromWeb.DownloadToFileUseAuth": ("ToFile", "Get", True, False),
+        "Web.DownloadFromWeb.DownloadToFileUsePost": ("ToFile", "Post", False, False),
+        "Web.DownloadFromWeb.DownloadToFileUsePostAndAuth": ("ToFile", "Post", True, False),
+        # 知見152(decompileソース直読み): `FileName=KeepOriginal`(フォルダ指定+
+        # ファイル名自動決定)。`WebActions.GetDownloadFilePath()`を`_get_download_
+        # file_path()`として再現し、`destination_folder`引数で結線した。
+        "Web.DownloadFromWeb.DownloadToFolder": ("ToFile", "Get", False, True),
+        "Web.DownloadFromWeb.DownloadToFolderUseAuth": ("ToFile", "Get", True, True),
+        "Web.DownloadFromWeb.DownloadToFolderUsePost": ("ToFile", "Post", False, True),
+        "Web.DownloadFromWeb.DownloadToFolderUsePostAndAuth": ("ToFile", "Post", True, True),
     }
     if action_id in _DOWNLOAD_VARIANTS:
-        save_response, method, use_auth = _DOWNLOAD_VARIANTS[action_id]
+        save_response, method, use_auth, use_folder = _DOWNLOAD_VARIANTS[action_id]
         url = safe_render(p.get("Url"))
         timeout = safe_render(p.get("ConnectionTimeout"))
         follow = safe_render(p.get("FollowRedirection"))
@@ -94,12 +101,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             extra_args += f", use_credentials=True, username={username}, password={password}"
         if save_response == "ToFile":
             dest_var = node.output_vars.get("DownloadedFile")
-            file_path = safe_render(p.get("FilePath"))
-            if not dest_var or file_path is None:
+            if not dest_var:
                 return None
+            if use_folder:
+                dest_folder = safe_render(p.get("DestinationFolder"))
+                if dest_folder is None:
+                    return None
+                dest_args = f"save_response='ToFile', destination_folder={dest_folder}"
+            else:
+                file_path = safe_render(p.get("FilePath"))
+                if file_path is None:
+                    return None
+                dest_args = f"save_response='ToFile', destination_path={file_path}"
             return [
-                f"{prefix}{dest_var} = web_actions.download_from_web({url}, "
-                f"save_response='ToFile', destination_path={file_path}, "
+                f"{prefix}{dest_var} = web_actions.download_from_web({url}, {dest_args}, "
                 f"connection_timeout={timeout}, follow_redirection={follow}, "
                 f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
                 f"{extra_args})"
@@ -127,9 +142,14 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
     #   `invoke_web_service()`の`InvokeWebServiceResult.downloaded_file`フィールド自体は
     #   元から存在していたが設定されていなかったため、`download_from_web()`(知見144)と
     #   同じパターンで`save_response`/`destination_path`引数を新規実装した。
-    # `SaveToFolder`(ファイル名自動決定、知見144のDownloadToFolderと同じ未確認事項)・
-    # `Upload`接尾辞(`RequestBody`が無く`Attachments`/`UploadType`を使う、別の新規実装が
-    # 必要)は引き続き見送る。
+    # 知見152(decompileソース直読み): `SaveToFolder`(`FileName=KeepOriginal`、
+    # `DestinationFolder`+ファイル名自動決定——`DownloadToFolder`と同じ
+    # `WebActions.GetDownloadFilePath()`を再現した`_get_download_file_path()`で結線)・
+    # `Upload`接尾辞(`UploadAttachments=True`、`RequestBody`/`ContentType`の代わりに
+    # `Attachments`/`UploadType`のDataTableをmultipart/form-dataへ変換する
+    # `WebActions.FormulateWebRequest()`のロジックを`_build_multipart_body()`として
+    # 再現)を新規結線した。`UploadType.Binary`(`BinaryObject`型、本プロジェクトに
+    # 対応する型が無い)は未対応でTODOへ倒す。
     _INVOKE_WEB_SERVICE_FIXED_METHOD = {
         "Web.InvokeWebService.InvokeWebServicePost": "Post",
         "Web.InvokeWebService.InvokeWebServicePut": "Put",
@@ -139,6 +159,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         "Web.InvokeWebService.InvokeWebServiceSaveToFilePut": "Put",
         "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePost": "Post",
         "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePut": "Put",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPost": "Post",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPut": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPost": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPut": "Put",
+        "Web.InvokeWebService.InvokeWebServicePostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPostUpload": "Post",
+        "Web.InvokeWebService.InvokeWebServicePutUpload": "Put",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePutUpload": "Put",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPutUpload": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPutUpload": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePutUpload": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPutUpload": "Put",
     }
     _INVOKE_WEB_SERVICE_SAVE_TO_FILE = {
         "Web.InvokeWebService.InvokeWebServiceSaveToFile",
@@ -147,23 +183,62 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         "Web.InvokeWebService.InvokeWebServiceSaveToFilePut",
         "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePost",
         "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePut",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePostUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePutUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePostUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePutUpload",
     }
-    _INVOKE_WEB_SERVICE_ACTION_IDS = (
-        "Web.InvokeWebService.InvokeWebService",
-        "Web.InvokeWebService.InvokeWebServiceUseAuth",
-        *_INVOKE_WEB_SERVICE_FIXED_METHOD,
-        *_INVOKE_WEB_SERVICE_SAVE_TO_FILE,
+    _INVOKE_WEB_SERVICE_SAVE_TO_FOLDER = {
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolder",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolder",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPost",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPut",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPost",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPut",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPostUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPutUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPostUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPutUpload",
+    }
+    _INVOKE_WEB_SERVICE_UPLOAD = {
+        "Web.InvokeWebService.InvokeWebServicePostUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePostUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPostUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPostUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePostUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPostUpload",
+        "Web.InvokeWebService.InvokeWebServicePutUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePutUpload",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFolderPutUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPutUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePutUpload",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFolderPutUpload",
+    }
+    _INVOKE_WEB_SERVICE_ACTION_IDS = frozenset(
+        {"Web.InvokeWebService.InvokeWebService", "Web.InvokeWebService.InvokeWebServiceUseAuth"}
+        | set(_INVOKE_WEB_SERVICE_FIXED_METHOD)
+        | _INVOKE_WEB_SERVICE_SAVE_TO_FILE
+        | _INVOKE_WEB_SERVICE_SAVE_TO_FOLDER
+        | _INVOKE_WEB_SERVICE_UPLOAD
     )
     if action_id in _INVOKE_WEB_SERVICE_ACTION_IDS:
         use_auth = "UseAuth" in action_id
         save_to_file = action_id in _INVOKE_WEB_SERVICE_SAVE_TO_FILE
+        save_to_folder = action_id in _INVOKE_WEB_SERVICE_SAVE_TO_FOLDER
+        is_upload = action_id in _INVOKE_WEB_SERVICE_UPLOAD
         fixed_method = _INVOKE_WEB_SERVICE_FIXED_METHOD.get(action_id)
         url = safe_render(p.get("Url"))
         method = fixed_method if fixed_method is not None else enum_last(p.get("Method"))
         accept = safe_render(p.get("Accept"))
-        content_type = safe_render(p.get("ContentType"))
+        # 知見152: Upload系は`ContentType`/`RequestBody`がDSL上に存在しない
+        # (multipart/form-dataに上書きされるため隠されている)。
+        if is_upload:
+            content_type = "''"
+            request_body = "''"
+        else:
+            content_type = safe_render(p.get("ContentType"))
+            request_body = safe_render(p.get("RequestBody"))
         custom_headers = safe_render(p.get("CustomHeaders"))
-        request_body = safe_render(p.get("RequestBody"))
         timeout = safe_render(p.get("ConnectionTimeout"))
         fail_on_error = safe_render(p.get("FailOnErrorStatus"))
         trim_body = safe_render(p.get("TrimRequestBody"))
@@ -188,12 +263,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             if username is None or password is None:
                 return None
             auth_args = f", use_credentials=True, username={username}, password={password}"
+        dest_var = None
         if save_to_file:
             file_path = safe_render(p.get("FilePath"))
             dest_var = node.output_vars.get("DownloadedFile")
             if file_path is None or not dest_var:
                 return None
             save_args = f", save_response='ToFile', destination_path={file_path}"
+            response_var = headers_var = status_var = None
+        elif save_to_folder:
+            dest_folder = safe_render(p.get("DestinationFolder"))
+            dest_var = node.output_vars.get("DownloadedFile")
+            if dest_folder is None or not dest_var:
+                return None
+            save_args = f", save_response='ToFile', destination_folder={dest_folder}"
             response_var = headers_var = status_var = None
         else:
             save_args = ""
@@ -202,6 +285,17 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             status_var = node.output_vars.get("StatusCode")
             if not (response_var or headers_var or status_var):
                 return None
+        upload_args = ""
+        if is_upload:
+            attachments = safe_render(p.get("Attachments"))
+            upload_type = enum_last(p.get("UploadType"))
+            if attachments is None or upload_type is None:
+                return None
+            # 知見152: `UploadType.Binary`(`BinaryObject`型)は本プロジェクトに対応する
+            # 型が無いため未対応。`FilePath`(ディスク上のファイルを読み込む)のみ結線する。
+            if upload_type != "FilePath":
+                return None
+            upload_args = f", upload_attachments=True, attachments={attachments}, upload_type={upload_type!r}"
         tmp = "_web_service_result"
         lines = [
             f"{prefix}{tmp} = web_actions.invoke_web_service({url}, method={method!r}, "
@@ -210,9 +304,9 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"fail_on_error_status={fail_on_error}, trim_request_body={trim_body}, "
             f"encode_request_body={encode_body}, follow_redirection={follow}, "
             f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
-            f"{auth_args}{save_args})"
+            f"{auth_args}{save_args}{upload_args})"
         ]
-        if save_to_file:
+        if dest_var:
             lines.append(f"{prefix}{dest_var} = {tmp}.downloaded_file")
             return lines
         if response_var:

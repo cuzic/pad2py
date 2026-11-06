@@ -2572,3 +2572,21 @@ VM上で`DateTimeConversionFormat`列挙値(`Standard`/`Custom`)を確認し、�
 `pad_codegen/actions/web.py`側は既存の`_INVOKE_WEB_SERVICE_FIXED_METHOD`/`_INVOKE_WEB_SERVICE_ACTION_IDS`の仕組みを拡張し、`_INVOKE_WEB_SERVICE_SAVE_TO_FILE`という新規セットでSaveToFile系6件を判別、`FilePath`パラメータを読み取って`destination_path`として渡し、出力変数は`Response`系では無く`DownloadedFile`(`node.output_vars.get("DownloadedFile")`)を`{tmp}.downloaded_file`へ束縛するよう分岐した。
 
 テストは`tests/test_pad_action_lib_web.py`に`invoke_web_service()`の単体テスト1件、`tests/test_pad_codegen.py`に6パターンのparametrizeテストを追加し、`web_actions.invoke_web_service`を差し替えて`save_response`/`destination_path`/`method`/`use_credentials`の受け渡しと出力変数への束縛をexec検証した。これでWeb.InvokeWebService系29セレクタ中、`Get`/`Post`/`Put`×`UseAuth`×`SaveToFile`の組み合わせ(計10セレクタ)が結線完了し、残るは`SaveToFolder`(ファイル名自動決定、知見144の`DownloadToFolder`と同じ未確認事項)・`Upload`(`RequestBody`の代わりに`Attachments`/`UploadType`を使う別の新規実装が必要)の計約19セレクタとなった。
+
+## 152. Web.Actions.dllをdecompile(ilspycmd)し、知見147・151で見送っていた`SaveToFolder`/`Upload`/`DownloadToFolder`系(計22セレクタ)を全て新規結線——`WebActions.GetDownloadFilePath()`/`FormulateWebRequest()`のロジックをそのまま再現
+
+VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系のファイル名自動決定アルゴリズム」「`Upload`系のmultipart/form-data構築方法」が分からず、知見144・147・151では見送っていた。これらを解消するため、`pad2py-fetch-web-dll`(既存のclipwire target)で`Microsoft.Flow.RPA.Desktop.Modules.Web.Actions.dll`(208,184バイト)をBase64経由で取得し、ローカルの`ilspycmd`(`~/.dotnet/tools/ilspycmd`、`dotnet`自体はPATH外の`~/.dotnet/dotnet`に存在、`PATH`/`DOTNET_ROOT`を設定して実行)で逆コンパイル(本リポジトリには逆コンパイル結果自体はコミットしない方針は従来通り)した。
+
+**`DownloadToFolder`/`SaveToFolder`系(計10セレクタ: `DownloadToFolder`×4・`InvokeWebService*SaveToFolder*`(Upload以外)×6)**: `WebActions.GetDownloadFilePath(response, keepOriginalFileName, destinationFolder, filePath)`の実装を発見。`keepOriginalFileName=True`の場合:
+1. `Content-Disposition`ヘッダの`filename=`(正規表現、オプションの`UTF-N`プレフィックス対応)を最優先。
+2. 無ければレスポンスURLの最後のパスセグメント。
+3. パスが`/`(ルート)の場合はホスト名+`.html`にフォールバック。
+4. `Utilities.SanitizeFileName(text, "_")`でサニタイズして`destinationFolder`と結合。
+
+`Utilities.SanitizeFileName`自体は別の共有SDK DLL内にあり未decompileのため、Windowsのファイル名として不正な文字集合(`<>:"/\|?*`+制御文字、`Path.GetInvalidFileNameChars()`相当)を`_`に置換する一般的な実装で代替した——これだけが実機/decompile未確認の箇所である。`download_from_web()`/`invoke_web_service()`に`_get_download_file_path()`として実装し、両関数に`destination_folder`引数を追加(`destination_path`との二択、`SaveToFile`/`SaveToFolder`の判別に対応)した。`InvokeWebServiceBase.Execute()`も`SaveResponse==ToFile`時に`DestinationFolder`/`FilePath`を同じ`GetDownloadFilePath()`に渡しているとdecompileで確認済み(`SaveToFile`/`SaveToFolder`は同じコードパスの`FileName`列挙値の違いに過ぎない)。
+
+**`Upload`系(計12セレクタ: `InvokeWebService{Post,Put}{,SaveToFile,SaveToFolder}{,UseAuth}Upload`)**: `WebActions.FormulateWebRequest()`の`uploadAttachments`分岐を発見。`boundary = "---------------------------" + DateTime.Now.Ticks.ToString("x")`で区切り、`Attachments`DataTable(列名`NAME`/`ATTACHMENT`、`Constants.InvokeServiceActions.InvokeWebServiceColumnNames`で定義済み)の各行を`--{boundary}\r\n` + `Content-Disposition: form-data; name="{NAME}"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n` + 添付データ + `\r\n`として書き出し、最後に`--{boundary}--\r\n`で終端する。`UploadType.FilePath`(`row["ATTACHMENT"]`をファイルパスとして読み込み`Path.GetFileName()`をfilenameに使う)と`UploadType.Binary`(`BinaryObject.Data`を直接使う)の2方式があるが、本プロジェクトに`BinaryObject`相当の型が無いため`FilePath`方式のみ実装し、`Binary`は`None`を返してTODOへ倒した。全12セレクタで`UploadAttachments=True`固定、`RequestBody`/`ContentType`はDSL上に存在しない(`.Hide<>()`で隠されている、`EncodeRequestBody`/`TrimRequestBody`は存在するが効果が無い——multipart構築時は`RequestBody`分岐自体に入らない)ことも確認した。
+
+**監査手法の記録**: `.Arguments`プロパティ(知見150)は「どのパラメータがDSLに現れるか」を確定できるが、「現れたパラメータがどう処理されるか」(ファイル名決定アルゴリズム・multipart形式)はdecompileでなければ分からない——両者は補完関係にあり、後者が必要な場合は今回のように対象DLLをVMから取得してローカルでdecompileする(知見90の`ilspycmd`手法)のが確実。
+
+テストは`tests/test_pad_action_lib_web.py`に`_get_download_file_path()`系4件(Content-Disposition優先・URL末尾セグメント・ルートパスのhost+.htmlフォールバック・不正文字サニタイズ)・`invoke_web_service()`のSaveToFolder/Upload系3件、`tests/test_pad_codegen.py`に`DownloadToFolder`系4パターン・`InvokeWebService*SaveToFolder*`系6パターン・`InvokeWebService*Upload`系12パターンのparametrizeテストを追加し、いずれも実際に`exec()`して検証した。これでWeb.Actions.dll全46セレクタ中、未結線で残るのは`UploadType.Binary`方式(本プロジェクトに型が無く意図的に見送り)のみとなった。

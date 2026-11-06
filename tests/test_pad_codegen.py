@@ -4226,6 +4226,182 @@ def test_generate_python_from_download_to_file_siblings_converts(action_suffix: 
         assert len(calls) == 1
 
 
+@pytest.mark.parametrize("action_suffix", ["", "UseAuth", "UsePost", "UsePostAndAuth"])
+def test_generate_python_from_download_to_folder_siblings_converts(action_suffix: str) -> None:
+    # design/dsl_format_findings.md 知見152(decompileソース直読み): `DownloadToFolder`系
+    # (`FileName=KeepOriginal`)。`destination_folder`引数で`web_actions.download_from_web`
+    # へ結線する——ファイル名自動決定自体は`_get_download_file_path()`側の単体テストで
+    # 別途検証済みのため、ここでは`destination_folder`kwargが正しく渡ることを検証する。
+    with tempfile.TemporaryDirectory() as tmp:
+        auth_dsl = " UseCredentials: True UserName: $'''u''' Password: $'''p'''" if "Auth" in action_suffix else ""
+        dsl = (
+            f"Web.DownloadFromWeb.DownloadToFolder{action_suffix} Url: $'''http://example.test/''' "
+            "ConnectionTimeout: 30 FollowRedirection: True UserAgent: $'''UA''' "
+            f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False{auth_dsl} "
+            f"DestinationFolder: $'''{tmp}''' DownloadedFile=> F"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        assert "destination_folder=" in code
+
+        import dump_daemon.pad_action_lib.web_actions as web_actions
+
+        calls = []
+
+        def fake_download_from_web(url, *args, **kwargs):
+            calls.append((url, kwargs))
+            return str(Path(kwargs["destination_folder"]) / "derived.bin")
+
+        original = web_actions.download_from_web
+        web_actions.download_from_web = fake_download_from_web
+        try:
+            namespace: dict[str, object] = {}
+            exec(code, namespace)
+        finally:
+            web_actions.download_from_web = original
+        assert namespace["F"] == str(Path(tmp) / "derived.bin")
+        assert len(calls) == 1
+        assert calls[0][1]["destination_folder"] == tmp
+
+
+@pytest.mark.parametrize(
+    ("action_suffix", "expected_method", "use_auth"),
+    [
+        ("SaveToFolder", "Get", False),
+        ("UseAuthSaveToFolder", "Get", True),
+        ("SaveToFolderPost", "Post", False),
+        ("SaveToFolderPut", "Put", False),
+        ("UseAuthSaveToFolderPost", "Post", True),
+        ("UseAuthSaveToFolderPut", "Put", True),
+    ],
+)
+def test_generate_python_from_invoke_web_service_save_to_folder_siblings_converts(
+    action_suffix: str, expected_method: str, use_auth: bool
+) -> None:
+    # design/dsl_format_findings.md 知見152: `.Arguments`監査で`SaveToFolder`接尾辞
+    # セレクタ(及び`UseAuth`/`Post`/`Put`版、計6通り)は`DestinationFolder`/
+    # `DownloadedFile`を持つと確定した。`invoke_web_service()`の`destination_folder`
+    # 引数(`DownloadToFolder`と同じ`_get_download_file_path()`)で対応する。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    auth_dsl = " Username: $'''u''' Password: $'''p'''" if use_auth else ""
+    has_dynamic_method = action_suffix in ("SaveToFolder", "UseAuthSaveToFolder")
+    method_dsl = " Method: Web.Method.Get" if has_dynamic_method else ""
+    dsl = (
+        f"Web.InvokeWebService.InvokeWebService{action_suffix} Url: $'''http://example.test/'''{method_dsl} "
+        "Accept: $'''application/xml''' ContentType: $'''application/xml''' "
+        "CustomHeaders: $'''''' RequestBody: $'''''' ConnectionTimeout: 30 FollowRedirection: True "
+        "FailOnErrorStatus: False EncodeRequestBody: False UserAgent: $'''UA''' "
+        f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True{auth_dsl} "
+        "DestinationFolder: $'''C:\\\\out''' DownloadedFile=> F"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"method={expected_method!r}" in code
+    assert "destination_folder=" in code
+
+    calls = []
+
+    def fake_invoke_web_service(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        return web_actions.InvokeWebServiceResult(response="", downloaded_file="C:\\out\\derived.bin")
+
+    original = web_actions.invoke_web_service
+    web_actions.invoke_web_service = fake_invoke_web_service
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        web_actions.invoke_web_service = original
+    assert namespace["F"] == "C:\\out\\derived.bin"
+    assert len(calls) == 1
+    _, kwargs = calls[0]
+    assert kwargs["destination_folder"] == "C:\\out"
+    if use_auth:
+        assert kwargs["use_credentials"] is True
+
+
+@pytest.mark.parametrize(
+    ("action_suffix", "expected_method", "use_auth", "save_suffix"),
+    [
+        ("PostUpload", "Post", False, None),
+        ("UseAuthPostUpload", "Post", True, None),
+        ("SaveToFilePostUpload", "Post", False, "File"),
+        ("SaveToFolderPostUpload", "Post", False, "Folder"),
+        ("UseAuthSaveToFilePostUpload", "Post", True, "File"),
+        ("UseAuthSaveToFolderPostUpload", "Post", True, "Folder"),
+        ("PutUpload", "Put", False, None),
+        ("UseAuthPutUpload", "Put", True, None),
+        ("SaveToFilePutUpload", "Put", False, "File"),
+        ("SaveToFolderPutUpload", "Put", False, "Folder"),
+        ("UseAuthSaveToFilePutUpload", "Put", True, "File"),
+        ("UseAuthSaveToFolderPutUpload", "Put", True, "Folder"),
+    ],
+)
+def test_generate_python_from_invoke_web_service_upload_siblings_converts(
+    action_suffix: str, expected_method: str, use_auth: bool, save_suffix: str | None
+) -> None:
+    # design/dsl_format_findings.md 知見152(decompileソース直読み): `Upload`接尾辞
+    # セレクタ(計12通り)は`UploadAttachments=True`固定で`RequestBody`/`ContentType`
+    # が無く`Attachments`/`UploadType`を使う。`invoke_web_service()`の
+    # `upload_attachments`/`attachments`/`upload_type`引数(`WebActions.
+    # FormulateWebRequest()`のmultipart/form-data構築を再現)で対応する。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    auth_dsl = " Username: $'''u''' Password: $'''p'''" if use_auth else ""
+    if save_suffix == "File":
+        output_dsl = "FilePath: $'''C:\\\\out.bin''' DownloadedFile=> F"
+    elif save_suffix == "Folder":
+        output_dsl = "DestinationFolder: $'''C:\\\\out''' DownloadedFile=> F"
+    else:
+        output_dsl = "Response=> R"
+    dsl = (
+        f"Web.InvokeWebService.InvokeWebService{action_suffix} Url: $'''http://example.test/''' "
+        "Accept: $'''application/xml''' CustomHeaders: $'''''' ConnectionTimeout: 30 "
+        "FollowRedirection: True FailOnErrorStatus: False EncodeRequestBody: False UserAgent: $'''UA''' "
+        f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True{auth_dsl} "
+        "Attachments: Attach UploadType: Web.UploadType.FilePath "
+        f"{output_dsl}"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"method={expected_method!r}" in code
+    assert "upload_attachments=True" in code
+    assert "attachments=Attach" in code
+    assert "upload_type='FilePath'" in code
+
+    calls = []
+
+    def fake_invoke_web_service(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        if save_suffix:
+            return web_actions.InvokeWebServiceResult(response="", downloaded_file="C:\\out\\uploaded.txt")
+        return web_actions.InvokeWebServiceResult(response="upload ok")
+
+    original = web_actions.invoke_web_service
+    web_actions.invoke_web_service = fake_invoke_web_service
+    try:
+        namespace: dict[str, object] = {"Attach": [{"NAME": "f1", "ATTACHMENT": "C:\\in.bin"}]}
+        exec(code, namespace)
+    finally:
+        web_actions.invoke_web_service = original
+    assert len(calls) == 1
+    _, kwargs = calls[0]
+    assert kwargs["upload_attachments"] is True
+    assert kwargs["attachments"] == [{"NAME": "f1", "ATTACHMENT": "C:\\in.bin"}]
+    assert kwargs["upload_type"] == "FilePath"
+    if save_suffix:
+        assert namespace["F"] == "C:\\out\\uploaded.txt"
+    else:
+        assert namespace["R"] == "upload ok"
+
+
 def test_generate_python_from_invoke_soap_service_use_auth_converts() -> None:
     # design/dsl_format_findings.md 知見139・145: `ActionSelectorBase`一括列挙監査を
     # Web.Actions.dllに適用して発見した`InvokeSoapService`の兄弟セレクタ

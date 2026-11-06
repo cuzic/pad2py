@@ -50,6 +50,72 @@ def test_download_from_web_to_file_writes_bytes(tmp_path: Path) -> None:
     assert dest.read_bytes() == b"binary-data"
 
 
+def test_download_from_web_to_folder_derives_filename_from_content_disposition(tmp_path: Path) -> None:
+    # 知見152(decompileソース直読み): `WebActions.GetDownloadFilePath()`はContent-
+    # Dispositionの`filename=`を最優先する。
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"report-bytes",
+            headers={"Content-Disposition": 'attachment; filename="report.pdf"'},
+        )
+
+    result = web.download_from_web(
+        "http://example.test/download",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    dest = tmp_path / "report.pdf"
+    assert result == str(dest)
+    assert dest.read_bytes() == b"report-bytes"
+
+
+def test_download_from_web_to_folder_derives_filename_from_url_when_no_content_disposition(
+    tmp_path: Path,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x")
+
+    result = web.download_from_web(
+        "http://example.test/files/data.csv",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    assert result == str(tmp_path / "data.csv")
+
+
+def test_download_from_web_to_folder_root_path_falls_back_to_host_html(tmp_path: Path) -> None:
+    # 知見152: URLパスがルート(`/`)の場合はホスト名+`.html`になる
+    # (`WebActions.GetDownloadFilePath()`のdecompile確認通り)。
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html/>")
+
+    result = web.download_from_web(
+        "http://example.test/",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    assert result == str(tmp_path / "example.test.html")
+
+
+def test_download_from_web_to_folder_sanitizes_invalid_characters(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"x", headers={"Content-Disposition": 'attachment; filename="a:b?c.txt"'}
+        )
+
+    result = web.download_from_web(
+        "http://example.test/",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    assert result == str(tmp_path / "a_b_c.txt")
+
+
 def test_download_from_web_to_file_missing_directory_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"x")
@@ -103,6 +169,70 @@ def test_invoke_web_service_save_response_to_file_writes_bytes_and_sets_download
     )
     assert result.downloaded_file == str(dest)
     assert dest.read_bytes() == b"binary-data"
+
+
+def test_invoke_web_service_save_response_to_folder_derives_filename(tmp_path: Path) -> None:
+    # 知見152: `InvokeWebService*SaveToFolder*`系は`download_from_web()`の
+    # `destination_folder`と同じ`_get_download_file_path()`を再利用する。
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"data",
+            headers={"Content-Disposition": 'attachment; filename="report.pdf"'},
+        )
+
+    result = web.invoke_web_service(
+        "http://example.test/download",
+        save_response="ToFile",
+        destination_folder=str(tmp_path),
+        client=_client(handler),
+    )
+    dest = tmp_path / "report.pdf"
+    assert result.downloaded_file == str(dest)
+    assert dest.read_bytes() == b"data"
+
+
+def test_invoke_web_service_upload_attachments_sends_multipart_with_file_contents(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見152(decompileソース直読み): `UploadAttachments`
+    # は`WebActions.FormulateWebRequest()`のmultipart/form-data構築をそのまま再現する
+    # ——境界(`boundary`)付きのContent-Typeで上書きされ、各添付ファイルは
+    # `NAME`/`ATTACHMENT`列のDataTableから読み込まれる。
+    attachment = tmp_path / "hello.txt"
+    attachment.write_bytes(b"hello world")
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["content_type"] = request.headers["content-type"]
+        captured["body"] = request.read()
+        return httpx.Response(200, text="ok")
+
+    web.invoke_web_service(
+        "http://example.test/upload",
+        method="Post",
+        upload_attachments=True,
+        attachments=[{"NAME": "file1", "ATTACHMENT": str(attachment)}],
+        upload_type="FilePath",
+        client=_client(handler),
+    )
+    assert captured["content_type"].startswith("multipart/form-data; boundary=")
+    body = captured["body"]
+    assert b'Content-Disposition: form-data; name="file1"; filename="hello.txt"' in body
+    assert b"Content-Type: application/octet-stream" in body
+    assert b"hello world" in body
+
+
+def test_invoke_web_service_upload_attachments_empty_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200)
+
+    with pytest.raises(web.EmptyAttachmentsError):
+        web.invoke_web_service(
+            "http://example.test/upload",
+            method="Post",
+            upload_attachments=True,
+            attachments=[],
+            client=_client(handler),
+        )
 
 
 def test_invoke_web_service_does_not_raise_on_error_status_by_default() -> None:

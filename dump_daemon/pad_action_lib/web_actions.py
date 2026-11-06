@@ -20,9 +20,29 @@
 quote_plus()`と同じ規則)を適用してから`TrimRequestBody`の処理(文字列全体の
 `.strip()`)を行う、という順序だった(実機確認では無くdecompileソースの直読みに
 基づく、`EncodeRequestBody`自体は`InvokeWebService`のみに存在)。
+
+知見152(decompileソース直読み): `SaveResponse=ToFile`かつ`FileName=KeepOriginal`
+(`DownloadToFolder`/`InvokeWebService*SaveToFolder*`系)のファイル名自動決定は、
+`WebActions.GetDownloadFilePath()`の実装を`_get_download_file_path()`として
+そのまま再現した——`Content-Disposition`ヘッダの`filename=`を最優先し、無ければ
+レスポンスURLの最後のパスセグメント、ルートパス(`/`)の場合はホスト名+`.html`に
+フォールバックする。ファイル名のサニタイズ処理自体(`Utilities.SanitizeFileName`)
+は別の共有SDK DLLにあり未decompileのため、Windowsのファイル名として不正な文字集合
+(`Path.GetInvalidFileNameChars()`相当)を`_`に置換する一般的な実装で代替した
+——これだけが実機/decompile未確認の箇所であることを明記する。
+
+知見152(decompileソース直読み): `UploadAttachments=True`系(`InvokeWebService*
+Upload`接尾辞、12セレクタ)は`WebActions.FormulateWebRequest()`内のmultipart/
+form-data構築ロジックをそのまま再現した——`Attachments`(`NAME`/`ATTACHMENT`列の
+DataTable)の各行を`--<boundary>\r\n`区切り・`Content-Type: application/
+octet-stream`固定のパートとして書き出す。`UploadType.FilePath`(ファイルパスから
+読み込む)のみ実装し、`UploadType.Binary`(`BinaryObject`型の変数)はこのプロジェクト
+に`BinaryObject`相当の型が無いため未実装でTODOへ倒す。
 """
 from __future__ import annotations
 
+import re
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +68,64 @@ class InvalidCustomHeaderError(PadActionError):
     pass
 
 
+class EmptyAttachmentsError(PadActionError):
+    pass
+
+
+_INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _sanitize_file_name(name: str, replacement: str = "_") -> str:
+    return _INVALID_FILENAME_CHARS_RE.sub(replacement, name)
+
+
+def _get_download_file_path(
+    response: httpx.Response,
+    keep_original_file_name: bool,
+    destination_folder: str | None,
+    file_path: str | None,
+) -> str:
+    """`WebActions.GetDownloadFilePath()`(decompile確認済み、知見152)の再現。"""
+    if not keep_original_file_name:
+        return file_path  # type: ignore[return-value]
+    extension = ""
+    file_name = ""
+    content_disposition = response.headers.get("Content-Disposition")
+    if content_disposition:
+        match = re.search(
+            r'filename\s*\*?=(?:\s*UTF-\d+)?\s*"([^"]*)"', content_disposition, re.IGNORECASE
+        )
+        file_name = match.group(1) if match else ""
+    if not file_name:
+        path = response.url.path or "/"
+        if path == "/":
+            extension = ".html"
+            file_name = response.url.host
+        else:
+            file_name = path.rsplit("/", 1)[-1]
+    file_name = _sanitize_file_name(file_name)
+    return str(Path(destination_folder) / (file_name + extension))  # type: ignore[arg-type]
+
+
+def _build_multipart_body(attachments: list[dict[str, object]], upload_type: str) -> tuple[bytes, str]:
+    """`WebActions.FormulateWebRequest()`のmultipart/form-data構築(decompile確認済み、知見152)の再現。"""
+    boundary = "---------------------------" + format(time.time_ns() // 100, "x")
+    parts: list[bytes] = []
+    for row in attachments:
+        name = row.get("NAME")
+        if upload_type == "FilePath":
+            path = str(row.get("ATTACHMENT"))
+            file_name = Path(path).name
+            data = Path(path).read_bytes()
+        else:
+            raise InvokeWebServiceError(f"Unsupported UploadType: {upload_type!r}")
+        disposition = f'form-data; name="{name}"; filename="{file_name}"'
+        header = f"Content-Disposition: {disposition}\r\nContent-Type: application/octet-stream\r\n\r\n"
+        parts.append(f"--{boundary}\r\n".encode("utf-8") + header.encode("utf-8") + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(parts), boundary
+
+
 def _parse_custom_headers(text: str) -> dict[str, str]:
     headers: dict[str, str] = {}
     for line in text.splitlines():
@@ -67,6 +145,7 @@ def download_from_web(
     parameters: dict[str, str] | None = None,
     save_response: str = "ToVariable",
     destination_path: str | None = None,
+    destination_folder: str | None = None,
     follow_redirection: bool = True,
     connection_timeout: float = 30,
     user_agent: str | None = None,
@@ -95,9 +174,17 @@ def download_from_web(
         if encoding:
             response.encoding = encoding
         if save_response == "ToFile":
-            if destination_path is None:
-                raise DownloadFromWebError("destination_path is required when SaveResponse=ToFile")
-            dest = Path(destination_path)
+            if destination_folder is not None:
+                # 知見152(decompile確認済み): `DownloadToFolder`系(`FileName=KeepOriginal`)
+                # はContent-Disposition/URLからファイル名を自動決定する。
+                dest_path = _get_download_file_path(response, True, destination_folder, None)
+            elif destination_path is not None:
+                dest_path = destination_path
+            else:
+                raise DownloadFromWebError(
+                    "destination_path or destination_folder is required when SaveResponse=ToFile"
+                )
+            dest = Path(dest_path)
             if not dest.parent.is_dir():
                 raise DirectoryDoesNotExistError(str(dest.parent))
             dest.write_bytes(response.content)
@@ -140,6 +227,10 @@ def invoke_web_service(
     accept_untrusted_certificates: bool = False,
     save_response: str = "ToVariable",
     destination_path: str | None = None,
+    destination_folder: str | None = None,
+    upload_attachments: bool = False,
+    attachments: list[dict[str, object]] | None = None,
+    upload_type: str = "FilePath",
     *,
     client: httpx.Client | None = None,
 ) -> InvokeWebServiceResult:
@@ -164,19 +255,33 @@ def invoke_web_service(
         follow_redirects=follow_redirection,
     )
     try:
-        response = http_client.request(
-            method.upper(), url, headers=headers, content=body.encode("utf-8") if body else None
-        )
+        if upload_attachments and method.upper() in ("POST", "PUT"):
+            # design/dsl_format_findings.md 知見152(decompile確認済み): `UploadAttachments`
+            # はmultipart/form-dataでContentTypeを上書きし、RequestBodyは送らない。
+            if not attachments:
+                raise EmptyAttachmentsError("attachments must be non-empty when upload_attachments=True")
+            content, boundary = _build_multipart_body(attachments, upload_type)
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+        else:
+            content = body.encode("utf-8") if body else None
+        response = http_client.request(method.upper(), url, headers=headers, content=content)
         if fail_on_error_status:
             response.raise_for_status()
         downloaded_file = None
         if save_response == "ToFile":
-            # design/dsl_format_findings.md 知見144・150と同じパターン(`download_from_web()`
-            # の`SaveResponse=ToFile`): `DownloadedFile`出力は呼び出し側が指定したパスを
-            # そのまま返す。
-            if destination_path is None:
-                raise InvokeWebServiceError("destination_path is required when save_response=ToFile")
-            dest = Path(destination_path)
+            # design/dsl_format_findings.md 知見144・150・152と同じパターン
+            # (`download_from_web()`の`SaveResponse=ToFile`): `DownloadedFile`出力は
+            # 呼び出し側が指定したパスをそのまま返す。`destination_folder`が指定された
+            # 場合(`SaveToFolder`系)はContent-Disposition/URLからファイル名を自動決定する。
+            if destination_folder is not None:
+                dest_path = _get_download_file_path(response, True, destination_folder, None)
+            elif destination_path is not None:
+                dest_path = destination_path
+            else:
+                raise InvokeWebServiceError(
+                    "destination_path or destination_folder is required when save_response=ToFile"
+                )
+            dest = Path(dest_path)
             if not dest.parent.is_dir():
                 raise DirectoryDoesNotExistError(str(dest.parent))
             dest.write_bytes(response.content)

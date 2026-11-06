@@ -487,12 +487,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `save_response`/`destination_path`引数を新規実装(知見144の
       `download_from_web()`と同じパターン、`InvokeWebServiceResult.downloaded_file`
       フィールドを初めて実際に設定)し、6件を新規結線完了。
-      - [ ] 💻🖥️ **残課題**: `DownloadToFolder`系4セレクタ(`FileName=KeepOriginal`、
-        レスポンスからファイル名を自動決定——決定方法が実機/decompile未確認のため
-        見送り)・`InvokeWebService`の`SaveToFolder`/`Upload`系(計約19セレクタ、
-        `SaveToFolder`は`DownloadToFolder`と同じファイル名自動決定の未確認事項、
-        `Upload`は`RequestBody`の代わりに`Attachments`/`UploadType`を使う別の
-        新規実装が必要)。
+      ✅ **決着(知見152、`DownloadToFolder`/`SaveToFolder`/`Upload`系22件、
+      decompile(ilspycmd)で解消)**: `pad2py-fetch-web-dll`でDLL本体を取得し
+      ローカルでdecompileして`WebActions.GetDownloadFilePath()`(Content-
+      Disposition優先→URL末尾セグメント→ルートはhost+.html、のファイル名自動
+      決定)と`FormulateWebRequest()`のmultipart/form-data構築ロジックを特定、
+      `_get_download_file_path()`/`_build_multipart_body()`として再現した。
+      `DownloadToFolder`系4件・`InvokeWebService*SaveToFolder*`系6件・
+      `InvokeWebService*Upload`系12件(`UploadType.FilePath`方式のみ、
+      `Binary`は`BinaryObject`型が本プロジェクトに無く見送り)を新規結線完了。
+      これでWeb.Actions.dll全46セレクタ中、未結線は`UploadType.Binary`方式のみ。
     監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
     所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
     再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。
