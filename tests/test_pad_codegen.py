@@ -3123,6 +3123,66 @@ def test_generate_python_from_excel_full_scope_batch_actually_executes_correctly
     assert reopened["Renamed"]["B2"].value == "hello"
 
 
+def test_generate_python_from_excel_get_table_range_converts() -> None:
+    # design/dsl_format_findings.md 知見180(decompile確認済み): `IsPivot=False`側は
+    # COMの`ListObject.Range`(ヘッダー行を含むテーブル全体)——openpyxlの`Table.ref`も
+    # 同じ意味なので1:1対応する。`AddTable`相当のTier1アクションが本プロジェクトに
+    # 無いため、テーブル自体の作成だけプレーンなopenpyxl呼び出しで行い(生成コードの
+    # 検証対象ではない)、`GetTableRange`の変換・実行結果はDSL経由の生成コードで検証する。
+    setup_dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''Name''' "
+        "Column: $'''A''' Row: 1\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''Age''' "
+        "Column: $'''B''' Row: 1\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''Carol''' "
+        "Column: $'''A''' Row: 2\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: 30 "
+        "Column: $'''B''' Row: 2"
+    )
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    setup_code = generate_python(tree)
+    namespace: dict[str, object] = {}
+    exec(setup_code, namespace)
+
+    from openpyxl.worksheet.table import Table
+
+    namespace["ExcelInstance"].active_sheet.add_table(Table(displayName="MyTable", ref="A1:B2"))
+
+    dsl = (
+        "Excel.GetTableRange Instance: ExcelInstance TableName: $'''MyTable''' "
+        "FirstRowIndex=> FirstRow FirstColumnIndex=> FirstCol "
+        "LastRowIndex=> LastRow LastColumnIndex=> LastCol"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "_table_range = excel_actions.get_table_range(ExcelInstance, 'MyTable')" in code
+    assert "FirstRow = _table_range[0]" in code
+    assert "FirstCol = _table_range[1]" in code
+    assert "LastRow = _table_range[2]" in code
+    assert "LastCol = _table_range[3]" in code
+    assert "# TODO" not in code
+
+    exec(code, namespace)
+    assert namespace["FirstRow"] == 1
+    assert namespace["FirstCol"] == 1
+    assert namespace["LastRow"] == 2
+    assert namespace["LastCol"] == 2
+
+
+def test_generate_python_keeps_get_table_range_as_todo_when_is_pivot_true() -> None:
+    # 知見180: `IsPivot=True`はopenpyxlに対応APIが無いため安全にTODOへ倒す。
+    dsl = (
+        "Excel.GetTableRange Instance: ExcelInstance TableName: $'''MyTable''' "
+        "IsPivot: True FirstRowIndex=> FirstRow FirstColumnIndex=> FirstCol "
+        "LastRowIndex=> LastRow LastColumnIndex=> LastCol"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.GetTableRange" in code
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

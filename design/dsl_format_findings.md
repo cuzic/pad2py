@@ -2926,3 +2926,13 @@ decompileで`InsertImageToWord.Execute()`を精査し直すと、`InsertImageMod
 **実機で動作確認済み**: `Microsoft.Flow.RPA.Desktop.Modules.Database.Actions.dll`に対して実行した出力が既存のコミット済み`tools/selector_dumps/Database.txt`(5行)と完全一致、`Microsoft.Flow.RPA.Desktop.Modules.Excel.Actions.dll`に対しても既存の`tools/selector_dumps/Excel.txt`(103行)と`diff`でバイト単位の完全一致を確認した——このスクリプトが過去の全ての監査結果を再現できる(後方互換)ことを実証した。
 
 実装: `tools/pad_selector_audit.ps1`を新規コミット。`design/common_rpa_framework_roadmap.md`の層3セクションとPhase 0のチェックリスト項目を`[x]`完了に更新した。コード変更(`pad_action_lib`/`pad_codegen`)は無し、`tools/pad_selector_audit.py`本体も無変更。
+
+## 180. 知見166で保留していた`Excel.GetTableRange`を、同一DLL内の`IExcelActions`実装クラス(`ActionRuntimeBase`派生の具象実装)まで遡って精査し、decompileのみで完全に解決——`IsPivot=False`側を新規結線
+
+知見166で「ワークシート横断探索の前例が無い点と`IsPivot=True`に対応するopenpyxl APIが無い点の両方が未解決、`IsPivot`分岐の片方だけ実装するのはでっち上げに近い」として保留した`Excel.GetTableRange`を再調査した。これまでのPAD側decompile調査は`[Action]`クラス(`GetTableRange : ActionBase`、`_excelActions.GetTableRange(...)`を呼ぶだけの薄いラッパー)までしか読んでいなかったが、同じ`Excel.Actions.dll`内に`IExcelActions`インターフェースの**具象実装クラス**(`class ExcelActions : ActionRuntimeBase, IExcelActions`、COM Interopを直接操作する本体)が存在することに気づき、そちらの`GetTableRange(ExcelInstanceVariant, string)`/`GetPivotTableRange(...)`の実装自体を直接読んだ。
+
+**解決した事実**: (1) 非Pivot側は`FindTableInSheet(activeSheet, tableName)`でテーブルを探し、見つかった`ListObject`の**`"Range"`プロパティ**(COMの`ListObject.Range`——ヘッダー行+データ行+(存在すれば)合計行を含むテーブル全体、`DataBodyRange`ではない)を`RangeBounds`(`Range.Row`/`Range.Column`が1始まりとdecompileで確認済み)で読むだけ。これは`openpyxl`の`Table.ref`(OOXML仕様上、同じくヘッダー行を含む範囲文字列)と1:1で対応する——「でっち上げ」ではなく確定事実だった。(2) **検索範囲はワークブック全体ではなくアクティブシートのみ**(`GetActiveSheet(excelInstance)`で取得した1枚に対して`FindTableInSheet`を呼ぶ)——知見166で懸念していた「ワークシート横断探索」自体が実は不要だったと判明し、既存の`instance.active_sheet`規約とそのまま一致する。(3) Pivot側は`PivotTable.TableRange2`(COMのピボットテーブル専用プロパティ、ページフィルタ領域を含む)を読むだけで、こちらは確かに`openpyxl`に対応APIが無いため、依然`NotImplementedError`のまま保留する——「`IsPivot`分岐の片方だけ実装する」ことへの以前の懸念は、非Pivot側が完全に確定事実である以上、もはや「でっち上げ」ではなく、Pivot側だけを明示的に未対応とする安全な部分実装になった。
+
+**教訓**: `[Action]`クラス自身がネイティブAPI(`IExcelActions`等のインターフェース)を呼ぶだけの薄いラッパーである場合、そのインターフェースの**具象実装が同じDLL内に存在するか**を確認する価値がある——知見172(`IAutomationRuntimeProxy`、UIAutomationモジュール)では実装がRPC越しの別プロセスだったため原理的に不可能だったが、Excel(ライブCOM直接操作、サンドボックス化されていない)では実装自体が同じアセンブリ内に静的に存在し、decompileだけで完全に解決できた——「RPC越しか直接COMか」というモジュールごとのアーキテクチャの違いが、decompileで解決可能かどうかを左右する決定的な要因だと再確認した。
+
+実装: `pad_action_lib/excel_actions.py`に`get_table_range()`(`GetTableRangeError`例外クラス新規追加)を実装。`dump_daemon/pad_codegen/actions/excel.py`に`Excel.GetTableRange`(`IsPivot=False`のみ、`IsPivot=True`または非リテラルは安全にTODOへ倒す)の分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に単体テスト4件、`tests/test_pad_codegen.py`にexec検証テスト1件・TODOフォールバック確認1件を追加。VM不要。

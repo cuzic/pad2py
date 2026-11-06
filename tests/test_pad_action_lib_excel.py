@@ -283,3 +283,42 @@ def test_insert_row_non_positive_index_raises_row_not_found_error() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(xl.RowNotFoundError):
         xl.insert_row(instance, -1)
+
+
+def _add_table(instance: xl.ExcelInstanceHandle, name: str, ref: str) -> None:
+    from openpyxl.worksheet.table import Table
+
+    instance.active_sheet.add_table(Table(displayName=name, ref=ref))
+
+
+def test_get_table_range_returns_header_inclusive_bounds() -> None:
+    # design/dsl_format_findings.md 知見180(decompile確認済み): COMの`ListObject.Range`
+    # (ヘッダー行を含むテーブル全体)を読むだけ——`openpyxl`の`Table.ref`も同じ意味。
+    instance = xl.launch_excel("NewDocument")
+    for col, row, value in [("A", 1, "Name"), ("B", 1, "Age"), ("A", 2, "Carol"), ("B", 2, 30)]:
+        xl.write_to_excel(instance, value, column=col, row=row)
+    _add_table(instance, "MyTable", "A1:B2")
+    assert xl.get_table_range(instance, "MyTable") == (1, 1, 2, 2)
+
+
+def test_get_table_range_not_found_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.GetTableRangeError):
+        xl.get_table_range(instance, "NoSuchTable")
+
+
+def test_get_table_range_searches_active_sheet_only() -> None:
+    # decompile確認済み: ワークブック全体ではなくアクティブシートのみを検索する。
+    instance = xl.launch_excel("NewDocument")
+    xl.add_worksheet(instance, "Sheet2", worksheet_position="Last")
+    xl.set_active_worksheet(instance, find_worksheet_by="Name", name="Sheet2")
+    _add_table(instance, "OnSheet2", "A1:A1")
+    xl.set_active_worksheet(instance, find_worksheet_by="Index", index=0)
+    with pytest.raises(xl.GetTableRangeError):
+        xl.get_table_range(instance, "OnSheet2")
+
+
+def test_get_table_range_is_pivot_not_implemented() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(NotImplementedError):
+        xl.get_table_range(instance, "AnyTable", is_pivot=True)

@@ -329,4 +329,30 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}excel_actions.insert_row({instance}, {index})"]
 
+    if action_id == "Excel.GetTableRange":
+        # design/dsl_format_findings.md 知見180(decompile確認済み): `IsPivot=True`は
+        # openpyxlに対応APIが無いため`excel_actions.get_table_range()`側で
+        # `NotImplementedError`に委ねる(ここでは安全にTODOへ倒す)。
+        instance = safe_render(p.get("Instance"))
+        table_name = safe_render(p.get("TableName"))
+        is_pivot = p.get("IsPivot", False)
+        if instance is None or table_name is None or is_pivot is not False:
+            return None
+        row_var = node.output_vars.get("FirstRowIndex")
+        col_var = node.output_vars.get("FirstColumnIndex")
+        last_row_var = node.output_vars.get("LastRowIndex")
+        last_col_var = node.output_vars.get("LastColumnIndex")
+        if not (row_var or col_var or last_row_var or last_col_var):
+            return None
+        lines = [f"{prefix}_table_range = excel_actions.get_table_range({instance}, {table_name})"]
+        if row_var:
+            lines.append(f"{prefix}{row_var} = _table_range[0]")
+        if col_var:
+            lines.append(f"{prefix}{col_var} = _table_range[1]")
+        if last_row_var:
+            lines.append(f"{prefix}{last_row_var} = _table_range[2]")
+        if last_col_var:
+            lines.append(f"{prefix}{last_col_var} = _table_range[3]")
+        return lines
+
     return None

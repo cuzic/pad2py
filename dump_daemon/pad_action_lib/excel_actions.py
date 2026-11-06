@@ -117,6 +117,10 @@ class InsertRowError(PadActionError):
     pass
 
 
+class GetTableRangeError(PadActionError):
+    pass
+
+
 @dataclass
 class ExcelInstanceHandle:
     """不透明なワークブック参照(「window instance」問題と同種)。
@@ -524,3 +528,31 @@ def insert_row(instance: ExcelInstanceHandle, index: int) -> None:
         instance.active_sheet.insert_rows(index, 1)
     except Exception as exc:
         raise InsertRowError(str(exc)) from exc
+
+
+def get_table_range(
+    instance: ExcelInstanceHandle, table_name: str, is_pivot: bool = False
+) -> tuple[int, int, int, int]:
+    """design/dsl_format_findings.md 知見180(decompile確認済み): `IsPivot=False`側は
+    COMの`ListObject.Range`プロパティ(ヘッダー行+データ行+(存在すれば)合計行を含む
+    テーブル全体の範囲、`DataBodyRange`ではない)を読むだけ——`openpyxl`の`Table.ref`も
+    OOXML仕様上同じ意味(ヘッダー行を含む範囲文字列)なので1:1対応する。検索対象は
+    decompile確認済みの通り**アクティブシートのみ**(ワークブック全体を横断検索しない)。
+    戻り値は`(FirstRowIndex, FirstColumnIndex, LastRowIndex, LastColumnIndex)`の
+    1始まりタプル(Excel COMの`Range.Row`/`Range.Column`が1始まりであることを
+    decompileで確認済み、`openpyxl`の1始まり規約と一致するため変換不要)。
+
+    `IsPivot=True`はCOMの`PivotTable.TableRange2`(ページフィルタ領域込みのピボット
+    テーブル全体)に対応する`openpyxl`のAPIが無いため、でっち上げず`NotImplementedError`
+    のままにする。
+    """
+    if is_pivot:
+        raise NotImplementedError(
+            "GetTableRange with IsPivot=True needs COM's PivotTable.TableRange2; "
+            "openpyxl has no equivalent pivot table range API"
+        )
+    table = instance.active_sheet.tables.get(table_name)
+    if table is None:
+        raise GetTableRangeError(f"table not found: {table_name!r}")
+    min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+    return min_row, min_col, max_row, max_col

@@ -179,11 +179,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     decompile精査・新規結線完了。openpyxlの`delete_cols()`/`delete_rows()`/
     `insert_cols()`/`insert_rows()`に1:1対応する低リスク追加(セレクタ無し、
     `Instance`+`Column`または`Index`のみ)。
-  - [ ] 💻🖥️ **残課題(知見165/166で発見、未精査のまま)**:
-    - `Excel.GetTableRange`: 知見166で保留継続。`openpyxl`の`Worksheet.tables`で
-      非PivotのTable名→レンジは読めるが、ワークシート横断探索の前例が無い点と
-      `IsPivot=True`(`GetPivotTableRange`)に対応するAPIが`openpyxl`に無い点の
-      両方が未解決——`IsPivot`分岐の片方だけ実装するのはでっち上げに近いため保留。
+  - [x] 💻 **`Excel.GetTableRange`(`IsPivot=False`側)— 知見180で解決・新規結線完了**:
+    `IExcelActions`の具象実装クラス(同じDLL内)まで遡って`GetTableRange()`自体の
+    実装を読んだ結果、COMの`ListObject.Range`(ヘッダー行込みのテーブル全体、
+    `openpyxl`の`Table.ref`と1:1対応)を**アクティブシートのみ**検索すると確定——
+    知見166で懸念していた「ワークシート横断探索」自体が実は不要だった。`IsPivot=True`
+    (`PivotTable.TableRange2`、`openpyxl`に対応APIが無い)のみ依然`NotImplementedError`
+    のまま保留。
   - [x] 🔍 **decompileで確定確認済み(対応不要、知見171)**: `Excel.Attach`
     (`AttachToRunningExcelDocument`)/`Word.Attach`(`AttachToRunningWord`)/
     `PowerPoint.AttachToRunningPowerPoint`(同型)はいずれもライブCOMプロセスへの
