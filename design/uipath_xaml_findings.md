@@ -6035,6 +6035,54 @@ VB.NETでは`Dim x As Integer() = New Integer() {1, 2, 3}`のように、
 全1396件通過)。残り1件(`InputDialog`)は、実機での正確な属性構成
 (`Title`/`Label`/`DefaultValue`等)がまだ未確認のため引き続き見送り。
 
+## 126. 「実機XAMLに対する実際のコード生成の検証」を未使用の新規25リポジトリへ適用——`Split`関数を新規実装、知見74の`row(...)`添字曖昧性に実需要の裏付けを発見(知見117〜125の手法を継続、VM不使用)
+
+知見117〜125の手法を、これまで使っていなかった25件の新規GitHubリポジトリ
+(`gh api search/code`で`extension:xaml uipath`検索、`mihhdu/
+Enhanced-REFramework`・`ShonHarsh`系の複数リポジトリ・`HAC-2020/
+rocket`・`nkarkare/UDISEAutomation`等)の`Main.xaml`へ適用した。25件中
+23件が`parse_workflow_file`+`generate_python`を例外無しで完走(残り2件は
+State Machineルート——知見済みのv1スコープ外として想定通り`ValueError`)。
+`# TODO`件数は0〜7件まで様々で、新しい未確認パターンが多数残っている
+ことを確認した一方、2件の`NotImplementedError`例外(`# TODO`より重い、
+パース自体は成功するがコード生成が構文全体を落とす)を発見した。
+
+**解決: `Split`関数**(`HAC-2020/rocket`ではなく`nkarkare/
+UDISEAutomation`の実機XAML、`Split(in_Category, ",")`)。`Microsoft.
+VisualBasic.Strings.Split(Expression, Delimiter, Limit, Compare)`の
+4引数オーバーロードのうち、実機で確認できた2引数形(`Expression`+
+`Delimiter`のみ)だけを`str.split(delimiter)`へ対応させた。`Delimiter`
+省略時の既定値(半角スペース)・`Limit`(VBの「返す要素数」とPythonの
+`maxsplit`の「分割回数」は算術的に1つずれる)・`Compare`(大文字小文字
+無視分割)付きの3引数・4引数形は未確認のため`# TODO`へ明示的に倒す。
+既知の限界として、リテラル空文字列`Delimiter=""`の場合はVBが元の文字列
+1件だけの配列を返す一方Pythonの`str.split("")`は`ValueError`になる
+食い違いがあるが、実機でこの形にまだ遭遇していないため対応を見送る
+(知見42と同種の、確認済みの範囲外は無理に埋めない方針)。
+
+**未解決・既存の確認済み制約への実需要の裏付け: `row(...)`添字**
+(`HAC-2020/rocket`、`row("E-Mail")`/`row(in_Config("NameHeader").
+ToString)`等)。これは知見74で既に文書化済みの「VB.NETは配列/コレク
+ション/DataTable行アクセスも関数呼び出しと全く同じ`識別子(引数)`構文を
+使うため、静的型情報無しでは構文だけで判別不能」という言語レベルの
+曖昧性そのもの——知見74は当時「変数宣言を追跡して曖昧性を解消する設計は
+実機確認済みの需要が無いため見送った」としていたが、今回`ForEachRow`
+(知見118、`TypeArguments="sd:DataRow"`確認済み)の反復変数`row`に対する
+`row("列名")`呼び出しという、まさにその想定ケースの実需要を確認した。
+解消には、`uipath_dsl`→`uipath_codegen`の生成パス全体を通じて「この
+識別子はどのスコープでDataRow型として束縛されたか」という変数スコープ
+情報を新たに追跡する必要があり、現状の`render_expr`/`_render_node`は
+式単体を引数の型情報無しに文字列へ変換する純粋関数で、この手の
+文脈情報を一切持たない——`AddDataRow`(知見122で見送った別件、
+クロスノードのDataTableスキーマ解決が必要)と同種の「新しいアーキテク
+チャ設計が必要」な課題であり、今回は見送って設計課題として記録する
+(でっち上げた`row[...]`変換を、スコープ追跡無しに名前が`row`である
+ことだけから推測することはしない)。
+
+`dump_daemon/uipath_codegen/render.py`の`_render_func_call`に`split`
+分岐を追加。`tests/test_uipath_codegen.py`に3件追加、UiPath関連テスト
+全503件通過、リポジトリ全体で全1399件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

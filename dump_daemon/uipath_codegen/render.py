@@ -825,6 +825,26 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
+    if key == "split":
+        # 知見126: `Microsoft.VisualBasic.Strings.Split(Expression,
+        # Delimiter, Limit, Compare)`の実機確認済みの形は`nkarkare/
+        # UDISEAutomation`の実機XAMLで見つかった2引数形
+        # (`Split(in_Category, ",")`)のみ——`Delimiter`省略時の既定値
+        # (半角スペース)・`Limit`(Pythonの`str.split(sep, maxsplit)`は
+        # 「分割回数」、VBの`Limit`は「返す要素数」で算術的に1つずれる)・
+        # `Compare`(大文字小文字無視分割)付きの3引数・4引数形は未確認
+        # のため見送る。2引数形は`str.split(delimiter)`に素直に対応する
+        # (既知の限界: `Delimiter`が空文字列`""`の場合、VBは元の文字列
+        # 1件だけの配列を返すが、Pythonの`str.split("")`は`ValueError`
+        # になる——リテラル空文字列の実機データにまだ遭遇していないため
+        # 対応は見送る、知見42と同種の食い違い)。
+        if len(args) != 2:
+            raise NotImplementedError(
+                "Split with argument count != 2 (bare single-arg default "
+                "delimiter, or Limit/Compare overloads) is not confirmed — "
+                "refusing to guess"
+            )
+        return f"{args[0]}.split({args[1]})"
     if key == "if" and len(args) == 3:
         # 三項演算子`If(cond, whenTrue, whenFalse)`(知見36)。`cond`は
         # `If...Then`文と同じく「True/Falseに評価できるか、暗黙的に

@@ -199,6 +199,37 @@ def test_array_or_collection_indexing_syntax_is_ambiguous_with_func_call_falls_b
     _compiles(code)
 
 
+def test_split_with_two_args_renders_as_str_split():
+    """知見126: `Split(expr, delimiter)`(`nkarkare/UDISEAutomation`の
+    実機XAML`Split(in_Category, ",")`で発見)。2引数の確認済み形のみ
+    `str.split(delimiter)`へ対応させる。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='Split(y, ",")'))])
+    code = generate_python(wf)
+    assert "x = y.split(',')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_split_with_one_arg_is_todo_not_guessed():
+    """知見126: `Delimiter`省略時の既定値(半角スペース)は未確認のため
+    1引数形は見送る。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Split(y)"))])
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "x = None" in code
+    _compiles(code)
+
+
+def test_split_with_limit_arg_is_todo_not_guessed():
+    """知見126: VBの`Limit`(返す要素数)とPythonの`maxsplit`(分割回数)は
+    算術的に1つずれるため、推測せず3引数形は見送る。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='Split(y, ",", 2)'))])
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "x = None" in code
+    _compiles(code)
+
+
 def test_assign_chained_member_access_after_function_call_renders():
     """知見118: `CStr(x).ToUpper()`のような、関数呼び出し結果へのメンバ/
     メソッドアクセスの連鎖(`SuneetPatil/IRCTC-tatkal-booking`の実機XAML

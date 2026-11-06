@@ -1506,3 +1506,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     属性構成が未確認のため引き続き見送り。回帰テスト追加
     (`tests/test_uipath_expr.py`2件)、UiPath関連テスト全500件通過、
     リポジトリ全体で全1396件通過。
+
+84. **(完了、2026-11-06)** 「実機XAMLに対する実際のコード生成の検証」を
+    未使用の新規25リポジトリへ適用、`Split`関数を新規実装(知見126——
+    知見117〜125の手法を継続): `gh api search/code`で新規25件の
+    `Main.xaml`を検証、23件が例外無しで完走(残り2件はv1スコープ外の
+    State Machineルート、想定通り)。`Microsoft.VisualBasic.Strings.
+    Split`の実機確認済み2引数形(`Split(expr, delimiter)`)を
+    `str.split(delimiter)`へ対応——`Delimiter`省略時既定値・`Limit`・
+    `Compare`付きの他オーバーロードは未確認のため`# TODO`へ倒す。
+    別途、知見74で「実需要が無いため見送った」としていた`row(...)`
+    (VB.NETの配列/DataTable行添字と関数呼び出しの構文的曖昧性)に、
+    `ForEachRow`反復変数への実需要の裏付けを発見——解消には変数スコープ
+    追跡という新アーキテクチャが必要(`AddDataRow`と同種)なため設計課題
+    として記録し見送り。回帰テスト追加(`tests/test_uipath_codegen.py`
+    3件)、UiPath関連テスト全503件通過、リポジトリ全体で全1399件通過。
