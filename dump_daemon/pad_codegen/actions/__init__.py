@@ -26,6 +26,7 @@ from . import (
     pdf,
     powerpoint,
     scripting,
+    services,
     text,
     ui_element,
     variables,
@@ -57,6 +58,7 @@ _FAMILIES = (
     word,
     powerpoint,
     display,
+    services,
 )
 
 

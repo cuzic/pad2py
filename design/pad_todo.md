@@ -196,6 +196,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     `PowerPoint.CopyPastePowerPointSlide`は2つの独立`PowerPointInstanceHandle`間の
     クロスプレゼンテーションコピー——6件全てdecompileで確認済みのライブCOM専用機能。
     専用dispatchは元から存在せず汎用TODOフォールバックに安全に落ちるため対応不要。
+  - [x] 💻 **`Services`は知見165の監査対象リストに含まれていなかったと判明・新規4アクション
+    結線完了(知見187)**: `Microsoft.Flow.RPA.Desktop.Modules.Services.Actions.dll`を
+    新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、
+    `ServiceController.Start()`/`.Stop()`/`.Pause()`/`.Continue()`)を発見・実装した。
+    pywin32の`win32serviceutil`(既存の依存関係)が同じWin32 SCM APIを呼ぶため1対1対応。
+    `IfServiceAction`の新発見3兄弟セレクタ(`IsInstalled`/`IsNotInstalled`/`IsPaused`)は
+    汎用パーサー側の対応で足りる見込みのため追加コード変更は無し(次回実機確認が望ましい)。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

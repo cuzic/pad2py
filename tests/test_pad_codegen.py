@@ -5714,3 +5714,57 @@ def test_generate_python_from_display_select_folder_converts() -> None:
         assert namespace["ButtonPressed"] == "OK"
     finally:
         monkeypatch.undo()
+
+
+@pytest.mark.parametrize(
+    "action_id,expected_func",
+    [
+        ("Services.Start", "start_service"),
+        ("Services.Stop", "stop_service"),
+        ("Services.Pause", "pause_service"),
+        ("Services.Resume", "resume_service"),
+    ],
+)
+def test_generate_python_from_services_start_stop_pause_resume_converts(
+    action_id: str, expected_func: str
+) -> None:
+    # design/dsl_format_findings.md 知見187: Services.Actions.dllをdecompileし発見した
+    # 新規4アクション(フラットなaction、兄弟セレクタ無し)。実際にサービス操作を行わず
+    # 検証するため`win32serviceutil`を偽装注入する。
+    import sys
+    import types
+
+    dsl = f"{action_id} ServiceName: $'''Spooler'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"services_actions.{expected_func}('Spooler')" in code
+
+    calls = []
+    fake_win32serviceutil = types.ModuleType("win32serviceutil")
+    fake_win32serviceutil.StartService = lambda name: calls.append(name)  # type: ignore[attr-defined]
+    fake_win32serviceutil.StopService = lambda name: calls.append(name)  # type: ignore[attr-defined]
+    fake_win32serviceutil.ControlService = lambda name, code_: calls.append(name)  # type: ignore[attr-defined]
+    fake_win32service = types.ModuleType("win32service")
+    fake_win32service.SERVICE_CONTROL_PAUSE = 2  # type: ignore[attr-defined]
+    fake_win32service.SERVICE_CONTROL_CONTINUE = 3  # type: ignore[attr-defined]
+
+    import pytest as _pytest
+
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setitem(sys.modules, "win32serviceutil", fake_win32serviceutil)
+    monkeypatch.setitem(sys.modules, "win32service", fake_win32service)
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert calls == ["Spooler"]
+    finally:
+        monkeypatch.undo()
+
+
+def test_generate_python_keeps_services_action_unknown_as_todo() -> None:
+    dsl = "Services.SomeUnknownAction ServiceName: $'''Spooler'''"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Services.SomeUnknownAction" in code
