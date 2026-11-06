@@ -12,6 +12,7 @@ Phase 1〜3を参照。
 """
 from .types import (
     ActivateNode,
+    AddDataRowNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -99,6 +100,7 @@ from .xaml_tree import parse_activity, parse_workflow_file
 
 __all__ = [
     "ActivateNode",
+    "AddDataRowNode",
     "AppendLineNode",
     "AssignNode",
     "AttachWindowNode",

@@ -15,6 +15,7 @@ from lxml import etree
 
 from dump_daemon.uipath_dsl import (
     ActivateNode,
+    AddDataRowNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -1318,6 +1319,24 @@ def test_get_ocr_text_with_microsoft_ocr_engine():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, GetOcrTextNode)
     assert node.engine_tag == "MicrosoftOCR"
+
+
+def test_add_data_row_properties():
+    """知見181: `ui:AddDataRow`(GitHub code searchで2120件ヒット——
+    `BuildDataTable`直後に続く定番パターン)。実機`cameronmcnz/
+    uipath-tutorials`で確認した`ArrayRow="[{&quot;Hello World&quot;, -1}]"`
+    の実例。"""
+    xml = (
+        f"<ui:AddDataRow {_UI_XMLNS} DisplayName=\"Add Data Row\" "
+        'DataRow="{x:Null}" ArrayRow="[{&quot;Hello World&quot;, -1}]" '
+        'DataTable="[MyDataTable]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AddDataRowNode)
+    assert node.array_row == VbExpr(text='{"Hello World", -1}')
+    assert node.data_row is None
+    assert node.data_table == VbExpr(text="MyDataTable")
+    assert node.display_name == "Add Data Row"
 
 
 def test_log_message_properties():

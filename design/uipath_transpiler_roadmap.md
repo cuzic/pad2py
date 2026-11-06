@@ -2343,3 +2343,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `compile()`を確認。回帰テスト追加(`tests/test_uipath_dsl.py`3件・
      `tests/test_uipath_codegen.py`10件)、UiPath関連テスト全741件通過、
      リポジトリ全体で全1807件通過。
+
+139. **(完了、2026-11-06)** `ui:AddDataRow`(GitHub code searchで
+     2120件ヒット——`BuildDataTable`直後に続く定番パターン)を新規
+     実装(知見181): 知見179で見送ったDataTable操作系の中でも、
+     既存のDataTable変数の内容を読まない(単純追記のみ)ため
+     `DataTable`表現の非統一に影響されない、数少ない安全な操作と
+     判明。`ArrayRow`(VB配列リテラル)は`uipath_expr`の
+     `ArrayLiteral`が既に`render_expr`でPythonリストへ変換する
+     確立済みの経路のため新規実装は不要——`{data_table}.append(
+     {array_row})`のみ。`DataRow`(既存オブジェクト参照)は未モデル化
+     のため`# TODO`へ倒す。実機XAML3件で確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     5件)、UiPath関連テスト全746件通過、リポジトリ全体で全1813件
+     通過。

@@ -19,6 +19,7 @@ from lxml import etree
 
 from .types import (
     ActivateNode,
+    AddDataRowNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -792,6 +793,15 @@ def _parse_get_ocr_text(elem: etree._Element) -> GetOcrTextNode:
         filter_region=filter_region,
         text=_in_argument_property_expr(elem, "Text"),
         words_info=_attr_expr(elem, "WordsInfo"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_add_data_row(elem: etree._Element) -> AddDataRowNode:
+    return AddDataRowNode(
+        array_row=_attr_expr(elem, "ArrayRow"),
+        data_row=_attr_expr(elem, "DataRow"),
+        data_table=_attr_expr(elem, "DataTable"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1713,6 +1723,7 @@ _DISPATCH = {
     (UI_NS, "MinimizeWindow"): _parse_minimize_window,
     (UI_NS, "RestoreWindow"): _parse_restore_window,
     (UI_NS, "KillProcess"): _parse_kill_process,
+    (UI_NS, "AddDataRow"): _parse_add_data_row,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

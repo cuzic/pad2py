@@ -36,6 +36,7 @@ from dump_daemon.uipath_codegen import (
 from dump_daemon.uipath_codegen.render import VB_CMP_HELPER_NAME, VB_NUM_HELPER_SOURCE
 from dump_daemon.uipath_dsl import (
     ActivateNode,
+    AddDataRowNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -2581,6 +2582,72 @@ def test_get_ocr_text_with_extract_words_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: GetOCRText with ExtractWords set" in code
+    _compiles(code)
+
+
+def test_add_data_row_appends_array_row_to_data_table():
+    """知見181: `ui:AddDataRow`(GitHub code searchで2120件ヒット)。
+    `ArrayRow`(VB配列リテラル、`uipath_expr`の`ArrayLiteral`が既に
+    `render_expr`でPythonリストへ変換する確立済みの経路)を既存の
+    DataTable変数へ`.append()`する。"""
+    wf = _wrap(
+        [
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Hello World", -1}'),
+                data_table=VbExpr(text="MyDataTable"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "MyDataTable.append(['Hello World', -_vb_num(1)])" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_add_data_row_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            AddDataRowNode(
+                array_row=VbExpr(text='{"x"}'),
+                data_table=VbExpr(text="t"),
+                display_name="Add Data Row",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Add Data Row" in code
+    assert ".append(" in code
+    _compiles(code)
+
+
+def test_add_data_row_with_no_data_table_is_todo():
+    wf = _wrap([AddDataRowNode(array_row=VbExpr(text='{"x"}'), data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: AddDataRow with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_add_data_row_with_no_array_row_is_todo():
+    wf = _wrap([AddDataRowNode(array_row=None, data_table=VbExpr(text="t"))])
+    code = generate_python(wf)
+    assert "# TODO: AddDataRow with no ArrayRow captured" in code
+    _compiles(code)
+
+
+def test_add_data_row_with_data_row_is_todo_not_guessed():
+    """知見181: `DataRow`(既存の`System.Data.DataRow`オブジェクト参照)
+    は未モデル化のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            AddDataRowNode(
+                data_row=VbExpr(text="existingRow"),
+                data_table=VbExpr(text="t"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddDataRow with DataRow set" in code
+    assert ".append(" not in code
     _compiles(code)
 
 

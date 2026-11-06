@@ -742,6 +742,34 @@ class GetOcrTextNode:
 
 
 @dataclass
+class AddDataRowNode:
+    """`<ui:AddDataRow>`(知見181、GitHub code searchで2120件ヒット
+    ——`BuildDataTable`(既存)の直後に続く定番パターンとして極めて
+    高頻度)。実機4件(`cameronmcnz/uipath-tutorials`・`allenlooplee/
+    RPABook`・`piyushagarwal08/JU-Notes`)で確認した属性は`ArrayRow`
+    (VB配列リテラル、例: `[{"Hello World", -1}]`——`uipath_expr`の
+    `ArrayLiteral`が既に`render_expr`で`[item1, item2, ...]`という
+    Pythonリストへ変換する確立済みの経路、新しい式パーサー対応は不要)
+    +`DataRow`(既存の`System.Data.DataRow`オブジェクト参照、実機で
+    一度も非`{x:Null}`の値を確認できず意味論未確認・未モデル化)+
+    `DataTable`(追記先の既存DataTable変数)+`DisplayName`。
+
+    `FilterDataTable`等(知見179で検討し見送った、`DataTable`表現の
+    非統一のため活動単体では実行時表現を判断できないDataTable操作系)
+    とは違い、本活動は既存のDataTable変数の**内容を読む**必要が無い
+    (列名・既存の行表現を一切参照せず、単純に新しい行を末尾に追加
+    するだけ)——`list.append(...)`はPythonの素のlistが何を保持して
+    いても安全に呼べるため、`DataTable`変数がどちらの表現(dict行/
+    list行/空のBuildDataTable由来)であっても正しく動作する、数少ない
+    「表現非依存で安全な」DataTable操作。"""
+
+    array_row: Expr = None
+    data_row: Expr = None
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1849,6 +1877,7 @@ Node = (
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode
+    | AddDataRowNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

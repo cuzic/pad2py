@@ -60,6 +60,7 @@ from openpyxl.utils.exceptions import CellCoordinatesException
 
 from ..uipath_dsl.types import (
     ActivateNode,
+    AddDataRowNode,
     AppendLineNode,
     AssignNode,
     AttachWindowNode,
@@ -506,6 +507,8 @@ def _generate_node(
         return _generate_window_state(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
+    if isinstance(node, AddDataRowNode):
+        return _generate_add_data_row(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -1922,6 +1925,39 @@ def _generate_get_ocr_text_body(node: GetOcrTextNode, indent: int) -> list[str]:
     lang_kwarg = f", lang={language}" if language is not None else ""
     lines.append(f"{prefix}{target} = pytesseract.image_to_string(_img{lang_kwarg})")
     return lines
+
+
+# 知見181: `ui:AddDataRow`(GitHub code searchで2120件ヒット——
+# `BuildDataTable`直後に続く定番パターン)。`ArrayRow`(VB配列リテラル、
+# `uipath_expr`の`ArrayLiteral`が既に`render_expr`でPythonリストへ
+# 変換する確立済みの経路)を既存のDataTable変数へ`.append()`する——
+# 既存の行表現(dict/list)を読む必要が無いため、`DataTable`表現の
+# 非統一(知見179で検討し見送った理由)に影響されない数少ない安全な
+# DataTable操作。
+def _generate_add_data_row(node: AddDataRowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_add_data_row_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_add_data_row_body(node: AddDataRowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: AddDataRow with no DataTable captured"]
+    if node.data_row is not None:
+        return [
+            f"{prefix}# TODO: AddDataRow with DataRow set "
+            f"({_describe_expr_for_comment(node.data_row)}) — DataRow "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.array_row is None:
+        return [f"{prefix}# TODO: AddDataRow with no ArrayRow captured"]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    array_row = _render_value_or_todo(node.array_row, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{data_table}.append({array_row})"]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

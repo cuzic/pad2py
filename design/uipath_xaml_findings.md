@@ -8574,6 +8574,50 @@ string(_img)`)、`Scale`/`Profile`が既定値から外れる実例(正しく
 3件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全741件
 通過、リポジトリ全体で全1807件通過。
 
+## 181. `ui:AddDataRow`(GitHub code searchで2120件ヒット——`BuildDataTable`直後に続く定番パターンとして極めて高頻度)を新規実装——`DataTable`表現の非統一(知見179)に影響されない、数少ない「表現非依存で安全な」DataTable操作
+
+知見180の`ui:GetOCRText`に続き、知見179で見送ったDataTable操作系の
+活動群を再検討する中で、`ui:AddDataRow`(GitHub code searchで2120件
+ヒット——`BuildDataTable`(既存)の直後に続く定番パターンとして、本
+調査で遭遇した中でも最高頻度級)を発見した。実機4件(`cameronmcnz/
+uipath-tutorials`・`allenlooplee/RPABook`・`piyushagarwal08/JU-
+Notes`)で確認した構成は`ArrayRow`(VB配列リテラル、例: `[{"Hello
+World", -1}]`)+`DataRow`(既存の`System.Data.DataRow`オブジェクト
+参照、実機で一度も非`{x:Null}`の値を確認できず意味論未確認)+
+`DataTable`(追記先の既存DataTable変数)+`DisplayName`。
+
+知見179で`FilterDataTable`等を見送った理由(`DataTable`表現が活動
+ごとに非統一で、活動単体の情報から実行時表現を判断できない)を
+本活動にも当てはめて検討したが、`AddDataRow`は**既存のDataTable
+変数の内容を一切読まない**(列名・既存の行表現を全く参照せず、
+単純に新しい行を末尾に追加するだけ)という点で根本的に違うと判明
+した——Pythonの素の`list.append(...)`は保持している要素が何であれ
+(dict行でもlist行でも空リストでも)安全に呼べるため、`DataTable`
+変数がどちらの表現であっても正しく動作する。これは「活動単体の
+情報から実行時表現を判断できない」という問題が、読み取り系の操作
+(フィルタ・列追加等、列名で既存の行にアクセスする必要がある)にのみ
+当てはまり、追記のみの操作には当てはまらないという、知見179の判断
+をより正確に絞り込む発見だった。
+
+`ArrayRow`自体の変換も新しい実装は一切不要だった——`uipath_expr`
+モジュールの`ArrayLiteral`(VBの`{val1, val2, ...}`配列リテラル構文)
+が既に`render.py`の`_render_node`で`[item1, item2, ...]`という
+Pythonリストへ変換する確立済みの経路として存在しており
+(いつ追加されたか本調査では未確認——既存の対応範囲の再発見)、
+複雑な式(`DateTime.Today.ToString(...)`・文字列結合・`If(...)`三項
+演算子等、実機`allenlooplee/RPABook`で確認)を含む配列リテラルも
+既存のVB式パーサー/レンダラーがそのまま正しく処理することを実機
+XAMLで確認した。
+
+実機XAML3件で`parse_activity()`+`_generate_node()`を実行し(2件は
+`generate_python()`全体の`compile()`も確認、3件目は知見177で確認
+済みの意図的な設計(未対応の`If`条件式でコード生成全体を失敗させる)
+により無関係な別の活動でスキップ)、`MyDataTable.append(['Hello
+World', -_vb_num(1)])`のような正しいコードが生成されることを確認
+した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`5件)、UiPath関連テスト全746件通過、
+リポジトリ全体で全1813件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
