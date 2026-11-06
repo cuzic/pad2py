@@ -124,11 +124,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - [x] 💻 `HoverOnElementInWindow`(→`UIAutomation.HoverOnElement`) — 知見168で
     decompile精査・新規結線完了。`Element`(`UiElementRef`)のみ、動作はpywinautoの
     `click_input(button='move')`(クリックせず要素中心へ移動)に1:1対応。
-  - [ ] 💻🖥️ **残課題(知見164で精査・分類、知見168時点でなお未精査)**:
-    - `SelectTabInWindow`/`SelectMenuOptionInWindow`/
-      `SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/
-      `ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`: 未精査
-      (`UiElementRef`機構の可能性が高いが個々の動作のpywinauto対応が未確認)。
+  - [x] 💻 `SelectTabInWindow`/`SelectRadioButtonInWindow`(→`UIAutomation.SelectTab`/
+    `SelectRadioButton`) — 知見169でdecompile精査・新規結線完了。pywinautoの
+    `UIAWrapper.select()`(SelectionItemPattern)に1:1対応。
+  - [x] 💻 `SetCheckboxStateInWindow`(→`UIAutomation.SetCheckboxState`) — 知見169で
+    decompile精査・新規結線完了。`get_toggle_state()`で現在状態を読み、目的の状態と
+    異なる場合のみ`toggle()`する冪等パターン(UIAのTogglePattern自体の制約による
+    唯一の実装方法)。
+  - [ ] 💻🖥️ **残課題(知見164で精査・分類、知見169時点でなお未精査)**:
+    - `SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`/
+      `DragAndDropElementInWindow`: 未精査(`UiElementRef`機構の可能性が高いが
+      個々の動作のpywinauto対応が未確認)。
     - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetUIControl`/
       `GetWindowDetails`: `AttributeName`(`"Own Text"`/`"Exists"`/`"Location and Size"`/
       `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。

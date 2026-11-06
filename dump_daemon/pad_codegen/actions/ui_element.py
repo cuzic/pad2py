@@ -219,4 +219,42 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if selector_expr is None:
             return None
         return [f"{prefix}{selector_expr}.click_input(button='move')"]
+    if node.action_id in ("UIAutomation.SelectTab", "UIAutomation.SelectRadioButton"):
+        # design/dsl_format_findings.md 知見169(decompile確認済み): `SelectTabInWindow`
+        # (`Tab`パラメータ)/`SelectRadioButtonInWindow`(`RadioButton`パラメータ)は、いずれも
+        # ネイティブ側で`r.SelectTabInWindow(e)`/`r.SelectRadioButtonInWindow(e)`を呼ぶだけで
+        # 他の分岐が無い——UIAの`SelectionItemPattern.Select()`相当。pywinautoの
+        # `UIAWrapper.select()`(公式docstring: 「タブ項目・ラジオボタン・リスト項目に通常使う」)
+        # が1:1対応する単一の曖昧さ無しライブラリ呼び出し。
+        param_name = "Tab" if node.action_id == "UIAutomation.SelectTab" else "RadioButton"
+        element = node.params.get(param_name)
+        if not isinstance(element, UiElementRef):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        return [f"{prefix}{selector_expr}.select()"]
+    if node.action_id == "UIAutomation.SetCheckboxState":
+        # design/dsl_format_findings.md 知見169(decompile確認済み): `SetCheckboxStateInWindow`
+        # はネイティブ側で`r.SetCheckboxStateInWindow(e, CheckboxState == CheckboxState.Checked)`
+        # を呼ぶだけ——目的の真偽状態へ設定する意味論。UIAの`CheckBox`はTogglePattern
+        # (`SelectionItemPattern`は無い、知見169調査でpywinauto `uia_controls.py`の
+        # `ButtonWrapper.toggle()`のdocstringで確認済み: 「チェックボックスには`toggle()`、
+        # ラジオボタンには代わりに`select()`を使うこと」の通り)しか実装せず、`Toggle()`は
+        # 状態を一方向に切り替えるだけで直接「Checked/Uncheckedにする」操作が無い——
+        # 現在の状態(`get_toggle_state()`、0=unchecked/1=checked)を読み、目的の状態と
+        # 異なる場合のみ`toggle()`するという、TogglePatternで目的の状態にする標準的な
+        # 冪等パターンで実装した(PAD固有の推測は無く、UIA自体の制約から導かれる唯一の方法)。
+        element = node.params.get("Checkbox")
+        checkbox_state = enum_last(node.params.get("CheckboxState"))
+        if not (isinstance(element, UiElementRef) and checkbox_state in ("Checked", "Unchecked")):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        target = 1 if checkbox_state == "Checked" else 0
+        return [
+            f"{prefix}if {selector_expr}.get_toggle_state() != {target}:",
+            f"{prefix}{INDENT}{selector_expr}.toggle()",
+        ]
     return None

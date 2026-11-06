@@ -2799,3 +2799,15 @@ VM上で`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラス
 pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3.12/site-packages/pywinauto/base_wrapper.py`)、`button='move'`(docstring: "`button` 引数は'left'/'right'/'middle'/'x'、'move'は特殊ケース")を指定した場合は`button_down`/`button_up`を一切送らずマウスを要素中心(既定の`coords=(None, None)`)へ移動するだけだと確認した——これは`move_mouse_input()`の内部実装そのもの(`move_mouse_input`は`click_input(button='move', ...)`を呼ぶだけの薄いラッパー)でもあり、pywinauto公式の「クリックせず移動する」唯一の標準手段。単一の曖昧さ無しライブラリ呼び出しなので、知見161/164/166/167の低リスク基準を満たすと判断し、実機未確認のまま安全に結線した。`tests/fake_pywinauto.py`への追加は不要(既存の`.click_input(**kwargs)`フェイクがそのまま`button='move'`も記録できる)。
 
 実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.HoverOnElement`の分岐を追加。テストは`tests/test_pad_codegen.py`にexec検証テストを1件追加した。
+
+## 169. 知見164/168の残課題`SelectTabInWindow`/`SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`を新規結線——`.select()`/`.toggle()`+`get_toggle_state()`の冪等パターン
+
+知見168に続き、残り6系統のうち構造が単純な3件をdecompile精査・結線した(`SelectMenuOptionInWindow`/`ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`は個々の動作がまだ不明瞭なため未精査のまま継続)。VMは依然busyのため、今回も既存decompile結果の再利用のみ。
+
+**`SelectTabInWindow`(→`UIAutomation.SelectTab`、`Tab`パラメータ)/`SelectRadioButtonInWindow`(→`UIAutomation.SelectRadioButton`、`RadioButton`パラメータ)**: 両方とも`Execute()`は`PerformAutomation(... (r, e) => r.SelectTabInWindow(e)/r.SelectRadioButtonInWindow(e) ...)`のみで、他の分岐が無い全く同じ構造。pywinautoの`controls/uiawrapper.py`の`UIAWrapper.select()`(`iface_selection_item.Select()`、UIAの`SelectionItemPattern`)のdocstringに「通常ラジオボタン・ツリービュー項目・リスト項目に使う」と明記されており、タブ項目もUIAの`SelectionItemPattern`を実装する標準コントロールのため1:1対応すると判断した。
+
+**`SetCheckboxStateInWindow`(→`UIAutomation.SetCheckboxState`)**: `Execute()`は`r.SetCheckboxStateInWindow(e, CheckboxState == CheckboxState.Checked)`——目的の真偽状態(`CheckboxState`列挙は`Checked`/`Unchecked`の2値のみ、decompile確認済み)を渡すだけ。pywinautoの`controls/uia_controls.py`の`ButtonWrapper.toggle()`のdocstring自体に「チェックボックスの状態を切り替えるだけ(ラジオボタンには`select()`を使うこと、ラジオボタンはUIAでToggle未対応)」と明記されている通り、UIAのCheckBoxは`TogglePattern`しか持たず`Toggle()`は状態を一方向に切り替えるだけ(目的の状態へ直接設定するAPIが無い)——これはPAD側の推測ではなくUIA自体の制約。`get_toggle_state()`(`0`=unchecked/`1`=checked)で現在状態を読み、目的の状態と異なる場合のみ`toggle()`する冪等パターンで実装した(現在状態が既に目的通りならtoggleしない——これが「目的の状態に設定する」の唯一の正しい実装)。
+
+`tests/fake_pywinauto.py`に`.select()`(呼び出し記録のみ)と、`.toggle()`/`.get_toggle_state()`(`FakeRegistry`に`_toggle_states`状態を追加、`toggle()`実行時に実際に0↔1を反転させる——「既に目的状態ならtoggleしない」という冪等性をテストで検証できるようにするため、単なる呼び出し記録だけでなく最小限の状態遷移を実装した)を追加した。
+
+実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.SelectTab`/`UIAutomation.SelectRadioButton`/`UIAutomation.SetCheckboxState`の3分岐を追加。テストは`tests/test_pad_codegen.py`に4件(select系2件、checkbox系2件——toggleする場合/しない場合)追加した。

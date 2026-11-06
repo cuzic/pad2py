@@ -17,7 +17,8 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
 `.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
-`.window_text()`/`.capture_as_image().save()`/`.invoke()`)のみ——新しい呼び出し形が出てきたら、
+`.window_text()`/`.capture_as_image().save()`/`.invoke()`/`.select()`/`.toggle()`/
+`.get_toggle_state()`)のみ——新しい呼び出し形が出てきたら、
 その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
 `AttributeError`で気づけるようにする)。
 """
@@ -86,6 +87,17 @@ class FakeControl:
     def invoke(self) -> None:
         self._registry.record("invoke", self._full_path(), {})
 
+    def select(self) -> None:
+        self._registry.record("select", self._full_path(), {})
+
+    def get_toggle_state(self) -> int:
+        return self._registry.toggle_state_for(self._full_path())
+
+    def toggle(self) -> None:
+        self._registry.record("toggle", self._full_path(), {})
+        current = self._registry.toggle_state_for(self._full_path())
+        self._registry._set_toggle_state(self._full_path(), 0 if current else 1)
+
     def close(self) -> None:
         self._registry.record("close", self._full_path(), {})
 
@@ -124,6 +136,7 @@ class FakeRegistry:
         self._existing_paths: list[list[dict]] = []
         self._active_overrides: list[tuple[list[dict], bool]] = []
         self._window_text_overrides: list[tuple[list[dict], str]] = []
+        self._toggle_states: list[list[object]] = []
         self.calls: list[tuple[str, list[dict], dict]] = []
 
     def register_window(self, **criteria: object) -> None:
@@ -151,6 +164,24 @@ class FakeRegistry:
             if self._path_matches(criteria, path):
                 return text
         return ""
+
+    def set_toggle_state(self, path_criteria: list[dict], state: int) -> None:
+        """`get_toggle_state()`の初期値を設定する(既定は`0`=unchecked、UIAの
+        `ToggleState`表現(0=unchecked/1=checked)と同じ)。"""
+        self._toggle_states.append([path_criteria, state])
+
+    def toggle_state_for(self, path: list[dict]) -> int:
+        for entry in reversed(self._toggle_states):
+            if self._path_matches(entry[0], path):
+                return entry[1]
+        return 0
+
+    def _set_toggle_state(self, path: list[dict], state: int) -> None:
+        for entry in reversed(self._toggle_states):
+            if self._path_matches(entry[0], path):
+                entry[1] = state
+                return
+        self._toggle_states.append([path, state])
 
     def exists(self, path: list[dict]) -> bool:
         return any(self._path_matches(existing, path) for existing in self._existing_paths)

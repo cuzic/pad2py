@@ -1500,6 +1500,144 @@ def test_generate_python_from_hover_on_element_moves_mouse_without_clicking() ->
     ]
 
 
+def test_generate_python_from_select_tab_in_window_selects() -> None:
+    # design/dsl_format_findings.md 知見169(decompile確認済み): `SelectTabInWindow`は
+    # `Tab`パラメータ(`UiElementRef`)のみでネイティブ側の`SelectTabInWindow(e)`を呼ぶだけ
+    # ——pywinautoの`UIAWrapper.select()`(SelectionItemPattern)に1:1対応する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.SelectTab "
+        "Tab: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']\n\n"
+        + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').select()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("select", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
+def test_generate_python_from_select_radio_button_in_window_selects() -> None:
+    # 知見169: `SelectRadioButtonInWindow`も`SelectTabInWindow`と全く同じ構造
+    # (`RadioButton`パラメータのみ、ネイティブ側は`SelectRadioButtonInWindow(e)`のみ)。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.SelectRadioButton "
+        "RadioButton: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\'']\n\n"
+        + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').select()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("select", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
+def test_generate_python_from_set_checkbox_state_checked_toggles_when_currently_unchecked() -> None:
+    # design/dsl_format_findings.md 知見169(decompile確認済み): `SetCheckboxStateInWindow`
+    # はネイティブ側で目的の真偽状態への設定のみを行う。UIAのCheckBoxはTogglePatternしか
+    # 持たず(SelectionItemPatternは無い)、`Toggle()`は一方向に状態を切り替えるだけなので、
+    # `get_toggle_state()`で現在の状態を読み、目的の状態と異なる場合のみ`toggle()`する
+    # 冪等パターンで実装した。既定(フェイクの`get_toggle_state()`初期値0=unchecked)から
+    # `CheckboxState: Checked`を要求するケース——現在状態と異なるので`toggle()`が呼ばれる。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.SetCheckboxState "
+        "Checkbox: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "CheckboxState: UIAutomation.CheckboxState.Checked\n\n" + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "if Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').get_toggle_state() != 1:" in code
+    )
+    assert (
+        "    Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').toggle()" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == [
+        ("toggle", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {}),
+    ]
+
+
+def test_generate_python_from_set_checkbox_state_skips_toggle_when_already_in_target_state() -> None:
+    # 知見169: すでに目的の状態であればtoggle()を呼ばない(冪等性の確認)。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.SetCheckboxState "
+        "Checkbox: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "CheckboxState: UIAutomation.CheckboxState.Unchecked\n\n" + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+    assert registry.calls == []
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別
