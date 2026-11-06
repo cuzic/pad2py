@@ -90,6 +90,7 @@ from .types import (
     ParallelNode,
     PathExistsNode,
     ReadCsvFileNode,
+    ReadPdfTextNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -937,6 +938,17 @@ def _parse_read_csv_file(elem: etree._Element) -> ReadCsvFileNode:
         delimitator=_attr_or_none(elem, "Delimitator"),
         encoding=_attr_expr(elem, "Encoding"),
         display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_read_pdf_text(elem: etree._Element) -> ReadPdfTextNode:
+    text = _attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text")
+    return ReadPdfTextNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=_attr_expr(elem, "FileName"),
+        text=text,
+        range=_attr_expr(elem, "Range"),
+        preserve_formatting=_attr_expr(elem, "PreserveFormatting"),
     )
 
 
@@ -2074,6 +2086,7 @@ _DISPATCH = {
     (UI_NS, "AddDataColumn"): _parse_add_data_column,
     (UI_NS, "RemoveDataColumn"): _parse_remove_data_column,
     (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
+    (UI_NS, "ReadPDFText"): _parse_read_pdf_text,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,

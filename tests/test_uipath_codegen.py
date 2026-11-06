@@ -102,6 +102,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     PathExistsNode,
     ReadCsvFileNode,
+    ReadPdfTextNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -3515,6 +3516,122 @@ def test_read_csv_file_with_non_comma_delimitator_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: ReadCsvFile with non-default Delimitator" in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_range_all_joins_all_pages():
+    """知見199: `ui:ReadPDFText`(GitHub code searchで539件ヒット)。
+    `pypdf.PdfReader(...).pages[i].extract_text()`(`pyproject.toml`で
+    既に確認済みの依存)が直接対応する。"""
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=Literal(value="in.pdf"),
+                text=VbExpr(text="txt"),
+                range=Literal(value="All"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "pypdf.PdfReader('in.pdf')" in code
+    assert "import pypdf" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_single_page_range():
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=Literal(value="in.pdf"),
+                text=VbExpr(text="txt"),
+                range=Literal(value="2"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if '2' == 'All':" in code
+    assert "pages[int('2') - 1].extract_text()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_dynamic_range_generates_runtime_branch():
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=VbExpr(text="path"),
+                text=VbExpr(text="txt"),
+                range=VbExpr(text="rangeVar"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if rangeVar == 'All':" in code
+    assert "pages[int(rangeVar) - 1].extract_text()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_read_pdf_text_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=Literal(value="in.pdf"),
+                text=VbExpr(text="txt"),
+                range=Literal(value="All"),
+                display_name="Read PDF Text",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Read PDF Text" in code
+    assert "pypdf.PdfReader(" in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_no_file_name_is_todo():
+    wf = _wrap([ReadPdfTextNode(file_name=None, text=VbExpr(text="txt"))])
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFText with no FileName captured" in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_no_text_is_todo():
+    wf = _wrap([ReadPdfTextNode(file_name=Literal(value="in.pdf"), text=None)])
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFText with no output Text captured" in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_preserve_formatting_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=Literal(value="in.pdf"),
+                text=VbExpr(text="txt"),
+                range=Literal(value="All"),
+                preserve_formatting=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFText with PreserveFormatting set" in code
+    _compiles(code)
+
+
+def test_read_pdf_text_with_hyphenated_range_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPdfTextNode(
+                file_name=Literal(value="in.pdf"),
+                text=VbExpr(text="txt"),
+                range=Literal(value="8-22"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFText with hyphenated Range" in code
     _compiles(code)
 
 

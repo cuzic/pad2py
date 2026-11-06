@@ -77,6 +77,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     PathExistsNode,
     ReadCsvFileNode,
+    ReadPdfTextNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -1570,6 +1571,35 @@ def test_read_csv_file_properties():
     assert node.delimitator == "Comma"
     assert node.encoding is None
     assert node.path_resource is None
+
+
+def test_read_pdf_text_with_range_all():
+    """知見199: `ui:ReadPDFText`(GitHub code searchで539件ヒット)。
+    実機`marcelocruzrpa/uipath-ai-skills`で確認した`Range="All"`の
+    実例。"""
+    xml = (
+        f"<ui:ReadPDFText {_UI_XMLNS} PreserveFormatting=\"{{x:Null}}\" "
+        'DisplayName="Read PDF Text" FileName="[CurrentFile.FullName]" '
+        'Range="All" Text="[strInvoiceText]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadPdfTextNode)
+    assert node.file_name == VbExpr(text="CurrentFile.FullName")
+    assert node.text == VbExpr(text="strInvoiceText")
+    assert node.range == Literal(value="All")
+    assert node.preserve_formatting is None
+
+
+def test_read_pdf_text_with_single_page_range():
+    """知見199: 実機`PacktPublishing/Robotic-Process-Automation-RPA-
+    for-Developers`で確認した単一ページ番号`Range="2"`の実例。"""
+    xml = (
+        f"<ui:ReadPDFText {_UI_XMLNS} DisplayName=\"Read PDF Text\" "
+        'FileName="inputs/PDF/RPA.pdf" Range="2" Text="[pdfText]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadPdfTextNode)
+    assert node.range == Literal(value="2")
 
 
 def test_write_csv_file_properties():

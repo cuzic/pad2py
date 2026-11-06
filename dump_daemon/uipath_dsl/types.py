@@ -1046,6 +1046,44 @@ class ReadCsvFileNode:
 
 
 @dataclass
+class ReadPdfTextNode:
+    """`<ui:ReadPDFText>`(知見199、GitHub code searchで539件ヒット
+    ——知見193で調査したPDF活動ファミリーの4番目に有望と評価した候補)。
+    `UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+    (`UiPath.PDF.Activities/3.25/ReadPDFText.xaml`)+実機4件
+    (`marcelocruzrpa/uipath-ai-skills`・`spritlesoftware/Uipath-RPA-
+    AutomationProjects`・`PacktPublishing/Robotic-Process-Automation-
+    RPA-for-Developers`)で確認した構成は`FileName`+`Text`(出力)+
+    `Range`(確認した値は`"All"`と単一ページ番号`"2"`の2種)+
+    `PreserveFormatting`(実機4件全て`{x:Null}`)。`Password`属性は
+    ground-truth・実機のどちらにも存在しなかった(暗号化PDF対応は
+    `ReadPDFText`自体には無く、別の`ManagePDFPassword`活動が担う設計
+    ——知見193で確認済み)。
+
+    `pypdf`(`pyproject.toml`で既に確認済みの依存——本リポジトリの
+    PAD側`pad_action_lib/pdf_actions.py`の`extract_text_from_pdf()`で
+    既に実戦投入済みの同じライブラリ)の`PdfReader.pages[i].
+    extract_text()`が直接対応する。単一ページ番号の1始まり規約
+    (`Range="2"`→`pages[1]`)は、同じPAD側`extract_text_from_pdf()`の
+    `page_number - 1`という既存の確認済み変換を踏襲した——UiPath
+    Studio実機で1始まりである直接の独立確認はできていないが、同じ
+    会社の類似PDF活動2製品間での規約共有という合理的な推論であることを
+    明記する。`Range`がハイフン区切りの範囲(例`"8-22"`、知見193で
+    `ReadPDFText`自身ではなく兄弟活動`ExtractPDFPageRange`でのみ
+    確認した形式)の**静的リテラル**である場合は、`ReadPDFText`自身
+    での使用が未確認のため`# TODO`へ倒す——動的な式(`VbExpr`)の場合は
+    実行時に`int()`の`ValueError`で自然に失敗させる(独自の事前検証は
+    追加しない)。`PreserveFormatting`が非null値の場合は、レイアウト
+    保持の挙動が未確認のため`# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    text: Expr = None
+    range: Expr = None
+    preserve_formatting: Expr = None
+
+
+@dataclass
 class WriteCsvFileNode:
     """`<ui:WriteCsvFile>`(知見185、`ReadCsvFile`の正反対)。`UiPath/
     skills`公式リポジトリのStudio実機ground-truthコーパス
@@ -2505,6 +2543,7 @@ Node = (
     | AddDataColumnNode
     | RemoveDataColumnNode
     | ReadCsvFileNode
+    | ReadPdfTextNode
     | WriteCsvFileNode
     | InvokePowerShellNode
     | RetryScopeNode

@@ -2577,3 +2577,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      15件)、UiPath関連テスト全887件通過、リポジトリ全体で全1969件
      通過。
+
+157. **(完了、2026-11-06)** `ui:ReadPDFText`を新規実装(知見199):
+     知見193で調査したPDF活動ファミリーの中核。`pypdf.PdfReader(...).
+     pages[i].extract_text()`(`pyproject.toml`で既に確認済みの依存
+     ——本リポジトリのPAD側`pad_action_lib/pdf_actions.py`で既に
+     実戦投入済みの同じライブラリ)が直接対応する。単一ページ番号の
+     1始まり規約はPAD側の既存確認済み変換(`page_number - 1`)から
+     合理的に推論した(UiPath Studio実機での独立確認はできていない
+     ことを明記)。`Range`の"All"/数値判定はコード生成時でなく実行時
+     の`if`文で行うため、静的`Literal`/動的`VbExpr`のどちらでも同じ
+     ロジックで対応——ハイフン範囲(`ExtractPDFPageRange`専用、
+     `ReadPDFText`自身では未確認)は静的リテラルの場合のみTODOへ倒す。
+     合成データ3パターン+実際に生成した2ページPDFでの実行確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`8件)、UiPath関連テスト全897件通過、
+     リポジトリ全体で全1979件通過。

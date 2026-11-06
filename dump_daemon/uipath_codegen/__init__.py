@@ -128,6 +128,7 @@ from ..uipath_dsl.types import (
     ParallelNode,
     PathExistsNode,
     ReadCsvFileNode,
+    ReadPdfTextNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -317,6 +318,11 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import csv")
     if any("io.StringIO(" in line for line in body):
         imports.append("import io")
+    # `pypdf`(`ReadPDFText`→`pypdf.PdfReader(...).pages[...].
+    # extract_text()`変換先、知見199)。`pyproject.toml`で既に確認済み
+    # の依存(PAD側`pad_action_lib/pdf_actions.py`で既に実戦投入済み)。
+    if any("pypdf.PdfReader(" in line for line in body):
+        imports.append("import pypdf")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -575,6 +581,8 @@ def _generate_node(
         return _generate_remove_data_column(node, indent)
     if isinstance(node, ReadCsvFileNode):
         return _generate_read_csv_file(node, indent)
+    if isinstance(node, ReadPdfTextNode):
+        return _generate_read_pdf_text(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
     if isinstance(node, InvokePowerShellNode):
@@ -2487,6 +2495,67 @@ def _generate_read_csv_file_body(node: ReadCsvFileNode, indent: int) -> list[str
     return [
         f'{prefix}with open({file_path}, newline="") as _f:',
         f"{inner}{target} = [dict(_row) for _row in csv.DictReader(_f)]",
+    ]
+
+
+# 知見199: `ui:ReadPDFText`。`pypdf.PdfReader(...).pages[i].
+# extract_text()`(`pyproject.toml`で既に確認済みの依存、PAD側
+# `pad_action_lib/pdf_actions.py`で既に実戦投入済みの同じライブラリ)
+# が直接対応する。単一ページ番号は1始まり(PAD側`extract_text_from_pdf`
+# の`page_number - 1`という既存の確認済み変換を踏襲、UiPath Studio
+# での独立確認はできていない合理的な推論)。
+def _generate_read_pdf_text(node: ReadPdfTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_pdf_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_pdf_text_body(node: ReadPdfTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: ReadPDFText with no FileName captured"]
+    if node.text is None:
+        return [f"{prefix}# TODO: ReadPDFText with no output Text captured"]
+    if node.preserve_formatting is not None:
+        return [
+            f"{prefix}# TODO: ReadPDFText with PreserveFormatting set "
+            f"({_describe_expr_for_comment(node.preserve_formatting)}) — "
+            "layout-preservation behavior not confirmed, refusing to guess"
+        ]
+    if (
+        isinstance(node.range, Literal)
+        and node.range.value != "All"
+        and "-" in node.range.value
+    ):
+        return [
+            f"{prefix}# TODO: ReadPDFText with hyphenated Range "
+            f"({node.range.value!r}) — only confirmed on the sibling "
+            "ExtractPDFPageRange activity, not on ReadPDFText itself, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    if isinstance(node.range, Literal) and node.range.value == "All":
+        return [
+            f"{prefix}{target} = ''.join(_p.extract_text() or '' "
+            f"for _p in pypdf.PdfReader({file_name}).pages)"
+        ]
+    if node.range is None:
+        return [f"{prefix}# TODO: ReadPDFText with no Range captured"]
+    range_ = _render_value_or_todo(node.range, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_rpt_reader = pypdf.PdfReader({file_name})",
+        f"{prefix}if {range_} == 'All':",
+        f"{inner}{target} = ''.join(_p.extract_text() or '' "
+        "for _p in _rpt_reader.pages)",
+        f"{prefix}else:",
+        f"{inner}{target} = _rpt_reader.pages[int({range_}) - 1].extract_text() or ''",
     ]
 
 
