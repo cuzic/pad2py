@@ -7863,15 +7863,58 @@ state(..., True)`、`Action="Uncheck"`→`..., False)`の両方が正しく
 test_uipath_codegen.py`10件)、UiPath関連テスト全671件通過、
 リポジトリ全体で全1711件通過。
 
+## 166. `ui:Highlight`(要素の視覚的ハイライト、GitHub code searchで289件ヒット)を新規実装——実行時効果が無い活動を`# TODO`ではなく常にコメント生成として扱う新しい判断パターン
+
+知見164の`ui:SetFocus`実機XAML調査中に遭遇した`ui:Highlight`
+(要素の視覚的ハイライト、GitHub code searchで289件ヒット)を実装
+した。実機4件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+Developers`・`SuneetPatil/IRCTC-tatkal-booking`)で構造を確認した
+結果、`Color`(`.NET Color`構造体の名前付き色、実機確認済みの値は
+`"Blue"`/`"Gold"`)・`HighlightTime`(ミリ秒、実機確認済みの値は
+`"3000"`/`"1000"`)+`Target`のみ——出力バインディング(`Result`等)を
+一切持たない。
+
+設計上の重要な判断: この活動は画面上に一時的な色付き枠を表示する
+だけの**純粋な視覚的デバッグ支援**で、後続のアクティビティへ渡す
+データや制御フローへの影響が一切無い。pywinautoには近い機能
+(`draw_outline()`)があるが、対応する色文字列の語彙が`'red'`/
+`'green'`/`'blue'`の3色のみ(`.venv/lib/python3.12/site-packages/
+pywinauto/base_wrapper.py`で確認)で実機確認した`"Gold"`等をカバー
+できず、かつ`draw_outline()`自体は描画するだけで`HighlightTime`
+経過後に自動で消す機能を持たない——不確実な視覚的再現を試みるより、
+`ui:Comment`(知見119)と同じ「実行時の挙動が無い活動はコメントへ
+変換する」設計を適用する方が誠実だと判断した。これは知見165の
+`ui:Check`(「現在の状態を見てから条件分岐する」必要があった)とは
+対照的な、「活動の実行結果が自動化スクリプトの正しさに全く影響
+しない」という新しい判断軸——`# TODO`(何かが未実装/未対応、将来
+対応の余地がある)ではなく、意図的に「この活動には再現すべき実行時
+効果が無い」という最終判断を示す常時成功のコメント生成パスとして
+実装した(`selector_text_to_pywinauto`による選択子マッピングの
+成否判定自体が不要——実際の呼び出しを一切行わないため)。
+
+`dump_daemon/uipath_dsl/types.py`に`HighlightNode(selector, display_
+name, color, highlight_time)`、`xaml_tree.py`に`_parse_highlight`
+(`_target_selector`を再利用、知見163)+`(UI_NS, "Highlight")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`に`_generate_highlight`
+(`Color`/`HighlightTime`/`Selector`を全て注釈コメントへ埋め込むだけ
+——decline分岐が1つも無い、このtickで最も単純な実装)を追加。実機
+XAML(`cameronmcnz/uipath-tutorials`の`Xample-Orchestrator01/
+Main.xaml`)で`generate_python()`+`compile()`を実行し、`# Highlight
+Color=Gold HighlightTime='1000' — visual-only debugging aid, no
+automation effect to reproduce`が正しく生成されることを確認した
+——別の実機XAML(`PacktPublishing`)は`Highlight`が知見164で発見した
+`GetValue`タグ名直書き活動(未実装)の子としてネストされており到達
+不能だったことも確認したが、これは既存の別課題で今回のスコープ外。
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、UiPath関連テスト全675件通過、
+リポジトリ全体で全1715件通過。
+
 ## 今後の調査候補(未着手)
 - **(新規、知見164で発見)** `<GetValue ContinueOnError="{x:Null}" />`
   というタグ名自体が`GetValue`になる実例(`PakamTharunReddy/RPA`の
   `Browser_fillvalues.xaml`で発見)——属性名・`Target`構造が未確認
   (知見111の`GetTextNode`は`ui:GetText`タグのみ対応、`Text`属性名も
   未確認のこのタグ名では動かない)。次の調査候補として記録する
-- **(新規、知見164で発見)** `ui:Highlight`(`Color`/`HighlightTime`
-  属性を確認、要素の視覚的ハイライト)が未実装——`ui:Check`(知見165で
-  実装済み)と同じ実機XAMLで遭遇。次の棚卸し候補として記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

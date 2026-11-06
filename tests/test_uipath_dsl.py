@@ -39,6 +39,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HighlightNode,
     HoverNode,
     HttpClientNode,
     IfNode,
@@ -881,6 +882,28 @@ def test_check_selector_and_action():
     assert node.delay_before is None
     assert node.delay_after is None
     assert node.continue_on_error is None
+
+
+def test_highlight_selector_color_and_time():
+    """知見166: `ui:Highlight`(要素の視覚的ハイライト、GitHub code
+    searchで289件ヒット)。実機(`PacktPublishing/Robotic-Process-
+    Automation-RPA-for-Developers`・`SuneetPatil/IRCTC-tatkal-booking`)
+    で確認した属性は`Color`(`"Blue"`/`"Gold"`等)・`HighlightTime`
+    (ミリ秒)+`Target`のみ——出力を一切持たない。"""
+    xml = (
+        f"<ui:Highlight {_UI_XMLNS} Color=\"Gold\" HighlightTime=\"1000\" "
+        'DisplayName="Highlight \'TEXTAREA\'">'
+        "<ui:Highlight.Target>"
+        "<ui:Target Selector=\"&lt;webctrl tag='TEXTAREA' /&gt;\" />"
+        "</ui:Highlight.Target>"
+        "</ui:Highlight>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, HighlightNode)
+    assert "TEXTAREA" in node.selector
+    assert node.color == "Gold"
+    assert node.highlight_time == Literal(value="1000")
+    assert node.display_name == "Highlight 'TEXTAREA'"
 
 
 def test_log_message_properties():

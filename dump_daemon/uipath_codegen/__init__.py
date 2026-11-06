@@ -89,6 +89,7 @@ from ..uipath_dsl.types import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HighlightNode,
     HoverNode,
     HttpClientNode,
     IfNode,
@@ -460,6 +461,8 @@ def _generate_node(
         return _generate_activate(node, indent)
     if isinstance(node, CheckNode):
         return _generate_check(node, indent)
+    if isinstance(node, HighlightNode):
+        return _generate_highlight(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1478,6 +1481,30 @@ def _generate_check_body(node: CheckNode, indent: int) -> list[str]:
         f"{prefix}{_SET_TOGGLE_STATE_HELPER_NAME}({rendered.expr}, {checked!r})"
     )
     return lines
+
+
+# 知見166: `ui:Highlight`(GitHub code searchで289件ヒット)。純粋な視覚的
+# デバッグ支援で、後続のアクティビティへ渡すデータや制御フローへの影響が
+# 一切無い(実機確認した全件で出力バインディングも無い)——`ui:Comment`
+# (知見119)と同じ「実行時の挙動が無い活動はコメントへ変換する」設計で、
+# `# TODO`(未実装/未対応)ではなく意図的な「再現すべき実行時効果が無い」
+# という判断として常にコメントのみを生成する(`selector_text_to_
+# pywinauto`は呼ばない——実際の呼び出しを行わないため不要)。
+def _generate_highlight(node: HighlightNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    details = []
+    if node.selector:
+        details.append(node.selector)
+    if node.color:
+        details.append(f"Color={node.color}")
+    if node.highlight_time is not None:
+        details.append(f"HighlightTime={_describe_expr_for_comment(node.highlight_time)}")
+    detail = " ".join(details)
+    lines = [
+        f"{prefix}# Highlight{(' ' + detail) if detail else ''} — visual-only "
+        "debugging aid, no automation effect to reproduce"
+    ]
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 # `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する

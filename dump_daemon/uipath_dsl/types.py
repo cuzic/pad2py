@@ -431,6 +431,38 @@ class CheckNode:
 
 
 @dataclass
+class HighlightNode:
+    """`<ui:Highlight>`(知見166、要素の視覚的ハイライト、GitHub code
+    searchで289件ヒット——知見164の`ui:SetFocus`調査中に実機XAML
+    (`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`)
+    で遭遇)。実機確認した属性は`Color`(`"Blue"`/`"Gold"`等、.NETの
+    `Color`構造体の名前付き色、実機で複数の異なる値を確認)・
+    `HighlightTime`(ミリ秒、実機確認済み`"3000"`/`"1000"`)+`Target`
+    のみ——出力(`Result`等)を一切持たない。
+
+    この活動は画面上に一時的な色付き枠を表示するだけの**純粋な視覚的
+    デバッグ支援**で、後続のアクティビティへ渡すデータや制御フローへの
+    影響が一切無い(実機確認した全件で出力バインディングも無い)。
+    pywinautoには`draw_outline()`という近い機能があるが、対応する色
+    文字列の語彙が`'red'`/`'green'`/`'blue'`の3色のみ(`base_wrapper.py`
+    で確認済み)でUiPathの`.NET Color`構造体の全名前付き色(`Gold`等)を
+    カバーできず、かつ`draw_outline()`自体は描画するだけで
+    `HighlightTime`経過後に自動で消す機能を持たない(タイマー処理を
+    追加する必要がある)——`Click`のように「正確性が自動化の結果に
+    影響する」活動とは違い、この活動の実行結果が自動化スクリプトの
+    正しさに全く影響しないため、不確実な視覚的再現を試みるより
+    `# Highlight`コメント(`ui:Comment`、知見119と同じ「実行時の挙動が
+    無い活動はコメントへ変換する」設計)として扱う方が誠実——`# TODO`
+    (何かが未実装/未対応)ではなく、意図的な「この活動には再現すべき
+    実行時効果が無い」という判断を示す。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    color: str | None = None
+    highlight_time: Expr = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1403,6 +1435,7 @@ Node = (
     | HoverNode
     | ActivateNode
     | CheckNode
+    | HighlightNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode

@@ -2130,3 +2130,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      が正しく生成されることを確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`10件)、
      UiPath関連テスト全671件通過、リポジトリ全体で全1711件通過。
+
+124. **(完了、2026-11-06)** `ui:Highlight`(要素の視覚的ハイライト、
+     GitHub code searchで289件ヒット)を新規実装(知見166): 純粋な
+     視覚的デバッグ支援で後続のデータ/制御フローへの影響が一切無い
+     ——pywinautoの`draw_outline()`は色の語彙(`red`/`green`/`blue`の
+     3色のみ)が実機確認済みの`"Gold"`等をカバーできず、かつ
+     `HighlightTime`後の自動消去機能も無いため、不確実な視覚的再現を
+     試みるより`ui:Comment`(知見119)と同じ設計で常にコメントのみを
+     生成する(`# TODO`ではなく「再現すべき実行時効果が無い」という
+     意図的な最終判断)。知見165の`ui:Check`(現在の状態を見てから
+     条件分岐が必要)とは対照的な新しい判断軸。実機XAML
+     (`cameronmcnz/uipath-tutorials`)で`# Highlight Color=Gold
+     HighlightTime='1000' — visual-only debugging aid...`が正しく
+     生成されることを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全
+     675件通過、リポジトリ全体で全1715件通過。

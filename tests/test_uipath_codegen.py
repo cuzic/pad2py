@@ -64,6 +64,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HighlightNode,
     HoverNode,
     HttpClientNode,
     IfNode,
@@ -1910,6 +1911,46 @@ def test_check_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: Check with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_highlight_generates_comment_only_no_automation_effect():
+    """知見166: `ui:Highlight`(GitHub code searchで289件ヒット)。純粋な
+    視覚的デバッグ支援で後続のデータ/制御フローへの影響が無いため、
+    `ui:Comment`と同じ「実行時の挙動が無い活動はコメントへ変換する」
+    設計で常にコメントのみを生成する——`# TODO`にはならない。"""
+    wf = _wrap(
+        [
+            HighlightNode(
+                selector="<wnd cls='Notepad' />",
+                color="Gold",
+                highlight_time=Literal(value="1000"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Highlight" in code
+    assert "Color=Gold" in code
+    assert "no automation effect to reproduce" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_highlight_display_name_becomes_a_comment():
+    wf = _wrap([HighlightNode(selector="<wnd cls='Notepad' />", display_name="Highlight 'x'")])
+    code = generate_python(wf)
+    assert "# Highlight 'x'" in code
+    assert "no automation effect to reproduce" in code
+    _compiles(code)
+
+
+def test_highlight_with_no_selector_still_generates_comment():
+    """知見166: 選択子が無くても(常にコメントのみのため)クラッシュせず
+    動く——`# TODO`の判断すら不要(実際の呼び出しが無いため)。"""
+    wf = _wrap([HighlightNode(selector=None)])
+    code = generate_python(wf)
+    assert "# Highlight" in code
+    assert "# TODO" not in code
     _compiles(code)
 
 

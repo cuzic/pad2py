@@ -51,6 +51,7 @@ from .types import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HighlightNode,
     HoverNode,
     HttpClientNode,
     IfNode,
@@ -630,6 +631,15 @@ def _parse_check(elem: etree._Element) -> CheckNode:
         delay_before=_attr_expr(elem, "DelayBefore"),
         delay_after=_attr_expr(elem, "DelayAfter"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
+def _parse_highlight(elem: etree._Element) -> HighlightNode:
+    return HighlightNode(
+        selector=_target_selector(elem),
+        display_name=_attr(elem, "DisplayName"),
+        color=_attr(elem, "Color"),
+        highlight_time=_attr_expr(elem, "HighlightTime"),
     )
 
 
@@ -1479,6 +1489,7 @@ _DISPATCH = {
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "Activate"): _parse_activate,
     (UI_NS, "Check"): _parse_check,
+    (UI_NS, "Highlight"): _parse_highlight,
     (UI_NS, "SetFocus"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,
