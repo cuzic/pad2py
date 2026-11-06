@@ -92,10 +92,23 @@ class AssignNode:
 
 @dataclass
 class MessageBoxNode:
-    """`<ui:MessageBox Text="..." />`(知見2・5)。"""
+    """`<ui:MessageBox Text="..." />`(知見2・5)。
+
+    `buttons`/`chosen_button`は知見107で追加——UiPath公式ドキュメントで
+    `ChosenButton`の戻り値が`"Ok"`/`"Yes"`/`"No"`/`"Cancel"`のいずれかと
+    確認済み、`Buttons`(`"Ok"`/`"OkCancel"`/`"YesNo"`/`"YesNoCancel"`等)
+    もGitHub上の実機保存済みXAMLで実在を確認済み。生成コードは`print()`
+    一発のみ(ダイアログの対話的なブロッキング・ユーザー入力は再現しない)
+    のため、`Buttons`が単一ボタン(`"Ok"`、実機確認済みの既定)以外、
+    または`ChosenButton`が実際に変数へ束縛されている(=ワークフローが
+    選択結果を使っている)場合は、選択の意味論を再現できないことを明示
+    するため`# TODO`へ倒す(`uipath_codegen`参照)——でっち上げた
+    `input()`等のユーザー入力再現は行わない。"""
 
     text: Expr = None
     caption: Expr = None
+    buttons: str | None = None
+    chosen_button: Expr = None
 
 
 @dataclass

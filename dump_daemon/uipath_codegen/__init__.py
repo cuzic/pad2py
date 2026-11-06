@@ -356,6 +356,16 @@ def _generate_assign(node: AssignNode, indent: int) -> list[str]:
     return [*todo, f"{prefix}{target} = {value}"]
 
 
+# 知見107: `MessageBox`の`Buttons`(UiPath公式ドキュメントに列挙値の記載は
+# 無いが、GitHub上の実機保存済みXAMLで`"Ok"`/`"OkCancel"`/`"YesNo"`/
+# `"YesNoCancel"`の実在を確認済み、VM不使用)が単一ボタン(`"Ok"`、実機
+# フィクスチャで確認済みの既定)以外だと、ユーザーがどのボタンを押すか
+# という選択の分岐が生成コードに反映されない——`print()`は非対話的な
+# 変換のため、でっち上げた`input()`等のユーザー入力再現はせず、
+# 選択肢がある場合は`# TODO`へ倒す。
+_MESSAGE_BOX_SAFE_BUTTONS = (None, "Ok")
+
+
 def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
     """`ui:MessageBox`はPythonのネイティブ対話ダイアログに相当するものが
     無いため、最も単純で誤解の少ない代替としてコンソール出力`print()`に
@@ -367,8 +377,21 @@ def _generate_message_box(node: MessageBoxNode, indent: int) -> list[str]:
     常に`{x:Null}`(未設定)だったため動作は変わらないが、設定されている
     場合は`print()`の出力に含めることで情報を失わない(知見75と同じ
     「捕捉済みのデータを活かす」方針)。`Caption`/`Text`いずれも非文字列が
-    束縛される可能性があるため`_vb_cstr()`(知見46)で文字列化する。"""
+    束縛される可能性があるため`_vb_cstr()`(知見46)で文字列化する。
+
+    知見107: `Buttons`が単一ボタン(`"Ok"`)以外、または`ChosenButton`
+    (UiPath公式ドキュメントで戻り値が`"Ok"`/`"Yes"`/`"No"`/`"Cancel"`の
+    いずれかと確認済み)が実際に変数へ束縛されている場合は、`print()`では
+    ユーザーの選択を再現できないため`# TODO`へ倒す——「ワークフローが
+    選択結果を実際に使っている」ことの検出に`ChosenButton`の捕捉を使う。
+    """
     prefix = INDENT * indent
+    if node.buttons not in _MESSAGE_BOX_SAFE_BUTTONS or node.chosen_button is not None:
+        return [
+            f"{prefix}# TODO: MessageBox with Buttons={node.buttons!r} and/or "
+            f"ChosenButton captured ({_describe_expr_for_comment(node.chosen_button)}) "
+            "— print() cannot reproduce the user's button choice, refusing to guess"
+        ]
     todo: list[str] = []
     text = _render_value_or_todo(node.text, prefix, todo)
     if node.caption is None:

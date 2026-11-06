@@ -250,6 +250,8 @@ def _parse_message_box(elem: etree._Element) -> MessageBoxNode:
     return MessageBoxNode(
         text=_attr_expr(elem, "Text"),
         caption=_attr_expr(elem, "Caption"),
+        buttons=_attr(elem, "Buttons"),
+        chosen_button=_attr_expr(elem, "ChosenButton"),
     )
 
 

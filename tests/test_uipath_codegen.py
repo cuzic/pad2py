@@ -284,6 +284,29 @@ def test_message_box_with_caption_includes_it_in_print_output():
     assert stdout.getvalue().strip() == "Info: hi"
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # 知見107: `Buttons`が単一ボタン以外(GitHub上の実機保存済みXAML
+        # で実在を確認済み)の場合、`print()`では選択の分岐を再現できない。
+        {"buttons": "YesNo"},
+        {"buttons": "OkCancel"},
+        # `ChosenButton`が実際に変数へ束縛されている(=ワークフローが
+        # 選択結果を使っている)場合も同様。
+        {"chosen_button": VbExpr(text="result")},
+    ],
+)
+def test_message_box_with_buttons_or_chosen_button_is_todo_not_guessed(kwargs):
+    """知見107: UiPath公式ドキュメントで`ChosenButton`の戻り値が
+    `"Ok"`/`"Yes"`/`"No"`/`"Cancel"`のいずれかと確認済みだが、`print()`は
+    非対話的なため、でっち上げた`input()`等のユーザー入力再現はしない。"""
+    wf = _wrap([MessageBoxNode(text=Literal(value="hi"), **kwargs)])
+    code = generate_python(wf)
+    assert "# TODO: MessageBox with Buttons=" in code
+    assert "print('hi')" not in code
+    _compiles(code)
+
+
 def test_if_then_else():
     wf = _wrap(
         [

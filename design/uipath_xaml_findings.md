@@ -5072,6 +5072,46 @@ include a DelayMS property」)。`DelayBefore`/`DelayMS`は実機XAMLでは独�
 値が実際に何をするか」は公式ドキュメントまたはVM実機検証が無い限り、
 類推に留め実装を見送るべきという判断基準を明確化した。
 
+## 107. `ui:MessageBox`の`Buttons`/`ChosenButton`を公式ドキュメント+実機XAML(GitHub実例)で確認し、サイレントな選択結果の消失を防止(VM不使用、知見100の手法を再適用)
+
+知見79・80に続き、`ui:MessageBox`の残る未確認属性を調査した。
+`MessageBoxNode`の`_generate_message_box`は非対話的な`print()`への
+変換(v1の暫定選択、知見79のdocstring参照)だが、`Buttons`(ダイアログに
+表示する選択肢)と`ChosenButton`(ユーザーが選んだ結果を束縛する
+OutArgument)の両属性がこれまで全く捕捉されていなかった——`Buttons`が
+単一の`"Ok"`以外(例: `"YesNo"`)で、かつワークフローが`ChosenButton`の
+結果を使って分岐している場合、`print()`への変換はその分岐の意味論を
+サイレントに失う(知見92〜95と同じ「捕捉済みデータの未活用」ではなく、
+「そもそも捕捉すらしていなかった」ケース)。
+
+**確認内容**: UiPath公式ドキュメント(docs.uipath.comの検索結果)で
+`ChosenButton`の戻り値が`"Ok"`/`"Yes"`/`"No"`/`"Cancel"`のいずれかと
+確認済み。`gh api search/code`で`Buttons="YesNo"`+`ChosenButton="[式]"`
+という実際の使用パターン(196件、`Apress/Robotic-Process-Automation-
+Using-UiPath-StudioX`の実例)・`Buttons="OkCancel"`(64件)・
+`Buttons="YesNoCancel"`(33件)を確認。
+
+**実装しなかったもの**: `ChosenButton`の実際の値(ユーザーが実行時に
+どのボタンを押すか)を再現する手段(`input()`等によるユーザー入力の
+でっち上げ)は、`print()`という非対話的な変換方式の設計そのものと
+矛盾するため実装しない——これはAPIマッピングの確認問題ではなく、
+v1のMessageBox変換方式自体の設計判断(知見79のdocstringが既に
+「将来tkinter等の実モーダルダイアログへ差し替える余地を残す」と
+明記している範囲)。
+
+**修正**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `MessageBoxNode`に`buttons`/
+`chosen_button`を追加して捕捉するようにした。`_generate_message_box`は
+`Buttons`が単一ボタン(`"Ok"`、実機フィクスチャ確認済みの既定)以外、
+または`ChosenButton`が実際に変数へ束縛されている場合に`# TODO`へ倒す
+——選択の分岐をサイレントに失うより、「このMessageBoxは手動で見直す
+必要がある」と明示する。既存の実機フィクスチャ(全て単一`Ok`ボタン・
+`ChosenButton`未使用)は影響を受けず、引き続き`print()`を生成する。
+
+回帰テスト追加(Buttons非既定値・ChosenButton束縛済みそれぞれのTODO
+フォールバック確認)、UiPath関連テスト全313件通過、リポジトリ全体で
+全1109件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
