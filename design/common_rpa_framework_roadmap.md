@@ -53,6 +53,13 @@ class ErrorHandlingNode:
 
 - `Value`型(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は両トラックでほぼ同形なので素直に共有できる。
 - `SwitchNode`は両トラックで既に構造が一致している(最も生成コストの低い統合対象)。
+- **2026-11-05追記(実装を進める中で判明した訂正)**: 上の`ConditionalNode`サンプルの
+  「binaryはN-aryの特殊形として表現できる」という見立ては、実際に両トラックのコードを
+  読んだ上で**採用しないことに決めた**(Phase 2の決定事項参照)。`SwitchNode`も見た目ほど
+  単純ではなく、UiPathは等価専用ディスパッチだがPADは比較演算子付き`CASE`を持つ
+  (Phase 2参照、共通`Arm`型に`operator: str | None`を追加する設計で対応予定)。
+  零ベースで考えた最初の素描と、実装に踏み込んだ後の現実には差があったという記録として
+  この節は訂正せずに残す。
 - `ActionCallNode`(文字列キー+辞書の汎用レコード)は、UiPathが現在活動ごとに専用dataclass(`MessageBoxNode`/`ClickNode`等、11種+`UnknownActivityNode`)を持っている構造からの**移行コストを伴う**——ただし移行する価値は高い。専用dataclassは活動が増えるたびに型を増やす必要があるが、汎用レコードは「新しい活動=新しいaction_idの文字列」でしかなく、PAD側で116アクションまで線形にスケールした実績がある。
 - `ErrorHandlingNode`: PADの`GuardedNode`(直前の文に遡及的に付与)とUiPathの`TryCatchNode`(先頭から囲む)は**構築方向が逆**で、これは単なる命名の違いではなく実際のツールの挙動差である。共有型に無理に1つの構築手順を強制せず、`attachment`フィールドで明示する(でっち上げない方針をIR設計自体にも適用する)。
 
@@ -154,7 +161,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 
 | 層 | 現状 | 評価 |
 |---|---|---|
-| 1. 共通IR | PAD/UiPathは独立実装。`SwitchNode`の構造は既に一致、`RawExpr`↔`VbExpr`は役割は同じだが保持する情報量が違う(PADは`tree`フィールドで構文木を同時保持、UiPathは生テキストのみ)。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass。`ConditionalNode`(N-ary)↔`IfNode`(binary)、`GuardedNode`(遡及付与)↔`TryCatchNode`(先頭包含)は**構造そのものが異なる**。 | **未着手**。類似パターンの重複実装はあるが、共有コードはゼロ |
+| 1. 共通IR | `Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は`rpa_ir`へ移行済み(PAD側、UiPath側は見送り中)。`SwitchNode`は見た目ほど同形ではないと判明(PADは比較演算子付き`CASE`、UiPathは等価専用)——共通`Arm`型に`operator: str | None`を加える設計は決定済みだが実装は未着手。`ConditionalNode`(N-ary)↔`IfNode`(binary)は**統合しない方針で確定**(構築コストが非対称、どちらのcodegenも得をしないため)。`GuardedNode`(遡及付与)↔`TryCatchNode`(先頭包含)は構築方向こそ逆だが、`ErrorHandlingNode`+`attachment`フィールドでの統合案は素描時点から決定済み(実装は未着手)。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass(未着手)。 | **Value系は着手済み、他は「統合しない」決定を含めて設計が進んだ** |
 | 2. 型での契約強制 | 両トラックとも`return None`→汎用TODO、という同じ「規約」を持つが、PAD側は1箇所に集約されたTODOレンダラ、UiPath側は呼び出し箇所ごとに手書きの自由文字列。理由コードは両方とも無し(自由文字列のみ) | **部分的**。規約はあるが型で強制されていない、理由の構造化なし |
 | 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
@@ -248,9 +255,33 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 ### Phase 2: 共通IRの抽出(UiPathトラックと調整必須)
 
 - [x] `rpa_ir`パッケージを新設し、`Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)を移行する(両トラックで構造が一致しており最もリスクが低い統合対象)。**2026-11-05実施**: `dump_daemon/rpa_ir/values.py`に`Literal`/`VarRef`/`RawExpr`/`EnumRef`(+`Value`union)を定義し、`pad_dsl.types`は同一クラスを再公開する形に移行済み(`isinstance`の対象が同一クラスオブジェクトになるよう再定義ではなく再公開)。既存の`pad_dsl`利用側・テストは無変更で動作(`uv run pytest -q`: 1009 passed, 28 skipped、移行前と同数+新規4件)。`uipath_dsl.types`側の移行(`VbExpr`→`RawExpr`統合含む)は、UiPathトラックを並行開発中の別セッションとの衝突を避けるため意図的に見送り中——次のステップは`SwitchNode`の共通化検討
-+- [ ] `SwitchNode`の`rpa_ir`移行は**当初の想定より難しい**(2026-11-05、`uipath_dsl.types.SwitchNode`を読み取り調査して判明): PAD側`arms: list[tuple[SwitchArmHeader, list[Node]]]`の`SwitchArmHeader`(`SwitchCaseRecord | SwitchDefaultRecord`)は比較演算子付きの`CASE <op> <value>`(知見33)を表せるが、UiPath側`SwitchArm`は`key: str | None`という等価比較専用のディスパッチ(辞書キー相当)で、演算子という概念自体が無い——**見た目が同じ「アーム列」でも意味論が違う**ため、単純な型統合ではなく「PAD拡張用のオプショナル演算子フィールドを持つ共通型にするか、ツールごとに別のArm型のまま`Node`だけ共有するか」という設計判断が先に必要。`ConditionalNode`(N-ary)と同種の決定事項であり、着手前にユーザーに相談する
+- [ ] `SwitchNode`の`rpa_ir`移行は**当初の想定より難しい**(2026-11-05、`uipath_dsl.types.SwitchNode`を読み取り調査して判明): PAD側`arms: list[tuple[SwitchArmHeader, list[Node]]]`の`SwitchArmHeader`(`CaseRecord | CaseDefaultRecord`、`CaseRecord.operator: str | None`)は比較演算子付きの`CASE <op> <value>`(知見33)を表せるが、UiPath側`SwitchArm`は`key: str | None`という等価比較専用のディスパッチ(辞書キー相当)で、演算子という概念自体が無い——**見た目が同じ「アーム列」でも意味論が違う**。
+  **設計案(2026-11-05、実装はまだしていない・UiPathトラックとの調整待ち)**: 共通`Arm`型を
+  `key: Value | None`(`None`=`DEFAULT`/catch-all)・`operator: str | None`
+  (`None`=等価比較、`CaseRecord.operator`と同じ値域の文字列)・`body: list[Node]`の3フィールドに
+  する。UiPath側は`operator`を常に`None`のまま使えば現状の意味論を一切変えずに型だけ共通化できる
+  (UiPath自身のdispatchロジックは変更不要)。PAD側は`CaseRecord.operator`をそのまま`Arm.operator`に
+  渡すだけ。つまり**UiPathにとっては無害な追加フィールド**であり、「ツールごとに別のArm型のまま
+  `Node`だけ共有する」という代替案より統合度が高く、かつUiPath側のコード変更ゼロで済む。
+  `ConditionalNode`(N-ary)の統合方針と同じく、UiPathトラックとの調整・ユーザーへの実施タイミング
+  確認が実装着手の前提(本項目は設計のみ、まだ着手していない)。
 - [ ] UiPath側の活動ごと専用dataclass(`MessageBoxNode`等)を、汎用`ActionCallNode`へ段階的に置き換える。**この変更はUiPath側の`uipath_codegen`のdispatchロジック(現在は型ごとのisinstanceチェーン)にも影響するため、UiPathトラックの作業と正面から衝突する**——着手前に両トラックの作業状況を確認し、ユーザーに実施タイミングを確認する
-- [ ] `ConditionalNode`(N-ary)と`IfNode`(binary)の統合方針を決める(binaryをN-aryの特殊形として扱うのは技術的には容易だが、UiPath側の既存コードをすべて書き換える必要がある)
+- [x] `ConditionalNode`(N-ary)と`IfNode`(binary)の統合方針を決める。
+  **決定(2026-11-05、「安全かつ投資価値があるものを優先」というユーザー方針を受けて検討)**:
+  **統合しない**。両者は見た目は似ているが、統合してもどちらのトラックのcodegenも
+  得をしない——`ConditionalNode`は`pad_codegen`だけが消費し、`IfNode`は`uipath_codegen`
+  だけが消費していて、両方を同じ型として横断的に処理するコードは現状どこにも無い
+  (Phase 3の「共通dispatch基盤」のような将来の消費者が実際に必要になった時点で
+  再検討すればよい)。しかも変換方向は非対称にコストが高い:
+  PAD→binary(N-ary を `if/else{ if/else{...} }` の入れ子に展開)は機械的に可能だが、
+  UiPath側は元々`elseif`という構文自体を持たず(XAML上も`If.Else`に`If`を再帰的に
+  ネストして表現する、知見5)、binary→N-aryへ戻す変換はXAMLの実際のネスト構造を
+  読み解く必要がある非対称な変換になる。「同じに見えるものを無理に同じ型にする」のは
+  過剰統合(over-abstraction)であり、`ErrorHandlingNode`の`attachment`フィールドと同じ
+  「でっち上げない」方針([層1](#層1-共通ir中間表現)参照)を型の統合方針そのものにも
+  適用した——構築方向・構文上のネスト可否が違う構造は、違う型のままにしておく方が
+  誠実。本項目は**設計判断の確定**であり、コード変更は無い(両トラックとも現状の型を
+  そのまま使い続ける)。
 - [ ] `ErrorHandlingNode`の`attachment`フィールドで`GuardedNode`/`TryCatchNode`の構築方向差を吸収する設計を確定する
 
 ### Phase 3: 共通dispatch基盤の統合(Phase 2の成果を前提、最もリスクが高い)
