@@ -2337,6 +2337,45 @@ def test_get_text_with_delay_before_generates_time_sleep():
     _compiles(code)
 
 
+def test_get_full_text_with_known_selector_generates_window_text_with_distinct_warning():
+    """知見159: `ui:GetFullText`(`GetText`とは別の活動、GitHub code
+    searchで300件ヒット)。同じ`window_text()`へ変換するが、`GetText`
+    より弱い近似であることを明示する別の警告文言を出す。"""
+    wf = _wrap(
+        [GetTextNode(selector=_GET_TEXT_SELECTOR, text=VbExpr(text="result"), full_text=True)]
+    )
+    code = generate_python(wf)
+    assert "result = " in code
+    assert ".window_text()" in code
+    assert "Get Full Text" in code
+    assert "may return less text than UiPath's real implementation" in code
+    _compiles(code)
+
+
+def test_get_full_text_with_non_default_ignore_hidden_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetTextNode(
+                selector=_GET_TEXT_SELECTOR,
+                text=VbExpr(text="x"),
+                full_text=True,
+                ignore_hidden=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Get Full Text with non-default IgnoreHidden" in code
+    assert ".window_text()" not in code
+    _compiles(code)
+
+
+def test_get_full_text_with_no_selector_is_todo_labeled_correctly():
+    wf = _wrap([GetTextNode(selector=None, text=VbExpr(text="x"), full_text=True)])
+    code = generate_python(wf)
+    assert "# TODO: Get Full Text with no selector captured" in code
+    _compiles(code)
+
+
 _SELECT_ITEM_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
 
 

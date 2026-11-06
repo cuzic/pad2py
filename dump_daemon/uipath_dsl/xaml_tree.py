@@ -702,6 +702,30 @@ def _parse_get_text(elem: etree._Element) -> GetTextNode:
     )
 
 
+def _parse_get_full_text(elem: etree._Element) -> GetTextNode:
+    """知見159: `ui:GetFullText`(`GetText`とは別の活動、GitHub code
+    searchで300件ヒット)。`Target`構造は`GetText`と同じだが、出力
+    `Text`はプロパティ要素形(`_in_argument_property_expr`、知見115)で
+    直列化される——同じ`GetTextNode`を`full_text=True`で返す。"""
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return GetTextNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        text=_in_argument_property_expr(elem, "Text"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        full_text=True,
+        ignore_hidden=_attr_expr(elem, "IgnoreHidden"),
+    )
+
+
 def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     selector = None
     target_prop = _find_property_element(elem, "Target")
@@ -1437,6 +1461,7 @@ _DISPATCH = {
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,
     (UI_NS, "SendHotkey"): _parse_send_hotkey,
     (UI_NS, "GetText"): _parse_get_text,
+    (UI_NS, "GetFullText"): _parse_get_full_text,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,

@@ -430,6 +430,32 @@ def test_get_text_selector_and_output_binding():
     assert node.continue_on_error is None
 
 
+def test_get_full_text_reuses_get_text_node():
+    """知見159: `ui:GetFullText`(`GetText`とは別の活動、GitHub code
+    searchで300件ヒット)。`Target`構造は同じだが、出力`Text`は属性形
+    ではなくプロパティ要素形(`<ui:GetFullText.Text><OutArgument>...
+    </OutArgument></ui:GetFullText.Text>`)で直列化される——同じ
+    `GetTextNode`を`full_text=True`で返す。"""
+    xml = (
+        f"<ui:GetFullText {_UI_XMLNS} "
+        'DisplayName="Get Full Text \'editable text\'" IgnoreHidden="False">'
+        "<ui:GetFullText.Target>"
+        "<ui:Target Selector=\"&lt;wnd title='Notepad' /&gt;\" />"
+        "</ui:GetFullText.Target>"
+        "<ui:GetFullText.Text>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[txt]</OutArgument>'
+        "</ui:GetFullText.Text>"
+        "</ui:GetFullText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetTextNode)
+    assert node.full_text is True
+    assert "Notepad" in node.selector
+    assert node.text == VbExpr(text="txt")
+    assert node.ignore_hidden == Literal(value="False")
+    assert node.display_name == "Get Full Text 'editable text'"
+
+
 def test_select_item_selector_and_alter_if_disabled():
     """知見112: `ui:SelectItem`。`UiPath/skills`公式リポジトリの実機保存済み
     XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/

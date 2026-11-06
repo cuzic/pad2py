@@ -1713,27 +1713,40 @@ def _generate_get_text(node: GetTextNode, indent: int) -> list[str]:
 
 def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
     prefix = INDENT * indent
+    # 知見159: `full_text`(`ui:GetFullText`)の場合はラベル/警告文言を
+    # 区別する——`GetText`/`GetFullText`は別の活動で、公式ドキュメントが
+    # 意味論を明確に区別している(可視テキストのみ・最大4096文字 vs
+    # 非表示/切り詰められた部分を含むフルテキスト)ため、両方を同じ
+    # `window_text()`へ変換するのは`GetFullText`側でより弱い近似になる
+    # ことを警告コメントで明示する。
+    label = "Get Full Text" if node.full_text else "Get Text"
     if not node.selector:
-        return [f"{prefix}# TODO: Get Text with no selector captured"]
+        return [f"{prefix}# TODO: {label} with no selector captured"]
     if node.text is None:
-        return [f"{prefix}# TODO: Get Text with no output Text captured"]
+        return [f"{prefix}# TODO: {label} with no output Text captured"]
     if node.delay_ms is not None:
         return [
-            f"{prefix}# TODO: Get Text with DelayMS set "
+            f"{prefix}# TODO: {label} with DelayMS set "
             f"({_describe_expr_for_comment(node.delay_ms)}) — not documented "
             "by UiPath (unlike DelayBefore), semantics not confirmed, "
             "refusing to guess"
         ]
     if node.continue_on_error is not None:
         return [
-            f"{prefix}# TODO: Get Text with ContinueOnError set "
+            f"{prefix}# TODO: {label} with ContinueOnError set "
             f"({_describe_expr_for_comment(node.continue_on_error)}) — "
             "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if _literal_str(node.ignore_hidden) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: {label} with non-default IgnoreHidden "
+            f"({node.ignore_hidden!r}) — exact mechanism not confirmed, "
+            "refusing to guess"
         ]
     rendered = selector_text_to_pywinauto(node.selector)
     if rendered.expr == 'Desktop(backend="uia")':
         return [
-            f"{prefix}# TODO: Get Text selector had no mappable attributes: "
+            f"{prefix}# TODO: {label} selector had no mappable attributes: "
             f"{node.selector}"
         ]
     todo: list[str] = []
@@ -1746,11 +1759,20 @@ def _generate_get_text_body(node: GetTextNode, indent: int) -> list[str]:
     if todo:
         return todo
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
-    lines.append(
-        f"{prefix}# WARNING: exact UI Automation API behind 'Get Text' not "
-        "independently confirmed (docs only state visible-text extraction, "
-        "max 4096 chars) — using pywinauto's generic window_text() accessor"
-    )
+    if node.full_text:
+        lines.append(
+            f"{prefix}# WARNING: exact UI Automation API behind 'Get Full "
+            "Text' not independently confirmed (docs state it also covers "
+            "non-visible/truncated text, unlike 'Get Text') — using "
+            "pywinauto's generic window_text() accessor, which may return "
+            "less text than UiPath's real implementation"
+        )
+    else:
+        lines.append(
+            f"{prefix}# WARNING: exact UI Automation API behind 'Get Text' not "
+            "independently confirmed (docs only state visible-text extraction, "
+            "max 4096 chars) — using pywinauto's generic window_text() accessor"
+        )
     if delay_before is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
     lines.append(f"{prefix}{target} = {rendered.expr}.window_text()")

@@ -2023,3 +2023,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      2件)、UiPath関連テスト全638件通過、リポジトリ全体で全1678件
      通過。
+
+117. **(完了、2026-11-06)** `ui:GetFullText`(`GetText`とは別の活動、
+     GitHub code searchで300件ヒット)を新規実装(知見159): `Target`
+     構造は`GetText`と同じだが出力`Text`はプロパティ要素形で直列化
+     される。公式ドキュメントが`GetText`(可視テキストのみ・最大4096
+     文字)と`GetFullText`(非表示/切り詰められた部分を含むフルテキ
+     スト)を明確に区別しているため、単純な再利用ではなく`GetTextNode`
+     に`full_text`判別フラグ・`ignore_hidden`フィールドを追加し、
+     `_generate_get_text_body`がラベルと警告文言(`GetFullText`側は
+     「UiPathの実装より少ないテキストしか返らない可能性がある」ことを
+     明示)を切り替える設計にした——構造は再利用するが意味論の違いは
+     隠さない折衷案。副産物として`ui:BrowserScope`(「Attach
+     Browser」、`AttachWindow`/`WindowScope`と同種の未実装スコープ
+     活動)を発見し、次の棚卸し候補として記録した。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全642件通過、リポジトリ全体で全1682件
+     通過。

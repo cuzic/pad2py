@@ -7553,7 +7553,62 @@ decline判定を追加(既存の`AttachWindow`自身はこれらを一切設定�
 2件・`tests/test_uipath_codegen.py`2件)、UiPath関連テスト全638件
 通過、リポジトリ全体で全1678件通過。
 
+## 159. `ui:GetFullText`(`GetText`とは別の活動、GitHub code searchで300件ヒット)を新規実装——既存の`GetTextNode`を再利用しつつ、意味論の違いを警告文言で区別する判断
+
+`ui:GetText`(知見111)の兄弟活動である`ui:GetFullText`が未実装の
+まま残っていたことを発見した。実機(`PacktPublishing/
+Robotic-Process-Automation-RPA-for-Developers`の
+`Scraping-UnStructured.xaml`、`SuneetPatil/IRCTC-tatkal-booking`の
+`ReviewBookingPage.xaml`、`GSA/Credit_Card_Logging_Bot`の複数XAML)で
+構造を確認した結果、`Target`は`GetText`と同じ構造だったが、出力
+`Text`は属性形(`Text="[varName]"`)ではなくプロパティ要素形
+(`<ui:GetFullText.Text><OutArgument>...</OutArgument></ui:
+GetFullText.Text>`、知見115の`_in_argument_property_expr`で抽出)
+だった——加えて`IgnoreHidden`(実機確認した全件で`"False"`)という
+`GetText`には無い属性を持つ。`ContinueOnError`(実機で`"True"`の
+実例も確認)は`GetText`と共通。
+
+意味論上の判断が必要だった: 公式ドキュメントは`GetText`を「可視
+テキストのみ・最大4096文字」、`GetFullText`を「非表示/切り詰められた
+部分を含むフルテキスト」と明確に区別している——両者を同じ
+`window_text()`(既にGetText自体が「正確な1対1対応の主張はしない」
+という既存の警告付きの近似だった)へ変換すると、`GetFullText`側は
+GetTextよりさらに弱い(より不確実な)近似になる。単純に`GetTextNode`
+を再利用して同じ変換・同じ警告文言を出すのは、この意味論の違いを
+隠してしまう恐れがあるため、`GetTextNode`に`full_text`(判別フラグ)
+と`ignore_hidden`の2フィールドを追加し、`_generate_get_text_body`が
+`full_text`の値に応じてラベル(`"Get Text"`/`"Get Full Text"`)と
+警告文言(`GetFullText`の場合は「UiPathの実装より少ないテキストしか
+返らない可能性がある」ことを明示)を切り替える設計にした——構造・
+出力先の再利用はするが、確認済みの意味論の違いは隠さないという
+折衷案。
+
+`dump_daemon/uipath_dsl/types.py`の`GetTextNode`に`full_text: bool
+= False`・`ignore_hidden: Expr = None`の2フィールドを追加、
+`xaml_tree.py`に`_parse_get_full_text`(`_in_argument_property_expr`
+でText抽出、`full_text=True`で返す)+`(UI_NS, "GetFullText")`の
+`_DISPATCH`登録、`uipath_codegen/__init__.py`の`_generate_get_text_
+body`を`full_text`分岐付きに拡張(既存の`GetText`呼び出しは
+`full_text`が常に`False`のデフォルトのため挙動は変わらない——既存の
+全テストが無変更で通過することを確認)。実機XAML(`PacktPublishing`の
+`Scraping-UnStructured.xaml`)で`generate_python()`+`compile()`を
+実行し、`Get Full Text`ラベル付きの`window_text()`呼び出しが正しく
+生成されることを確認した——別の2件(`GSA/Credit_Card_Logging_Bot`)は
+`ui:BrowserScope`(「Attach Browser」、`AttachWindow`/`WindowScope`
+(知見153・158)と同種の未実装スコープ活動)の子としてネストされて
+おり到達不能だったため、今回のスコープ外の既存の別課題として確認の
+み行った(次の棚卸し候補として記録)。回帰テスト追加(`tests/
+test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、UiPath
+関連テスト全642件通過、リポジトリ全体で全1682件通過。
+
 ## 今後の調査候補(未着手)
+- **(新規、知見159で発見)** `ui:BrowserScope`(「Attach Browser」、
+  `GSA/Credit_Card_Logging_Bot`の実機XAMLで遭遇、`Browser`/
+  `BrowserType`属性を持つ)が未実装——`ui:AttachWindow`/`ui:
+  WindowScope`(知見153・158)と同種の「既存ウィンドウ/ブラウザに
+  接続してBodyを実行する」スコープ活動と推定されるが、ブラウザ固有の
+  追加属性(`BrowserType`等)の意味論は未確認。次の棚卸し候補として
+  記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

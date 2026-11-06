@@ -470,7 +470,22 @@ class GetTextNode:
     (プロパティ名は`Value`)と記載しているが、実機XAML上の属性名は常に
     `Text`——`HttpClient`(知見29、DisplayNameとCLR型名の不一致)と同種の
     「ドキュメントの用語と実際の直列化属性名が食い違う」ケース。本パーサー・
-    コード生成は実機確認済みの`Text`属性名を信頼する。"""
+    コード生成は実機確認済みの`Text`属性名を信頼する。
+
+    知見159追記: `full_text`/`ignore_hidden`は`ui:GetFullText`
+    (GitHub code searchで300件ヒット)専用のフィールド——`GetText`とは
+    別の活動だが、`Target`/出力`Text`という構造は同じで意味論も近い
+    (「要素のテキストを取得する」)ため同じ`GetTextNode`を再利用する。
+    実機確認した違い: (1)出力`Text`は属性形ではなく`<ui:GetFullText.
+    Text><OutArgument>...</OutArgument></ui:GetFullText.Text>`という
+    プロパティ要素形(`_in_argument_property_expr`で抽出)、(2)
+    `IgnoreHidden`(実機確認済みの値は常に`"False"`)という追加属性を
+    持つ。ただし公式ドキュメントは`GetText`を「可視テキストのみ・
+    最大4096文字」、`GetFullText`を「非表示/切り詰められた部分を含む
+    フルテキスト」と明確に区別しており、両方をpywinautoの同じ
+    `window_text()`へ変換するのは`GetText`単体より一段弱い近似だと
+    `_generate_get_text`の警告コメントで明示する(`full_text=True`の
+    場合は別の警告文言を出す)。"""
 
     selector: str | None = None
     display_name: str | None = None
@@ -478,6 +493,8 @@ class GetTextNode:
     delay_before: Expr = None
     delay_ms: Expr = None
     continue_on_error: Expr = None
+    full_text: bool = False
+    ignore_hidden: Expr = None
 
 
 @dataclass
