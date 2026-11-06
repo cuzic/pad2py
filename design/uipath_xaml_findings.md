@@ -4673,6 +4673,74 @@ VM側の構成要因である可能性が高い——ただし確定診断はし
 の見直し)が必要——自律ループでは安全に解消できない種類のブロッカーとして
 記録する。
 
+## 100. Flowchartの実際のXAML直列化形(`x:Name`/`x:Reference`/`Flowchart.StartNode`/`FlowStep.Next`/`FlowDecision.True`・`.False`/`FlowSwitch.Default`)を、VM不使用・実機GitHubコードから確定(知見99のVMブロッカーを別路線で回避)
+
+知見99でVM実機キャプチャ(GUI操作)・ローカル.NET SDKでの検証がいずれも
+環境要因でブロックされたため、**第三の経路**として「実際にUiPath
+Studioで保存された、GitHub上に公開済みの実物の`.xaml`ファイル」を
+`gh api search/code`で検索・直接取得して確認した——VM不使用、ローカル
+インストール不要、既存ツールセットの範囲内。
+
+**確認した実例**(いずれも実際にStudioが保存した生のXAML、手書きの
+擬似コードではない):
+1. `PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`の
+   `FlowchartDemo.xaml`(UiPath、分岐が合流し、さらに**ループ**して
+   先頭に戻る実例——「もう一度試しますか?」という典型的なRPAパターン)
+2. `dotnet/samples`の`PromotionalDiscountWorkflow.xaml`(Microsoft公式
+   サンプル、`FlowSwitch`の実例——Flowchart.StartNode自身がこの
+   Microsoft Learnページの例の元ネタ)
+3. `shanuka27/Learn-RPA`の`FlowSwitch.xaml`(新しいUiPath Studioが
+   保存した実例、`FlowSwitch`のケース`x:Key`がUiPath本体の`Switch`
+   活動(知見21)と同じ**属性形**であることを確認)
+
+**確定した直列化形**:
+- `Flowchart.StartNode`はプロパティ要素。中身は最初のノードの**完全な
+  定義**をそのままネストする場合(例1)と、別の場所で完全定義された
+  ノードへの`<x:Reference>Name</x:Reference>`参照の場合(例2・3)の
+  両方が実在する——「ノードが文書中で最初に出現した箇所がそのノードの
+  本体定義、それ以降の出現は全て`x:Reference`参照」という原則が実際の
+  配置を決める(StartNodeが本体を持つかただの参照かは、たまたま
+  そこが最初の出現かどうかで決まるだけで、どちらも等価)。
+- 各`FlowStep`/`FlowDecision`/`FlowSwitch`は`x:Name="__ReferenceIDN"`
+  (Studioが振る自動生成名、連番)を持つ。本体定義は1回だけで、以降の
+  参照は`{x:Reference Name}`(属性値としてのマークアップ拡張、例:
+  `True="{x:Reference __ReferenceID0}"`)または`<Prop.Name><x:Reference>
+  Name</x:Reference></Prop.Name>`(子要素形、例1の`FlowStep.Next`で
+  両方の形が同一ファイル内に混在して実際に使われていた)のいずれか。
+- `FlowStep`: 直接の子として実行する1つの活動(複数ステップなら
+  `Sequence`でラップ——他のコンテナと同じ既知のパターン)+任意の
+  `<FlowStep.Next>`(次のノード、無ければフロー終端)。
+- `FlowDecision`: `Condition="[...]"`属性(`If`/`While`と全く同じVB式
+  属性形、知見5・14と同じ規約)+`<FlowDecision.True>`/`.False>`
+  プロパティ要素(各々1つのFlowNode、無ければ`# TODO`ではなくそのまま
+  フロー終端——VBの意味論上`FlowDecision.True`/`.False`は省略可能)。
+- `FlowSwitch`: `x:TypeArguments`+`Expression="[...]"`属性(例3、新しい
+  Studioでは`VisualBasicValue`ラッパー経由のプロパティ要素形も実在する
+  が、これはVB式ホスティング機構自体の版違い——知見36以来確認してきた
+  パターンと同じ——であり、Flowchartグラフ構造自体の話ではない)。各
+  ケースは`FlowSwitch`の直接の子`<FlowStep x:Key="...">`(属性形、
+  知見21のUiPath本体`Switch`と同じ規約、例3で確認——古いMicrosoft公式
+  サンプル(例2)は`<x:Key><x:String>...</x:String></x:Key>`という
+  子要素形だったが、これはUiPath本体の`Switch`とは異なる書き方であり、
+  UiPathのFlowSwitchが実際にこの古い形を使うかは未確認——両対応で
+  パースする)。`<FlowSwitch.Default>`プロパティ要素(知見40の`Switch.
+  Default`と同じ規約)。
+- `Flowchart`自身の直接の子として、使われている全ノード名を列挙する
+  フラットな`<x:Reference>Name</x:Reference>`の並び(`[ContentProperty
+  ("Nodes")]`の実体)が存在する——これはグラフを辿れば自動的に分かる
+  情報の重複であり、パース上は無視してよい(存在を無視して構わない、
+  実害が無いことを確認済み)。
+
+**合流・ループは実在する、かつ一般的**: 例1(UiPath自身の基本チュートリアル
+相当のコード)が最初の実例として既に合流**とループ**の両方を含んでいた
+ことから、「分岐が合流しない木構造」という限定的な前提は現実のFlowchartを
+代表しない——知見99のVM試行開始時に想定していた「まず非循環の木構造だけ
+安全側に対応する」という当初方針は撤回し、**一般のグラフ(循環含む)に
+最初から対応する**設計へ変更した(Pythonには`goto`が無いため、ディスパッチ
+ループ/状態機械パターン(`while _flow is not None: if _flow == 0: ...`)
+で任意のグラフ形を構造的に表現する——でっち上げではなく、任意CFGを
+構造化言語へ変換する標準的な手法)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
