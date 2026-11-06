@@ -175,8 +175,11 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   "timeout": 5})`が実際に記録されることまで確認、無期限ポーリングの方はウィンドウを
   事前登録した状態でexec()し、ループが即座に(ハングせず)抜けることを確認した
   (いずれも`Scripting.RunPythonScript`のハードコードされたWindowsパス書き込みを含む
-  フィクスチャのため、既存の一時ディレクトリ退避パターンを適用)。次の拡張候補:
-  `WaitForWindowContent.WindowToContainElement`(Element側のwait、まだexec検証無し)
+  フィクスチャのため、既存の一時ディレクトリ退避パターンを適用)。`WaitForWindowContent.WindowToContainElement`(Element側のwait)もControlRepository
+  ありの経路をexec検証する新規テストを追加した(`register_descendant()`で対象の
+  子孫コントロールを事前登録し、ループが即座に抜けることを確認)。層7(b)でまだ
+  exec検証していないcodegenテストの残りは、`.child_window()`を使う他のアクション
+  (UIAutomation系の一部)の棚卸しが次の拡張候補
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

@@ -1428,6 +1428,8 @@ def test_generate_python_from_real_wait_for_window_no_timeout_whole_subflow_capt
 def test_generate_python_from_real_wait_for_window_content_whole_subflow_capture_compiles() -> None:
     # design/dsl_format_findings.md 知見52: 「Wait for window content」も知見50の
     # WaitActionRecord/_generate_wait_action()をそのまま再利用でき、コード変更は不要だった。
+    # (ここではControlRepositoryを渡さないため、知見38/46と同じ理由でセレクタが解決できず
+    # 意図的にTODOへ倒れる経路を検証している——下のテストがリポジトリありの経路を検証する)
     text = (
         FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
     ).read_text(encoding="utf-8")
@@ -1438,6 +1440,32 @@ def test_generate_python_from_real_wait_for_window_content_whole_subflow_capture
         "# TODO: map PAD wait action: "
         "UIAutomation.WaitForWindowContent.WindowToContainElement (timeout: none)" in code
     )
+
+
+def test_generate_python_from_wait_for_window_content_actually_waits_against_fake_pywinauto() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: ControlRepositoryを渡すと
+    # 上のテストとは違いTODOではなく実際の`while ...exists(): time.sleep(0.05)`ループが
+    # 生成される(Element側のwait、Window側の`.wait()`パスとは別の分岐)。生成コードを
+    # 実際に`exec()`し、対象の子孫コントロールが最初から存在する状態ではループが
+    # ハングせず即座に抜けることまで検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert (
+        "while not Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').exists():" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})  # ループ条件が最初からFalseなので即座に終了するはず
+    assert registry.calls == []  # exists()自体はcallsに記録されない呼び出し
 
 
 def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
