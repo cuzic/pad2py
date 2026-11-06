@@ -8787,6 +8787,54 @@ python()`+`compile()`を確認し、合成データで書込→読込のラウ�
 `tests/test_uipath_codegen.py`16件)、UiPath関連テスト全793件通過、
 リポジトリ全体で全1853件通過。
 
+## 186. `ui:InvokePowerShell`(GitHub code searchで337件ヒット)を新規実装——`PowerShellProcess="PowerShellCore"`の場合のみ`subprocess.run(["pwsh", "-Command", ...], check=True)`で対応、`check=True`でContinueOnErrorの既定動作に揃える
+
+知見185のCSV系活動群から離れ、`ui:InvokePowerShell`を調査した。
+`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパスでは
+`ExecutePowerShell`という別名で存在する(`ui:ExecutePowerShell
+CommandText="{x:Null}" ... IsScript="False" PowerShellProcess=
+"PowerShellCore"`)が、実機では一度も`ExecutePowerShell`タグに
+遭遇できず、全て`InvokePowerShell`タグだった——同種の活動名が
+バージョン間で変わる現象(知見153・158・161と同じ系統、Classic/
+Modernの世代差の可能性があるが未確認)。実機3件
+(`cameronmcnz/uipath-tutorials`・`nestorzamili/RPA-Grafana-Kibana`・
+`solankidrashti2965/Invoice-OCR-Automation`)で確認した構成は
+`CommandText`(実行するPowerShellコマンド/スクリプト)+`IsScript`+
+`PowerShellProcess`(実機確認した値は全件`"PowerShellCore"`)+
+`ContinueOnError`+`Parameters`/`PowerShellVariables`(両方とも実機
+確認した全例で空の`scg:Dictionary`——パラメータ渡しは未使用)。
+`Input`/`Errors`/`PipelineOutput`は実機のどの例でも一度も
+シリアライズされていなかった。
+
+`PowerShellProcess="PowerShellCore"`の場合、`subprocess.run(["pwsh",
+"-Command", command_text], check=True)`が直接対応する——`pwsh`は
+PowerShell Core (7+)の確認済み標準実行ファイル名。`check=True`を
+明示的に付けたのは本活動固有の判断——`subprocess.run()`は既定で
+非ゼロ終了コードを例外にしないため、`ContinueOnError`の既定値
+(`None`/`False`、エラーを伝播させてワークフローを停止する)と
+食い違う。でっち上げた「常に成功」という挙動より、知見177と同じ
+「エラー時は例外で失敗する方が安全」という判断で`check=True`を
+付けた——`KillProcess`(知見169)の`subprocess.run()`呼び出しには
+`check`を付けていなかったことに気づき、本活動で初めて意識的に
+この判断を行った(`KillProcess`の方は対象プロセスが既に存在しない
+場合でも正常終了するコマンドのため、この違いが問題にならなかった
+だけで、後から振り返ると`check=True`を検討する価値があった可能性
+がある——今回は新規実装のみに留め、既存の`KillProcess`の挙動変更は
+スコープ外として見送った)。
+
+`Parameters`/`PowerShellVariables`の空判定(`scg:Dictionary`の子
+要素数)のために新しいヘルパー`_dict_property_has_entries()`を追加
+した——`<X.PropName><scg:Dictionary .../></X.PropName>`形のプロパティ
+が実際に何らかのエントリを持つかどうかを判定する、本調査で初めて
+遭遇した「辞書プロパティの空判定」という新しいパーサーパターン。
+
+実機XAML3件で`generate_python()`+`compile()`を確認した(1件は
+`PowerShellProcess`未設定のため安全に`# TODO`へ倒れ、1件は明示的な
+`ContinueOnError="False"`で安全に`# TODO`へ倒れることも確認)。
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`9件)、UiPath関連テスト全804件通過、
+リポジトリ全体で全1863件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

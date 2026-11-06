@@ -104,6 +104,7 @@ from ..uipath_dsl.types import (
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
+    InvokePowerShellNode,
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
@@ -534,6 +535,8 @@ def _generate_node(
         return _generate_read_csv_file(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
+    if isinstance(node, InvokePowerShellNode):
+        return _generate_invoke_powershell(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -2256,6 +2259,68 @@ def _generate_write_csv_file_body(node: WriteCsvFileNode, indent: int) -> list[s
         ]
     )
     return lines
+
+
+# 知見186: `ui:InvokePowerShell`。`PowerShellProcess="PowerShellCore"`
+# (実機確認した全例)の場合、`subprocess.run(["pwsh", "-Command",
+# command_text], check=True)`が直接対応する——`check=True`は
+# `ContinueOnError`の既定値(エラーを伝播させる)に合わせる(知見177と
+# 同じ「でっち上げた成功より失敗を伝播させる方が安全」という判断)。
+def _generate_invoke_powershell(node: InvokePowerShellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_invoke_powershell_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_invoke_powershell_body(node: InvokePowerShellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.command_text is None:
+        return [f"{prefix}# TODO: InvokePowerShell with no CommandText captured"]
+    if node.powershell_process != "PowerShellCore":
+        return [
+            f"{prefix}# TODO: InvokePowerShell with PowerShellProcess "
+            f"{node.powershell_process!r} — only PowerShellCore (pwsh) is "
+            "confirmed, refusing to guess"
+        ]
+    if node.has_parameters:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with Parameters set — "
+            "named-parameter binding not modeled, refusing to guess"
+        ]
+    if node.has_powershell_variables:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with PowerShellVariables "
+            "set — variable binding not modeled, refusing to guess"
+        ]
+    if node.input is not None:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with Input set "
+            f"({_describe_expr_for_comment(node.input)}) — pipeline input "
+            "not modeled, refusing to guess"
+        ]
+    if node.errors is not None:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with Errors bound "
+            f"({_describe_expr_for_comment(node.errors)}) — error "
+            "collection output not modeled, refusing to guess"
+        ]
+    if node.pipeline_output is not None:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with PipelineOutput bound "
+            f"({_describe_expr_for_comment(node.pipeline_output)}) — "
+            "pipeline output capture not modeled, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: InvokePowerShell with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    command_text = _render_value_or_todo(node.command_text, prefix, todo)
+    if todo:
+        return todo
+    return [f'{prefix}subprocess.run(["pwsh", "-Command", {command_text}], check=True)']
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

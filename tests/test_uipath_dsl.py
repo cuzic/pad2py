@@ -54,6 +54,7 @@ from dump_daemon.uipath_dsl import (
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
+    InvokePowerShellNode,
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
@@ -1458,6 +1459,54 @@ def test_write_csv_file_properties():
     assert node.data_table == VbExpr(text="TestData")
     assert node.add_headers == "True"
     assert node.delimitator == "Comma"
+
+
+def test_invoke_powershell_properties():
+    """知見186: `ui:InvokePowerShell`(GitHub code searchで337件
+    ヒット)。実機`nestorzamili/RPA-Grafana-Kibana`で確認した
+    `PowerShellProcess="PowerShellCore"`+空の`Parameters`/
+    `PowerShellVariables`の実例。"""
+    xml = (
+        f"<ui:InvokePowerShell {_UI_XMLNS} DisplayName=\"Invoke Power Shell\" "
+        'ContinueOnError="{x:Null}" CommandText="node script.js" '
+        'IsScript="True" PowerShellProcess="PowerShellCore">'
+        "<ui:InvokePowerShell.Parameters>"
+        '<scg:Dictionary xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" x:TypeArguments="x:String, InArgument" />'
+        "</ui:InvokePowerShell.Parameters>"
+        "<ui:InvokePowerShell.PowerShellVariables>"
+        '<scg:Dictionary xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" x:TypeArguments="x:String, Argument" />'
+        "</ui:InvokePowerShell.PowerShellVariables>"
+        "</ui:InvokePowerShell>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InvokePowerShellNode)
+    assert node.command_text == Literal(value="node script.js")
+    assert node.powershell_process == "PowerShellCore"
+    assert node.is_script == "True"
+    assert node.continue_on_error is None
+    assert node.has_parameters is False
+    assert node.has_powershell_variables is False
+
+
+def test_invoke_powershell_with_non_empty_parameters():
+    """実機で確認したことはないが、`Parameters`が空でない場合に
+    正しく`has_parameters=True`になることを合成データで確認する。"""
+    xml = (
+        f"<ui:InvokePowerShell {_UI_XMLNS} DisplayName=\"Invoke Power Shell\" "
+        'CommandText="Get-Process" PowerShellProcess="PowerShellCore">'
+        "<ui:InvokePowerShell.Parameters>"
+        '<scg:Dictionary xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" x:TypeArguments="x:String, InArgument">'
+        '<x:String x:Key="Name">[InArgument(GetType(x:String))]</x:String>'
+        "</scg:Dictionary>"
+        "</ui:InvokePowerShell.Parameters>"
+        "</ui:InvokePowerShell>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InvokePowerShellNode)
+    assert node.has_parameters is True
 
 
 def test_log_message_properties():

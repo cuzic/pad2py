@@ -2406,3 +2406,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      ラウンドトリップも手動確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`16件)、
      UiPath関連テスト全793件通過、リポジトリ全体で全1853件通過。
+
+144. **(完了、2026-11-06)** `ui:InvokePowerShell`(GitHub code search
+     で337件ヒット)を新規実装(知見186): `PowerShellProcess=
+     "PowerShellCore"`(実機確認した全例)の場合のみ`subprocess.run
+     (["pwsh", "-Command", command_text], check=True)`で対応。
+     `check=True`は`ContinueOnError`の既定動作(エラー伝播)に揃える
+     ための明示的な判断(知見177と同じ「失敗を伝播させる方が安全」)。
+     `Parameters`/`PowerShellVariables`の空判定のため新ヘルパー
+     `_dict_property_has_entries()`を追加。実機XAML3件で確認。回帰
+     テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`9件)、UiPath関連テスト全804件通過、
+     リポジトリ全体で全1863件通過。

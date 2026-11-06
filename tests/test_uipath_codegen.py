@@ -79,6 +79,7 @@ from dump_daemon.uipath_dsl import (
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
+    InvokePowerShellNode,
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
@@ -3076,6 +3077,125 @@ def test_write_csv_file_with_non_true_should_quote_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: WriteCsvFile with non-default ShouldQuote" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_runs_pwsh_with_check_true():
+    """知見186: `ui:InvokePowerShell`(GitHub code searchで337件
+    ヒット)。`PowerShellProcess="PowerShellCore"`の場合、
+    `subprocess.run(["pwsh", "-Command", ...], check=True)`が直接
+    対応する——`check=True`は`ContinueOnError`の既定値(エラーを
+    伝播させる)に合わせる。"""
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert 'subprocess.run(["pwsh", "-Command", \'Get-Process\'], check=True)' in code
+    assert "import subprocess" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_invoke_powershell_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+                display_name="Invoke Power Shell",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Invoke Power Shell" in code
+    assert "subprocess.run(" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_no_command_text_is_todo():
+    wf = _wrap([InvokePowerShellNode(command_text=None, powershell_process="PowerShellCore")])
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with no CommandText captured" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_non_powershell_core_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="WindowsPowerShell",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with PowerShellProcess" in code
+    assert "subprocess" not in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_parameters_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+                has_parameters=True,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with Parameters set" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_powershell_variables_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+                has_powershell_variables=True,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with PowerShellVariables set" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+                continue_on_error=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_invoke_powershell_with_pipeline_output_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokePowerShellNode(
+                command_text=Literal(value="Get-Process"),
+                powershell_process="PowerShellCore",
+                pipeline_output=VbExpr(text="out"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokePowerShell with PipelineOutput bound" in code
     _compiles(code)
 
 

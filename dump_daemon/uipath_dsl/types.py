@@ -936,6 +936,48 @@ class WriteCsvFileNode:
 
 
 @dataclass
+class InvokePowerShellNode:
+    """`<ui:InvokePowerShell>`(知見186、GitHub code searchで337件
+    ヒット——`UiPath/skills`公式リポジトリのStudio実機ground-truth
+    コーパスでは`ExecutePowerShell`という別名で存在するが、実機では
+    一度も遭遇できず、実機で確認できたのは全て`InvokePowerShell`タグ
+    の方だった——同種の活動がバージョン間で改名される現象(知見153・
+    158・161と同じ系統)の可能性があるが未確認)。実機3件
+    (`cameronmcnz/uipath-tutorials`・`nestorzamili/RPA-Grafana-
+    Kibana`・`solankidrashti2965/Invoice-OCR-Automation`)で確認した
+    構成は`CommandText`(実行するPowerShellコマンド/スクリプト)+
+    `IsScript`(`True`/`False`)+`PowerShellProcess`(実機確認した値は
+    全件`"PowerShellCore"`——`pwsh`実行ファイル)+`ContinueOnError`+
+    `Parameters`/`PowerShellVariables`(両方とも実機確認した全例で
+    空の`scg:Dictionary`——パラメータ渡しは未使用)。`Input`/`Errors`/
+    `PipelineOutput`は実機のどの例でも一度もシリアライズされていな
+    かった(未設定)。
+
+    `PowerShellProcess="PowerShellCore"`の場合、`subprocess.run(["pwsh",
+    "-Command", command_text], check=True)`が直接対応する——`pwsh`は
+    PowerShell Core (7+)の確認済み標準実行ファイル名。`check=True`は
+    `ContinueOnError`の既定値(`None`/`False`、エラーを伝播させる)に
+    合わせる判断——`subprocess.run()`は既定で非ゼロ終了コードを例外に
+    しない(UiPathの既定動作と食い違う)ため、明示的に`check=True`を
+    付けて「エラー時は例外で失敗する」という既定動作に揃える(知見177
+    と同じ「でっち上げた成功より、失敗を伝播させる方が安全」という
+    判断)。`PowerShellProcess`が`"PowerShellCore"`以外・`Parameters`/
+    `PowerShellVariables`が空でない・`Input`/`Errors`/
+    `PipelineOutput`が設定されている場合は`# TODO`へ倒す。"""
+
+    command_text: Expr = None
+    is_script: str | None = None
+    powershell_process: str | None = None
+    continue_on_error: Expr = None
+    has_parameters: bool = False
+    has_powershell_variables: bool = False
+    input: Expr = None
+    errors: Expr = None
+    pipeline_output: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2050,6 +2092,7 @@ Node = (
     | OutputDataTableNode
     | ReadCsvFileNode
     | WriteCsvFileNode
+    | InvokePowerShellNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

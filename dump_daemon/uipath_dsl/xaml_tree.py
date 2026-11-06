@@ -66,6 +66,7 @@ from .types import (
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
+    InvokePowerShellNode,
     InvokeWorkflowFileNode,
     KillProcessNode,
     Literal,
@@ -869,6 +870,40 @@ def _parse_write_csv_file(elem: etree._Element) -> WriteCsvFileNode:
         delimitator=_attr_or_none(elem, "Delimitator"),
         should_quote=_attr_or_none(elem, "ShouldQuote"),
         encoding=_attr_expr(elem, "Encoding"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _dict_property_has_entries(elem: etree._Element, prop_name: str) -> bool:
+    """`<X.PropName><scg:Dictionary .../></X.PropName>`形のプロパティ
+    (`InvokePowerShell.Parameters`等)が空でない(子要素を1つ以上持つ)
+    かどうかを判定する。"""
+    prop_elem = _find_property_element(elem, prop_name)
+    if prop_elem is None:
+        return False
+    children = _direct_children(prop_elem)
+    if not children:
+        return False
+    dict_children = _direct_children(children[0])
+    return len(dict_children) > 0
+
+
+def _parse_invoke_powershell(elem: etree._Element) -> InvokePowerShellNode:
+    input_ = _attr_expr(elem, "Input") or _in_argument_property_expr(elem, "Input")
+    errors = _attr_expr(elem, "Errors") or _in_argument_property_expr(elem, "Errors")
+    pipeline_output = _attr_expr(elem, "PipelineOutput") or _in_argument_property_expr(
+        elem, "PipelineOutput"
+    )
+    return InvokePowerShellNode(
+        command_text=_attr_expr(elem, "CommandText"),
+        is_script=_attr_or_none(elem, "IsScript"),
+        powershell_process=_attr_or_none(elem, "PowerShellProcess"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        has_parameters=_dict_property_has_entries(elem, "Parameters"),
+        has_powershell_variables=_dict_property_has_entries(elem, "PowerShellVariables"),
+        input=input_,
+        errors=errors,
+        pipeline_output=pipeline_output,
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1797,6 +1832,7 @@ _DISPATCH = {
     (UI_NS, "OutputDataTable"): _parse_output_data_table,
     (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
+    (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,
