@@ -3168,3 +3168,13 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 実装: `pad_action_lib/excel_actions.py`に`DeleteCellsError`・`_copy_cell()`・`delete_cells()`を追加。`pad_codegen/actions/excel.py`に`Excel.DeleteCells.DeleteCell`/`DeleteCells`の分岐を追加(`[Action(Id = "DeleteCells")]`がクラス名`DeleteCellsAction`の`...Action`接尾辞を取り除く、知見195と同じパターン)。テストは`tests/test_pad_action_lib_excel.py`に5件追加、`tests/test_pad_codegen.py`に1件追加(exec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1134 passed, 28 skippedを確認(VM不要)。
 
 これで知見190以来追跡してきたExcelの全既知候補(フィルタ・ソート・オートフィット・マクロ実行・セル色設定・コピペ・検索置換・ルックアップ・ライブ選択状態というユーザー指定スコープ外を除く)の結線が完了した。**教訓**: `docs-local/`配下の過去の調査記録(gitに追跡されないローカル参照資料)は、現在のスコープ判断の根拠が「技術的制約」か「過去の保守的な境界設定」かを区別する重要な一次資料であり、`NotImplementedError`で見送る判断をする際は、まず`docs-local`に既存の調査記録が無いか確認すべきだった(知見183の「既存関数を再利用する前に知見ログをgrepする」という教訓と同種、対象を`docs-local`にも広げる必要がある)。
+
+## 198. `docs-local/pad_word_findings.md`の再読でExcelと同種の「過去の保守的な除外」パターンを探索——`Word.InsertImageToWord`のブックマーク相対モードは実は`AppendNewLine`の段落分割問題とは無関係で、真の障壁は`python-docx`に任意位置への画像挿入の公開APIが無いことだと判明(実装は見送り)
+
+知見197でExcelの`DeleteCellsAction`を発見的に再評価できたのに倣い、`docs-local/pad_word_findings.md`を再読して同種の「技術的には可能だが保守的に除外された」項目が無いか確認した。「対象外」リストに`InsertImageToWord`のブックマーク相対モードが載っていたが、これが過去にどういう理由で見送られていたのか、Word.Actions.dllの`IWordOperationsFacade.WriteImageToBookmark()`(同じDLL内に具象実装`WordOperationsFacade`があり知見180と同じ「同一DLL内の具象実装まで遡る」手法が使えた)を実際に精査した。
+
+**訂正**: 要約で言及されていた「`AppendNewLine`の埋め込み`\r\n`が段落構造を崩すため実機未確認」という懸念は、実際には**別のアクション`WriteTextOnBookmark`(テキスト書き込み)固有の問題**であり、`InsertImageToWord`(画像挿入)には一切当てはまらないと判明した。`WriteImageToBookmark()`自体のロジックは極めて単純で曖昧さが無い: ブックマークが空なら`Start`位置、`StartOfBookmark`ならブックマーク開始位置へ、`EndOfBookmark`ならブックマーク終了位置へ`Range.Collapse()`してから画像を挿入するだけ——テキストの行分割も改行挿入も一切発生しない。
+
+**しかし真の障壁が別にあると判明**: `python-docx`の公開APIは「ドキュメント末尾への画像追加」(`document.add_picture()`)・「特定runの末尾への画像追加」(`run.add_picture()`)のみで、**既存の段落内容の途中(ブックマークタグの直前/直後)への画像挿入に対応する公開APIが無い**。これを実現するには、`python-docx`が内部で行っている画像埋め込み処理(リレーションID生成・`<w:drawing>`要素のXML構築・画像パートの登録)を、非公開の内部実装に依存して自力で再現する必要がある——これは知見181の「ブックマークの既存テキストを読むだけ」(公開属性への素直なアクセス)とは全く異なるリスク区分(ライブラリの非公開内部実装への依存、`python-docx`のバージョン間で壊れる可能性、生成文書が破損するリスク)に該当するため、今回は実装を見送る。
+
+**結論**: 知見193-197のExcelでの一連の再評価は「保守的すぎる除外の訂正」として有効だったが、本件は逆に「見送りの理由が誤っていたが、見送りという結論自体は(別の、より確かな理由により)正しかった」という結果になった——`docs-local`の再読は依然有益(見送りの根拠を正確に保つ)が、常に実装可能になるわけではないことの実例として記録する。コード変更は無し。

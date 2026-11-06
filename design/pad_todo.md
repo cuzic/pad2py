@@ -573,6 +573,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
         ページレンダリング依存)はこの技法でも解決せず依然対象外。書き込み側
         (`WriteToWord`/`InsertImageToWord`のブックマーク相対モード)は挿入位置の
         意味論がより複雑なため未着手のまま。
+        ✅ **`InsertImageToWord`側の真の障壁を特定(知見198)**: `WriteImageToBookmark()`
+        自体のロジックは単純(ブックマーク開始/終了位置へ`Range.Collapse()`するだけ、
+        `WriteTextOnBookmark`の`AppendNewLine`段落分割問題とは無関係)と判明したが、
+        `python-docx`の公開APIが「ドキュメント/run末尾への画像追加」のみで既存段落の
+        途中への画像挿入に対応しないため、`python-docx`の非公開内部実装(リレーションID
+        生成・`<w:drawing>`構築)への依存が必要になる——知見181のブックマークテキスト
+        読み取り(公開属性への素直なアクセス)とは異なるリスク区分のため見送り継続。
     - [x] 💻 **テスト基盤の死角を解消(知見174)**: Excel/Word/PowerPointの「全スコープ
       バッチ」テストが文字列一致の`compile()`のみで一度も`exec()`していなかったと判明
       (知見124/129/130と同じ死角)。各モジュールに実際に`exec()`して出力変数の値・
