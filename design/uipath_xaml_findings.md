@@ -5845,6 +5845,56 @@ __init__.py`に`_generate_get_outlook_mail_messages`を追加。
 `tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に10件
 追加、全1354件通過。
 
+## 121. `ui:WordApplicationScope`+`ui:ReplaceTextInDocument`/`ui:WordReplaceText`を新規実装(知見117〜120の手法を継続、VM不使用)
+
+知見117〜120で前回見送った`WordApplicationScope`系(`UiPath.Word.
+Activities`)に着手した。`UiPath/skills`公式リポジトリの
+`uipath-troubleshoot`テストタスク(Word関連の障害切り分けシナリオ集、
+`word-scope-*`/`word-replace-text-*`という命名から、UiPathが実際の
+サポートシナリオ再現用に用意した実機Studio保存済みXAMLと判断できる)で
+複数の実例を確認した。
+
+**2つの異なるタグ名を発見**: `ui:ReplaceTextInDocument`(DisplayName
+「Replace Text in Document」)と`ui:WordReplaceText`(DisplayName
+「Replace Text」)——意味論は完全に同じ(`Search`を`Replace`へ置換)で、
+おそらくパッケージバージョン間のリネーム(`SendMail`の`ui:SendMail`/
+DisplayName不一致と同種のパターン)。両方のタグ名を同じ
+`WordReplaceTextNode`へディスパッチするよう実装した。
+
+**`Search`の直列化形の発見**: 2つの実例で異なる形を確認した——
+`Search="{{Candidate}}"`(Wordドキュメント内に実在する生のプレースホルダ
+文字列、VB式ではない、`{`で始まるが`_parse_expr`のVB式判定`[...]`とは
+無関係なためそのまま`Literal`として正しく捕捉される)と`Search=
+"[TermsPlaceholder]"`(真のVB変数参照)の両方が実在する——用途に応じて
+Wordドキュメント内の固定プレースホルダを検索する場合と、動的な検索語を
+使う場合の両方に対応できる構造だと確認した。
+
+**実装**: `ExcelApplicationScope`(知見22・97)と全く同じ設計を踏襲——
+`python-docx`(既にプロジェクト依存に含まれている、ファイルベースで
+Wordプロセス不要)への実コード生成。`docx.Document(file_name)`で開き、
+`WordReplaceTextNode`(スコープの直接の子の場合のみ)は各段落の各run単体
+に対して文字列置換する標準的なイディオムへ変換、スコープ末尾で
+`.save(file_name)`する。実際に一時`.docx`ファイル(`{{Candidate}}`という
+プレースホルダを含む段落)へ生成コードを実行し、VB変数の値へ正しく
+置換されることを確認済み(round-trip検証)。`Visible`属性(実機確認済み
+の値は常に`"False"`)は、`ExcelApplicationScope`の`openpyxl`採用時と
+同じ理由(ファイルベース、ライブCOM自動化ではない)で無視する。
+
+**既知の限界(意図的に受け入れる)**: `python-docx`には組み込みの検索
+置換が無いため、検索対象の文字列が複数のrun(書式の境界、例えば検索語の
+前半が太字・後半が通常文字といった混在)に分割されている場合は置換
+されない——`ExcelApplicationScope`のライブマクロ実行未対応と同種の、
+選んだライブラリに起因する構造的な制約として明示的に受け入れる。
+
+`dump_daemon/uipath_dsl/types.py`に`WordApplicationScopeNode`/
+`WordReplaceTextNode`、`xaml_tree.py`に対応するパーサー関数
+(`(UI_NS, "WordApplicationScope")`・`(UI_NS, "ReplaceTextInDocument")`・
+`(UI_NS, "WordReplaceText")`の3つをディスパッチ登録)、`uipath_codegen/
+__init__.py`に`_generate_word_application_scope`/`_generate_word_
+replace_text_in_scope`を追加(`_iter_invoke_nodes`のスコープ再帰発見
+リストにも追加、知見88と同種の見落とし防止)。`tests/test_uipath_dsl.py`
+に2件・`tests/test_uipath_codegen.py`に4件追加、全1369件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

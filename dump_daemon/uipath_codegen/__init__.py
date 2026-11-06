@@ -94,6 +94,8 @@ from ..uipath_dsl.types import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WordApplicationScopeNode,
+    WordReplaceTextNode,
     WorkflowFile,
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
@@ -234,6 +236,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見97)も同様。
     if any("openpyxl.load_workbook(" in line for line in body):
         imports.append("import openpyxl")
+    # `docx`(`WordApplicationScope`→`docx.Document(...)`変換先、知見121)
+    # も同様。
+    if any("docx.Document(" in line for line in body):
+        imports.append("import docx")
     # `win32com.client`(`SendOutlookMail`→`win32com.client.Dispatch(...)`
     # 変換先、知見98)も同様。
     if any("win32com.client.Dispatch(" in line for line in body):
@@ -405,6 +411,8 @@ def _generate_node(
         return _generate_http_client(node, indent)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, WordApplicationScopeNode):
+        return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendMailNode):
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
@@ -424,6 +432,7 @@ def _generate_node(
             ExcelReadRangeNode,
             ExcelWriteRangeNode,
             ExcelAppendRangeNode,
+            WordReplaceTextNode,
         ),
     ):
         return _generate_unresolved_activity(node, indent)
@@ -1872,6 +1881,59 @@ def _generate_excel_application_scope(
     return lines
 
 
+def _generate_word_application_scope(
+    node: WordApplicationScopeNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見121: `ExcelApplicationScopeNode`(知見97)と同じ設計を踏襲する
+    ——`python-docx`(ファイルベース、Wordプロセス不要、既にプロジェクト
+    依存に含まれている)への実コード生成。`docx.Document(file_name)`で
+    開き、スコープ末尾で`.save(file_name)`する。"""
+    prefix = INDENT * indent
+    var = node.scope_var
+    lines = [f"{prefix}{var} = docx.Document({node.file_name!r})"]
+    for child in node.body:
+        if isinstance(child, WordReplaceTextNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_word_replace_text_in_scope(child, indent, var), prefix
+                )
+            )
+        else:
+            lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
+    lines.append(f"{prefix}{var}.save({node.file_name!r})")
+    return lines
+
+
+# 知見121: `ui:ReplaceTextInDocument`/`ui:WordReplaceText`。`python-docx`
+# には組み込みの検索置換が無いため、各段落の各run単体に対して文字列
+# 置換する標準的なイディオム(python-docxコミュニティで広く使われる
+# パターン)を使う——検索対象の文字列が複数のrun(書式の境界)に分割
+# されている場合は置換されない、既知の限界(`ExcelApplicationScope`の
+# ライブマクロ実行未対応と同種の構造的な制約として受け入れる)。
+def _generate_word_replace_text_in_scope(
+    node: WordReplaceTextNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.search is None or node.replace is None:
+        return [f"{prefix}# TODO: Word Replace Text with missing Search/Replace"]
+    todo: list[str] = []
+    search = _render_value_or_todo(node.search, prefix, todo)
+    replace = _render_value_or_todo(node.replace, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    return [
+        f"{prefix}for _p in {scope_var}.paragraphs:",
+        f"{inner}for _r in _p.runs:",
+        f"{inner2}if {VB_CSTR_HELPER_NAME}({search}) in _r.text:",
+        f"{INDENT * (indent + 3)}_r.text = _r.text.replace("
+        f"{VB_CSTR_HELPER_NAME}({search}), {VB_CSTR_HELPER_NAME}({replace}))",
+    ]
+
+
 def _generate_excel_write_cell_in_scope(
     node: ExcelWriteCellNode, indent: int, scope_var: str
 ) -> list[str]:
@@ -2553,7 +2615,7 @@ def _child_node_lists(node: Node) -> list[list[Node]]:
         return [arm.body for arm in node.arms]
     if isinstance(node, ParallelNode):
         return [node.branches]
-    if isinstance(node, ExcelApplicationScopeNode):
+    if isinstance(node, (ExcelApplicationScopeNode, WordApplicationScopeNode)):
         return [node.body]
     return []
 

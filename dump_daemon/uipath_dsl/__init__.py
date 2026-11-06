@@ -64,6 +64,8 @@ from .types import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WordApplicationScopeNode,
+    WordReplaceTextNode,
     WorkflowFile,
 )
 from .xaml_tree import parse_activity, parse_workflow_file
@@ -122,6 +124,8 @@ __all__ = [
     "VariableDecl",
     "VbExpr",
     "WhileNode",
+    "WordApplicationScopeNode",
+    "WordReplaceTextNode",
     "WorkflowFile",
     "parse_activity",
     "parse_workflow_file",

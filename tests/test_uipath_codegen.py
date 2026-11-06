@@ -84,6 +84,8 @@ from dump_daemon.uipath_dsl import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WordApplicationScopeNode,
+    WordReplaceTextNode,
     WorkflowFile,
     parse_workflow_file,
 )
@@ -2380,6 +2382,108 @@ def test_excel_application_scope_with_write_cell_generates_real_code_together():
     assert "ExcelWorkbookScope['Sheet1']['A1'] = _vb_cstr('hi')" in code
     assert "ExcelWorkbookScope.save('wb.xlsx')" in code
     assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_application_scope_with_replace_text_generates_real_code_together():
+    """知見121: `WordApplicationScopeNode`+`WordReplaceTextNode`は
+    `ExcelApplicationScopeNode`+`ExcelWriteCellNode`(知見97)と同じ設計。
+    実際に一時`.docx`ファイルへ生成コードを実行し、`{{Candidate}}`という
+    生のプレースホルダ文字列が正しく置換されることを確認済み(本セッション
+    内、リポジトリには残していない)。"""
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordReplaceTextNode(
+                        search=Literal(value="{{Candidate}}"),
+                        replace=VbExpr(text="candidate"),
+                        display_name="Replace Text in Document",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import docx" in code
+    assert "WordDocumentScope = docx.Document('letter.docx')" in code
+    assert "# Replace Text in Document" in code
+    assert "for _p in WordDocumentScope.paragraphs:" in code
+    assert "if _vb_cstr('{{Candidate}}') in _r.text:" in code
+    assert (
+        "_r.text = _r.text.replace(_vb_cstr('{{Candidate}}'), _vb_cstr(candidate))" in code
+    )
+    assert "WordDocumentScope.save('letter.docx')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_replace_text_alternate_tag_name_generates_same_code():
+    """知見121: 実機で2つの異なるタグ名(`ui:ReplaceTextInDocument`/
+    `ui:WordReplaceText`)を確認済み——パーサー側で両方を同じノード型へ
+    ディスパッチするため、コード生成側は区別しない。"""
+    xml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        "<Sequence>"
+        '<ui:WordApplicationScope FileName="letter.docx">'
+        "<ui:WordApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="ui:WordDocument">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="ui:WordDocument" Name="WordDocumentScope" />'
+        "</ActivityAction.Argument>"
+        '<ui:WordReplaceText DisplayName="Replace Text" Search="[a]" Replace="[b]" />'
+        "</ActivityAction>"
+        "</ui:WordApplicationScope.Body>"
+        "</ui:WordApplicationScope>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xaml", delete=False) as f:
+        f.write(xml)
+        path = f.name
+    try:
+        wf = parse_workflow_file(path)
+    finally:
+        os.unlink(path)
+    code = generate_python(wf)
+    assert "# Replace Text" in code
+    assert "for _p in WordDocumentScope.paragraphs:" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_replace_text_with_missing_search_or_replace_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordReplaceTextNode(search=None, replace=VbExpr(text="b"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Replace Text with missing Search/Replace" in code
+    _compiles(code)
+
+
+def test_word_application_scope_still_generates_its_child_activities():
+    """知見84と同じ教訓: 未対応な子(`InvokeCodeNode`)でもスコープ自体は
+    `# TODO`にならず、子の`# TODO`だけが正しく出ることを確認する。"""
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[InvokeCodeNode(code="x=1")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "docx.Document('letter.docx')" in code
+    assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
     _compiles(code)
 
 

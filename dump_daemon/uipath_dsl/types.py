@@ -658,6 +658,42 @@ class ExcelApplicationScopeNode:
 
 
 @dataclass
+class WordApplicationScopeNode:
+    """`<ui:WordApplicationScope FileName="...">...</ui:WordApplicationScope>`
+    (知見121、`UiPath.Word.Activities`。`ExcelApplicationScopeNode`
+    (知見22)と同じ`ActivityAction`+`DelegateInArgument`構造。`UiPath/
+    skills`公式リポジトリの複数の実機XAMLで発見した。`Visible`(実機確認済み
+    の値は常に`"False"`)は、`ExcelApplicationScope`と同じユーザー決定
+    (2026-11-05、`openpyxl`ファイルベース——ライブCOM自動化ではない)に
+    合わせて`python-docx`(ファイルベース、Wordプロセス不要)を選んだため
+    無視する——ライブWordアプリケーションを実際に表示/非表示にする挙動は
+    再現しない(既知の限界、`ExcelApplicationScope`のライブマクロ実行
+    未対応と同種)。"""
+
+    file_name: str
+    scope_var: str = "WordDocumentScope"
+    body: list["Node"] = field(default_factory=list)
+
+
+@dataclass
+class WordReplaceTextNode:
+    """`<ui:ReplaceTextInDocument>`/`<ui:WordReplaceText>`(知見121、
+    `WordApplicationScope`配下の子活動)。実機で2つの異なるタグ名を確認
+    した——DisplayName「Replace Text in Document」(裏のCLR型名
+    `ui:ReplaceTextInDocument`)と「Replace Text」(`ui:WordReplaceText`)、
+    おそらくパッケージバージョン間のリネーム(`SendMail`の`Account`/
+    `DisplayName`の表記揺れと同種)。意味論は完全に同じ(`Search`を
+    `Replace`へ置換)と判断し、両方のタグ名を同じノード型へディスパッチ
+    する。`Search`は実機で`VbExpr`(`[変数名]`)とリテラル文字列
+    (`"{{Candidate}}"`、Wordドキュメント内の生のプレースホルダ文字列、
+    VB式ではない)の両方の実例を確認済み。"""
+
+    search: Expr = None
+    replace: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelReadRangeNode:
     """`<ui:ExcelReadRange>`(知見115、`ExcelApplicationScope`配下の子活動、
     `ExcelWriteCellNode`と同じ「スコープと連動する」活動)。`range`は
@@ -961,6 +997,8 @@ Node = (
     | ExcelReadCellNode
     | ExcelWriteCellNode
     | ExcelApplicationScopeNode
+    | WordApplicationScopeNode
+    | WordReplaceTextNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode

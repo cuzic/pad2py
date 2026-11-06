@@ -56,6 +56,8 @@ from dump_daemon.uipath_dsl import (
     UnknownActivityNode,
     VbExpr,
     WhileNode,
+    WordApplicationScopeNode,
+    WordReplaceTextNode,
     parse_activity,
     parse_workflow_file,
 )
@@ -647,6 +649,49 @@ def test_excel_application_scope(main_wf):
     assert isinstance(scope.body[0], ExcelWriteCellNode)
     assert scope.body[0].cell == Literal(value="A1")
     assert scope.body[0].sheet_name == "Sheet1"
+
+
+def test_word_application_scope_and_replace_text_in_document():
+    """知見121: `ui:WordApplicationScope`+`ui:ReplaceTextInDocument`
+    (`UiPath/skills`公式リポジトリの実機XAMLの属性構成をそのまま合成XML
+    で再現する)。`_parse_excel_application_scope`と同じ
+    `ActivityAction`+`DelegateInArgument`構造。"""
+    xml = (
+        f"<ui:WordApplicationScope {_UI_XMLNS} "
+        'DisplayName="Word Application Scope" FileName="Output\\OfferLetter.docx" '
+        'Visible="False">'
+        "<ui:WordApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="ui:WordDocument">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="ui:WordDocument" Name="WordDocumentScope" />'
+        "</ActivityAction.Argument>"
+        '<ui:ReplaceTextInDocument DisplayName="Replace Text in Document" '
+        'Search="{{Candidate}}" Replace="[candidate]" />'
+        "</ActivityAction>"
+        "</ui:WordApplicationScope.Body>"
+        "</ui:WordApplicationScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordApplicationScopeNode)
+    assert node.file_name == "Output\\OfferLetter.docx"
+    assert node.scope_var == "WordDocumentScope"
+    assert len(node.body) == 1
+    replace = node.body[0]
+    assert isinstance(replace, WordReplaceTextNode)
+    assert replace.search == Literal(value="{{Candidate}}")
+    assert replace.replace == VbExpr(text="candidate")
+    assert replace.display_name == "Replace Text in Document"
+
+
+def test_word_replace_text_alternate_tag_name():
+    """知見121: 実機で2つの異なるタグ名(`ui:ReplaceTextInDocument`/
+    `ui:WordReplaceText`)を確認した——どちらも同じ`WordReplaceTextNode`
+    へパースされる。"""
+    xml = f'<ui:WordReplaceText {_UI_XMLNS} DisplayName="Replace Text" Search="[a]" Replace="[b]" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordReplaceTextNode)
+    assert node.search == VbExpr(text="a")
+    assert node.replace == VbExpr(text="b")
 
 
 def test_send_outlook_mail_and_set_to_clipboard(main_wf):

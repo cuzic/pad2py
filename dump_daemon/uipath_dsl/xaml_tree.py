@@ -70,6 +70,8 @@ from .types import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WordApplicationScopeNode,
+    WordReplaceTextNode,
     WorkflowFile,
 )
 
@@ -771,6 +773,32 @@ def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScop
     )
 
 
+def _parse_word_application_scope(elem: etree._Element) -> WordApplicationScopeNode:
+    """知見121: `ui:WordApplicationScope`。`_parse_excel_application_scope`
+    と完全に同じ構造パーサー(`ActivityAction`+`DelegateInArgument`)。"""
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    scope_var = "WordDocumentScope"
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                scope_var = _attr(d, "Name") or scope_var
+        body = _unwrap_body_sequence(action)
+    return WordApplicationScopeNode(
+        file_name=_attr(elem, "FileName") or "", scope_var=scope_var, body=body
+    )
+
+
+def _parse_word_replace_text(elem: etree._Element) -> WordReplaceTextNode:
+    return WordReplaceTextNode(
+        search=_attr_expr(elem, "Search"),
+        replace=_attr_expr(elem, "Replace"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _SEND_OUTLOOK_MAIL_KNOWN_ATTRS = {
     "To", "Subject", "Body", "Cc", "Bcc", "Importance", "Sensitivity", "IsBodyHtml", "IsDraft",
 }
@@ -1129,6 +1157,9 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
+    (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
+    (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,
+    (UI_NS, "WordReplaceText"): _parse_word_replace_text,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "SendMail"): _parse_send_mail,

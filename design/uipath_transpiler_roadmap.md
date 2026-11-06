@@ -1428,3 +1428,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     れる)は次回へ見送り。回帰テスト追加(`tests/test_uipath_dsl.py`
     1件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全484件
     通過、リポジトリ全体で全1354件通過。
+79. **(完了、2026-11-06)** `ui:WordApplicationScope`+`ui:
+    ReplaceTextInDocument`/`ui:WordReplaceText`を新規実装(VM不使用、
+    知見121——知見117〜120の手法を継続、前回見送ったWord系に着手):
+    `UiPath/skills`公式リポジトリの`uipath-troubleshoot`テストタスクで
+    複数の実例を確認。実機で2つの異なるタグ名(`ui:ReplaceTextInDocument`
+    「Replace Text in Document」/`ui:WordReplaceText`「Replace Text」)を
+    発見——意味論は同じと判断し両方を同じノード型へディスパッチ。
+    `Search`は`"{{Candidate}}"`(ドキュメント内の生のプレースホルダ、VB式
+    ではない)と`"[TermsPlaceholder]"`(真のVB変数参照)の両方の実例が
+    あると確認。`ExcelApplicationScope`(知見22・97)と同じ設計で
+    `python-docx`(既に依存に含まれている)への実コード生成——
+    `docx.Document()`で開き、各段落の各run単体に対する文字列置換
+    イディオムへ変換、スコープ末尾で`.save()`。実際に一時`.docx`
+    ファイルへ生成コードを実行し、プレースホルダがVB変数の値へ正しく
+    置換されることを確認済み。検索対象が複数runに分割されている場合は
+    置換されない既知の限界(`python-docx`自体の制約)を明示的に受け入れる。
+    `_iter_invoke_nodes`のスコープ再帰発見リストにも追加(知見88と同種の
+    見落とし防止)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+    `tests/test_uipath_codegen.py`4件)、UiPath関連テスト全490件通過、
+    リポジトリ全体で全1369件通過。
