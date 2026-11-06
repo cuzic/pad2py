@@ -8,7 +8,17 @@ from __future__ import annotations
 from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef
 from ..context import CodegenContext
 from ..selectors import _build_pywinauto_selector_expr, _window_expr_by_instance_or_title_class
-from ._support import safe_render
+from ._support import enum_last, safe_render
+
+# design/dsl_format_findings.md 知見199(decompile確認済み): `IfWindowContainsAction`は
+# `WaitForWindowContentAction`と全く同じ`WindowContainsActionBase`を共有する(知見196で
+# 解決した`WAIT`側と同じ5兄弟セレクタ構造、`InstantCheck`という追加パラメータがあるが
+# これはRPC不透明な内部実装側のポーリング/キャッシュ挙動にのみ影響し、外部から見える
+# 真偽値契約には影響しないため無視する——`WaitForWindow`の`FocusWindow`無視と同じ判断)。
+_IF_WINDOW_CONTAINS_ELEMENT_MODES = {
+    "UIAutomation.IfWindowContains.WindowContainsElement": False,
+    "UIAutomation.IfWindowContains.WindowDoesNotContainElement": True,
+}
 
 # design/dsl_format_findings.md 知見68/69(実機確認済み): `File.IfFile.Exists`/
 # `Folder.IfFolderExists.Exists`はUI要素セレクタを一切使わない単純な存在チェックで、
@@ -75,6 +85,27 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
             return None
         call = f"services_actions.is_service_installed({service})"
         return f"not {call}" if header.action_id == "Services.IfService.IsNotInstalled" else call
+
+    if header.action_id in _IF_WINDOW_CONTAINS_ELEMENT_MODES:
+        element = header.params.get("Element")
+        if not isinstance(element, UiElementRef):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        call = f"{selector_expr}.exists()"
+        return f"not {call}" if _IF_WINDOW_CONTAINS_ELEMENT_MODES[header.action_id] else call
+
+    if header.action_id == "UIAutomation.IfWindowContains.WindowContainsElementInState":
+        element = header.params.get("Element")
+        state = enum_last(header.params.get("State"))
+        if not isinstance(element, UiElementRef) or state not in ("Enabled", "Disabled"):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        desired = state == "Enabled"
+        return f"({selector_expr}.exists() and {selector_expr}.wrapper_object().is_enabled() == {desired})"
 
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None

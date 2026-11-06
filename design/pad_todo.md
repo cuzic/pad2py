@@ -78,16 +78,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `expr_runtime.pad_equal()`を新設し`render_condition()`/`_render_expr_as_python()`の
   両方で`=`→`pad_equal(a, b)`・`<>`→`not pad_equal(a, b)`に変更、`variables_actions.py`の
   重複実装もこちらへ統一した。
-- [ ] 🖥️ UI要素系の残り2条件アクション`UIAutomation.IfImage.ExistsOnScreen`/
-  `UIAutomation.IfWindowContains.WindowContainsElement`のPython変換ロジック(セレクタ/画像照合の意味論)。
-  🔍 **decompileで確認(知見90/91と同じDLL群から`UIAutomation.Actions.dll`を追加取得)**:
-  知見89〜91の「decompileでスキーマ特定→Tier1アクションだけで構築してRun検証」という
-  手法がここには効かないと判明——`IfImageAction.Images`は`List<PngEncodedImage>`
-  (実際にスクリーンキャプチャで切り出したPNGバイナリそのもの、paste/Tier1アクションの
-  組み合わせでは作れない)、`WindowContainsElement`の`Control`は既知の`UIControl`
-  (知見38の`appmask['<表示名>']`名前参照と同じ型)で、ブロッカーの正体は新しいスキーマ
-  不明ではなく、既存の「UI要素リポジトリの実セレクタ取得にはRDPか2FA経由のクラウド保存が
-  必要」という古い既知の制約(知見38/39/42)そのもの。この2項目は真にRDP必要で確定。
+- [ ] 🖥️ `UIAutomation.IfImage.ExistsOnScreen`のPython変換ロジック(画像照合の意味論)。
+  `IfImageAction.Images`は`List<PngEncodedImage>`(実際にスクリーンキャプチャで切り出した
+  PNGバイナリそのもの、paste/Tier1アクションの組み合わせでは作れない)で、実機のUI要素
+  リポジトリ/画像セレクタ取得にはRDPが必要(知見38/39/42)という制約で真にRDP必要。
+  ✅ **訂正・結線完了(知見196・199)**: 当初ここに一緒に挙げていた
+  `UIAutomation.IfWindowContains.WindowContainsElement`は、「RDP必要」という本項目の判断が
+  誤りだったと判明——`IfWindowContainsAction`は`WaitForWindowContentAction`と全く同じ
+  `WindowContainsActionBase`を共有し、`Control`(`Click.Click`の`Element`と同じ既知の
+  `UiElementRef`機構)のセレクタ解決さえできれば`exists()`へ1対1対応するだけで、RPC不透明な
+  `CheckForWindowContent()`の内部実装理解は不要だった(知見196の論法をそのまま適用)。
+  `WindowDoesNotContainElement`/`WindowContainsElementInState`も含め結線済み、残る
+  `WindowContainsText`/`WindowDoesNotContainText`のみ依然見送り(テキストマッチの
+  意味論が実機未確認)。
 - [x] 💻 **新規発見(知見160、`tools/pad_selector_audit.py`でUIAutomation.Actions.dll全体を
   再監査して判明)した8系統を精査・1件結線(知見161)**: decompileで精査した結果、
   `TakeScreenshotOfUIElement`(兄弟セレクタ2件)は`Control`プロパティが`UIAutomation.

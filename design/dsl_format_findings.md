@@ -3178,3 +3178,15 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 **しかし真の障壁が別にあると判明**: `python-docx`の公開APIは「ドキュメント末尾への画像追加」(`document.add_picture()`)・「特定runの末尾への画像追加」(`run.add_picture()`)のみで、**既存の段落内容の途中(ブックマークタグの直前/直後)への画像挿入に対応する公開APIが無い**。これを実現するには、`python-docx`が内部で行っている画像埋め込み処理(リレーションID生成・`<w:drawing>`要素のXML構築・画像パートの登録)を、非公開の内部実装に依存して自力で再現する必要がある——これは知見181の「ブックマークの既存テキストを読むだけ」(公開属性への素直なアクセス)とは全く異なるリスク区分(ライブラリの非公開内部実装への依存、`python-docx`のバージョン間で壊れる可能性、生成文書が破損するリスク)に該当するため、今回は実装を見送る。
 
 **結論**: 知見193-197のExcelでの一連の再評価は「保守的すぎる除外の訂正」として有効だったが、本件は逆に「見送りの理由が誤っていたが、見送りという結論自体は(別の、より確かな理由により)正しかった」という結果になった——`docs-local`の再読は依然有益(見送りの根拠を正確に保つ)が、常に実装可能になるわけではないことの実例として記録する。コード変更は無し。
+
+## 199. `docs-local/robin_language_source_findings.md`の「今後の調査候補」リストを再読——`IfWindowContainsAction`が知見196で解決した`WaitForWindowContentAction`と全く同じ`WindowContainsActionBase`を共有すると判明、同じ3モードを新規結線
+
+知見197・198に続き、`docs-local/robin_language_source_findings.md`の「今後の調査候補(未着手)」セクション(過去のセッションが残した持ち越し事項リスト)を再読した。「`IfWindowContains`が『単純ではない』という既存の判断」という記述を再確認するため、`UIAutomation.Actions.dll`の`IfWindowContainsAction`をdecompileし直したところ、知見196で`WaitForWindowContentAction`を精査した際と**全く同じ**`WindowContainsActionBase`抽象クラスを継承していると確定した——5兄弟セレクタ(`WindowContainsElement`/`WindowDoesNotContainElement`/`WindowContainsElementInState`/`WindowContainsText`/`WindowDoesNotContainText`)も完全に対応する構造で、追加パラメータ`InstantCheck`(Advanced、既定`False`)が1つあるだけだった。
+
+`InstantCheck`は`CheckForWindowContent()`(`IAutomationRuntimeProxy`越しのRPC不透明呼び出し)の最後の引数として渡されるが、知見196で確立した「外部契約(入力セレクタ→出力真偽値)に対応付けが一意に決まる場合はそれに依拠できる」という論法がここでも成立する——`InstantCheck`はRPC内部のポーリング/キャッシュ挙動にのみ影響する実装詳細であり、最終的な真偽値の意味そのものは変えないと判断し、知見191の`FocusWindow`無視と同じ扱いにした。
+
+これにより、知見196で`WaitForWindowContent`に実装した`WindowContainsElement`/`WindowDoesNotContainElement`/`WindowContainsElementInState`の3モードを、`IfWindowContains`(条件アクション側)にも同じロジックで結線した。`WindowContainsText`/`WindowDoesNotContainText`は知見196と同じ理由(テキストマッチの正確な意味論が実機未確認)で依然見送る。
+
+実装: `pad_codegen/actions/conditions.py`に`_IF_WINDOW_CONTAINS_ELEMENT_MODES`辞書と`WindowContainsElementInState`専用の分岐を追加(`enum_last`のimportを追加)。テストは`tests/test_pad_codegen.py`に7件追加(既存の実機キャプチャフィクスチャ`looptest_whole_subflow_with_if_window_contains_element.txt`のaction_id行を文字列置換して兄弟セレクタを再利用、`fake_pywinauto`での実行確認込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1140 passed, 28 skippedを確認(VM不要)。`codegen_coverage.py`の`condition_action_call`バケットが3/5→4/5に改善した。
+
+**教訓の強化**: 知見196-199を通じて、「同じ抽象基底クラスを継承する2つのアクション(`WaitForXxx`/`IfXxx`)は、片方の結線ロジックがそのまま他方にも適用できる」という再利用パターンが繰り返し有効だと確認できた——今後、新しい`[WaitAction]`/`[ConditionAction]`を発見した際は、同じ基底クラスを継承する兄弟アクションが既に結線されていないか先に確認する価値がある。

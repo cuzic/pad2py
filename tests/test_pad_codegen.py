@@ -651,6 +651,102 @@ def test_generate_python_from_real_if_window_contains_element_whole_subflow_capt
         generate_python(tree)
 
 
+def test_generate_python_from_real_if_window_contains_element_converts_with_repository() -> None:
+    # design/dsl_format_findings.md 知見199: `IfWindowContainsAction`は知見196で解決した
+    # `WaitForWindowContentAction`と同じ`WindowContainsActionBase`を共有すると判明——
+    # 同じ5兄弟セレクタ構造のうち`WindowContainsElement`を同じロジックで結線した。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_if_window_contains_element.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert (
+        "if Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').exists():" in code
+    )
+    assert "NotImplementedError" not in code
+
+
+@pytest.mark.parametrize(
+    ("new_action_id", "expected_condition"),
+    [
+        (
+            "WindowContainsElement",
+            "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+            ".child_window(class_name='Edit').exists()",
+        ),
+        (
+            "WindowDoesNotContainElement",
+            "not Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+            ".child_window(class_name='Edit').exists()",
+        ),
+    ],
+)
+def test_generate_python_converts_if_window_contains_element_modes(
+    new_action_id: str, expected_condition: str
+) -> None:
+    # design/dsl_format_findings.md 知見199: 実機キャプチャ(`WindowContainsElement`)の
+    # action_id行を文字列置換して兄弟セレクタを再利用する(知見196と同じ手法)。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_if_window_contains_element.txt"
+    ).read_text(encoding="utf-8")
+    text = text.replace("WindowContainsElement", new_action_id, 1)
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert f"if {expected_condition}:" in code
+    assert "NotImplementedError" not in code
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+
+
+@pytest.mark.parametrize("state", ["Enabled", "Disabled"])
+def test_generate_python_converts_if_window_contains_element_in_state(state: str) -> None:
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_if_window_contains_element.txt"
+    ).read_text(encoding="utf-8")
+    text = text.replace(
+        "WindowContainsElement Element:",
+        f"WindowContainsElementInState State: UIAutomation.State.{state} Element:",
+        1,
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    desired = state == "Enabled"
+    sel = "Desktop(backend=\"uia\").window(title='Untitled - Notepad').child_window(class_name='Edit')"
+    assert f"if ({sel}.exists() and {sel}.wrapper_object().is_enabled() == {desired}):" in code
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    registry.set_enabled([{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], desired)
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+
+
+def test_generate_python_keeps_if_window_contains_text_as_todo() -> None:
+    # design/dsl_format_findings.md 知見199: テキストマッチの正確な意味論が実機未確認
+    # のため`WindowContainsText`/`WindowDoesNotContainText`は依然見送り。
+    dsl = (
+        "IF (UIAutomation.IfWindowContains.WindowContainsText Window: AutomationWindow2 "
+        "Text: $'''hello''') THEN\nSET X TO 1\nEND"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    with pytest.raises(NotImplementedError, match="WindowContainsText"):
+        generate_python(tree)
+
+
 def test_generate_python_from_real_if_service_capture_converts() -> None:
     # design/dsl_format_findings.md 知見188: 知見187執筆時に「既存の汎用パーサーで対応できる
     # 見込み」と書いたが実際には未結線(NotImplementedErrorへ落ちていた)と判明し、
