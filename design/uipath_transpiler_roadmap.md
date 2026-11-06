@@ -1786,3 +1786,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      ギャップの連鎖と判明——規模が違うため見送り記録。回帰テスト追加
      (`tests/test_uipath_codegen.py`1件)、UiPath関連テスト全540件
      通過、リポジトリ全体で全1471件通過。
+
+102. **(完了、2026-11-06)** `.LastIndexOf`/`.Substring`/`Regex.Replace`
+     を新規実装(知見144): `.LastIndexOf(value)`を`str.rfind(value)`
+     へ対応(いずれも最後の出現位置、見つからなければ`-1`)。
+     `.Substring(startIndex[, length])`を`s[startIndex:]`/
+     `s[startIndex:startIndex+length]`へ対応——同じ実機XAMLの
+     `.LastIndexOf`と組み合わせた拡張子除去の定石パターンを両方解決
+     する必要があった。`Regex.Replace(input, pattern, replacement)`を
+     `re.sub(pattern, replacement, input)`へ対応(引数順の違いに注意、
+     確認済みの基本正規表現構文のみ)。既存の回帰テストが`Substring`を
+     「未確認メンバの例」に使っていたため別メンバへ差し替え(確認済み
+     範囲が広がっていることの直接的な証拠)。新規23リポジトリの検証で
+     構文エラーは0件。回帰テスト追加(`tests/test_uipath_codegen.py`
+     4件)、UiPath関連テスト全544件通過、リポジトリ全体で全1490件通過
+     (並行作業中の別セッションの未完了変更による無関係な失敗1件を
+     除く)。

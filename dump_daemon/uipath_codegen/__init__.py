@@ -279,6 +279,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 変換先、知見134)も同様。
     if any("glob.glob(" in line for line in body):
         imports.append("import glob")
+    # `re`(`Regex.Replace`→`re.sub(...)`変換先、知見144)も同様。
+    if any("re.sub(" in line for line in body):
+        imports.append("import re")
     # `logging`(`LogMessage`→`logging.info(...)`/`.error(...)`変換先、
     # 知見119)も同様。
     if any("logging.info(" in line or "logging.error(" in line for line in body):

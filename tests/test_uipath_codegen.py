@@ -385,6 +385,63 @@ def test_directory_getfiles_with_search_pattern_renders_as_glob():
     _compiles(code)
 
 
+def test_bare_variable_lastindexof_renders_as_rfind():
+    """知見144: `excelFilePath.LastIndexOf(".")`(`IS300-G6/
+    PwC-Onboarding`の実機XAML、拡張子の位置を調べる定石パターン)。
+    `str.rfind(value)`と同じ意味論(いずれも最後の出現位置、見つから
+    なければ`-1`)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.LastIndexOf(".")'))])
+    code = generate_python(wf)
+    assert "x = (y).rfind('.')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_regex_replace_renders_as_re_sub():
+    """知見144: `Regex.Replace(input, pattern, replacement)`
+    (`vermilion9312/RegularExpression`の実機XAML`Regex.Replace(str,
+    pattern, "******")`で発見)。引数の並び順の違い(.NET:
+    `(input, pattern, replacement)`、Pythonの`re.sub`: `(pattern, repl,
+    string)`)に注意。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"),
+                value=VbExpr(text='Regex.Replace(input, pattern, "***")'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "x = re.sub(pattern, '***', input)" in code
+    assert "import re" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_substring_one_arg_renders_as_slice():
+    """知見144: `String.Substring(startIndex)`はPythonの`s[startIndex:]`
+    と同じ意味論。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="y.Substring(2)"))])
+    code = generate_python(wf)
+    assert "x = (y)[2:]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_substring_two_args_renders_as_slice():
+    """知見144: `String.Substring(startIndex, length)`
+    (`IS300-G6/PwC-Onboarding`の実機XAML`excelFilePath.Substring(0,
+    excelFilePath.LastIndexOf("."))`で発見、拡張子除去の定石パターン)
+    はPythonの`s[startIndex:startIndex+length]`と同じ意味論。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.Substring(0, y.LastIndexOf("."))'))]
+    )
+    code = generate_python(wf)
+    assert "x = (y)[(0):(0)+((y).rfind('.'))]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_directory_exists_renders_as_os_path_isdir():
     """知見134: `Directory.Exists(path)`(`manju1201/RPA_UiPath`の実機
     XAML`Directory.Exists(ScreenshotFileInfo.DirectoryName)`で発見)。"""
@@ -693,8 +750,10 @@ def test_assign_chained_equals_call_renders_as_comparison():
 def test_assign_chained_access_with_unsupported_member_falls_back_to_todo():
     """`uipath_codegen`レベルでは値の変換失敗は`# TODO`へ(条件式の
     伝播とは違う失敗モード、モジュールdocstring参照)——未確認の.NET
-    メンバ(`Substring`等)はでっち上げず`# TODO`へ倒す。"""
-    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).Substring(1)"))])
+    メンバ(`PadLeft`等)はでっち上げず`# TODO`へ倒す。知見144で
+    `Substring`を確認済みメンバへ追加したため、本テストはそれとは別の
+    未確認メンバへ差し替えた。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).PadLeft(1)"))])
     code = generate_python(wf)
     assert "# TODO" in code
     _compiles(code)

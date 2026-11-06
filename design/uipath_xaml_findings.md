@@ -6834,6 +6834,49 @@ CurrentDirectory`と同種だが別の名前)、(2)`.ToCharArray`(文字配列�
 (明示的な`# TODO`decline)を追加。`tests/test_uipath_codegen.py`に
 1件追加、UiPath関連テスト全540件通過、リポジトリ全体で全1471件通過。
 
+## 144. `.LastIndexOf`/`.Substring`/`Regex.Replace`を新規実装(未使用の新規23リポジトリでの実機検証、`compile()`標準化を継続、VM不使用)
+
+知見117〜143の手法を未使用の新規23リポジトリへ適用した。`compile()`
+検証でも構文エラーは0件。
+
+**解決: `.LastIndexOf(value)`**(`IS300-G6/PwC-Onboarding`の実機XAML
+`excelFilePath.LastIndexOf(".")`で発見、拡張子の位置を調べる定石
+パターン)。Pythonの`str.rfind(value)`と同じ意味論——いずれも最後に
+出現した位置を返し、見つからない場合は`-1`を返す(.NET/Python公式
+ドキュメントで確認済み)。`_apply_chained_call`(知見133で確立した
+共通ヘルパー)に追加。
+
+**解決: `.Substring(startIndex)`/`.Substring(startIndex, length)`**
+(同上の実機XAML`excelFilePath.Substring(0, excelFilePath.
+LastIndexOf("."))`で発見、`.LastIndexOf`と組み合わせた拡張子除去の
+定石パターン——両方を同時に解決する必要があった)。1引数形は
+`s[startIndex:]`、2引数形は`s[startIndex:startIndex+length]`
+(第2引数は「開始位置からの文字数」、終了位置そのものではない点に
+注意、.NET公式ドキュメント確認済み)。既存の回帰テスト`test_assign_
+chained_access_with_unsupported_member_falls_back_to_todo`が
+`Substring`を「未確認メンバの例」として使っていたため、別の未確認
+メンバ(`PadLeft`)へ差し替えた(知見で新しいメンバを確認するたびに
+この種のテスト更新が必要になる、良い副産物——「確認済みの範囲が
+広がっている」ことの直接的な証拠)。
+
+**解決: `Regex.Replace(input, pattern, replacement)`**
+(`vermilion9312/RegularExpression`の実機XAML`Regex.Replace(str,
+pattern, "******")`で発見)。3引数の確認済み形のみ`re.sub(pattern,
+replacement, input)`へ対応——.NETとPythonの引数の並び順が異なる点に
+注意(.NET: `(input, pattern, replacement)`、Python: `(pattern, repl,
+string)`)。既知の限界: 名前付きキャプチャグループの記法(.NET
+`(?<name>...)`/Python`(?P<name>...)`)等、.NET固有の正規表現構文を
+使う場合は食い違う可能性があるが、確認済みの基本構文(`\d{6}$`等)の
+範囲でのみ対応する。
+
+`dump_daemon/uipath_codegen/render.py`の`_apply_chained_call`に
+`LastIndexOf`/`Substring`(1・2引数)分岐、`_render_func_call`に
+`regex.replace`分岐を追加。`dump_daemon/uipath_codegen/__init__.py`の
+`_collect_imports`に`re`検出を追加。`tests/test_uipath_codegen.py`に
+4件追加(既存1件の差し替え含む)、UiPath関連テスト全544件通過、
+リポジトリ全体で全1490件通過(`test_pad_codegen.py`の1件は並行作業中
+の別セッションの未完了変更により別途失敗中——本変更とは無関係)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

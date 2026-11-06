@@ -647,6 +647,25 @@ def _apply_chained_call(base: str, last: str, args: list[str]) -> str:
         # 連鎖で使われていた)はPythonの`in`演算子と同じ意味論
         # (部分文字列の包含判定、順序が逆になる点に注意)。
         return f"({args[0]}) in ({base})"
+    if last == "LastIndexOf" and len(args) == 1:
+        # 知見144: `String.LastIndexOf(value)`(`IS300-G6/PwC-Onboarding`
+        # の実機XAML`excelFilePath.LastIndexOf(".")`で発見、拡張子の
+        # 位置を調べる定石パターン)はPythonの`str.rfind(value)`と同じ
+        # 意味論——いずれも最後に出現した位置を返し、見つからない場合は
+        # `-1`を返す(.NET公式ドキュメント/Python公式ドキュメント確認済み)。
+        return f"({base}).rfind({args[0]})"
+    if last == "Substring" and len(args) == 1:
+        # 知見144: `String.Substring(startIndex)`はPythonの`s[startIndex:]`
+        # と同じ意味論(.NET公式ドキュメント確認済み、末尾まで切り出す)。
+        return f"({base})[{args[0]}:]"
+    if last == "Substring" and len(args) == 2:
+        # 知見144: `String.Substring(startIndex, length)`
+        # (`IS300-G6/PwC-Onboarding`の実機XAML`excelFilePath.
+        # Substring(0, excelFilePath.LastIndexOf("."))`で発見、拡張子
+        # 除去の定石パターン)はPythonの`s[startIndex:startIndex+length]`
+        # と同じ意味論——第2引数が「開始位置からの文字数」である点に注意
+        # (終了位置そのものではない、.NET公式ドキュメント確認済み)。
+        return f"({base})[({args[0]}):({args[0]})+({args[1]})]"
     raise NotImplementedError(f"unsupported chained method call: .{last}(...)")
 
 
@@ -918,6 +937,22 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("File.ReadAllBytes expects exactly 1 argument")
         return f"open({args[0]}, 'rb').read()"
+    if key == "regex.replace":
+        # 知見144: `System.Text.RegularExpressions.Regex.Replace(input,
+        # pattern, replacement)`(`vermilion9312/RegularExpression`の
+        # 実機XAML`Regex.Replace(str, pattern, "******")`で発見)。3引数
+        # の確認済み形のみ対応——.NETとPythonの正規表現記法(`\d`等の
+        # 基本的な文字クラス・量指定子・アンカー)は共通部分が広く、
+        # 確認済みの実例(`\d{6}$`)はそのままPythonの`re`モジュールでも
+        # 同じ意味を持つ。引数の並び順が異なる点に注意——.NETは
+        # `(input, pattern, replacement)`、Pythonの`re.sub`は`(pattern,
+        # repl, string)`。既知の限界: 名前付きキャプチャグループの記法
+        # (.NET`(?<name>...)`/Python`(?P<name>...)`)等、.NET固有の正規
+        # 表現構文を使う場合は食い違う可能性があるが、未確認のため
+        # 対応は見送る(確認済みの基本構文のみを想定)。
+        if len(args) != 3:
+            raise NotImplementedError("Regex.Replace expects exactly 3 arguments")
+        return f"re.sub({args[1]}, {args[2]}, {args[0]})"
     if key == "convert.todatetime":
         # 知見143: `Convert.ToDateTime(value)`(`KeerthikaBaskar/
         # 220701126-RPA-LAB`の実機XAML`Convert.ToDateTime(str_Date).
