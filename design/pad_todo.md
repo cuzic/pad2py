@@ -196,6 +196,12 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     `PowerPoint.CopyPastePowerPointSlide`は2つの独立`PowerPointInstanceHandle`間の
     クロスプレゼンテーションコピー——6件全てdecompileで確認済みのライブCOM専用機能。
     専用dispatchは元から存在せず汎用TODOフォールバックに安全に落ちるため対応不要。
+    ✅ **7件目を追加確認(知見189)**: `_all_modules_flat_actions_raw.txt`の全エントリを
+    手動照合したところ`Excel.GetActiveCell`(`GetActiveCellAction`)が一度も検討されずに
+    残っていたと判明——decompileした結果、ライブExcel COMの`Application.ActiveCell`
+    読み取りのみで`openpyxl`に対応概念が無く、上記6件と同種のライブCOM専用と確定した
+    (対応不要、同じTODOフォールバックのままでよい)。これで横断監査リストの全エントリが
+    「結線済み」または「対応不要と確認済み」のいずれかに分類された。
   - [x] 💻 **`Services`は知見165の監査対象リストに含まれていなかったと判明・新規4アクション
     結線完了(知見187)**: `Microsoft.Flow.RPA.Desktop.Modules.Services.Actions.dll`を
     新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、

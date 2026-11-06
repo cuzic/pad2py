@@ -29,6 +29,11 @@ TODOフォールバックへ委ねる。各セレクタが固定する列挙値(
 decompileした`ActionSelector<T>`サブクラスの`Prop<>.ShouldBe()`呼び出しそのもの
 (知見155)から直接書き起こしたもので、`enum_last()`でDSLから動的に読む必要は無い
 (セレクタが選ばれた時点で値は一意に確定している)。
+
+`Excel.GetActiveCell`(フラットな`GetActiveCellAction`)も知見189で精査済み、ライブExcel
+COMの`Application.ActiveCell`(現在のユーザー選択セル)読み取りのみで`openpyxl`に対応
+概念が無いため、知見171の6件に次ぐ7件目のライブCOM専用として専用dispatchを追加せず
+意図的に汎用TODOフォールバックのままにしている。
 """
 from __future__ import annotations
 
