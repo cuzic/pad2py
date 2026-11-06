@@ -6083,6 +6083,64 @@ ToString)`等)。これは知見74で既に文書化済みの「VB.NETは配列/
 分岐を追加。`tests/test_uipath_codegen.py`に3件追加、UiPath関連テスト
 全503件通過、リポジトリ全体で全1399件通過。
 
+## 127. 関数呼び出しを介さない素の変数への**メソッド**呼び出し連鎖(`mail_Category.Equals(...)`)の文法ギャップを修正、`Len`関数を新規実装(未使用の新規24リポジトリでの実機検証、知見117〜126の手法を継続、VM不使用)
+
+知見117〜126の手法を、さらに未使用の新規24件のGitHubリポジトリ
+(`AsmaTrabelsi/RPA-Excel-Data-Entry-Automation`・`LowyShin/
+lwrpa-uip-moveoldfiles`・`nmnithinkrishna/uipathos-manufacturing-
+AutonomousProductFabrication`等)へ適用した。
+
+**解決: 素の変数への関数呼び出し連鎖**。知見118は「関数呼び出し結果へ
+のメンバ/メソッドアクセス連鎖」(`CStr(x).ToUpper()`)を、知見119は
+「関数呼び出しを介さない素の変数への**プロパティ**アクセス連鎖、呼び出し
+無し」(`intCounter.ToString`)を解決していたが、`nmnithinkrishna/
+uipathos-manufacturing-AutonomousProductFabrication`の実機XAMLで
+`mail_Category.Equals("Order")`という**第3のパターン**——関数呼び出しを
+介さない素の変数への**メソッド**呼び出し連鎖(末尾が引数付き呼び出し)
+——に遭遇し、`NotImplementedError`でコード生成全体が落ちることを発見
+した。原因は知見119と同根: `IDENT`トークンの正規表現がドット区切りを
+1トークンとして貪欲マッチするため、`mail_Category.Equals`全体が`(`に
+到達する前に単一の関数名として吸収され、文法上`FuncCall(name=
+"mail_Category.Equals", args=(...))`になってしまう——`postfix`規則
+(知見118)には到達しない。
+
+`_render_func_call`の末尾(確認済みTier1静的メソッド名のいずれにも
+一致しなかった場合のみ到達する、静的クラス参照の誤変換を避けるため)に
+新しい分岐を追加: `node.name`が`.`を含む場合、知見118の`_render_
+chained_access`と全く同じアルゴリズム(先頭セグメントを基点とし、中間
+セグメントは`_apply_chained_property`でプロパティ連鎖、末尾セグメント
+は確認済みの安全な変換(`Equals`1引数→`==`、または引数無しの
+プロパティ相当)のみ適用)を再利用する——新しい変換ロジックを追加した
+わけではなく、既存の確認済みロジックを別の文法経路からも使えるように
+しただけ。実機の`mail_Category.Equals("Order",
+StringComparison.InvariantCultureIgnoreCase)`(2引数のカルチャ依存
+比較オーバーロード)は、知見118で既に対象外と明示済みの形のため、この
+新しい経路でも引き続き`# TODO`へ倒れる(回帰テストで確認——でっち上げ
+無し)。
+
+**解決: `Len`関数**(`LowyShin/lwrpa-uip-moveoldfiles`、`Len(sRstHttp)`)。
+`Microsoft.VisualBasic.Strings.Len(Expression)`は文字列に対して文字数を
+返し、Pythonの`len(str)`と直接対応する——実機で見つかった引数名は
+いずれも文字列用途のHungarian記法(`s`接頭辞)だった。既知の限界として、
+VBの`Len`は非文字列(構造体等)には別の意味論(バイトサイズ)があり
+Pythonの`len()`とは食い違うが、実機確認は文字列用法のみのため文字列
+用法を想定した直接マッピングとする(知見42と同種の、確認済みの範囲外は
+無理に埋めない方針)。
+
+**新たに見送ったもの**: `Directory.GetFiles(...).OrderBy(Function(s)
+...).ThenBy(Function(s) ...)`(`pdmorale/OCR_Statistics`)——LINQの
+`OrderBy`/`ThenBy`メソッドチェーン+ラムダ式(`Function(s) ...`)という、
+`uipath_expr`文法が全く対応していない構文領域(関数リテラル自体が
+未対応)で、`tree=None`への安全なフォールバックが正しく機能している
+(クラッシュはしない、`# TODO`へ倒れる)。2件のState Machineルート
+(`sujanfx/autopilot-hr`・`whooaaapppp/yearlyreport-uipath`)は既存の
+v1スコープ外の判断(Phase 1)を想定通り再確認しただけ。
+
+`dump_daemon/uipath_codegen/render.py`の`_render_func_call`に`len`
+分岐+ドット付き関数名のフォールバック分岐を追加。`tests/
+test_uipath_codegen.py`に4件追加、UiPath関連テスト全507件通過、
+リポジトリ全体で全1403件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

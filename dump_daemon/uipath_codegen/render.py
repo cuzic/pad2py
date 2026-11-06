@@ -825,6 +825,19 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
+    if key == "len":
+        # 知見127: `Microsoft.VisualBasic.Strings.Len(Expression)`
+        # (`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML`Len(sRstHttp)`で
+        # 発見)。文字列に対しては文字数を返し、Python`len(str)`と直接
+        # 対応する——実機で見つかった引数名(`sRstHttp`等、文字列を示す
+        # Hungarian記法)はいずれも文字列用途だった。既知の限界: VBの
+        # `Len`は非文字列(構造体等)には「バイトサイズ」を返す別の意味論
+        # があり、Pythonの`len()`は文字列・リスト・辞書等のコレクションの
+        # 要素数を返す——文字列以外の型に対する実機確認はまだ無いため、
+        # 文字列用法のみを想定した直接マッピングとする。
+        if len(args) != 1:
+            raise NotImplementedError("Len expects exactly 1 argument")
+        return f"len({args[0]})"
     if key == "split":
         # 知見126: `Microsoft.VisualBasic.Strings.Split(Expression,
         # Delimiter, Limit, Compare)`の実機確認済みの形は`nkarkare/
@@ -852,6 +865,31 @@ def _render_func_call(node: FuncCall) -> str:
         # Statement`ページの`condition`定義で確定)——`_vb_bool()`
         # (知見60の`AndAlso`/`OrElse`と同じヘルパー)で変換する。
         return f"({args[1]} if {VB_BOOL_HELPER_NAME}({args[0]}) else {args[2]})"
+    if "." in node.name:
+        # 知見127: `mail_Category.Equals("x")`のような、関数呼び出しを
+        # 介さない素の変数へのメンバ**メソッド**呼び出し連鎖
+        # (`nmnithinkrishna/uipathos-manufacturing-
+        # AutonomousProductFabrication`の実機XAMLで発見)。`IDENT`トークン
+        # の正規表現がドット区切りを1トークンとして貪欲マッチするため、
+        # `mail_Category.Equals`全体が単一の関数名として`FuncCall`に
+        # なってしまう——知見119(素の変数への**プロパティ**アクセス連鎖、
+        # 呼び出し無し)と同種だが、末尾が呼び出しを伴う点が異なる新しい
+        # ケース。この時点で`key`が上のTier1確認済み静的メソッド名
+        # (`string.isnullorempty`等)のいずれにも一致しなかった場合のみ
+        # ここへフォールバックする——静的クラス参照を誤って変数チェーンと
+        # 解釈するリスクを避けるため、Tier1判定を必ず先に終えてから試す。
+        # 末尾セグメントが確認済みの安全なメンバ(`_apply_chained_property`
+        # /`Equals`)に一致する場合のみ`_render_chained_access`と同じ
+        # ロジックを適用し、それ以外は従来通り`# TODO`へ倒す。
+        segments = node.name.split(".")
+        base = segments[0]
+        for member in segments[1:-1]:
+            base = _apply_chained_property(base, member)
+        last = segments[-1]
+        if not args:
+            return _apply_chained_property(base, last)
+        if last == "Equals" and len(args) == 1:
+            return f"({base}) == ({args[0]})"
     raise NotImplementedError(
         f"unsupported function call (not in the confirmed Tier1 set): {node.name}(...)"
     )

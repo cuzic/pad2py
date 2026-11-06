@@ -199,6 +199,63 @@ def test_array_or_collection_indexing_syntax_is_ambiguous_with_func_call_falls_b
     _compiles(code)
 
 
+def test_len_renders_as_python_len():
+    """知見127: `Len(expr)`(`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML
+    `Len(sRstHttp)`で発見)。文字列用法のみ想定し`len(expr)`へ対応する。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Len(y)"))])
+    code = generate_python(wf)
+    assert "x = len(y)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_equals_call_renders_as_equality():
+    """知見127: `mail_Category.Equals("Order")`(`nmnithinkrishna/
+    uipathos-manufacturing-AutonomousProductFabrication`の実機XAMLで発見)。
+    `IDENT`トークンがドット区切りを1トークンとして貪欲マッチするため
+    `mail_Category.Equals`全体が単一の関数名として`FuncCall`になり、
+    知見118の`ChainedAccess`修正(関数呼び出し結果への連鎖)では捕捉
+    できない——関数呼び出しを介さない素の変数への**メソッド呼び出し**
+    連鎖という新しいケース。1引数の`Equals`のみ`==`比較へ対応する。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='mail_Category.Equals("Order")'))]
+    )
+    code = generate_python(wf)
+    assert "x = (mail_Category) == ('Order')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_equals_call_with_culture_overload_is_todo_not_guessed():
+    """知見127: `.Equals(value, StringComparison...)`というカルチャ依存
+    比較の2引数オーバーロード(知見118で既に対象外と明示済み)は、
+    新しいフォールバック経路でも推測せず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="x"),
+                value=VbExpr(
+                    text='mail_Category.Equals("Order", StringComparison.InvariantCultureIgnoreCase)'
+                ),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "x = None" in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_property_then_call_chain_renders():
+    """知見127: `a.Trim.ToUpper()`のような、プロパティアクセス+末尾呼び出し
+    の混在連鎖(合成例、同じフォールバック経路の一般性を確認)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="a.Trim.ToUpper()"))])
+    code = generate_python(wf)
+    assert "x = a.strip().upper()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_split_with_two_args_renders_as_str_split():
     """知見126: `Split(expr, delimiter)`(`nkarkare/UDISEAutomation`の
     実機XAML`Split(in_Category, ",")`で発見)。2引数の確認済み形のみ
