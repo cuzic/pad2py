@@ -3716,3 +3716,75 @@ def test_generate_python_from_get_current_datetime_custom_offset_converts() -> N
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     delta = (namespace["D"] - now_utc) - timedelta(hours=5)
     assert abs(delta.total_seconds()) < 5
+
+
+def test_generate_python_from_database_connect_oracle_converts() -> None:
+    # design/dsl_format_findings.md 知見139: `ActionSelectorBase`一括列挙監査を
+    # Database.Actions.dllに適用して発見した`OpenConnection`クラスの兄弟セレクタ
+    # (`OpenConnectionOracleSelector`)。`pyodbc`等のネイティブドライバ無しでは
+    # 実際の接続自体は検証できないため(知見でっち上げ防止の対象外・既存の
+    # `database_actions.open_connection()`自体は別途単体テスト済み)、ここでは
+    # 生成コードの文字列と構文的妥当性のみ検証する。
+    dsl = "Database.Connect.ConnectOracle ConnectionString: $'''DRIVER=Oracle;...''' Connection=> SQLConnection"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "SQLConnection = database_actions.open_connection('DRIVER=Oracle;...', database_type='Oracle')" in code
+
+
+def test_generate_python_from_database_connect_and_execute_converts() -> None:
+    # design/dsl_format_findings.md 知見139: `ExecuteSqlStatement`クラスの兄弟セレクタ
+    # (`ConnectAndExecuteSelector`)——接続文字列から直接実行する一括モード。
+    # `pad_action_lib.database_actions.connect_and_execute()`は既に実装・単体テスト済み
+    # (`tests/test_pad_action_lib_database.py`)だったが、codegen側は未結線だった。
+    dsl = (
+        "Database.ExecuteSqlStatement.ConnectAndExecute ConnectionString: $'''DRIVER=SQLite;''' "
+        "Statement: $'''SELECT 1''' Timeout: 30 Result=> QueryResult"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "QueryResult = database_actions.connect_and_execute('DRIVER=SQLite;', 'SELECT 1', "
+        "database_type='Other', timeout=30)[1]" in code
+    )
+
+    # 実際にexec()し、connect_and_executeへ正しい引数が渡ることまで検証する
+    # (fake connect=を直接注入できないため、戻り値のタプルを自前で用意した
+    # database_actionsのスタブに差し替える)。
+    import dump_daemon.pad_action_lib.database_actions as database_actions
+
+    calls = []
+
+    def fake_connect_and_execute(connection_string, statement, database_type="Other", timeout=30, **kwargs):
+        calls.append((connection_string, statement, database_type, timeout))
+        return ("fake-connection", "fake-result")
+
+    original = database_actions.connect_and_execute
+    database_actions.connect_and_execute = fake_connect_and_execute
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        database_actions.connect_and_execute = original
+    assert calls == [("DRIVER=SQLite;", "SELECT 1", "Other", 30)]
+    assert namespace["QueryResult"] == "fake-result"
+
+
+def test_generate_python_from_database_connect_and_execute_oracle_converts() -> None:
+    # design/dsl_format_findings.md 知見139: Oracle専用の兄弟セレクタ。選択した時点で
+    # database_typeが"Oracle"に固定される(OpenConnectionOracleSelectorと同じ前例)。
+    dsl = (
+        "Database.ExecuteSqlStatement.ConnectAndExecuteOracle ConnectionString: $'''DRIVER=Oracle;''' "
+        "Statement: $'''SELECT 1 FROM DUAL''' Timeout: 30 Result=> QueryResult"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "QueryResult = database_actions.connect_and_execute('DRIVER=Oracle;', 'SELECT 1 FROM DUAL', "
+        "database_type='Oracle', timeout=30)[1]" in code
+    )

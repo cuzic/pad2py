@@ -2443,3 +2443,18 @@ pywinautoの`WindowSpecification`に`hide()`/`show()`相当のメソッドは無
 `get_current_datetime()`に`input_type: str = "Offset"`引数を追加し、`Custom`モード内で`Offset`/`Windows`の2経路に分岐するよう修正した。知見116が「実機DSLでの直列化形式(パラメータ名)が未確認」として保留していた点は、本セッション中に確立した「リフレクションのプロパティ名=DSL上のパラメータ名」という実証済みパターン(知見117以降で繰り返し確認済み)に基づき結線した——個々のパラメータの実機キャプチャ例自体はまだ無いが、この対応規則自体は多数の既存知見で裏付けられている。
 
 テストは`tests/test_pad_action_lib_datetime.py`に`CustomTimeZone`系1件(Windows専用skip)、`tests/test_pad_codegen.py`にプラットフォーム非依存な`CustomOffset`のend-to-endテスト1件(実際に`exec()`してUTC+5時間が正しく計算されることを検証)を追加した。
+
+## 139. `ActionSelectorBase`一括列挙監査を`Database.Actions.dll`に適用し、`Database.Connect.ConnectOracle`/`Database.ExecuteSqlStatement.ConnectAndExecute`/`ConnectAndExecuteOracle`を新規結線——`connect_and_execute()`は既に実装済みだったが未結線だった
+
+知見135-138の監査手法(`ActionSelectorBase`を基底型として辿る、VM上のリフレクション直接呼び出し)を、これまで未着手だった`Database`/`Web`/`XML`/`Cmd`/`Text`/`Cryptography`の6モジュールに一括適用した(VM上で`[System.Reflection.Assembly]::LoadFrom()`→`GetTypes()`→`BaseType`を`ActionSelectorBase`まで辿る→`ActionName`プロパティ読み取り、という知見135と同じ手順)。
+
+**Database.Actions.dllの発見**: 既存結線は`Database.Connect.Connect`(`OpenConnection`クラス)・`Database.ExecuteSqlStatement.Execute`(`ExecuteSqlStatement`クラス)・`Database.Close`(`CloseConnection`クラス)の3件のみだった。全`ActionSelectorBase`サブクラス5件を列挙したところ、以下2件が未発見・未結線の兄弟セレクタだと判明した:
+
+- `OpenConnectionOracleSelector`(ActionName=`ConnectOracle`): `OpenConnection`クラスの兄弟セレクタ。VM上で`OpenConnection`クラスのプロパティ一覧(`DatabaseType`/`Connection`/`ConnectionString`/`ProviderLibraryPath`等)を確認し、`OpenConnectionOtherSelector`(既存結線の`Connect`)と同一クラス・同一`ConnectionString`プロパティを共有すると確定した。
+- `ConnectAndExecuteSelector`(ActionName=`ConnectAndExecute`)・`ConnectAndExecuteOracleSelector`(ActionName=`ConnectAndExecuteOracle`): `ExecuteSqlStatement`クラスの兄弟セレクタ(`ConnectionString`/`DatabaseType`/`Statement`/`Timeout`/`Result`プロパティを同一クラスが持つと確認)——接続文字列から接続・実行・(暗黙に)切断までを1アクションで行う一括モード。
+
+`pad_action_lib.database_actions.connect_and_execute()`は**既に実装済み**(`tests/test_pad_action_lib_database.py`で単体テスト済み)だったが、`pad_codegen`側の結線が一度も無かった——知見129以来何度も見つかっている「下の層は実装済みだがcodegen側の分岐が無い」パターン。`Database.Connect.ConnectOracle`→`database_actions.open_connection(..., database_type='Oracle')`、`Database.ExecuteSqlStatement.ConnectAndExecute[Oracle]`→`database_actions.connect_and_execute(..., database_type='Other'/'Oracle', ...)[1]`として結線した。
+
+**留保事項(実機キャプチャによる確証はまだ無い)**: `DatabaseType`パラメータ自体がDSL上でどう直列化されるか(明示的に`Other`以外を選んだ場合)は未確認——既存の`Connect.Connect`も元々このパラメータを読んでいなかった前例に合わせ、`ConnectAndExecute`も読まずにデフォルト("Other")のまま結線した。`ConnectAndExecute`の出力束縛が本当に`Result`1個だけ(`Connection`の別出力が無い)かも、`Execute`セレクタと同一クラスという構造的推測に基づくものであり、実機DSLキャプチャでの直接確認はまだ無い。
+
+Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、未結線セレクタの全量を把握した(詳細はdesign/pad_todo.md参照)——Database以外はまだ個別の結線作業に未着手。

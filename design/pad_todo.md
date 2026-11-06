@@ -409,11 +409,41 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     ✅ **決着(知見138)**: 全モードがVM上の直接呼び出しで解明・結線完了
     (`CustomTimeZone`はルックアップテーブルを経由しない別経路だと発見、
     `dump_daemon/pad_codegen/actions/pad_datetime.py`参照)。
-  - [ ] 💻🖥️ **残課題(次の調査対象)**: `Database.Actions.dll`(`ConnectAndExecute`/
-    `ConnectAndExecuteOracle`/`ConnectOracle`)・`Web.Actions.dll`(Download/
-    InvokeWebService系が非常に多数)・`XML.Actions.dll`・`Cmd.Actions.dll`・
-    `Text.Actions.dll`・`Cryptography.Actions.dll`(AES鍵のSalt/IV組み合わせ系)には
-    まだ`ActionSelectorBase`一括列挙監査を適用していない——次の調査対象として記録する。
+  - [x] 💻🖥️ `Database.Actions.dll`に監査を適用。
+    ✅ **決着(知見139)**: `Database.Connect.ConnectOracle`/
+    `Database.ExecuteSqlStatement.ConnectAndExecute`/`ConnectAndExecuteOracle`の3件を
+    新規結線完了(`connect_and_execute()`は`pad_action_lib`側に既に実装済みだったが
+    codegen未結線だった)。
+  - [~] 💻🖥️ `Web.Actions.dll`/`XML.Actions.dll`/`Cmd.Actions.dll`/`Text.Actions.dll`/
+    `Cryptography.Actions.dll`にも監査を適用し、未結線セレクタの全量をVM上のリフレクション
+    (知見139と同じ手法)で確認完了——**結線作業自体はまだ未着手**(次のtickの対象として
+    記録する):
+    - `XML.Actions.dll`(12セレクタ、現状0件結線): `ExecuteXPath`/
+      `ExecuteXPathAndGetFirstValueOnly`/`GetElementAttribute`(+AsNumeric/AsBoolean/
+      AsDateTime、3兄弟)/`GetElementValue`(+AsNumeric/AsBoolean/AsDateTime、3兄弟)/
+      `WriteToFile`/`WriteToFileFormatted`。`pad_action_lib`側の実装状況は未確認。
+    - `Cmd.Actions.dll`(4セレクタ): `OpenWithCodePage`/`Open`/`Read`/`ReadAndSplit`。
+      既存の`Cmd.Open.Open`/`Cmd.Close`/`Cmd.Write`/`Cmd.WaitForText`/
+      `Cmd.ReadFromCmdSession.Read`との対応関係(`Open`二重発見?)を要確認。
+    - `Text.Actions.dll`(23セレクタ): `DateTimeToText`系2・`ToDateTime`系2・
+      `CropText`系3(Before/After/BetweenFlags)・`GetText`/`GetSubtext`系3・
+      `JoinText`系3・`Parse`系4(通常/Regex×先頭のみ/全件)・`ReplaceText`系2・
+      `SplitText`系3。既存結線(`Text.ParseText.ParseForFirstOccurrence`/`Replace.
+      ReplaceText`等、知見66)との重複有無を要確認。
+    - `Cryptography.Actions.dll`(今回はAES暗号/復号の16セレクタのみ、Salt/IV組み合わせ
+      4パターン×Encrypt/Decrypt×Text/File=16件): 既存結線(知見111、鍵無しの
+      `HashText`/`HashFromFile`のみ)とは別の、`EncryptTextWithAES`等AES専用セレクタ群。
+      `pad_action_lib.cryptography_actions`のAES実装状況を要確認。
+    - `Web.Actions.dll`(46セレクタ、現存既知結線は`Download`本体1件のみ):
+      `Download`系9(通常/ToFile/ToFolder×UseAuth/UsePost組み合わせ)・
+      `InvokeSoapService`系2(通常/UseAuth)・`InvokeWebService`系35
+      (GET/POST/PUT×SaveToFile/SaveToFolder×UseAuth×Upload、組み合わせ爆発)。
+      既存の知見94-96(`UserAgent`/`FollowRedirection`/`EncodeRequestBody`等)は
+      どのセレクタに対応するか要確認——このモジュールは組み合わせが非常に多く、
+      全件結線より「よく使われる組み合わせから優先的に」が現実的。
+    監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
+    所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
+    再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。
 
 ## C. 構造的・運用上の課題
 
