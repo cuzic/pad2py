@@ -62,6 +62,7 @@ from dump_daemon.uipath_dsl import (
 )
 
 FIXTURE_DIR = Path(__file__).parent.parent / "design" / "evidence" / "uipath_xaml_probe"
+FIXTURE_LIB_DIR = Path(__file__).parent.parent / "design" / "evidence" / "uipath_xaml_probe_lib"
 
 
 def _wrap(body) -> WorkflowFile:
@@ -2270,6 +2271,19 @@ def test_generate_project_from_json_rejects_non_process_output_type(tmp_path):
     )
     with pytest.raises(ValueError, match="outputType"):
         generate_project_from_json(tmp_path)
+
+
+def test_generate_project_from_json_rejects_real_library_fixture():
+    """知見95: 上記の`outputType`拒否は従来、手作りの合成`project.json`
+    (tmp_path)でしか検証されていなかった——design/evidence/
+    uipath_xaml_probe_lib/project.json(実機キャプチャ、`outputType:
+    "Library"`、`main: "NewActivity.xaml"`)という実物のLibraryプロジェクト
+    フィクスチャが既にリポジトリに存在するのに、一度もこの経路で
+    テストされていなかった(`p:NewActivity`というLibrary呼び出しの
+    *参照先*としては`test_uipath_dsl.py`で間接的に触れられているのみ)。
+    実機データで同じ拒否動作が成立することをロックする。"""
+    with pytest.raises(ValueError, match="outputType"):
+        generate_project_from_json(FIXTURE_LIB_DIR)
 
 
 def test_generate_project_from_json_requires_main_field(tmp_path):

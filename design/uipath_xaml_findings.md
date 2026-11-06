@@ -4431,6 +4431,33 @@ activity`の全分岐(`InvokeCodeNode`/`ExcelApplicationScopeNode`/
 `ExcelWriteCellNode`/`SendOutlookMailNode`/`HttpClientNode`)が持つ全フィールドを
 一通り確認済みになった。
 
+## 95. `generate_project_from_json`のLibraryプロジェクト拒否が、実物の実機フィクスチャ(`uipath_xaml_probe_lib`)では一度もテストされていなかった(VM不使用、検証基盤の薄さを埋める改善)
+
+知見92〜94の「捕捉済みデータの未活用」パターンが
+`_generate_unresolved_activity`全分岐で確認済みになったため、別の角度
+(ロードマップ俯瞰レビューの「残タスクC: 検証基盤の薄さ」節)から
+「既にリポジトリに存在する実機フィクスチャで、まだ一度も通していない
+経路が無いか」を確認した。
+
+**発見**: `design/evidence/uipath_xaml_probe_lib/`(`project.json`に
+`"outputType": "Library"`、`main`は`"NewActivity.xaml"`)という
+実物のLibraryプロジェクトフィクスチャが既に存在し、知見26・28の
+調査(Library参照・`.nupkg`の技術的制約)で使われていたにもかかわらず、
+`generate_project_from_json()`のLibrary拒否ロジック(Phase 1決定)の
+テストは手作りの合成`project.json`(`tmp_path`)でしか検証されておらず、
+この実物フィクスチャを一度も通していなかった。実際に手動実行して
+`ValueError: unsupported project outputType: 'Library' ...`が正しく
+出ることを確認した上で、同じ内容を回帰テスト化した。
+
+**バグではなく、検証基盤の強化**: 挙動自体は合成テストの時点から
+正しかった(今回変更無し)。既存の実機フィクスチャを使い切っていなかった
+という意味でのギャップ。
+
+`tests/test_uipath_codegen.py`に
+`test_generate_project_from_json_rejects_real_library_fixture`を追加
+(`FIXTURE_LIB_DIR`定数を新設)。UiPath関連テスト全276件通過、リポジトリ
+全体で全1005件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
