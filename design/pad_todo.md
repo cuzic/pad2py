@@ -747,15 +747,17 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
 **スコープそのものの判断**(拡張するかどうか)なので、他の項目と異なりユーザーの意思決定を
 待つ。実装はまだ一切していない。
 
-- [ ] 🖥️🔍 **`Display.ShowMessageDialog`(メッセージボックス表示)が本プロジェクト最初の
+- [x] 🔍 **`Display.ShowMessageDialog`(メッセージボックス表示)が本プロジェクト最初の
   実機キャプチャ(知見1、design/g1_g2_verification_result.md)でありながら一度も`pad_codegen`
-  に結線されていなかった**。兄弟セレクタ`ShowMessageWithTimeout`の存在も確認済み
-  (`Microsoft.Flow.RPA.Desktop.Robin.Core.dll`の文字列リテラル一覧)。Title/Message本文の
-  正確なパラメータ名・`ButtonPressed`出力の値形式が未確認(該当DLL未取得)——次にVMが空いた
-  タイミングでdecompileが必要。Win32標準`MessageBox`APIの語彙(Icon/Buttons/DefaultButton)
-  に対応すると見込まれ、実装難度自体は低い(`ctypes.windll.user32.MessageBoxW`等)。
-  これは既存スコープ内の見落としなので、他のA/B項目と同様に着手してよいと判断している
-  (ユーザー確認待ちではない)。
+  に結線されていなかった**(知見185で実装・結線完了)。`Microsoft.Flow.RPA.Desktop.Modules.
+  Display.Actions.dll`をdecompileし、`ShowMessage`(`CloseAutomatically=False`固定)を
+  `ctypes.windll.user32.MessageBoxW`で確定的に再現する形で実装した。Win32標準`MessageBox`の
+  ボタンID(OK=1等)がPAD実機の`FormMessageBox`のDialogResultと完全一致することをdecompileで
+  確認済み。兄弟セレクタ`ShowMessageWithTimeout`(タイムアウト時の挙動が標準API/未documented
+  APIいずれでも忠実に再現不能なため)は`NotImplementedError`のまま意図的に未実装。
+  同DLL内の兄弟アクション(`InputDialog`・`SelectDateDialog`・`SelectFileDialog`・
+  `SelectFolderDialog`・`SelectFromListDialog`・`ShowCustomDialog`)と、新規発見した
+  `Microsoft.Flow.RPA.Desktop.Modules.System.Actions.dll`は未調査のまま次回以降に残す。
 - [ ] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
   (SMTP送受信)・`Outlook`(ライブCOM経由)・`FTP`/`SFTP`・`Printer`・`Registry`・
   `Remote Desktop`(`UseDesktop`等の一部のみ既知)・`Terminal`(VT)・`System`/`Run application`

@@ -17,6 +17,7 @@ from . import (
     compression,
     cryptography,
     database,
+    display,
     excel,
     file,
     folder,
@@ -55,6 +56,7 @@ _FAMILIES = (
     excel,
     word,
     powerpoint,
+    display,
 )
 
 

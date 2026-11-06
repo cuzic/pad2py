@@ -195,14 +195,6 @@ def test_generate_python_renders_wait_as_time_sleep() -> None:
     assert "time.sleep(1)" in code
 
 
-def test_generate_python_marks_unmapped_action_with_todo_not_fabrication() -> None:
-    tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
-    code = generate_python(tree)
-    # Display.ShowMessageDialog はまだUI automationへのマッピングが無いため、
-    # 架空のAPI呼び出しをでっち上げず、TODOコメントになっていること。
-    assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" in code
-
-
 def test_render_text_template_without_markers_is_plain_repr() -> None:
     assert render_text_template("no vars here") == repr("no vars here")
 
@@ -263,12 +255,17 @@ def test_generate_python_maps_send_keys_to_pyautogui_typewrite() -> None:
     assert registry.calls == [("typewrite", "Hello World", 0.01)]
 
 
-def test_generate_python_full_flow_still_marks_display_message_as_todo() -> None:
-    # SendKeysのマッピング追加後も、まだ対応していないアクション(Display message)は
-    # 引き続きでっち上げずTODOのままであること(回帰確認)。
+def test_generate_python_full_flow_converts_display_message() -> None:
+    # design/dsl_format_findings.md 知見184/185で新規結線。このDSL自体は本プロジェクト
+    # 最初の実機キャプチャ(知見1)そのもの(Message/Titleは実機で空/既定値だったため
+    # 直列化されていない)——以前はTODOのままだったが、現在は実コードを生成する。
     tree = build_block_tree(parse_dsl(FULL_FLOW_DSL))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" in code
+    assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessage" not in code
+    assert (
+        "ButtonPressed = display_actions.show_message_dialog('', '', "
+        "icon='None', buttons='OK', default_button='Button1', is_topmost=False)" in code
+    )
 
 
 # 実機で「Move mouse」(Position X=500, Position Y=300, Relative to=Screen(既定),
@@ -5609,3 +5606,57 @@ def test_generate_python_from_datetime_text_custom_format_round_trips() -> None:
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["S"] == "2026/11/05"
+
+
+def test_generate_python_from_display_show_message_dialog_converts() -> None:
+    # design/dsl_format_findings.md 知見184/185: 本プロジェクト最初の実機キャプチャ
+    # (知見1、design/g1_g2_verification_result.md)でありながら一度も結線されていな
+    # かった`Display.ShowMessageDialog.ShowMessage`を新規結線。実際にダイアログを
+    # 表示せず検証するため`ctypes.windll`を偽装注入する。
+    import ctypes
+
+    dsl = (
+        "Display.ShowMessageDialog.ShowMessage Title: $'''Greeting''' "
+        "Message: $'''Hello''' Icon: Display.Icon.Question "
+        "Buttons: Display.Buttons.YesNo DefaultButton: Display.DefaultButton.Button1 "
+        "IsTopMost: False ButtonPressed=> ButtonPressed"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "ButtonPressed = display_actions.show_message_dialog('Hello', 'Greeting', "
+        "icon='Question', buttons='YesNo', default_button='Button1', is_topmost=False)" in code
+    )
+
+    class _FakeUser32:
+        def MessageBoxW(self, hwnd: int, message: str, title: str, flags: int) -> int:
+            assert message == "Hello"
+            assert title == "Greeting"
+            return 6  # Yes
+
+    class _FakeWindll:
+        user32 = _FakeUser32()
+
+    import pytest as _pytest
+
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setattr(ctypes, "windll", _FakeWindll(), raising=False)
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        assert namespace["ButtonPressed"] == "Yes"
+    finally:
+        monkeypatch.undo()
+
+
+def test_generate_python_keeps_show_message_with_timeout_as_todo() -> None:
+    # 知見185: タイムアウト時の挙動が標準Win32 APIで正確に再現できないため安全にTODOへ倒す。
+    dsl = (
+        "Display.ShowMessageDialog.ShowMessageWithTimeout Title: $'''T''' Message: $'''M''' "
+        "Timeout: 3 ButtonPressed=> ButtonPressed"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Display.ShowMessageDialog.ShowMessageWithTimeout" in code

@@ -115,6 +115,7 @@ def generate_python(
         "expr_runtime",
         "cmd_actions",
         "clipboard_actions",
+        "display_actions",
     ):
         if any(f"{module_name}." in line for line in body):
             imports.append(f"from dump_daemon.pad_action_lib import {module_name}")
