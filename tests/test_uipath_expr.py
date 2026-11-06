@@ -9,6 +9,7 @@ from __future__ import annotations
 from dump_daemon.uipath_expr import (
     BinOp,
     BoolLiteral,
+    ChainedAccess,
     FuncCall,
     Ident,
     InterpolatedString,
@@ -242,4 +243,49 @@ def test_unary_minus_binds_looser_than_power_matches_official_vb_spec():
     assert node == UnaryOp(
         op="-",
         operand=BinOp(op="^", left=NumberLiteral(value=2), right=NumberLiteral(value=2)),
+    )
+
+
+def test_chained_member_access_after_function_call_parses():
+    """知見118: 関数呼び出し結果へのメンバアクセス連鎖
+    (`in_Config("x").ToString.ToLower.Equals("yes")`、
+    `SuneetPatil/IRCTC-tatkal-booking`の実機XAMLで発見)——修正前は
+    `atom`に`.`以降の継続を許す文法規則が無く、`tree=None`(構文解析失敗)
+    まで倒れていた。`postfix`規則を追加して修正した。"""
+    node, rendered = parse_vb_expr('in_Config("x").ToString.ToLower.Equals("yes")')
+    assert node is not None
+    assert node == ChainedAccess(
+        target=FuncCall(name="in_Config", args=(StringLiteral(value="x"),)),
+        members=("ToString", "ToLower", "Equals"),
+        args=(StringLiteral(value="yes"),),
+    )
+    assert rendered == 'in_Config("x").ToString.ToLower.Equals("yes")'
+
+
+def test_chained_member_access_without_trailing_call_parses():
+    node, rendered = parse_vb_expr('in_Config("x").ToString')
+    assert node == ChainedAccess(
+        target=FuncCall(name="in_Config", args=(StringLiteral(value="x"),)),
+        members=("ToString",),
+        args=None,
+    )
+    assert rendered == 'in_Config("x").ToString'
+
+
+def test_zero_argument_function_call_has_empty_args_not_none_placeholder():
+    """知見118: `arglist: [expr (...)]`のLark既定動作(`maybe_placeholders`)
+    は引数0個の場合に単一の`None`プレースホルダ子を生成する——
+    `ChainedAccess`実装の過程で偶然発見した別件の既存バグ
+    (`FuncCall(args=(None,))`という壊れた木になっていた)。"""
+    node, rendered = parse_vb_expr("Foo()")
+    assert node == FuncCall(name="Foo", args=())
+    assert rendered == "Foo()"
+
+
+def test_chained_zero_arg_call_has_empty_args_not_none_placeholder():
+    node, _ = parse_vb_expr("CStr(x).ToUpper()")
+    assert node == ChainedAccess(
+        target=FuncCall(name="CStr", args=(Ident(name="x"),)),
+        members=("ToUpper",),
+        args=(),
     )

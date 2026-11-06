@@ -118,6 +118,34 @@ def test_for_each(main_wf):
     assert for_each.body[0].text == VbExpr(text="item")
 
 
+def test_for_each_row():
+    """知見118: `ui:ForEachRow`(`UiPath.System.Activities`、
+    `HarshadRanganathan/uipath-learning`の実機XAMLで発見)。`ui:ForEach`
+    (知見5)と直接の子要素構造が同じで、反復対象の属性名のみ`DataTable`
+    に変わる——既存の`ForEachNode`をそのまま再利用する(新しいノード型は
+    追加しない)。"""
+    xml = (
+        f"<ui:ForEachRow {_UI_XMLNS} "
+        'DataTable="[dt]" DisplayName="For each row">'
+        "<ui:ForEachRow.Body>"
+        '<ActivityAction x:TypeArguments="sd:DataRow">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="sd:DataRow" Name="row" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Body">'
+        '<ui:SetToClipboard Text="[row]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:ForEachRow.Body>"
+        "</ui:ForEachRow>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ForEachNode)
+    assert node.item_var == "row"
+    assert node.values == VbExpr(text="dt")
+    assert len(node.body) == 1
+
+
 def test_try_catch(main_wf):
     try_catch = main_wf.root.body[5]
     assert isinstance(try_catch, TryCatchNode)

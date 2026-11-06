@@ -306,6 +306,36 @@ def _parse_for_each(elem: etree._Element) -> ForEachNode:
     )
 
 
+def _parse_for_each_row(elem: etree._Element) -> ForEachNode:
+    """知見118: `ui:ForEachRow`(`UiPath.System.Activities`、`SuneetPatil/
+    IRCTC-tatkal-booking`等の実機XAMLで発見)。`ui:ForEach`(知見5)と
+    直接の子要素構造が全く同じ(`.Body`→`ActivityAction`+
+    `DelegateInArgument`→`Sequence`)で、唯一の違いは反復対象を指す属性名
+    (`Values`ではなく`DataTable`)——意味論も「反復対象の各要素を
+    `item_var`へ束縛してbodyを実行する」で完全に同じ(`DataTable`は
+    `list[dict]`表現、知見114・115で確立)のため、既存の`ForEachNode`/
+    `_generate_for_each`をそのまま再利用する(新しいノード型・生成関数は
+    不要)。`TypeArguments`は実機で`sd:DataRow`固定だったが、`ForEachNode.
+    type_arguments`自体はコード生成に影響しない(デバッグ情報としての
+    保持のみ)ため、確認済みの値のままそのまま使う。"""
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    item_var = ""
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                item_var = _attr(d, "Name") or ""
+        body = _unwrap_body_sequence(action)
+    return ForEachNode(
+        item_var=item_var,
+        values=_attr_expr(elem, "DataTable"),
+        body=body,
+        type_arguments=_attr(elem, "TypeArguments", X_NS) or "sd:DataRow",
+    )
+
+
 def _parse_try_catch(elem: etree._Element) -> TryCatchNode:
     catches_elem = _find_property_element(elem, "Catches")
     catches: list[CatchArm] = []
@@ -1030,6 +1060,7 @@ _DISPATCH = {
     (WF_NS, "Parallel"): _parse_parallel,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "ForEach"): _parse_for_each,
+    (UI_NS, "ForEachRow"): _parse_for_each_row,
     (UI_NS, "InterruptibleWhile"): _parse_while,
     (UI_NS, "InterruptibleDoWhile"): _parse_do_while,
     (UI_NS, "Break"): lambda elem: BreakNode(),

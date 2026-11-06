@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -153,6 +155,70 @@ def test_array_or_collection_indexing_syntax_is_ambiguous_with_func_call_falls_b
     code = generate_python(wf)
     assert "# TODO" in code
     assert "x = None" in code
+    _compiles(code)
+
+
+def test_assign_chained_member_access_after_function_call_renders():
+    """知見118: `CStr(x).ToUpper()`のような、関数呼び出し結果へのメンバ/
+    メソッドアクセスの連鎖(`SuneetPatil/IRCTC-tatkal-booking`の実機XAML
+    `in_Config("x").ToString.ToLower.Equals("yes")`で発見した文法ギャップの
+    修正——`uipath_expr`側は`in_Config`自体が知見74の配列添字曖昧性で
+    `# TODO`に倒れるため、ここでは確認済みのTier1関数`CStr`で再現する)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='CStr(y).ToUpper()'))])
+    code = generate_python(wf)
+    assert "x = _vb_cstr(y).upper()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_assign_chained_property_access_without_trailing_call_renders():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).ToLower"))])
+    code = generate_python(wf)
+    assert "x = _vb_cstr(y).lower()" in code
+    _compiles(code)
+
+
+def test_assign_chained_to_string_then_trim_renders():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).ToString.Trim()"))])
+    code = generate_python(wf)
+    assert "x = _vb_cstr(_vb_cstr(y)).strip()" in code
+    _compiles(code)
+
+
+def test_assign_chained_equals_call_renders_as_comparison():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='CStr(y).Equals("yes")'))])
+    code = generate_python(wf)
+    assert "x = (_vb_cstr(y)) == ('yes')" in code
+    _compiles(code)
+
+
+def test_assign_chained_access_with_unsupported_member_falls_back_to_todo():
+    """`uipath_codegen`レベルでは値の変換失敗は`# TODO`へ(条件式の
+    伝播とは違う失敗モード、モジュールdocstring参照)——未確認の.NET
+    メンバ(`Substring`等)はでっち上げず`# TODO`へ倒す。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).Substring(1)"))])
+    code = generate_python(wf)
+    assert "# TODO" in code
+    _compiles(code)
+
+
+def test_if_condition_with_chained_member_access_on_known_function_works():
+    """`If.Condition`は値とは異なり失敗を伝播させる方針(モジュール
+    docstring参照)だが、`uipath_expr`側の文法が修正された今は確認済みの
+    チェーンなら正しく成功することを確認する——`in_Config`自体は別件
+    (知見74)で`# TODO`相当の`NotImplementedError`になるため、確認済みの
+    `CStr`で再現する。"""
+    wf = _wrap(
+        [
+            IfNode(
+                condition=VbExpr(text='CStr(y).Equals("yes")'),
+                then_body=[AssignNode(target=VbExpr(text="x"), value=Literal(value="t"))],
+                else_body=[],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "(_vb_cstr(y)) == ('yes')" in code
     _compiles(code)
 
 
@@ -360,6 +426,53 @@ def test_for_each_over_array_literal():
     code = generate_python(wf)
     assert "for item in ['a', 'b', 'c']:" in code
     _compiles(code)
+
+
+def test_for_each_row_parses_and_iterates_list_of_dict_data_table():
+    """知見118: `ui:ForEachRow`(`UiPath.System.Activities`)は`ui:ForEach`
+    と同じ`ForEachNode`/`_generate_for_each`をそのまま再利用する——
+    `DataTable`が`list[dict]`表現(知見114・115)である実際のデータに対し、
+    生成コードを実行して各行が正しく束縛されることを確認する(実機XAML
+    `HarshadRanganathan/uipath-learning/Excel_Sum_For_Each.xaml`で発見)。
+    """
+    xml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        "<Sequence>"
+        '<ui:ForEachRow DataTable="[dt]" DisplayName="For each row">'
+        "<ui:ForEachRow.Body>"
+        '<ActivityAction x:TypeArguments="sd:DataRow">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="sd:DataRow" Name="row" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Body">'
+        '<ui:MessageBox Text="[row]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:ForEachRow.Body>"
+        "</ui:ForEachRow>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xaml", delete=False) as f:
+        f.write(xml)
+        path = f.name
+    try:
+        wf = parse_workflow_file(path)
+    finally:
+        os.unlink(path)
+    code = generate_python(wf)
+    assert "for row in dt:" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {"dt": [{"a": 1}, {"a": 2}]}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().splitlines() == ["{'a': 1}", "{'a': 2}"]
 
 
 def test_while_loop():

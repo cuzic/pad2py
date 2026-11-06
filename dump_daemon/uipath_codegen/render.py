@@ -15,6 +15,7 @@ from dump_daemon.uipath_expr import (
     ArrayLiteral,
     BinOp,
     BoolLiteral,
+    ChainedAccess,
     ExprNode,
     FuncCall,
     Ident,
@@ -531,9 +532,56 @@ def _render_node(node: ExprNode) -> str:
         raise NotImplementedError(f"unsupported unary operator: {node.op!r}")
     if isinstance(node, FuncCall):
         return _render_func_call(node)
+    if isinstance(node, ChainedAccess):
+        return _render_chained_access(node)
     if isinstance(node, BinOp):
         return _render_bin_op(node)
     raise NotImplementedError(f"unsupported expression node: {node!r}")
+
+
+# 知見118: `ChainedAccess`(関数呼び出し結果へのメンバ/メソッドアクセスの
+# 連鎖、例: `in_Config("x").ToString.ToLower.Equals("yes")`)。確認済みの
+# 安全な.NETメンバのみ対応し、未知のメンバは`# TODO`(呼び出し側の
+# `_render_value_or_todo`/条件式の失敗伝播のいずれか)へ倒す——他の
+# `_render_*`関数と同じ「でっち上げ回避」方針。`ToString`は`CStr`と同じ
+# `VB_CSTR_HELPER_NAME`ヘルパーへ(design/uipath_vb_expression_mapping.md
+# で`CStr`/`.ToString`を実質同等と整理済み)、`ToUpper`/`ToLower`/`Trim`は
+# Python文字列メソッドへの直接の名前変換(いずれも.NET `String`型の
+# 標準メソッドでPython `str`の対応メソッドと同じ意味論、Microsoft Learn/
+# Python公式ドキュメントで確認済み)。`Equals(arg)`(1引数)は`==`比較へ
+# (文字列同士の`Equals`はPythonの`==`と同じ値比較になる、.NET `String.
+# Equals`の既定の序数比較とPythonの文字列`==`はいずれも単純な文字列値比較
+# で一致——カルチャ依存の比較オーバーロードは未確認のため対象外)。
+_CHAINED_PROPERTY_TRANSLATIONS = {"ToUpper": "upper", "ToLower": "lower", "Trim": "strip"}
+
+
+def _render_chained_access(node: ChainedAccess) -> str:
+    base = _render_node(node.target)
+    members = list(node.members)
+    if node.args is None:
+        for member in members:
+            base = _apply_chained_property(base, member)
+        return base
+    for member in members[:-1]:
+        base = _apply_chained_property(base, member)
+    last = members[-1]
+    args = [_render_node(a) for a in node.args]
+    if not args:
+        # `.ToUpper()`等、空括弧付きの呼び出しは角括弧無しのプロパティ
+        # アクセスと同じ意味論(.NETの慣習——引数無しメソッドは括弧の
+        # 有無を問わず同じ)。
+        return _apply_chained_property(base, last)
+    if last == "Equals" and len(args) == 1:
+        return f"({base}) == ({args[0]})"
+    raise NotImplementedError(f"unsupported chained method call: .{last}(...)")
+
+
+def _apply_chained_property(base: str, member: str) -> str:
+    if member == "ToString":
+        return f"{VB_CSTR_HELPER_NAME}({base})"
+    if member in _CHAINED_PROPERTY_TRANSLATIONS:
+        return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member]}()"
+    raise NotImplementedError(f"unsupported chained member access: .{member}")
 
 
 def _split_interpolated_string(raw: str) -> list[tuple[str, str]]:

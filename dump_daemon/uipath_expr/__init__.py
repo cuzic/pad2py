@@ -105,8 +105,18 @@ comp_op: EQ | NE | LE | GE | LT | GT | IS | ISNOT
            | _MINUS unary_expr -> neg
            | _PLUS unary_expr  -> pos
 
-?power_expr: atom
-           | atom _CARET unary_expr -> pow_
+?power_expr: postfix
+           | postfix _CARET unary_expr -> pow_
+
+// 知見118: `in_Config("x").ToString.ToLower.Equals("yes")`のような、関数
+// 呼び出し結果へのメンバ/メソッドアクセスの連鎖。既存の`IDENT`トークンの
+// 正規表現(ドット区切りを1トークンとして貪欲マッチする)の都合上、
+// `.`以降の連続するメンバ名は(間に`(`が現れるまで)1つのIDENTトークンに
+// まとめて吸収される——`members`タプルへの分割は`_ExprTransformer`側で
+// 文字列を`.`で割って行う(文法側では単一トークンのまま)。
+?postfix: atom
+        | postfix "." IDENT "(" arglist ")" -> chained_call
+        | postfix "." IDENT                 -> chained_access
 
 ?atom: IDENT "(" arglist ")" -> func_call
      | IDENT                 -> ident
@@ -212,6 +222,22 @@ class Ident:
 
 
 @dataclass(frozen=True)
+class ChainedAccess:
+    """知見118: `target.Member1.Member2...MemberN`(引数なし、`args`は
+    `None`)、または`target.Member1...MemberN(args)`(末尾のみ引数付き
+    呼び出し、`args`はタプル)。`target`は`Ident`(静的クラス参照)とは違い
+    任意の式——`FuncCall`の結果に対するメンバアクセス(`in_Config("x").
+    ToString`等)が確認済みの唯一の実例。`members`は`.`区切りの各セグ
+    メントを文字列として保持する(個々のセグメントの意味論——プロパティか
+    メソッドか——は`uipath_codegen/render.py`側が確認済みの語彙と照合して
+    判断する、でっち上げ回避)。"""
+
+    target: "ExprNode"
+    members: tuple[str, ...]
+    args: tuple["ExprNode", ...] | None
+
+
+@dataclass(frozen=True)
 class StringLiteral:
     """文字列リテラル。`value`はVB側の`""`エスケープを`"`1個に正規化済み
     (知見36)。"""
@@ -258,6 +284,7 @@ ExprNode = Union[
     Paren,
     FuncCall,
     Ident,
+    ChainedAccess,
     StringLiteral,
     InterpolatedString,
     NumberLiteral,
@@ -319,7 +346,27 @@ class _ExprTransformer(Transformer):
         name_tok, args = children
         return FuncCall(name=str(name_tok), args=tuple(args))
 
+    def chained_access(self, children: list) -> ChainedAccess:
+        target, member_tok = children
+        return ChainedAccess(target=target, members=tuple(str(member_tok).split(".")), args=None)
+
+    def chained_call(self, children: list) -> ChainedAccess:
+        target, member_tok, args = children
+        return ChainedAccess(
+            target=target, members=tuple(str(member_tok).split(".")), args=tuple(args)
+        )
+
     def arglist(self, children: list) -> list:
+        """知見118: `arglist: [expr ("," expr)*]`の`[...]`(Larkの
+        maybe_placeholders既定動作)は、引数0個の場合に空リストではなく
+        単一の`None`プレースホルダ子を生成する——`Foo()`のような引数無し
+        呼び出しが`FuncCall(args=(None,))`という壊れた木になる、本来は
+        別件の`ChainedAccess`実装中に偶然発見した既存のバグ。VB式の
+        引数が実際にPythonの`None`になることは無い(`Nothing`は
+        `NothingLiteral()`に正規化される)ため、このケースのみ安全に
+        空リストへ変換できる。"""
+        if children == [None]:
+            return []
         return list(children)
 
     def comp_op(self, children: list) -> str:
@@ -430,6 +477,12 @@ def render_expr(node: ExprNode) -> str:
     if isinstance(node, FuncCall):
         args = ", ".join(render_expr(a) for a in node.args)
         return f"{node.name}({args})"
+    if isinstance(node, ChainedAccess):
+        members = ".".join(node.members)
+        if node.args is None:
+            return f"{render_expr(node.target)}.{members}"
+        args = ", ".join(render_expr(a) for a in node.args)
+        return f"{render_expr(node.target)}.{members}({args})"
     if isinstance(node, BinOp):
         return f"{render_expr(node.left)} {node.op} {render_expr(node.right)}"
     raise TypeError(f"Unsupported expr node: {node!r}")

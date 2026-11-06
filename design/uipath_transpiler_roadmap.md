@@ -1366,3 +1366,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     見送り。回帰テスト追加(`tests/test_uipath_dsl.py`5件・
     `tests/test_uipath_codegen.py`20件、既存2件の修正含む)、UiPath
     関連テスト全444件通過、リポジトリ全体で全1310件通過。
+76. **(完了、2026-11-06)** `uipath_expr`文法の「関数呼び出し結果への
+    メンバ/メソッドアクセス連鎖」ギャップと、無関係な既存バグ(引数0個の
+    関数呼び出し)を修正、`ui:ForEachRow`を既存`ForEachNode`の再利用で
+    新規実装(VM不使用、知見118——知見117の手法をさらに3件の実プロジェクト
+    へ継続適用): `SuneetPatil/IRCTC-tatkal-booking`の実機XAMLで
+    `in_Config("x").ToString.ToLower.Equals("yes")`のようなチェーンが
+    構文解析段階で丸ごと失敗すると発見——確認済みのTier1関数
+    (`CStr`等)の結果への`.ToUpper()`/`.ToString().Trim()`連鎖すら失敗
+    する広範なギャップだった。`postfix`文法規則+`ChainedAccess`IR
+    ノードを新設して修正、レンダラーは確認済みの安全なメンバのみ対応
+    (`.ToString`→`_vb_cstr()`、`.ToUpper`/`.ToLower`/`.Trim`→Python
+    文字列メソッド、`.Equals(arg)`→`==`比較)。実装中に偶然、無関係の
+    既存バグ(`arglist`の空引数リストが`None`プレースホルダのまま
+    壊れた木になっていた)も発見・修正。`ui:ForEachRow`は`ui:ForEach`と
+    直接の子要素構造が完全に同じ(`DataTable`属性名のみ違う)と判明し、
+    新しいノード型を追加せず既存`ForEachNode`をそのまま再利用する薄い
+    パーサーのみ追加——実際に`list[dict]`に対して生成コードを実行し
+    各行が正しく束縛されることを確認済み。回帰テスト追加
+    (`tests/test_uipath_expr.py`4件・`tests/test_uipath_codegen.py`
+    7件・`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全456件通過、
+    リポジトリ全体で全1323件通過。

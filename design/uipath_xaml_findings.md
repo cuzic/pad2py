@@ -5651,6 +5651,77 @@ XMLスキーマパーサー含む)、`uipath_codegen/__init__.py`に対応する
 20件追加(既存2件の修正含む)、全1310件通過。外部実プロジェクトでの
 再検証(`Demo7/Main.xaml`)で`# TODO`数が6→3件に減少したことを確認。
 
+## 118. `uipath_expr`文法の「関数呼び出し結果へのメンバ/メソッドアクセス連鎖」ギャップと、無関係な既存バグ(引数0個の関数呼び出し)を発見・修正、`ui:ForEachRow`を既存`ForEachNode`の再利用で新規実装(知見117の手法を継続、VM不使用)
+
+知見117で導入した「実機XAMLに対する実際のコード生成の検証」を、さらに
+3件の多様な実プロジェクト(`SuneetPatil/IRCTC-tatkal-booking`・
+`vajrang-b/UiPathIn30Days`・`HarshadRanganathan/uipath-learning`)に対して
+継続実行した。
+
+**`uipath_expr`文法のギャップ(重要度の高い発見)**: `SuneetPatil/
+IRCTC-tatkal-booking`の実機XAML(`If Condition="[in_Config(&quot;
+insurance&quot;).ToString.ToLower.Equals(&quot;yes&quot;)]"`)を変換した
+ところ、`If.Condition`の構文解析失敗が未捕捉のまま伝播し(モジュール
+docstringが明記する意図した「条件式の失敗は伝播させる」設計通りの挙動
+ではあるが)、ファイル全体の変換が丸ごと失敗した。原因を追跡したところ、
+**関数呼び出し結果へのメンバ/メソッドアクセスの連鎖
+(`FuncCall(...).Member1.Member2...`)が文法に一切対応していない**という、
+この1ファイルに限らない広範な既存ギャップだと判明した——確認済みの
+Tier1関数(`CStr`等)の結果への`.ToUpper()`/`.ToString().Trim()`連鎖すら
+構文解析段階で失敗していた(`DateTime.Now.ToString("yyyy").Trim()`のような
+一般的なVB.NETの慣用句も同様)。`postfix`規則(`atom`と`power_expr`の間に
+新設)を追加し、`ChainedAccess`という新しいIRノード型(`target`は任意の式、
+`members`はドット区切りの各セグメント、`args`は末尾呼び出しの引数
+——`None`なら末尾も単純なプロパティアクセス)で表現するよう修正した。
+
+レンダラー側(`uipath_codegen/render.py`)は確認済みの安全な.NETメンバの
+みを実コード変換する——`.ToString`は既存の`CStr`と同じ`_vb_cstr()`
+ヘルパーへ(design/uipath_vb_expression_mapping.mdで`CStr`/`.ToString`を
+実質同等と整理済み)、`.ToUpper`/`.ToLower`/`.Trim`はPython文字列メソッド
+への直接の名前変換(いずれも.NET `String`型の標準メソッドでPython`str`の
+対応メソッドと同じ意味論)、`.Equals(arg)`(1引数)は`==`比較へ(文字列
+同士の`Equals`はPythonの`==`と同じ値比較になる)。未知のメンバ・メソッド
+は`# TODO`/条件式の失敗伝播のいずれかへ安全に倒す(他の`_render_*`関数と
+同じ「でっち上げ回避」方針)。
+
+**無関係な既存バグの偶発的発見**: この修正の実装中、`arglist: [expr
+("," expr)*]`という既存の文法規則(引数0個の関数呼び出しを表現する
+`[...]`のLark既定動作、`maybe_placeholders`)が、引数0個の場合に空リスト
+ではなく**単一の`None`プレースホルダ子を生成する**という、全く別件の
+既存バグを発見した——`Foo()`のような引数無し関数呼び出しが
+`FuncCall(args=(None,))`という壊れた木になっていた(VB式の引数が実際に
+Pythonの`None`になることは無いため、安全に判別・修正できた)。実機データ
+で引数0個の関数呼び出しが使われる実例が今回の調査まで無かったため、
+長らく未検出だったと推定される(知見41の`And`/`Or`/`Xor`優先順位バグと
+同種の「混在パターンの実機データが無かったため長らく未検出」というパターン)。
+
+**`ui:ForEachRow`**(`UiPath.System.Activities`、`HarshadRanganathan/
+uipath-learning`で発見): `ui:ForEach`(知見5)と直接の子要素構造が完全に
+同じ(`.Body`→`ActivityAction`+`DelegateInArgument`→`Sequence`)で、
+唯一の違いは反復対象を指す属性名(`Values`ではなく`DataTable`)——意味論も
+完全に同じ(`DataTable`は`list[dict]`表現、知見114・115で確立)。新しい
+ノード型・生成関数を追加せず、既存の`ForEachNode`/`_generate_for_each`を
+そのまま再利用する薄いパーサー(`_parse_for_each_row`)のみ追加した。
+実際に`list[dict]`に対して生成コードを実行し、各行(`dict`)が正しく
+`row`へ束縛されることを確認済み。
+
+**新たに発見したが今回は見送ったもの**: `AppendWriteCsvFile`(CSV書き込み、
+Python標準の`csv`モジュールで実装可能と見込まれる)・SQL Server以降の
+ProviderName(`Microsoft.Data.SqlClient`、SQLite以外のプロバイダの実在
+確認——知見114でSQLite限定とした判断の妥当性を裏付ける実例)・`row(
+"ColumnName")`(DataRowインデクサ、`row`が`list[dict]`の`dict`要素だと
+分かっていれば`row["ColumnName"]`に対応するはずだが、知見74の配列添字
+曖昧性と同じ理由でスコープ認識が無い限り安全に判別できない)・
+`dt.Rows.IndexOf(row)`(未確認の関数チェーン)は、いずれも別の機会に
+記録しておく。
+
+`dump_daemon/uipath_expr/__init__.py`に`ChainedAccess`+文法規則+
+`arglist`の修正、`uipath_codegen/render.py`に`_render_chained_access`、
+`uipath_dsl/xaml_tree.py`に`_parse_for_each_row`(`(UI_NS,
+"ForEachRow")`へディスパッチ登録、既存`ForEachNode`を返す)を追加。
+`tests/test_uipath_expr.py`に4件・`tests/test_uipath_codegen.py`に7件・
+`tests/test_uipath_dsl.py`に1件追加、全1323件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
