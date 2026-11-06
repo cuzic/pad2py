@@ -84,6 +84,7 @@ from dump_daemon.uipath_dsl import (
     OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
+    RefreshBrowserNode,
     RethrowNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -2306,6 +2307,37 @@ def test_close_tab_with_browser_variable_reference_is_todo_not_guessed():
     wf = _wrap([CloseTabNode(browser=VbExpr(text="firefox"))])
     code = generate_python(wf)
     assert "# TODO: CloseTab with Browser set" in code
+    assert "send_keys" not in code
+    _compiles(code)
+
+
+def test_refresh_browser_sends_f5_via_global_send_keys():
+    """知見175: `ui:RefreshBrowser`(GitHub code searchで59件ヒット)。
+    `CloseTab`(知見170)の`send_keys('^w')`と同じ経路で、主要ブラウザ
+    共通の標準キーボードショートカット`F5`を送る。"""
+    wf = _wrap([RefreshBrowserNode()])
+    code = generate_python(wf)
+    assert "send_keys('{F5}')" in code
+    assert "from pywinauto.keyboard import send_keys" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_refresh_browser_display_name_becomes_a_comment():
+    wf = _wrap([RefreshBrowserNode(display_name="Refresh Browser")])
+    code = generate_python(wf)
+    assert "# Refresh Browser" in code
+    assert "send_keys('{F5}')" in code
+    _compiles(code)
+
+
+def test_refresh_browser_with_browser_variable_reference_is_todo_not_guessed():
+    """知見175: `Browser`が`UiBrowser`型変数への参照(実機
+    `csut017/CrowdMarkLoad`で確認済みの`[browser]`)の場合は、変数自体
+    が未モデル化のためでっち上げず`# TODO`へ倒す。"""
+    wf = _wrap([RefreshBrowserNode(browser=VbExpr(text="browser"))])
+    code = generate_python(wf)
+    assert "# TODO: RefreshBrowser with Browser set" in code
     assert "send_keys" not in code
     _compiles(code)
 

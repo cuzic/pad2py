@@ -59,6 +59,7 @@ from dump_daemon.uipath_dsl import (
     OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
+    RefreshBrowserNode,
     RethrowNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -981,6 +982,25 @@ def test_close_tab_with_browser_variable_reference():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, CloseTabNode)
     assert node.browser == VbExpr(text="firefox")
+
+
+def test_refresh_browser_properties():
+    """知見175: `ui:RefreshBrowser`(GitHub code searchで59件ヒット)。
+    `CloseTab`(知見170)と同じ属性構成(`Browser`のみ)——実機
+    `PakamTharunReddy/RPA`で確認した`{x:Null}`の実例。"""
+    xml = f'<ui:RefreshBrowser {_UI_XMLNS} Browser="{{x:Null}}" DisplayName="Refresh Browser" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RefreshBrowserNode)
+    assert node.browser is None
+    assert node.display_name == "Refresh Browser"
+
+
+def test_refresh_browser_with_browser_variable_reference():
+    """実機`csut017/CrowdMarkLoad`で確認した`[browser]`の実例。"""
+    xml = f'<ui:RefreshBrowser {_UI_XMLNS} Browser="[browser]" DisplayName="Refresh Browser" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RefreshBrowserNode)
+    assert node.browser == VbExpr(text="browser")
 
 
 def test_close_application_selector_and_properties():

@@ -2258,3 +2258,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `generate_python()`+`compile()`を確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
      UiPath関連テスト全725件通過、リポジトリ全体で全1769件通過。
+
+133. **(完了、2026-11-06)** `ui:RefreshBrowser`(GitHub code search
+     で59件ヒット)を新規実装(知見175): `CloseTab`(知見170)と属性
+     構成(`Browser`のみ)・実装経路が完全に同型。`Browser`が
+     `{x:Null}`の場合は「現在のページを再読み込みする」——`CloseTab`の
+     `send_keys('^w')`と同じ経路で`send_keys('{F5}')`(pywinautoの
+     CODESグラマーで確認済みの特殊キー構文)を送る。`import`検出
+     ロジックも既存のものを再利用でき追加不要だった。`Browser`が
+     変数参照の場合は未モデル化のため`# TODO`へ倒す。実機XAML3件で
+     `generate_python()`+`compile()`を確認(2件は既知の別制約で
+     祖先ノードの時点でスキップ)。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+     UiPath関連テスト全730件通過、リポジトリ全体で全1774件通過。

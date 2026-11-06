@@ -110,6 +110,7 @@ from ..uipath_dsl.types import (
     OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
+    RefreshBrowserNode,
     RethrowNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -489,6 +490,8 @@ def _generate_node(
         return _generate_kill_process(node, indent)
     if isinstance(node, CloseTabNode):
         return _generate_close_tab(node, indent)
+    if isinstance(node, RefreshBrowserNode):
+        return _generate_refresh_browser(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1741,6 +1744,29 @@ def _generate_close_tab_body(node: CloseTabNode, indent: int) -> list[str]:
             "variable reference not modeled, refusing to guess"
         ]
     return [f"{prefix}send_keys('^w')"]
+
+
+# 知見175: `ui:RefreshBrowser`(GitHub code searchで59件ヒット)。
+# `CloseTab`(知見170)と属性構成・意味論が同型——`Browser`が
+# `{x:Null}`の場合は「現在のページを再読み込みする」という意味論に
+# なり、主要ブラウザ共通の標準キーボードショートカット`F5`
+# (pywinautoの`.venv`ソース`keyboard.py`のCODESグラマーで確認済みの
+# 特殊キー構文)で実現する。
+def _generate_refresh_browser(node: RefreshBrowserNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_refresh_browser_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_refresh_browser_body(node: RefreshBrowserNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.browser is not None:
+        return [
+            f"{prefix}# TODO: RefreshBrowser with Browser set "
+            f"({_describe_expr_for_comment(node.browser)}) — UiBrowser "
+            "variable reference not modeled, refusing to guess"
+        ]
+    return [f"{prefix}send_keys('{{F5}}')"]
 
 
 # `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する

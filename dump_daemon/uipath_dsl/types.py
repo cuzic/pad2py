@@ -634,6 +634,30 @@ class CloseTabNode:
 
 
 @dataclass
+class RefreshBrowserNode:
+    """`<ui:RefreshBrowser Browser="..." />`(知見175、GitHub code
+    searchで59件ヒット)。`CloseTab`(知見170)と属性構成・意味論の
+    両方が同型——`Target`/`Selector`を一切持たない、唯一の属性は
+    `Browser`(`UiBrowser`型変数への参照)。実機3件(`allenlooplee/
+    RPABook`・`PakamTharunReddy/RPA`・`csut017/CrowdMarkLoad`)で確認
+    した値は`{x:Null}`(ほとんどの実例、「現在アタッチ中のブラウザの、
+    現在アクティブなタブ」を暗黙に指す)と動的VB式(`[browser]`)の
+    両方。
+
+    `Browser`が`{x:Null}`の場合、意味論は「現在のページを再読み込み
+    する」になり、主要ブラウザ共通の標準キーボードショートカット`F5`
+    で実現できる——`CloseTab`の`Ctrl+W`と同じ`keyboard.send_keys()`
+    (対象を指定しないグローバルなキー送信)経路を再利用する、`{F5}`
+    (pywinautoの`.venv`ソース`keyboard.py`のCODESグラマーで確認済みの
+    特殊キー構文)という違いのみ。`Browser`が変数参照の場合は
+    (`UiBrowser`変数自体が知見154・161・168・170で繰り返し確認済みの
+    未モデル化のため)`# TODO`へ倒す。"""
+
+    browser: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1658,6 +1682,7 @@ Node = (
     | GetAttributeNode
     | KillProcessNode
     | CloseTabNode
+    | RefreshBrowserNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode

@@ -72,6 +72,7 @@ from .types import (
     OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
+    RefreshBrowserNode,
     RethrowNode,
     SelectItemNode,
     SendHotkeyNode,
@@ -713,6 +714,13 @@ def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
 
 def _parse_close_tab(elem: etree._Element) -> CloseTabNode:
     return CloseTabNode(
+        browser=_attr_expr(elem, "Browser"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_refresh_browser(elem: etree._Element) -> RefreshBrowserNode:
+    return RefreshBrowserNode(
         browser=_attr_expr(elem, "Browser"),
         display_name=_attr(elem, "DisplayName"),
     )
@@ -1612,6 +1620,7 @@ _DISPATCH = {
     (UI_NS, "RestoreWindow"): _parse_restore_window,
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "CloseTab"): _parse_close_tab,
+    (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,

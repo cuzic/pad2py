@@ -8288,6 +8288,42 @@ arbitrary DOM/accessibility attribute retrieval, refusing to guess`)
 test_uipath_codegen.py`5件)、UiPath関連テスト全725件通過、
 リポジトリ全体で全1769件通過。
 
+## 175. `ui:RefreshBrowser`(GitHub code searchで59件ヒット)を新規実装——`CloseTab`(知見170)と属性構成・実装経路が完全に同型、`send_keys('{F5}')`で「ブラウザ再読み込み」に対応
+
+知見174の`ui:GetAttribute`に続き、ブラウザ操作系の活動を調査した
+結果、`ui:RefreshBrowser`(GitHub code searchで59件ヒット)を発見した
+——これは知見170の`ui:CloseTab`と属性構成が完全に同型(`Target`/
+`Selector`を一切持たず、唯一の属性は`Browser`というUiBrowser型変数
+参照)で、実装経路もそのまま再利用できた。実機3件(`allenlooplee/
+RPABook`・`PakamTharunReddy/RPA`・`csut017/CrowdMarkLoad`)で確認した
+`Browser`の値は`{x:Null}`(ほとんどの実例、「現在アタッチ中の
+ブラウザの、現在アクティブなタブ」を暗黙に指す)と動的VB式
+(`[browser]`)の両方。
+
+`Browser`が`{x:Null}`の場合の意味論は「現在のページを再読み込み
+する」になり、主要ブラウザ(Chrome/Firefox/Edge/IE)共通の標準
+キーボードショートカット`F5`で実現できる——`CloseTab`の`Ctrl+W`
+(`send_keys('^w')`)と全く同じ`keyboard.send_keys()`(対象を
+指定しないグローバルなキー送信)経路を再利用し、`{F5}`
+(pywinautoの`.venv`ソース`keyboard.py`のCODESグラマーで確認済みの
+特殊キー構文——`^w`の修飾キー構文とは別の、単独キー用の波括弧構文)
+を送るだけの違い。既存の`send_keys(`検出による`from pywinauto.
+keyboard import send_keys`の`import`追加条件(知見170)もそのまま
+再利用でき、新しい`import`検出ロジックは不要だった。`Browser`が
+変数参照の場合は(`UiBrowser`変数自体が知見154・161・168・170で
+繰り返し確認済みの未モデル化のため)`# TODO`へ倒す。
+
+実機XAML3件で`generate_python()`+`compile()`を実行し、
+`PakamTharunReddy/RPA`の実例で`send_keys('{F5}')`が正しく生成される
+ことを確認した(`allenlooplee/RPABook`・`csut017/CrowdMarkLoad`の
+2件は、それぞれ`TryCatch`の複数`Catch`間での例外型の曖昧性(別の
+既知の制約)・`BrowserScope`の`UiBrowser`出力バインディング未設定
+(知見161・168で繰り返し確認済みの既知の制約)により、祖先ノードの
+時点で先に`# TODO`へ倒れてスキップ——いずれも本調査と無関係な既存の
+制約)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`3件)、UiPath関連テスト全730件通過、
+リポジトリ全体で全1774件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
