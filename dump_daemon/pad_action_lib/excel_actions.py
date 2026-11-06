@@ -765,3 +765,62 @@ def copy_excel_worksheet(
         new_sheet.title = target_worksheet_name
     except Exception as exc:
         raise CopyExcelWorksheetSetNameError(str(exc)) from exc
+
+
+class ClearCellsError(PadActionError):
+    pass
+
+
+def clear_cells(
+    instance: ExcelInstanceHandle,
+    mode: str = "Absolute",
+    start_column: str = "A",
+    start_row: int = 1,
+    end_column: str = "A",
+    end_row: int = 1,
+    cell_name: str = "",
+    single_cell_column: str = "A",
+    single_cell_row: int = 1,
+) -> None:
+    """design/dsl_format_findings.md 知見194(decompile確認済み): `ExcelActions.
+    ClearCells()`はCOMの`Range.Clear()`(値・書式・コメント全てを消去、`ClearContents()`
+    ではない)を呼ぶだけ。`openpyxl`には`Range.Clear()`相当の単一APIが無いため、
+    `cell.value = None`(値)+`cell.style = "Normal"`(フォント/塗りつぶし/枠線/
+    数値書式を既定の名前付きスタイルへ戻す、`openpyxl`公式の最上位の「既定へ戻す」
+    API)の組み合わせで近似する——セルコメントの削除は未対応のまま(`openpyxl`の
+    コメントAPIは別経路のため、今回は値・書式のみに留める)。
+
+    `RelativeTo`モード(`ClearExcelCellsMode.RelativeTo`)は`GetActiveCell()`
+    (ライブExcel UIの現在のアクティブセル)を基準点にするため、知見171/189と同じ
+    ライブCOM専用機能——`NotImplementedError`のままにする。
+    """
+    if mode == "RelativeTo":
+        raise NotImplementedError(
+            "ClearCellsRelativeTo anchors on the live Excel UI's current ActiveCell "
+            "(ExcelActions.GetActiveCell()); not meaningful for a file-based (openpyxl) backend"
+        )
+    try:
+        sheet = instance.active_sheet
+        if mode == "Absolute":
+            min_col, min_row = column_index_from_string(start_column), start_row
+            max_col, max_row = column_index_from_string(end_column), end_row
+        elif mode == "SingleCell":
+            min_col = max_col = column_index_from_string(single_cell_column)
+            min_row = max_row = single_cell_row
+        elif mode == "NamedCell":
+            try:
+                sheet, min_col, min_row, max_col, max_row = _defined_name_range(instance.workbook, cell_name)
+            except KeyError as exc:
+                raise ClearCellsError(f"named cell not found: {cell_name!r}") from exc
+        else:
+            raise ValueError(f"Unknown ClearExcelCellsMode: {mode!r}")
+
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                cell = sheet.cell(row=row, column=col)
+                cell.value = None
+                cell.style = "Normal"
+    except (ClearCellsError, ValueError):
+        raise
+    except Exception as exc:
+        raise ClearCellsError(str(exc)) from exc

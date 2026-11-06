@@ -3334,6 +3334,47 @@ def test_generate_python_from_excel_copy_worksheet_by_name_converts() -> None:
     assert instance.workbook["Copy1"]["A1"].value == "hi"
 
 
+def test_generate_python_from_excel_clear_cells_absolute_converts() -> None:
+    # design/dsl_format_findings.md 知見194: COMの`Range.Clear()`(値・書式両方)相当。
+    setup_dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''x''' "
+        "Column: $'''A''' Row: 1"
+    )
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = (
+        "Excel.ClearCellsFromExcel.ClearCells Instance: ExcelInstance "
+        "StartColumn: $'''A''' StartRow: 1 EndColumn: $'''A''' EndRow: 1"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "excel_actions.clear_cells(ExcelInstance, mode='Absolute', start_column='A', "
+        "start_row=1, end_column='A', end_row=1)" in code
+    )
+
+    exec(code, namespace)
+    assert namespace["ExcelInstance"].active_sheet["A1"].value is None
+
+
+def test_generate_python_from_excel_clear_cells_relative_to_falls_back_to_todo() -> None:
+    # 知見194: `ClearCellsRelativeTo`はライブExcel UIの`ActiveCell`を基準点にするため
+    # `excel_actions.clear_cells()`側で`NotImplementedError`に委ねる(ここでは分岐無し)。
+    dsl = (
+        "Excel.ClearCellsFromExcel.ClearCellsRelativeTo Instance: ExcelInstance "
+        "HorizontalDirection: Excel.HorizontalDirection.Left OffsetX: 1 "
+        "VerticalDirection: Excel.VerticalDirection.Above OffsetY: 1"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.ClearCellsFromExcel.ClearCellsRelativeTo" in code
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

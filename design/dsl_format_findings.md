@@ -3124,3 +3124,13 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 実装: `pad_action_lib/excel_actions.py`に`CopyExcelWorksheetError`・`CopyExcelWorksheetSetNameError`(decompile確認済みの`[Throws]`タグそのまま、既存の`WorksheetNotFoundError`等とは別名)・`copy_excel_worksheet()`を追加。`pad_codegen/actions/excel.py`に`_COPY_WORKSHEET_FIND_BY`辞書と対応する分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に4件追加、`tests/test_pad_codegen.py`に1件追加(exec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1102 passed, 28 skippedを確認(VM不要)。
 
 残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`ClearCellsFromExcel`・`DeleteCellsAction`)は次回以降の調査対象として`pad_todo.md`に記録する。
+
+## 194. 知見190の残課題のうち`Excel.ClearCellsFromExcel`(4兄弟セレクタ)を新規実装・結線——`RelativeTo`モードはライブExcel UIの`ActiveCell`基準点依存と判明し知見171/189と同じ理由で見送り
+
+知見190で見送った残課題のうち、`ClearCellsFromExcel`を精査・実装した。`ExcelActions.ClearCells()`をdecompileし、COMの`Range.Clear()`(`ClearContents()`ではなく値・書式・コメント全てを消去)を呼ぶだけと確定した。4つの`SpecifyCellsClearMode`(`Absolute`/`Relative`/`NamedCells`/`SingleCell`)のうち、**`Relative`(`ClearCellsRelativeTo`セレクタ)は`ExcelActions.GetActiveCell()`(ライブExcel UIの現在のアクティブセル)を基準点にそこからのオフセットでRangeを計算する**とdecompileで確認した——これは知見171(`GetSelectedCellRange`)・知見189(`GetActiveCell`)と全く同じ「ライブUIの現在の状態」依存機能であり、新たな未実装ロジックではなく既知の除外カテゴリの新しい事例だと判明した。
+
+`Absolute`/`SingleCell`/`NamedCell`の3モードは実装した。`Range.Clear()`相当を`openpyxl`で近似するため、`cell.value = None`(値)+`cell.style = "Normal"`(`openpyxl`公式の最上位API、既定の名前付きスタイルへ戻すことでフォント/塗りつぶし/枠線/数値書式を一括リセット)を組み合わせた——実際に`Font(bold=True)`等を設定したセルに適用し、値・スタイルともに既定値へ戻ることを確認済み。セルコメントの削除は`openpyxl`の別経路のAPIのため今回は対象外のまま(docstringに明記)。
+
+実装: `pad_action_lib/excel_actions.py`に`ClearCellsError`・`clear_cells()`を追加。`pad_codegen/actions/excel.py`に`Excel.ClearCellsFromExcel.ClearCells`/`ClearSingleCell`/`ClearNamedCell`の分岐を追加(`ClearCellsRelativeTo`は分岐を追加せず安全にTODOへ倒れる)。テストは`tests/test_pad_action_lib_excel.py`に5件追加、`tests/test_pad_codegen.py`に2件追加(いずれも実行結果の確認込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1109 passed, 28 skippedを確認(VM不要)。
+
+残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`DeleteCellsAction`)のうち、`DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、削除範囲の周囲セルをシフトする)は`openpyxl`に部分範囲シフト削除の対応APIが無い(`delete_rows`/`delete_cols`は行/列全体のシフトのみ)ため、手動実装は結合セル・書式の追従等の詳細を取り違えるリスクが大きいと判断し、今回は着手せず見送ったまま`pad_todo.md`に記録する。

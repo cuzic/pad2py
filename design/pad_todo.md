@@ -211,9 +211,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   - [ ] 💻🔍 **残課題(知見190で発見)**:
     - `Excel.ResizeColumnsOrRows`のCustomSize側(Autofitではない、`ColumnWidth`/
       `RowHeight`への明示的な数値設定、`openpyxl`の`column_dimensions`/`row_dimensions`
-      で対応できそうに見える)・`ClearCellsFromExcel`・`DeleteCellsAction`——いずれも
-      「値の読み書き・基本ワークシート操作」スコープ内に収まりそうだが、時間の都合で
-      今回は見送った。
+      で対応できそうに見える)——「値の読み書き・基本ワークシート操作」スコープ内に
+      収まりそうだが、時間の都合で今回は見送った。
+    - `DeleteCellsAction`(COMの`Range.Delete(Shift:=...)`、削除範囲周囲のセルを
+      シフトする)——`openpyxl`に部分範囲シフト削除の対応APIが無い(`delete_rows`/
+      `delete_cols`は行/列全体のシフトのみ)ため、手動実装は結合セル・書式の追従等の
+      詳細を取り違えるリスクが大きいと判断し見送り(知見194)。
+    ✅ **`Excel.ClearCellsFromExcel`の3件を結線完了(知見194)**: COMの`Range.Clear()`
+      (値・書式両方)相当を`cell.value = None`+`cell.style = "Normal"`で近似。
+      `ClearCellsRelativeTo`はライブExcel UIの`ActiveCell`を基準点にするため
+      知見171/189と同じライブCOM専用機能と判明、見送り。
     ✅ **`Excel.CopyExcelWorksheet`の2件を結線完了(知見193)**: COMの`Worksheet.
       Copy(Before/After)`+リネーム相当。同一ワークブック内コピーのみ対応——
       `openpyxl`の`Workbook.copy_worksheet()`はクロスワークブックコピーを明示的に

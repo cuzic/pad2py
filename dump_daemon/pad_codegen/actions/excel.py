@@ -493,4 +493,38 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         args.append(f"paste_worksheet_position={position}")
         return [f"{prefix}excel_actions.copy_excel_worksheet({', '.join(args)})"]
 
+    if action_id.startswith("Excel.ClearCellsFromExcel."):
+        # design/dsl_format_findings.md 知見194: `ClearCellsRelativeTo`はライブExcel UIの
+        # `ActiveCell`を基準点にするため`excel_actions.clear_cells()`側で
+        # `NotImplementedError`に委ねる(ここでは分岐を追加しない、安全にTODOへ倒れる)。
+        instance = safe_render(p.get("Instance"))
+        if instance is None:
+            return None
+        if action_id == "Excel.ClearCellsFromExcel.ClearCells":
+            start_column = safe_render(p.get("StartColumn"))
+            start_row = safe_render(p.get("StartRow"))
+            end_column = safe_render(p.get("EndColumn"))
+            end_row = safe_render(p.get("EndRow"))
+            if None in (start_column, start_row, end_column, end_row):
+                return None
+            call = (f"excel_actions.clear_cells({instance}, mode='Absolute', "
+                    f"start_column={start_column}, start_row={start_row}, "
+                    f"end_column={end_column}, end_row={end_row})")
+            return [f"{prefix}{call}"]
+        if action_id == "Excel.ClearCellsFromExcel.ClearSingleCell":
+            column = safe_render(p.get("SingleCellColumn"))
+            row = safe_render(p.get("SingleCellRow"))
+            if column is None or row is None:
+                return None
+            return [
+                f"{prefix}excel_actions.clear_cells({instance}, mode='SingleCell', "
+                f"single_cell_column={column}, single_cell_row={row})"
+            ]
+        if action_id == "Excel.ClearCellsFromExcel.ClearNamedCell":
+            cell_name = safe_render(p.get("CellName"))
+            if cell_name is None:
+                return None
+            return [f"{prefix}excel_actions.clear_cells({instance}, mode='NamedCell', cell_name={cell_name})"]
+        return None
+
     return None

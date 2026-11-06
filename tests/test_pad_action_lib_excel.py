@@ -528,3 +528,54 @@ def test_copy_excel_worksheet_across_instances_not_implemented() -> None:
         xl.copy_excel_worksheet(
             source, target, "Copy1", find_worksheet_by="Name", source_worksheet_name="Sheet"
         )
+
+
+def test_clear_cells_absolute_clears_value_and_style() -> None:
+    # design/dsl_format_findings.md 知見194(decompile確認済み): COMの`Range.Clear()`
+    # (値・書式両方、`ClearContents()`ではない)相当。
+    from openpyxl.styles import Font
+
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    sheet["A1"].font = Font(bold=True)
+    sheet["B1"] = "y"
+
+    xl.clear_cells(instance, mode="Absolute", start_column="A", start_row=1, end_column="B", end_row=1)
+
+    assert sheet["A1"].value is None
+    assert sheet["A1"].font.bold is False
+    assert sheet["B1"].value is None
+
+
+def test_clear_cells_single_cell() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["C1"] = "z"
+    xl.clear_cells(instance, mode="SingleCell", single_cell_column="C", single_cell_row=1)
+    assert sheet["C1"].value is None
+
+
+def test_clear_cells_named_cell() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["D1"] = "w"
+    instance.workbook.defined_names["MyCell"] = openpyxl.workbook.defined_name.DefinedName(
+        "MyCell", attr_text=f"'{sheet.title}'!$D$1"
+    )
+    xl.clear_cells(instance, mode="NamedCell", cell_name="MyCell")
+    assert sheet["D1"].value is None
+
+
+def test_clear_cells_named_cell_not_found_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.ClearCellsError):
+        xl.clear_cells(instance, mode="NamedCell", cell_name="NoSuchName")
+
+
+def test_clear_cells_relative_to_not_implemented() -> None:
+    # decompile確認済み: `RelativeTo`はライブExcel UIの`ActiveCell`を基準点にする
+    # ため、知見171/189と同じライブCOM専用機能。
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(NotImplementedError):
+        xl.clear_cells(instance, mode="RelativeTo")
