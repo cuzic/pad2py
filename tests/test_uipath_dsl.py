@@ -1439,3 +1439,107 @@ def test_parse_workflow_file_treats_null_class_name_as_unset(tmp_path):
     wf = parse_workflow_file(path)
     assert wf.class_name == ""
     assert isinstance(wf.root, SequenceNode)
+
+
+def test_parse_workflow_file_normalizes_identifier_case_against_declaration(tmp_path):
+    """知見130(【重大、未解決】として記録)の実修正: VB.NETは識別子の
+    大文字小文字を区別しないため、ワークフロー引数`out_RequirementLanCur`
+    (小文字`o`)の宣言と、本体`Assign.To`内の`[Out_RequirementLanCur]`
+    (大文字`O`)という別表記の参照が、`TanMzCs2025/
+    EDSAChallengeTania2025_AmazonProductSearchAndFilter`の実機XAML
+    (`Browser_ValidateLangAndCur.xaml`)で実際に混在していた——これを
+    放置すると関数の仮引数`out_RequirementLanCur`と本体内の無関係な
+    ローカル変数`Out_RequirementLanCur`という2つの別々のPython識別子に
+    なってしまう(構文的に正しいが意味的に誤ったコードを静かに生成する
+    既知の限界)。`parse_workflow_file`の入口でXML木全体を正規化する
+    ことで、どちらも宣言時の表記(`out_RequirementLanCur`)に揃う。"""
+    xaml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        "<x:Members>"
+        '<x:Property Name="out_RequirementLanCur" Type="OutArgument(x:Boolean)" />'
+        "</x:Members>"
+        '<Sequence DisplayName="Body">'
+        '<Assign DisplayName="Set it">'
+        "<Assign.To>"
+        '<OutArgument x:TypeArguments="x:Boolean">[Out_RequirementLanCur]</OutArgument>'
+        "</Assign.To>"
+        "<Assign.Value>"
+        '<InArgument x:TypeArguments="x:Boolean">True</InArgument>'
+        "</Assign.Value>"
+        "</Assign>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    path = tmp_path / "Test.xaml"
+    path.write_text(xaml, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assert "out_RequirementLanCur" in wf.arguments
+    assign = wf.root.body[0]
+    assert isinstance(assign, AssignNode)
+    assert assign.target == VbExpr(text="out_RequirementLanCur")
+
+
+def test_parse_workflow_file_normalizes_local_variable_identifier_case(tmp_path):
+    """知見130: 「通常のローカル変数の読み書きでも理論上同じように
+    起こりうる」という記録の、ローカル変数版の回帰テスト——`<Variable
+    Name="myVar">`宣言と本体内の`[MyVar]`参照という表記揺れも同様に
+    宣言時の表記へ正規化される。"""
+    xaml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        '<Sequence DisplayName="Body">'
+        "<Sequence.Variables>"
+        '<Variable x:TypeArguments="x:String" Name="myVar" />'
+        "</Sequence.Variables>"
+        '<Assign DisplayName="Set it">'
+        "<Assign.To>"
+        '<OutArgument x:TypeArguments="x:String">[MyVar]</OutArgument>'
+        "</Assign.To>"
+        "<Assign.Value>"
+        '<InArgument x:TypeArguments="x:String">hi</InArgument>'
+        "</Assign.Value>"
+        "</Assign>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    path = tmp_path / "Test.xaml"
+    path.write_text(xaml, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assign = wf.root.body[0]
+    assert isinstance(assign, AssignNode)
+    assert assign.target == VbExpr(text="myVar")
+
+
+def test_parse_workflow_file_identifier_case_normalization_skips_member_access(tmp_path):
+    """知見130の修正: メンバアクセス(`.`直後、例: `obj.MyVar`の`MyVar`)は
+    変数名ではなくメソッド/プロパティ名のため、たまたま宣言済み変数名と
+    同じ文字列でも書き換えない——`CurrentRow("MyVar").ToString()`のような
+    式が壊れないことを確認する(文字列リテラルの内側も同様に対象外)。"""
+    xaml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        '<Sequence DisplayName="Body">'
+        "<Sequence.Variables>"
+        '<Variable x:TypeArguments="x:String" Name="myVar" />'
+        "</Sequence.Variables>"
+        '<Assign DisplayName="Set it">'
+        "<Assign.To>"
+        '<OutArgument x:TypeArguments="x:String">[myVar]</OutArgument>'
+        "</Assign.To>"
+        "<Assign.Value>"
+        '<InArgument x:TypeArguments="x:String">[obj.MyVar.ToString()]</InArgument>'
+        "</Assign.Value>"
+        "</Assign>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    path = tmp_path / "Test.xaml"
+    path.write_text(xaml, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assign = wf.root.body[0]
+    assert isinstance(assign, AssignNode)
+    assert assign.value == VbExpr(text="obj.MyVar.ToString()")

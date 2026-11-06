@@ -12,6 +12,7 @@ design/uipath_xaml_findings.md 知見1の利点をそのまま活かす設計)�
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from lxml import etree
@@ -1538,6 +1539,84 @@ def _find_members(root: etree._Element) -> dict[str, str]:
     return args
 
 
+_IDENT_OR_STRING_RE = re.compile(r'"[^"]*"|\b[A-Za-z_][A-Za-z0-9_]*\b')
+_BRACKETED_VB_EXPR_RE = re.compile(r"^\[(.*)\]$", re.DOTALL)
+
+
+def _collect_declared_identifier_names(root: etree._Element) -> dict[str, str]:
+    """知見130(【重大、未解決】として記録): VB.NETは識別子の大文字小文字を
+    区別しないため、ワークフロー引数(`<x:Members><x:Property Name="...">`)
+    や`<Variable Name="...">`の宣言と、本体内での参照とで大文字小文字の
+    表記が揺れていても.NETコンパイラ上は同じ名前として解決される——
+    しかし本トランスパイラの`render_expr`/`_render_node`は識別子参照を
+    XAML中のテキストのまま素通りさせる文脈自由な純粋関数のため、揺れを
+    放置すると意味的に誤った(2つの別々の)Python識別子を生成してしまう
+    (`TanMzCs2025/EDSAChallengeTania2025_AmazonProductSearchAndFilter`の
+    実機XAMLで発見、`out_RequirementLanCur`宣言 vs
+    `Out_RequirementLanCur`参照)。
+
+    `render.py`に文脈(宣言済み名前の集合)を渡す仕組みを新設する本格的な
+    「スコープ対応のコード生成アーキテクチャ」は見送り、その代わりに
+    ワークフロー全体を1回走査して宣言済みの名前(ワークフロー引数+
+    (深さを問わない)全ての`Variable`)を小文字キーで収集し、`[...]`で
+    囲まれたVB式の属性値テキストを宣言時の表記へ正規化する軽量な前処理
+    パスとして実装する——`render.py`・`uipath_codegen/__init__.py`は
+    一切変更せず、`parse_workflow_file`の入口でXML木を書き換えるだけで
+    済む(宣言順で最初に見つかった表記を正規名として採用、`Variable`の
+    `Name`属性自体や`[...]`で囲まれていない生リテラル値は対象外)。"""
+    canonical: dict[str, str] = {}
+    for name in _find_members(root):
+        canonical.setdefault(name.lower(), name)
+    for elem in root.iter():
+        _, local = _split_tag(elem.tag)
+        if local != "Variable":
+            continue
+        name = _attr(elem, "Name")
+        if name:
+            canonical.setdefault(name.lower(), name)
+    return canonical
+
+
+def _normalize_vb_expr_identifier_case(text: str, canonical: dict[str, str]) -> str:
+    """`text`(VB式、`[...]`の内側)中の識別子トークンを`canonical`の表記へ
+    正規化する。文字列リテラル(`"..."`)の内側とメンバアクセスの`.`直後
+    (`obj.Foo`の`Foo`)は対象外——後者はメソッド/プロパティ名であり変数名
+    ではないため、たまたま宣言済み変数名と同じ文字列でも書き換えない。"""
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token.startswith('"'):
+            return token
+        if match.start() > 0 and text[match.start() - 1] == ".":
+            return token
+        return canonical.get(token.lower(), token)
+
+    return _IDENT_OR_STRING_RE.sub(repl, text)
+
+
+def _normalize_identifier_case_in_tree(root: etree._Element, canonical: dict[str, str]) -> None:
+    if not canonical:
+        return
+    for elem in root.iter():
+        for attr_name, value in list(elem.attrib.items()):
+            m = _BRACKETED_VB_EXPR_RE.match(value)
+            if m is None:
+                continue
+            normalized = _normalize_vb_expr_identifier_case(m.group(1), canonical)
+            if normalized != m.group(1):
+                elem.set(attr_name, f"[{normalized}]")
+        # 知見130追記: `<OutArgument x:TypeArguments="...">[Expr]</OutArgument>`
+        # のように、VB式が属性値ではなく要素のテキスト内容として直列化
+        # される形(`Assign.To`/`.Value`で頻出)もある——属性値と同じ
+        # `[...]`検出・正規化を要素テキストにも適用する。
+        if elem.text is not None:
+            m = _BRACKETED_VB_EXPR_RE.match(elem.text)
+            if m is not None:
+                normalized = _normalize_vb_expr_identifier_case(m.group(1), canonical)
+                if normalized != m.group(1):
+                    elem.text = f"[{normalized}]"
+
+
 def parse_workflow_file(path: str | Path) -> WorkflowFile:
     """`.xaml`ファイル1つをパースして`WorkflowFile`を返す公開エントリポイント。
 
@@ -1571,6 +1650,12 @@ def parse_workflow_file(path: str | Path) -> WorkflowFile:
     ns, local = _split_tag(root.tag)
     if local != "Activity":
         raise ValueError(f"unsupported root element: {root.tag!r} (expected Activity)")
+
+    # 知見130: ワークフロー引数/変数の宣言と参照とで大文字小文字の表記が
+    # 揺れていても.NET上は同じ識別子として解決されるため、以降の通常の
+    # パース処理が読む前にXML木を正規化する(詳細は`_collect_declared_
+    # identifier_names`のdocstring参照)。
+    _normalize_identifier_case_in_tree(root, _collect_declared_identifier_names(root))
 
     class_name = _attr(root, "Class", X_NS) or _attr(root, "Class") or ""
     if class_name == "{x:Null}":

@@ -7601,6 +7601,55 @@ body`を`full_text`分岐付きに拡張(既存の`GetText`呼び出しは
 test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、UiPath
 関連テスト全642件通過、リポジトリ全体で全1682件通過。
 
+## 160. 知見130の【最優先・重大・未解決】識別子大文字小文字正規化を実装——`render.py`を一切変更せず、`parse_workflow_file`入口でのXML木前処理という軽量な解決策で対応
+
+知見130で「次に『スコープ対応のコード生成アーキテクチャ』を設計する際は
+最優先の要件として含めるべき」と記録し実装を見送っていた問題(VB.NETは
+識別子の大文字小文字を区別しないが、本トランスパイラの`render_expr`/
+`_render_node`は識別子参照をXAML中のテキストのまま文脈自由に素通りさせる
+ため、ワークフロー引数/変数の宣言と参照で大文字小文字の表記が揺れると
+意味的に誤った2つの別々のPython識別子を静かに生成してしまう)を、
+当初想定していた「`render.py`に宣言済み名前の集合を渡す仕組みを新設する」
+という大掛かりなアーキテクチャ変更ではなく、**`parse_workflow_file`の
+入口でXML木そのものを正規化する軽量な前処理パス**として解決した。
+
+設計の要点: (1) `_collect_declared_identifier_names`がワークフロー
+全体を1回走査し、ワークフロー引数(`_find_members`)+(深さを問わない)
+全ての`<Variable Name="...">`を小文字キーで収集し、宣言順で最初に見つ
+かった表記を正規名として採用する。(2) `_normalize_identifier_case_in_
+tree`がXML木をもう1回走査し、`[...]`で囲まれたVB式(属性値・要素テキスト
+内容の両方の直列化形、知見13)の中の識別子トークンを正規名へ書き換える
+——文字列リテラル(`"..."`)の内側とメンバアクセス(`.`直後、例:
+`obj.Foo`の`Foo`)は対象外(メソッド/プロパティ名であり変数名ではない
+ため)。(3) `parse_workflow_file`が既存の`class_name`/`arguments`/
+`variables`/本体抽出より前にこの正規化を実行するため、**`render.py`・
+`uipath_codegen/__init__.py`・既存の`xaml_tree.py`の個別パーサー関数は
+一切変更していない**——下流の全ての既存ロジックは、あたかも元から
+表記が揺れていなかったかのようなXML木を読むだけで済む。
+
+実機確認: 知見130が引用した実際の原因XAML(`TanMzCs2025/
+EDSAChallengeTania2025_AmazonProductSearchAndFilter`の`Browser_
+ValidateLangAndCur.xaml`)を再ダウンロードして`generate_python()`を
+実行し、修正前は`def Hover(out_RequirementLanCur): ... Out_
+RequirementLanCur = 'False'`という2つの別々の識別子になっていたのが、
+修正後は`out_RequirementLanCur = 'False'`(関数の仮引数と同じ識別子)
+に正しく揃うことを確認した。実装中に発見した追加の罠: このファイルの
+`Assign.To`は`[Out_RequirementLanCur]`を**属性値ではなく`<OutArgument>`
+要素のテキスト内容**として直列化していた(知見13の「`x:TypeArguments`
+が`x:Object`以外の場合の属性形/要素テキスト形の両方があり得る」規約の
+典型例)——属性値のみを対象にした最初の実装では素通りしてしまい、
+要素テキストへの同じ正規化ロジックを追加して初めて実際に修正できた
+(実機データでの検証が無ければ発覚しなかった種類のギャップ)。
+
+既存の`Main.xaml`/`Sub1.xaml`フィクスチャ+この session で蓄積した
+複数の実機XAML(再ダウンロードした3件)で`generate_python()`+
+`compile()`を再実行し、退行が無いことを確認(いずれも正規化対象の
+表記揺れ自体を含まないため生成結果は変化せず、実行速度も数ミリ秒の
+オーダーで実用上無視できる)。回帰テスト追加(`tests/test_uipath_dsl.py`
+3件——引数の表記揺れ・ローカル変数の表記揺れ・メンバアクセス/文字列
+リテラルの誤爆防止を個別にテスト)、UiPath関連テスト全645件通過、
+リポジトリ全体で全1685件通過。
+
 ## 今後の調査候補(未着手)
 - **(新規、知見159で発見)** `ui:BrowserScope`(「Attach Browser」、
   `GSA/Credit_Card_Logging_Bot`の実機XAMLで遭遇、`Browser`/
