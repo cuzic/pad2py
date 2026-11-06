@@ -168,8 +168,15 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 - [x] **層7(b)着手**: `tests/fake_pywinauto.py`を新設(`Desktop`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`のフェイク)、`UIAutomation.Click.Click`の既存codegenテストを実際に`exec()`する形へ1件移行。`set_active()`(ウィンドウごとの`is_active()`状態をレジストリ側で保持——`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため個々のオブジェクトでは状態を持てない)を追加し、`UIAutomation.IfWindow.*`4モード×ウィンドウ存在/フォーカス状態10パターンを、生成された条件式を実際に`eval()`して真偽値まで検証するテストへ拡張(実機キャプチャのTHENブロックが`pass`のみで文字列検査では分岐の実際の真偽を観測できなかった穴を塞いだ)。`.close()`も追加し`FocusWindow`/`CloseWindow`の既存codegenテスト2件も`exec()`検証へ移行。
   また、`pywinauto.Desktop`の差し替え/復元をテストごとに手書きしていた重複(4箇所)を
   `fake_pywinauto_desktop()`コンテキストマネージャに集約した(`tests/fake_win32.py`の
-  `fake_win32_modules()`と対になる設計)。今後の拡張候補: `UIAutomation.WaitForWindow.*`
-  (`.wait()`/`.wait_not()`は実装済みだがまだcodegenテストから使われていない)
+  `fake_win32_modules()`と対になる設計)。
+  **2026-11-05追記**: `UIAutomation.WaitForWindow.*`の既存2テスト(タイムアウト指定あり/
+  無期限ポーリング)を`compile()`のみ→実際に`exec()`して検証する形へ移行完了。
+  タイムアウト指定ありの方は`registry.calls`に`("wait", ..., {"criteria": "exists",
+  "timeout": 5})`が実際に記録されることまで確認、無期限ポーリングの方はウィンドウを
+  事前登録した状態でexec()し、ループが即座に(ハングせず)抜けることを確認した
+  (いずれも`Scripting.RunPythonScript`のハードコードされたWindowsパス書き込みを含む
+  フィクスチャのため、既存の一時ディレクトリ退避パターンを適用)。次の拡張候補:
+  `WaitForWindowContent.WindowToContainElement`(Element側のwait、まだexec検証無し)
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

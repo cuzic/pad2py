@@ -1110,18 +1110,40 @@ def test_generate_python_converts_wait_for_window_to_real_wait_when_timeout_give
     # design/dsl_format_findings.md 知見50・56: セレクタがリポジトリから解決でき、かつ
     # 「Fail with timeout error」がONでタイムアウト秒数が実際に分かっている場合に限り、
     # pywinautoの`.wait("exists", timeout=...)`という実行コードを生成するようにした。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window.txt").read_text(
         encoding="utf-8"
     )
     tree = build_block_tree(parse_dsl(text))
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
-    compile(code, "<generated>", "exec")
     assert (
         "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
         ".wait('exists', timeout=5)" in code
     )
     assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
+
+    # design/common_rpa_framework_roadmap.md 層7(b): 文字列検査だけでなく、生成された
+    # `.wait()`呼び出しが実際に正しい引数(criteria/timeout)で発行されることまで検証する。
+    # このフィクスチャも`Scripting.RunPythonScript`でハードコードされたWindowsパスへの
+    # 書き込みを含むため(知見14等)、一時ディレクトリへ退避してからexec()する
+    # (`test_generate_python_shows_full_path_for_nested_ui_element_reference`と同じ対策)。
+    import os
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmp, fake_pywinauto_desktop(registry):
+        try:
+            os.chdir(tmp)
+            exec(code, {})
+        finally:
+            os.chdir(original_cwd)
+    wait_calls = [c for c in registry.calls if c[0] == "wait"]
+    assert wait_calls == [
+        ("wait", [{"title": "Untitled - Notepad"}], {"criteria": "exists", "timeout": 5})
+    ]
 
 
 def test_generate_python_converts_wait_for_window_to_unbounded_poll_when_timeout_is_none() -> None:
@@ -1131,19 +1153,36 @@ def test_generate_python_converts_wait_for_window_to_unbounded_poll_when_timeout
     # されるまで待ち続ける)ことが確認できている。この意味論をでっち上げた有限タイムアウト
     # 値(pywinautoの`.wait()`任せ)に丸めず、同じ`while`+`time.sleep(0.05)`ポーリングとして
     # 再現する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
     text = (
         FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_no_timeout.txt"
     ).read_text(encoding="utf-8")
     tree = build_block_tree(parse_dsl(text))
     repository = parse_control_repository(text)
     code = generate_python(tree, repository=repository)
-    compile(code, "<generated>", "exec")
     assert (
         "while not Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists():"
         in code
     )
     assert "    time.sleep(0.05)" in code
     assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpen" not in code
+
+    # design/common_rpa_framework_roadmap.md 層7(b): ウィンドウが最初から存在する状態で
+    # execし、ポーリングループが実際に(無限に回らず)即座に抜けることまで検証する。
+    # このフィクスチャも`Scripting.RunPythonScript`でハードコードされたWindowsパスへの
+    # 書き込みを含むため、一時ディレクトリへ退避してからexec()する。
+    import os
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmp, fake_pywinauto_desktop(registry):
+        try:
+            os.chdir(tmp)
+            exec(code, {})  # ループ条件が最初からFalseなので即座に終了するはず
+        finally:
+            os.chdir(original_cwd)
 
 
 def test_generate_python_from_real_whole_subflow_capture_compiles() -> None:
