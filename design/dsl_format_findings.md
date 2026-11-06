@@ -2980,3 +2980,13 @@ decompileした`FindOrReplaceForCell()`の`TryReplaceCellContent()`を再確認�
 **教訓**: 新しいaction_idを結線する前に、同じ名前(関数名・action_id)で過去に記録された知見を`grep`で確認する習慣が、今回は不十分だった——知見123/125/135という3回分の既存記録が`design/dsl_format_findings.md`に既にあったにもかかわらず、知見176の作業時にこれらを検索せずに実装してしまった。今後、既存の`pad_action_lib`関数を再利用・置き換える際は、その関数名で知見ログ全体を検索し、過去に記録された既知のギャップが解消されているかを確認するステップを必須にする。
 
 実装: `pad_action_lib/variables_actions.py`に`_convert_replaced_text_to_original_type()`を追加し、`find_and_replace_in_datatable_everywhere()`の`use_regex`/素の部分文字列置換の2分岐に適用。テストは`tests/test_pad_action_lib_variables.py`に3件追加(`int`保持・`float`保持・`MatchEntireCellContents`の非対称性確認)。VM不要。
+
+## 184. 【新規スコープ候補の発見】`Display.ShowMessageDialog`(メッセージボックス表示)——本プロジェクト最初の実機キャプチャ(知見1)でありながら、一度も`pad_codegen`に結線されていなかったと判明。他にも未着手の丸ごとモジュール(Email/Outlook・FTP/SFTP・Printer・Registry・Terminal等)が存在する可能性を記録
+
+3tick連続でA/B/C既知項目に新規発見が無かったため、`design/pad_todo.md`を再度読み直す以外の切り口として、プロジェクトの対象モジュール一覧そのものを`README.md`の知見ログ要約と照らし合わせたところ、**`Display.ShowMessageDialog.ShowMessage`(Windowsメッセージボックス表示、g1g2_testフローの4アクション中の1つ、design/g1_g2_verification_result.md・知見1そのもの)が、プロジェクト発足時点から一度も`pad_codegen`に結線されていなかった**と判明した(`dump_daemon/pad_codegen/`配下を`grep`した結果、`Display`という文字列を含むファイルが1つも無い)。
+
+知見1で実機キャプチャ済みのDSL(`Display.ShowMessageDialog.ShowMessage Icon: Display.Icon.None Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: False ButtonPressed=> ButtonPressed`)には、実際のメッセージ本文・タイトルに相当するパラメータが見当たらない(そのキャプチャでは空/既定値だったため直列化されなかった可能性が高い——このプロジェクトで繰り返し確認済みの「既定値のパラメータはDSLに現れない」規則と一致)。`Microsoft.Flow.RPA.Desktop.Robin.Core.dll`(既にdecompile済み、ローカルにある)の文字列リテラル一覧で`Display.ShowMessageDialog.ShowMessage`と並んで**兄弟セレクタ`Display.ShowMessageDialog.ShowMessageWithTimeout`**の存在も確認した(クラス定義自体は別のモジュールDLLにあり未取得)。
+
+実装にはタイトル/メッセージ本文の正確なパラメータ名・`ButtonPressed`出力の値形式(ボタン名の文字列か数値コードか)の確認が必要で、現時点ではdecompile元のDLL(`Display.Actions.dll`相当、未取得)が無いため着手できない——次にVMが空いたタイミングでの取得・decompileを`pad_todo.md`に新規項目として記録した。Win32の標準`MessageBox`API(アイコン/ボタン/既定ボタンの概念そのものはOSの一般的な語彙でPAD固有の推測ではない)に対応するため、`ctypes.windll.user32.MessageBoxW`等で実装できる可能性が高く、実装難度自体は低いと見込まれる。
+
+**より大きな発見**: 本プロジェクトがこれまで対象としてきたモジュール一覧(Database/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDF/UIAutomation/Services/Display の一部のみ)は、PAD標準の全アクショングループを網羅していない——Power Automate Desktopが標準で持つ**Email(SMTP送受信)・Outlook(ライブCOM経由)・FTP/SFTP・Printer・Registry・Remote Desktop(`UseDesktop`等の一部のみ既知)・Terminal(VT)・System/Run application(プロセス起動・管理)**といったモジュール群は、`design/pad_todo.md`・`README.md`のいずれにも「対象外」として明示的に記載された形跡が無く、**単に一度も調査されていない**(除外の意思決定がされたのではなく、手が回っていないだけ)可能性が高い。これは個々の技術的TODOというより、**プロジェクトのスコープそのものに関わる決定**(これらのモジュールを新たに対象へ加えるかどうか)であり、本セッションの標準プロンプト(既知のA/B/C残課題)の範囲を超えるため、実装には着手せず発見事実のみを記録し、ユーザーへの申し送りとする。

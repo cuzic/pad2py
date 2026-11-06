@@ -740,6 +740,30 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     `Folder.*`モジュール内の`Destination`系パラメータはこれで出尽くした
     (`Rename`/`Create`/`Delete`/`Empty`は対象外)。
 
+## D. 【新規発見・2026-11-06】未着手の対象モジュール(スコープ拡張の要否はユーザー判断が必要)
+
+A/B/C節の既知項目が3tick連続で進展無しだったため、プロジェクト全体のモジュール網羅状況を
+`README.md`の知見ログ要約と照らし合わせて再確認した(知見184)。以下は技術的TODOというより
+**スコープそのものの判断**(拡張するかどうか)なので、他の項目と異なりユーザーの意思決定を
+待つ。実装はまだ一切していない。
+
+- [ ] 🖥️🔍 **`Display.ShowMessageDialog`(メッセージボックス表示)が本プロジェクト最初の
+  実機キャプチャ(知見1、design/g1_g2_verification_result.md)でありながら一度も`pad_codegen`
+  に結線されていなかった**。兄弟セレクタ`ShowMessageWithTimeout`の存在も確認済み
+  (`Microsoft.Flow.RPA.Desktop.Robin.Core.dll`の文字列リテラル一覧)。Title/Message本文の
+  正確なパラメータ名・`ButtonPressed`出力の値形式が未確認(該当DLL未取得)——次にVMが空いた
+  タイミングでdecompileが必要。Win32標準`MessageBox`APIの語彙(Icon/Buttons/DefaultButton)
+  に対応すると見込まれ、実装難度自体は低い(`ctypes.windll.user32.MessageBoxW`等)。
+  これは既存スコープ内の見落としなので、他のA/B項目と同様に着手してよいと判断している
+  (ユーザー確認待ちではない)。
+- [ ] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
+  (SMTP送受信)・`Outlook`(ライブCOM経由)・`FTP`/`SFTP`・`Printer`・`Registry`・
+  `Remote Desktop`(`UseDesktop`等の一部のみ既知)・`Terminal`(VT)・`System`/`Run application`
+  (プロセス起動・管理)。`design/pad_todo.md`・`README.md`のいずれにも「対象外」として明示的に
+  記載された形跡が無く、除外の意思決定がされたのではなく単に未調査の可能性が高い。
+  **これらを本プロジェクトの対象スコープに加えるかどうかは、個々の技術的判断ではなく
+  プロジェクト方針の決定であるため、着手せずユーザーへの申し送りとする。**
+
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 
 複数のClaudeセッションがこのリポジトリを共有しているため、🖥️付きタスクに着手する前に毎回:
