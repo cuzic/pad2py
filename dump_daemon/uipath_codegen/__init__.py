@@ -456,19 +456,31 @@ def _generate_node(
 
 
 def _generate_assign(node: AssignNode, indent: int) -> list[str]:
-    """知見136: `node.target is None`(`.To`が未捕捉、例: C#式言語形の
-    `<CSharpReference>`等、知見129の未対応プロパティ要素形)の場合、
-    `_render_value_or_todo(None, ...)`は例外を投げずに素の文字列`"None"`
-    を返すため、これを放置すると`None = value`という**構文的に無効**な
-    Pythonコードを生成してしまう——`target`が有効な代入先かどうかを
-    事前に明示チェックし、無い場合は代入文を一切生成せず`# TODO`へ
-    倒す(`value`側の未確定、知見107等と同じ「でっち上げ回避」方針)。
+    """知見136・137: 代入先(`target`)を値(`value`)と同じ`_render_value_
+    or_todo`経由でレンダリングしてはいけない——その関数は失敗時に
+    (例外を投げずに)素の文字列`"None"`を返す仕様のため、`target`側で
+    使うと`None = value`という**構文的に無効**なPythonコード
+    (`None`はPythonの予約済み特殊値で代入先にできない)を生成してしまう。
+
+    知見136では`node.target is None`(`.To`自体が未捕捉)だけを対策した
+    が、知見137で発見したより一般的なケース——`target`自体は`VbExpr`
+    として存在するが、その**レンダリングが失敗する**(知見74の`row(...)`
+    添字曖昧性等、`render_expr`が`NotImplementedError`を投げる場合)
+    ——は捕捉できていなかった(`agilashree/220701015-OAI1903-RPA-Lab`の
+    実機XAML、`ForEach`ループ内で`CurrentRow(...)`という添字参照を
+    代入先に使う実例で発見)。`target`は`render_expr`を直接呼び、例外が
+    発生したらその場で代入文自体を生成せず`# TODO`へ倒す——`target`が
+    確定できない代入文は、`value`側だけ`# TODO`に倒して`None = value`
+    を作るのではなく、文全体を安全側に倒す。
     """
     prefix = INDENT * indent
     if node.target is None:
         return [f"{prefix}# TODO: Assign with no target (To) captured"]
+    try:
+        target = render_expr(node.target)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
     todo: list[str] = []
-    target = _render_value_or_todo(node.target, prefix, todo)
     value = _render_value_or_todo(node.value, prefix, todo)
     return [*todo, f"{prefix}{target} = {value}"]
 

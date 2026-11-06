@@ -162,6 +162,24 @@ def test_assign_with_no_target_is_todo_not_invalid_python():
     _compiles(code)
 
 
+def test_assign_with_unrenderable_target_expression_is_todo_not_invalid_python():
+    """知見137: `target`自体は`VbExpr`として存在するが、その
+    レンダリングが失敗する場合(`agilashree/220701015-OAI1903-RPA-Lab`
+    の実機XAML、`ForEach`ループ内で`CurrentRow(...)`という知見74の
+    添字曖昧性を代入先に使う実例で発見)。知見136の修正(`target is
+    None`の明示チェック)だけでは捕捉できなかった——修正前は`target`も
+    `_render_value_or_todo`経由でレンダリングしていたため、失敗時に
+    素の文字列`"None"`が代入先として使われ`None = None`という構文的に
+    無効なコードを生成していた。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="CurrentRow(0)"), value=Literal(value="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression:" in code
+    assert "None = " not in code
+    _compiles(code)
+
+
 @pytest.mark.parametrize("type_str", ["OutArgument(x:String)", "InOutArgument(x:String)"])
 def test_workflow_out_or_inout_argument_warns_about_unsupported_byref_writeback(
     type_str: str,
