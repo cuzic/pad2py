@@ -1044,3 +1044,9 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
     `_generate_unresolved_activity`の`ExcelWriteCellNode`/
     `SendOutlookMailNode`分岐にそれぞれ追記。既存テストの期待値更新、
     UiPath関連テスト全274件通過、リポジトリ全体で全979件通過。
+54. **(完了、2026-11-05)** `ExcelApplicationScopeNode.scope_var`も
+    `WorkbookPath`と同じく捕捉済みなのに未表示だったのを解決(VM不使用、
+    知見94——知見92・93に続く同系統の横展開、これで
+    `_generate_unresolved_activity`の全分岐のフィールドを一通り確認済み):
+    回帰テスト追加(デフォルト値・カスタム値の両方)、UiPath関連テスト
+    全275件通過、リポジトリ全体で全988件通過。

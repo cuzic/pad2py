@@ -644,7 +644,10 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
         # でっち上げず捕捉済みのフィールドをそのまま`# TODO`コメントへ
         # 追記することの回帰テスト(人間が手動でポートする際の手がかり)。
         (InvokeCodeNode(code="content=content.ToUpper()"), "(Code='content=content.ToUpper()')"),
-        (ExcelApplicationScopeNode(workbook_path="book.xlsx"), "(WorkbookPath='book.xlsx')"),
+        (
+            ExcelApplicationScopeNode(workbook_path="book.xlsx"),
+            "(WorkbookPath='book.xlsx', ScopeVar='ExcelWorkbookScope')",
+        ),
         (
             ExcelWriteCellNode(cell="A1", sheet_name="Sheet1", text=Literal(value="hi")),
             "(Cell='A1', SheetName='Sheet1', Text='hi')",
@@ -665,6 +668,19 @@ def test_unresolved_activity_todo_includes_captured_fields(node, expected_detail
     wf = _wrap([node])
     code = generate_python(wf)
     assert f"# TODO: unsupported in v1 codegen: {type(node).__name__} {expected_detail}" in code
+    _compiles(code)
+
+
+def test_excel_application_scope_todo_includes_custom_scope_var():
+    """知見94: デフォルト値(`ExcelWorkbookScope`)と異なる`scope_var`
+    (`DelegateInArgument.Name`)でも正しく捕捉・表示されることの回帰テスト。"""
+    node = ExcelApplicationScopeNode(workbook_path="book.xlsx", scope_var="myWorkbook")
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert (
+        "# TODO: unsupported in v1 codegen: ExcelApplicationScopeNode "
+        "(WorkbookPath='book.xlsx', ScopeVar='myWorkbook')"
+    ) in code
     _compiles(code)
 
 

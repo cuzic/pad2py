@@ -858,7 +858,10 @@ def _generate_unresolved_activity(
         else:
             detail = f" (Code={node.code!r})"
     elif isinstance(node, ExcelApplicationScopeNode):
-        detail = f" (WorkbookPath={node.workbook_path!r})"
+        # 知見94: `node.scope_var`(`DelegateInArgument.Name`、スコープ内で
+        # ワークブックを指す変数名)も`WorkbookPath`と同じく捕捉済みなのに
+        # 未表示だった——知見92・93と同じパターンの追加分。
+        detail = f" (WorkbookPath={node.workbook_path!r}, ScopeVar={node.scope_var!r})"
     elif isinstance(node, ExcelWriteCellNode):
         # 知見93: `node.text`(書き込む値そのもの)も知見75で`Cell`/
         # `SheetName`だけを追記した際に見落としていた捕捉済みフィールド

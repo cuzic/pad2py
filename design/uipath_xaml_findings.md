@@ -4409,6 +4409,28 @@ activity`のHttpClient詳細(知見75で`EndPoint`/`Method`のみ追加)は
 ファミリーと同種の「1件見つけたら隣接するコードも確認する」手順が、
 このパターンでも再現した。
 
+## 94. `ExcelApplicationScopeNode.scope_var`も`WorkbookPath`と同じく捕捉済みなのに`# TODO`コメントへ未表示だった(VM不使用、知見92・93に続く同系統の横展開)
+
+知見93の直後、`_generate_unresolved_activity`に残る最後の未確認分岐
+(`ExcelApplicationScopeNode`)も同じ観点で確認した。`scope_var`
+(`xaml_tree._parse_excel_application_scope`が`ActivityAction.Argument`
+配下の`DelegateInArgument.Name`から実際に読み取る、スコープ内で
+ワークブックを指す変数名)が、`WorkbookPath`だけをコメントに追記した
+知見75実装時に見落とされていた。実機フィクスチャでは偶然デフォルト値
+(`"ExcelWorkbookScope"`)と同じ値だったため、差分としては目立たなかった
+が、カスタム名(例: `"myWorkbook"`)の場合に正しく捕捉・表示されることを
+合成テストで確認した。
+
+**修正**(`dump_daemon/uipath_codegen/__init__.py`): `ExcelApplicationScopeNode`
+分岐に`ScopeVar={node.scope_var!r}`を追記。知見92・93と同じ方針。
+
+回帰テスト追加(デフォルト値・カスタム値の両方)、UiPath関連テスト全275件
+通過、リポジトリ全体で全988件通過。知見92→93→94と3件連続で同じ
+「捕捉済みデータの未活用」パターンが見つかり、`_generate_unresolved_
+activity`の全分岐(`InvokeCodeNode`/`ExcelApplicationScopeNode`/
+`ExcelWriteCellNode`/`SendOutlookMailNode`/`HttpClientNode`)が持つ全フィールドを
+一通り確認済みになった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
