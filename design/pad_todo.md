@@ -394,15 +394,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     簡易チェックでは見逃していたと判明——`ActionSelectorBase`を基底型として正しく
     辿る方式に監査手法を統一した)。`Compression.Actions.dll`には`ActionSelector`
     サブクラスが1つも無いことも確認(ZipFiles/UnzipFilesは単一モード)。
-  - [ ] 💻🖥️ **残課題(次の調査対象)**: `DateTime.GetCurrentDateTime`にも同じ監査で
-    `Current`/`Windows`/`CustomOffset`/`CustomTimeZone`(`Local`以外の4モード)が
-    未結線と判明——`get_current_datetime()`自体は`Windows`/`Custom`/`Specific`モードを
-    既に実装済みで、codegen側の分岐が`Local`の1つしか無かった(知見122/127/128/132と
-    同種のパターン)。さらに`Database.Actions.dll`(`ConnectAndExecute`/
+  - [x] 💻🖥️ `DateTime.GetCurrentDateTime`にも同じ監査で`Current`/`Windows`/
+    `CustomOffset`/`CustomTimeZone`(`Local`以外の4モード)が未結線と判明。
+    ✅ **決着(知見138)**: 全モードがVM上の直接呼び出しで解明・結線完了
+    (`CustomTimeZone`はルックアップテーブルを経由しない別経路だと発見、
+    `dump_daemon/pad_codegen/actions/pad_datetime.py`参照)。
+  - [ ] 💻🖥️ **残課題(次の調査対象)**: `Database.Actions.dll`(`ConnectAndExecute`/
     `ConnectAndExecuteOracle`/`ConnectOracle`)・`Web.Actions.dll`(Download/
     InvokeWebService系が非常に多数)・`XML.Actions.dll`・`Cmd.Actions.dll`・
-    `Text.Actions.dll`・`Cryptography.Actions.dll`(AES鍵のSalt/IV組み合わせ系)にも
-    同じ監査で多数の未結線セレクタ候補が見つかっており、次の調査対象として記録する。
+    `Text.Actions.dll`・`Cryptography.Actions.dll`(AES鍵のSalt/IV組み合わせ系)には
+    まだ`ActionSelectorBase`一括列挙監査を適用していない——次の調査対象として記録する。
 
 ## C. 構造的・運用上の課題
 
