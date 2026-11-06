@@ -2510,3 +2510,13 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 `ActionName`がクラス名と一致しない2件(`DownloadUseAuthUsePost`クラス→ActionName=`DownloadUsePostAndAuth`、`DownloadToFileUsePostUseAuth`クラス→ActionName=`DownloadToFileUsePostAndAuth`)を実装前に発見し、正しいActionNameで結線した(これを見逃すと誤ったaction_id文字列を使うことになっていた)。
 
 テストは`tests/test_pad_codegen.py`に7件追加(ToVariable系3パターン・ToFile系4パターン、実ネットワークを使わず`web_actions.download_from_web`自体をフェイクに差し替えて呼び出し引数と出力値を検証)。残るInvokeWebService(32セレクタ)・InvokeSoapService(2セレクタ)・DownloadToFolder系(4セレクタ)は次回以降の対象として記録する。
+
+## 145. 知見139のWeb.Actions.dll分(InvokeSoapService)を結線完了——「プロパティ名=DSL名」という既存の経験則の反例を発見、`InputArgumentAttribute.Name`が真の根拠だと確定
+
+知見139でWeb.Actions.dllの`InvokeSoapServiceUseAuth`を確認済みだったが結線は未着手だった。結線前にVM上で`InvokeSoapServiceAction`クラスのプロパティを確認したところ、既存結線が使っている`Endpoint`パラメータが実際のC#プロパティ名では`Url`になっていることに気づいた——これは知見117以降繰り返し確認してきた「リフレクションのプロパティ名=DSL上のパラメータ名」という経験則の**反例**である。
+
+原因を追って`Url`プロパティの`InputArgumentAttribute`を確認したところ、`Name=Endpoint`という明示的な上書きが設定されていた。一方`UseAuthentication`/`Username`/`Password`プロパティの同属性は`Name`が空——つまり**正しい経験則は「プロパティ名」ではなく「`InputArgumentAttribute.Name`(空ならプロパティ名そのもの)」**だったと確定した。これまでの知見117以降の全ての結線は(`Name`属性を明示的に上書きする設計が今回初めて見つかったケースのため)偶然影響を受けていなかったが、今後VM監査を行う際はプロパティ名だけでなく`InputArgumentAttribute`自体も確認すべき、という教訓が得られた。
+
+`Username`/`Password`は`Name`が空(プロパティ名そのまま)だと確認できたため、`InvokeSoapServiceUseAuth`を安全に結線した——既存の`invoke_soap_service()`に`use_credentials`/`username`/`password`引数を新規追加し(内部で委譲する`invoke_web_service()`は元から対応済み)、`UseAuthentication=True`時のみこれらを渡すようにした。副産物として`Password`プロパティに`ArgumentStylingAttribute(Sensitive=True)`が付いていることも確認し、他の暗号化系パラメータと同じDPAPI保護値の扱いが必要になる可能性を記録した(今回の実装自体はDPAPI値の読み取りに既存の`safe_render()`がそのまま対応する)。
+
+テストは`tests/test_pad_codegen.py`に1件追加し、`web_actions.invoke_web_service`を差し替えて`use_credentials`/`username`/`password`が正しく渡ることをexec検証した。

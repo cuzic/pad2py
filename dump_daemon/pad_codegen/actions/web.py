@@ -160,7 +160,11 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             lines.append(f"{prefix}{status_var} = {tmp}.status_code")
         return lines
 
-    if action_id == "Web.InvokeSoapService.InvokeSoapService":
+    if action_id in ("Web.InvokeSoapService.InvokeSoapService", "Web.InvokeSoapService.InvokeSoapServiceUseAuth"):
+        # 知見139・145: `InvokeSoapServiceAction`の兄弟セレクタ(`UseAuthentication`、
+        # VM上のリフレクションで`Username`/`Password`プロパティの`InputArgumentAttribute.
+        # Name`が空=プロパティ名そのものがDSL名だと確認済み)。既存の`invoke_soap_service()`
+        # に`use_credentials`/`username`/`password`を新規追加して対応した。
         endpoint = safe_render(p.get("Endpoint"))
         custom_headers = safe_render(p.get("CustomHeaders"))
         request_body = safe_render(p.get("RequestBody"))
@@ -177,6 +181,14 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         if encoding != "AutoDetect":
             return None
+        use_auth = action_id.endswith("UseAuth")
+        auth_args = ""
+        if use_auth:
+            username = safe_render(p.get("Username"))
+            password = safe_render(p.get("Password"))
+            if username is None or password is None:
+                return None
+            auth_args = f", use_credentials=True, username={username}, password={password}"
         response_var = node.output_vars.get("Response")
         headers_var = node.output_vars.get("ResponseHeaders")
         status_var = node.output_vars.get("StatusCode")
@@ -188,7 +200,8 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"request_body={request_body}, custom_headers={custom_headers}, "
             f"connection_timeout={timeout}, follow_redirection={follow}, "
             f"user_agent={user_agent}, fail_on_error_status={fail_on_error}, "
-            f"trim_request_body={trim_body}, accept_untrusted_certificates={accept_untrusted})"
+            f"trim_request_body={trim_body}, accept_untrusted_certificates={accept_untrusted}"
+            f"{auth_args})"
         ]
         if response_var:
             lines.append(f"{prefix}{response_var} = {tmp}.response")

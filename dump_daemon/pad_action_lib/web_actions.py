@@ -189,6 +189,9 @@ def invoke_soap_service(
     fail_on_error_status: bool = False,
     trim_request_body: bool = True,
     accept_untrusted_certificates: bool = False,
+    use_credentials: bool = False,
+    username: str = "",
+    password: str = "",
     *,
     client: httpx.Client | None = None,
 ) -> InvokeWebServiceResult:
@@ -205,5 +208,8 @@ def invoke_soap_service(
         fail_on_error_status=fail_on_error_status,
         trim_request_body=trim_request_body,
         accept_untrusted_certificates=accept_untrusted_certificates,
+        use_credentials=use_credentials,
+        username=username,
+        password=password,
         client=client,
     )

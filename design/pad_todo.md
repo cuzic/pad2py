@@ -461,14 +461,23 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       8組み合わせ(`FileName=SpecifyFullPath`、直接パス指定の場合)を新規結線完了。
       副産物として既存`download_from_web()`の`SaveResponse=ToFile`時に`DownloadedFile`
       出力が常に`None`になる潜在バグも発見・修正した。
+      ✅ **決着(知見145、InvokeSoapService系2件)**: `InvokeSoapServiceUseAuth`を
+      新規結線完了。結線前のVM確認で、既存結線の`Endpoint`パラメータが実際の
+      C#プロパティ名では`Url`だと判明——**「リフレクションのプロパティ名=DSL名」
+      という従来の経験則の反例**を発見し、真の根拠は`InputArgumentAttribute.Name`
+      (空ならプロパティ名そのまま)だと確定した(今後のVM監査ではこの属性も
+      必ず確認すること)。
       - [ ] 💻🖥️ **残課題**: `DownloadToFolder`系4セレクタ(`FileName=KeepOriginal`、
         レスポンスからファイル名を自動決定——決定方法が実機/decompile未確認のため
-        見送り)・`InvokeSoapService`系2(通常/UseAuth)・`InvokeWebService`系35
-        (GET/POST/PUT×SaveToFile/SaveToFolder×UseAuth×Upload、組み合わせ爆発、
-        既存の知見94-96がどのセレクタに対応するか要確認)。
+        見送り)・`InvokeWebService`系35(GET/POST/PUT×SaveToFile/SaveToFolder×
+        UseAuth×Upload、組み合わせ爆発、既存の知見94-96がどのセレクタに対応するか
+        要確認)。
     監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
     所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
     再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。
+    **知見145の追記**: プロパティ名を直接DSLパラメータ名として使う前に、そのプロパティの
+    `InputArgumentAttribute.Name`(空でなければそれが優先、空ならプロパティ名)も必ず
+    確認すること——`Url`→`Endpoint`のような明示的な上書きが実在する。
 
 ## C. 構造的・運用上の課題
 
