@@ -230,7 +230,16 @@ class ClickNode:
     `TopRight`/`BottomLeft`/`BottomRight`時のoffsetの符号規約(右端/下端
     からの向き)は実機未確認のため依然未対応——`TopLeft`(pywinautoの
     `click_input(coords=...)`が既定で使うのと同じ原点、知見105参照)の
-    場合のみ`_generate_click`が実コード生成する。"""
+    場合のみ`_generate_click`が実コード生成する。
+
+    `delay_before`は知見106で追加——UiPath公式ドキュメント
+    (docs.uipath.com/activities/other/latest/ui-automation/click)で
+    「活動が何らかの操作を始める前の待機時間(ミリ秒、既定200ms)」と
+    確認済み。未設定時は`{x:Null}`という文字列として直列化される(他の
+    列挙型属性とは異なりnullable——`_attr_expr`経由で`Expr`として捕捉し、
+    `{x:Null}`は正しく`None`になる)。`delay_ms`は同じ`DelayMS`属性だが
+    公式ドキュメントに記載が無く意味論が未確認のため、捕捉はするが
+    コード生成では確認済みの既定値(`None`)以外は`# TODO`へ倒す。"""
 
     selector: str | None = None
     display_name: str | None = None
@@ -240,6 +249,8 @@ class ClickNode:
     cursor_position: str | None = None
     cursor_offset_x: str | None = None
     cursor_offset_y: str | None = None
+    delay_before: Expr = None
+    delay_ms: Expr = None
 
 
 @dataclass

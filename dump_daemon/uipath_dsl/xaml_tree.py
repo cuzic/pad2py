@@ -408,6 +408,8 @@ def _parse_click(elem: etree._Element) -> ClickNode:
         cursor_position=cursor_position,
         cursor_offset_x=cursor_offset_x,
         cursor_offset_y=cursor_offset_y,
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
     )
 
 

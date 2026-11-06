@@ -740,6 +740,28 @@ def test_click_with_topleft_cursor_position_and_no_offsets_defaults_to_origin():
     _compiles(code)
 
 
+def test_click_with_delay_before_generates_time_sleep():
+    """知見106: `DelayBefore`(UiPath公式ドキュメントで確認済み——「活動が
+    何らかの操作を始める前の待機時間」、既定200ms、`gh api search/code`で
+    実機保存済みXAMLの実例も確認済み)は`time.sleep()`へ実変換する。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, delay_before=Literal(value="2000"))])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "import time" in code
+    assert "time.sleep(_vb_num('2000') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_click_with_delay_ms_is_todo_not_guessed():
+    """知見106: `DelayMS`はUiPath公式ドキュメントに(`DelayBefore`とは違い)
+    記載が無く意味論が未確認のため、でっち上げず`# TODO`に倒す。"""
+    wf = _wrap([ClickNode(selector=_CLICK_SELECTOR, delay_ms=Literal(value="2000"))])
+    code = generate_python(wf)
+    assert "# TODO: Click with DelayMS set" in code
+    assert ".click_input(" not in code
+    _compiles(code)
+
+
 @pytest.mark.parametrize(
     ("node", "expected_detail"),
     [

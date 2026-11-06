@@ -216,6 +216,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 変換先、知見98)も同様。
     if any("win32com.client.Dispatch(" in line for line in body):
         imports.append("import win32com.client")
+    # `time`(`Click`の`DelayBefore`→`time.sleep(...)`変換先、知見106)も同様。
+    if any("time.sleep(" in line for line in body):
+        imports.append("import time")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -902,12 +905,31 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
             f"OffsetY={node.cursor_offset_y!r}) — offset mapping not confirmed via "
             "real capture, refusing to guess"
         ]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: Click with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented by "
+            "UiPath (unlike DelayBefore), semantics not confirmed, refusing to guess"
+        ]
     rendered = selector_text_to_pywinauto(node.selector)
     if rendered.expr == 'Desktop(backend="uia")':
         return [
             f"{prefix}# TODO: Click selector had no mappable attributes: {node.selector}"
         ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    if todo:
+        return todo
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        # 知見106: `DelayBefore`(UiPath公式ドキュメントで確認済み——「活動が
+        # 何らかの操作を始める前の待機時間」、既定200ms)をミリ秒から秒へ
+        # 単位変換して`time.sleep()`へ変換する。
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
     kwargs = {
         **_CLICK_TYPE_KWARGS[click_type],
         **_MOUSE_BUTTON_KWARGS[mouse_button],

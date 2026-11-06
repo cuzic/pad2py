@@ -5016,6 +5016,62 @@ CursorPosition)で異なる種類の「実機確認が無く`# TODO`に倒して
 VM実機キャプチャに次ぐ(多くの場合VMより手軽な)第二の確度の高い検証
 手段として確立したと言える。
 
+## 106. `ui:Click`の`DelayBefore`を実機XAML(GitHub実例)+公式ドキュメントで確認し、実コード生成に対応——`DelayMS`は公式ドキュメントに記載が無く意味論不明と判明(VM不使用、知見100の手法を再適用)
+
+知見102・105に続き、「GitHub上の実機保存済みXAMLを直接検索する」手法を
+`ui:Click`の残る未対応属性(`DelayBefore`/`DelayMS`/`SendWindowMessages`/
+`SimulateClick`/`AlterIfDisabled`、知見73で未確認のまま記録)へ適用した。
+
+**`SimulateClick`/`SendWindowMessages`は見送り**: 実際に`SimulateClick=
+"True"`(2888件)・`SendWindowMessages="True"`(322件)が実在することは
+確認できたが、UiPath公式ドキュメント(docs.uipath.com)はこれらの属性の
+存在と既定値(`False`)のみ記載し、**内部的な実装機構には触れていない**。
+コミュニティ情報(フォーラム)は「マウスドライバに依存しない」「一部の
+アプリケーションでは効かない」という大まかな挙動は一致して述べるが、
+正確な実現方式(pywinautoの`.invoke()`(UIA Invoke pattern)に相当するか、
+`.click()`(Windowsメッセージ送信)に相当するか)は確定できなかった——
+知見69のような単純な構造確認と違い、これは実行時の挙動そのものに関わる
+ため、類推だけで実装するとでっち上げになるリスクが高いと判断し見送った。
+
+**`DelayBefore`は実装**: UiPath公式ドキュメント
+(docs.uipath.com/activities/other/latest/ui-automation/click)で
+「活動が何らかの操作を始める前の待機時間(ミリ秒)、既定200ms」と確認
+済み。`gh api search/code`で`DelayBefore="2000"`等の実例(448件)も確認。
+`time.sleep(ms / 1000.0)`へマッピングする、確度の高い単純な変換。
+
+**`DelayMS`は見送り**: `DelayBefore`と違い、UiPath公式ドキュメントの
+Click活動ページに**全く記載が無い**(検索結果「The document doesn't
+include a DelayMS property」)。`DelayBefore`/`DelayMS`は実機XAMLでは独立
+して設定されうる(片方だけ設定、もう片方`{x:Null}`の実例をそれぞれ
+確認済み)ため、同じ属性の別名ではなく別の意味を持つプロパティだと
+推定されるが、具体的に何を指すか(クリック動作自体の持続時間か、別の
+タイムアウトか)が確認できないため、でっち上げず捕捉のみ・コード生成は
+`# TODO`へ倒す。
+
+**両属性とも`{x:Null}`がnullable(未設定)の直列化形**(他の`Click`
+列挙型属性(`ClickType`等)とは異なり、知見71で確認した「Studioは常に
+具体的な値を直列化する」非nullable型ではない)——`_attr_expr()`経由で
+`Expr`として捕捉し、既存の`{x:Null}`→`None`変換規約(知見13)をそのまま
+適用できた。
+
+**修正**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `ClickNode`に`delay_before`/`delay_ms`
+(`Expr`)を追加。`_generate_click_body`は`delay_before`が設定されていれば
+`click_input()`呼び出しの直前に`time.sleep()`を追記し、`delay_ms`が
+設定されていれば(意味論未確認のため)`# TODO`へ倒す。
+
+回帰テスト追加(DelayBefore単体の実コード生成・DelayMSのTODOフォール
+バック)、UiPath関連テスト全310件通過、リポジトリ全体で全1089件通過
+(他セッションが並行作業中のPAD側テスト1件の失敗は本変更と無関係——
+`dump_daemon/pad_codegen/actions/text.py`が原因、本コミットには含めない)。
+
+**この知見で確定したこと**: 知見100の調査手法は、XAML構造・属性値の
+存在確認には非常に有効だが、**実行時の内部動作メカニズムの確認には
+限界がある**(`SimulateClick`/`SendWindowMessages`のケース)——構造的な
+事実(属性名・値・直列化形)はGitHub実例で高確度に確定できるが、「その
+値が実際に何をするか」は公式ドキュメントまたはVM実機検証が無い限り、
+類推に留め実装を見送るべきという判断基準を明確化した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
