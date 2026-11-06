@@ -3,44 +3,21 @@
 このモジュールは純粋なデータ構造のみを持ち、パース処理(`pad_dsl.line_parser`/
 `pad_dsl.block_tree`)にもエスケープ処理(`pad_dsl.tokens`)にも依存しない——
 `pad_codegen`を含む他の全coreがここに定義された型を「共有語彙」として参照する。
+
+`VarRef`/`RawExpr`/`EnumRef`は design/common_rpa_framework_roadmap.md 層1の方針に基づき
+`dump_daemon.rpa_ir.values`(PAD/UiPath共有のIR核)へ移管済み——ここでは後方互換のため
+同一のクラスを再公開している(`isinstance`チェックの対象が同一のクラスオブジェクトに
+なるよう、別々に再定義するのではなく再公開する点に注意)。PAD固有の値型
+(`DpapiSensitiveLiteral`/`UiElementRef`)はこのモジュールに残す。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-@dataclass(frozen=True)
-class VarRef:
-    """DSL上の裸トークンが変数参照であることを表すマーカー型。
-
-    `$'''...'''`で囲まれていない裸トークンは、数値リテラル/`Namespace.Enum.Value`型の
-    列挙値でなければ変数参照(実機検証: design/dsl_format_findings.md 知見6・9——UI上の
-    `%VarName%`はDSL上`%`記号なしの裸トークンとして出力される)。文字列リテラル
-    ("hello"等)と字面上は区別がつかないため、専用の型でラップして明示する。
-    """
-
-    name: str
-
-
-@dataclass(frozen=True)
-class RawExpr:
-    """`SET ... TO`の右辺が単一トークンに収まらない複合式(比較式を`AND`/`OR`/`XOR`/`NOT`
-    で結合した論理式、`+`/`-`/`*`/`/`/`mod`による算術式)だったことを示すマーカー型。
-
-    design/dsl_format_findings.md 知見53(実機検証済み)で確認した通り、これらの演算子は
-    予測通りのベアキーワード(`AND`/`OR`/`XOR`/`NOT`は大文字に正規化される、`mod`は
-    小文字のまま)としてDSLに出力される。演算子の優先順位(知見81)・`/`/`mod`の値の意味論
-    (知見82・83)はいずれも実機確認済みで、`pad_codegen.render_expr_as_python()`が`tree`から
-    実際のPython式を生成する。`text`はそれでも失わずに保持しており、構文解析に失敗した場合
-    (`tree=None`)や`SET`式内の関数呼び出し(`FuncCall`、実機未確認の拡張)が現れる場合の
-    安全なTODOフォールバックに使われる。
-
-    `tree`は`pad_expr_parser.py`のLark文法で構文解析した構造化表現(`ExprNode`、解析に
-    失敗した場合は`None`)。
-    """
-
-    text: str
-    tree: Any = None
+from ..rpa_ir.values import EnumRef as EnumRef
+from ..rpa_ir.values import RawExpr as RawExpr
+from ..rpa_ir.values import VarRef as VarRef
 
 
 @dataclass(frozen=True)
@@ -60,25 +37,6 @@ class DpapiSensitiveLiteral:
     """
 
     ciphertext_b64: str
-
-
-@dataclass(frozen=True)
-class EnumRef:
-    """`Namespace.Enum.Value`形式(例: `Display.Icon.None`)の列挙値を表すマーカー型。
-
-    ドット区切りの完全修飾名という見た目でPAD変数参照(ドットを含まない裸識別子)と
-    区別できるため、`VarRef`とは別の型にしている。
-
-    **既知の未解決の曖昧性**: PADの変数参照自体にも`.Name`という
-    ドット区切りの「トレーラ」(配列/カスタムオブジェクトのプロパティアクセス、例:
-    `MyDataTable.Rows`)が存在しうることが確認できている。この形はテキスト上
-    `Namespace.Enum.Value`と完全に同じ見た目になるため、`_DOTTED_RE`だけでは
-    区別できない。これまでの実機データにトレーラ付き変数参照の実例が無いため、
-    現状は全てのドット区切りトークンを`EnumRef`として扱っているが、これは
-    トレーラ付き変数が実在する場合に誤分類する可能性がある未解決のギャップ。
-    """
-
-    value: str
 
 
 @dataclass(frozen=True)
