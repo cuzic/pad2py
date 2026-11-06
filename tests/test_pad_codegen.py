@@ -240,6 +240,16 @@ def test_generate_python_maps_send_keys_to_pyautogui_typewrite() -> None:
     assert "import pyautogui" in code
     assert "pyautogui.typewrite('Hello World', interval=0.01)" in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b)(c)の拡張: pyautoguiも`win32gui`/
+    # `win32con`と同じ`sys.modules`注入方式でフェイクし、実際にexec()して検証する
+    # (pyautoguiは本プロジェクトの依存関係にすら入っておらず、ディスプレイ依存のため
+    # そもそもimportできない——`tests/fake_pyautogui.py`参照)。
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("typewrite", "Hello World", 0.01)]
+
 
 def test_generate_python_full_flow_still_marks_display_message_as_todo() -> None:
     # SendKeysのマッピング追加後も、まだ対応していないアクション(Display message)は
@@ -264,6 +274,12 @@ def test_generate_python_maps_move_mouse_to_pyautogui_moveto() -> None:
     compile(code, "<generated>", "exec")
     assert "import pyautogui" in code
     assert "pyautogui.moveTo(500, 300)" in code
+
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("moveTo", 500, 300)]
 
 
 def test_generate_python_leaves_move_mouse_as_todo_when_relative_to_is_unverified() -> None:
@@ -294,6 +310,12 @@ def test_generate_python_maps_left_click_to_pyautogui_click() -> None:
     assert "pyautogui.click()" in code
     assert "time.sleep" not in code  # MillisecondsDelay=0なのでsleepは不要
 
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("click",)]
+
 
 def test_generate_python_inserts_sleep_before_click_when_delay_is_nonzero() -> None:
     dsl = (
@@ -306,6 +328,12 @@ def test_generate_python_inserts_sleep_before_click_when_delay_is_nonzero() -> N
     assert "import time" in code
     assert "time.sleep(0.5)" in code
     assert "pyautogui.click()" in code
+
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("click",)]
 
 
 def test_generate_python_leaves_send_mouse_click_as_todo_for_unverified_click_types() -> None:
@@ -665,12 +693,24 @@ def test_generate_python_maps_press_key_to_pyautogui_keydown() -> None:
     compile(code, "<generated>", "exec")
     assert "pyautogui.keyDown('ctrl')" in code
 
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("keyDown", "ctrl")]
+
 
 def test_generate_python_maps_release_key_to_pyautogui_keyup() -> None:
     tree = build_block_tree(parse_dsl(RELEASE_CONTROL_DSL))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "pyautogui.keyUp('ctrl')" in code
+
+    from fake_pyautogui import fake_pyautogui_module
+
+    with fake_pyautogui_module() as registry:
+        exec(code, {})
+    assert registry.calls == [("keyUp", "ctrl")]
 
 
 def test_generate_python_leaves_press_key_as_todo_when_no_modifier_is_true() -> None:

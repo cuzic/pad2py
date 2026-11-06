@@ -132,10 +132,19 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 |---|---|---|
 | (a) **PAD自身の実行時意味論**(例: 列インデックスは0始まりか、`Destination`パラメータの挙動) | 「PADは実際にどう動くか」という事実そのもの | **原理的に不可**。シミュレータ自身が推測で作られていたら「シミュレータで確認した」は実機確認の代わりにならない——でっち上げ禁止の方針に直接反する。ここに投資すべきは模擬ではなく**record/replay**(後述) |
 | (b) **生成されたPythonコード自体の実行**(pywinauto越しのUI Automation操作) | 「pad_codegenが正しい形の呼び出し列を組み立てているか」——PAD/pywinautoの実際の挙動の模倣では無い | **安全かつ高ROI**。本セッションで最初の実装を済ませた(後述) |
-| (c) **pad_action_libのOS依存コード**(`win32timezone`/`win32crypt`/`win32gui`等pywin32の薄いラッパー) | 「正しい引数でpywin32 APIを呼んでいるか」——(b)と同種、呼び出し側のロジック検証 | **安全かつ高ROI**。一般的なテストダブル手法で対応可能、未着手 |
+| (c) **pad_codegen/pad_action_libのOS依存コード**(`win32timezone`/`win32crypt`/`win32gui`等pywin32の薄いラッパー、および`MouseAndKeyboard.*`が委譲する`pyautogui`) | 「正しい引数でOS依存APIを呼んでいるか」——(b)と同種、呼び出し側のロジック検証 | **安全かつ高ROI**。一般的なテストダブル手法で対応可能 |
 | (d) **模擬対象アプリ**(例: 模擬Notepad) | (b)より高い再現度(実UIAプロトコル越しの通信まで)で検証したい場合 | 価値はあるが、UIA自体がWindows OS機能のため「Windowsが丸ごと不要になる」わけではない。(b)と違う軸の投資であり優先度は低い |
 
 **(b)の実装(完了)**: `tests/fake_pywinauto.py`に、生成コードが実際に呼び出す最小限のpywinauto API表面(`Desktop(backend="uia")`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`)だけをフェイク実装した。`pywinauto.Desktop`をこのフェイクに差し替えてから生成コードを`exec()`すれば、実Windows・実アプリ無しで「正しいセレクタ・正しい操作列で呼ばれたか」をアサートできる。未知の呼び出し形は素直に`AttributeError`になる(でっち上げて成功させることはしない)。`test_generate_python_from_click_click_actually_clicks_against_fake_pywinauto`で、既存の「文字列として生成コードを検査するだけ」のテストを「実際に`exec()`して動作を検証する」テストへ格上げする実例を示した。現状Linux上でこの種のテストは0件だった(pywinautoを要する生成コードは一切`exec()`されていなかった)ので、新規にカバレッジが生まれた形。
+
+**(c)のpyautogui実装(2026-11-05追記)**: `win32gui`/`win32con`と同じ理由(`pyautogui`は
+本プロジェクトの依存関係にすら入っておらず、ディスプレイ依存のためそもそも
+インストールしても`import`できないことがある)で、`tests/fake_win32.py`と同じ
+`sys.modules`注入方式の`tests/fake_pyautogui.py`を新設した。`MouseAndKeyboard.*`が
+生成する5つの呼び出し形(`click()`/`moveTo(x, y)`/`typewrite(text, interval=...)`/
+`keyDown(key)`/`keyUp(key)`)をフェイクし、既存の5つのcodegenテスト
+(SendKeys/MoveMouse/SendMouseClick×2/PressReleaseKey×2)を文字列検査のみ→実際の
+`exec()`検証へ移行した。
 
 **(a)のrecord/replay化(未着手)**: 今回VMで確認した入出力ペア(例: `IListIndexService.ConvertInput()`の挙動、`CopyFolder`の`Destination`意味論)を、構造化データ(JSON等)として`design/`または専用ディレクトリに永続化し、「既に確認済みの事実」をもう一度VMに聞き直す無駄を無くす。新しい疑問には引き続きVMで答える必要があるが、過去の確認結果の再利用コストはゼロになる。
 
@@ -151,7 +160,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
 | 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
 | 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
-| 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)の2モジュールを実装し、計3件のcodegenテスト(Click/MoveWindow/SetWindowVisibility)を文字列検査のみ→実際の`exec()`検証へ移行済み。`.wait()`/`.wait_not()`/`.child_window()`/`.set_focus()`/`.type_keys()`は(b)に実装済みだがまだcodegenテストから使われていない。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)初版あり、拡張の余地が大きい。(a)(d)は未着手** |
+| 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)・`tests/fake_pyautogui.py`(pyautogui)の3モジュールを実装し、Window/Click/IfWindow/WaitForWindow系・MouseAndKeyboard系で計30件超のcodegenテストを文字列検査のみ→実際の`exec()`検証へ移行済み。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)かなり充実、(a)(d)は未着手** |
 
 ---
 
