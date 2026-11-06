@@ -24,6 +24,18 @@ Python側デフォルト値と一致する literal を`p.get(name, <default>)`�
 split処理を生成しない)。`Pdf.ExtractImagesFromPDF`はPAD側に`OutputArgument`が
 無い(ファイル書き出しのみ)ため、`node.output_var`の有無を問わず常に文イチ文として
 生成する(`file.py`の`File.Delete`と同じ扱い)。
+
+知見155・156(`ActionSelectorBase`一括列挙監査、Excelに続きPDFへも適用): decompileで
+`ExtractImagesFromPDFAction`/`ExtractTablesFromPDFAction`/`ExtractTextFromPDFAction`
+にはそれぞれ`PagesToExtract`(`ExtractionMode`: All/Single/Range)を固定する3つの
+兄弟セレクタ(`Extract*`/`Extract*FromPage`/`Extract*FromPageRange`)が存在し、
+DSL上の真のaction_idは`Pdf.<Id属性の値>.<ActionName>`という3セグメント形式だと
+判明した(`[Action(Id = "ExtractImagesFromPDF")]`等の明示的な`Id`属性でクラス名の
+`...Action`接尾辞が取り除かれる——`Pdf.ExtractPages`/`Pdf.MergeFiles`はこの`Id`属性が
+無く`Name`属性のみのため、真の中間セグメントが実機未確認のまま)。従来のフラットな
+`Pdf.ExtractImagesFromPDF`等の判定は実際のDSLでは一度もマッチしなかった(知見156で
+発見・修正、Excelの知見155と同種の潜在バグ)。`PagesToExtract`はセレクタごとに固定
+されるため`enum_last()`で動的に読まず、選択されたセレクタからハードコードする。
 """
 from __future__ import annotations
 
@@ -35,16 +47,6 @@ from ._support import enum_last, safe_render
 
 def _as_list_expr(rendered: str) -> str:
     return f"({rendered} if isinstance({rendered}, list) else [{rendered}])"
-
-
-def _pages_to_extract_arg(p: dict) -> str | None:
-    """`PagesToExtract`のenum値(省略時は`"All"`)を`repr()`済みのPython式として返す。"""
-    if "PagesToExtract" in p:
-        pages_to_extract = enum_last(p.get("PagesToExtract"))
-        if pages_to_extract is None:
-            return None
-        return repr(pages_to_extract)
-    return repr("All")
 
 
 def _if_file_exists_arg(p: dict) -> str | None:
@@ -61,13 +63,16 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
     prefix = INDENT * indent
     p = node.params
 
-    if action_id == "Pdf.ExtractTextFromPDF":
+    # 知見156: `ExtractionMode`(All/Single/Range)はセレクタごとに固定。
+    _PDF_EXTRACT_TEXT_PAGES_MODE = {
+        "Pdf.ExtractTextFromPDF.ExtractText": "All",
+        "Pdf.ExtractTextFromPDF.ExtractTextFromPage": "Single",
+        "Pdf.ExtractTextFromPDF.ExtractTextFromPageRange": "Range",
+    }
+    pages_to_extract_arg = _PDF_EXTRACT_TEXT_PAGES_MODE.get(action_id)
+    if pages_to_extract_arg is not None:
         pdf_file = safe_render(p.get("PDFFile"))
         if pdf_file is None or not node.output_var:
-            return None
-
-        pages_to_extract_arg = _pages_to_extract_arg(p)
-        if pages_to_extract_arg is None:
             return None
 
         page_number = safe_render(p.get("PageNumber", 0))
@@ -80,20 +85,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
 
         return [
             f"{prefix}{node.output_var} = pdf_actions.extract_text_from_pdf("
-            f"{pdf_file}, pages_to_extract={pages_to_extract_arg}, page_number={page_number}, "
+            f"{pdf_file}, pages_to_extract={pages_to_extract_arg!r}, page_number={page_number}, "
             f"from_page_number={from_page_number}, to_page_number={to_page_number}, "
             f"password={password}, detect_layout={detect_layout})"
         ]
 
-    if action_id == "Pdf.ExtractImagesFromPDF":
+    _PDF_EXTRACT_IMAGES_PAGES_MODE = {
+        "Pdf.ExtractImagesFromPDF.ExtractImages": "All",
+        "Pdf.ExtractImagesFromPDF.ExtractImagesFromPage": "Single",
+        "Pdf.ExtractImagesFromPDF.ExtractImagesFromPageRange": "Range",
+    }
+    pages_to_extract_arg = _PDF_EXTRACT_IMAGES_PAGES_MODE.get(action_id)
+    if pages_to_extract_arg is not None:
         pdf_file = safe_render(p.get("PDFFile"))
         images_folder = safe_render(p.get("ImagesFolder"))
         images_name = safe_render(p.get("ImagesName"))
         if pdf_file is None or images_folder is None or images_name is None:
-            return None
-
-        pages_to_extract_arg = _pages_to_extract_arg(p)
-        if pages_to_extract_arg is None:
             return None
 
         page_number = safe_render(p.get("PageNumber", 0))
@@ -105,17 +112,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
 
         return [
             f"{prefix}pdf_actions.extract_images_from_pdf({pdf_file}, {images_folder}, {images_name}, "
-            f"pages_to_extract={pages_to_extract_arg}, page_number={page_number}, "
+            f"pages_to_extract={pages_to_extract_arg!r}, page_number={page_number}, "
             f"from_page_number={from_page_number}, to_page_number={to_page_number}, password={password})"
         ]
 
-    if action_id == "Pdf.ExtractTablesFromPDF":
+    _PDF_EXTRACT_TABLES_PAGES_MODE = {
+        "Pdf.ExtractTablesFromPDF.ExtractTables": "All",
+        "Pdf.ExtractTablesFromPDF.ExtractTablesFromPage": "Single",
+        "Pdf.ExtractTablesFromPDF.ExtractTablesFromPageRange": "Range",
+    }
+    pages_to_extract_arg = _PDF_EXTRACT_TABLES_PAGES_MODE.get(action_id)
+    if pages_to_extract_arg is not None:
         pdf_file = safe_render(p.get("PDFFile"))
         if pdf_file is None or not node.output_var:
-            return None
-
-        pages_to_extract_arg = _pages_to_extract_arg(p)
-        if pages_to_extract_arg is None:
             return None
 
         page_number = safe_render(p.get("PageNumber", 0))
@@ -136,7 +145,7 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
 
         return [
             f"{prefix}{node.output_var} = pdf_actions.extract_tables_from_pdf("
-            f"{pdf_file}, pages_to_extract={pages_to_extract_arg}, page_number={page_number}, "
+            f"{pdf_file}, pages_to_extract={pages_to_extract_arg!r}, page_number={page_number}, "
             f"from_page_number={from_page_number}, to_page_number={to_page_number}, "
             f"password={password}, multi_page_tables={multi_page_tables}, "
             f"set_first_row_as_header={set_first_row_as_header})"

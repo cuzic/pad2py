@@ -2409,15 +2409,14 @@ def test_generate_python_from_unknown_function_condition_raises() -> None:
 
 
 def test_generate_python_from_pdf_extract_text_minimal_params_uses_defaults() -> None:
-    # design/dsl_format_findings.md 知見78: `Pdf.ExtractTextFromPDF`というaction_idは
-    # 知見75の「貼り付け→コピー読み戻し」往復確認ではなく、(1)decompileしたaction_id
-    # 構築式、(2)PADデザイナー自身のUI要素AutomationId、(3)検索+`set_focus()`+`{ENTER}`で
-    # PADデザイナー自身が実際にエラー無く受理、という3経路収束による確証——よって以下のDSL
-    # 行は実機キャプチャではなく、その確証にもとづき手書きした合成(synthetic)テキスト。
-    # オプション引数(PagesToExtract/PageNumber/FromPageNumber/ToPageNumber/Password/
-    # DetectLayout)を省略した最小形――PAD UI側でデフォルトのまま変更していない場合に
-    # 一致する、他のTier1/2アクション(例: file.py/compression.pyのPassword省略)と同じ挙動。
-    dsl = "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf''' ExtractedText=> ExtractedText"
+    # design/dsl_format_findings.md 知見156(`ActionSelectorBase`一括列挙監査、知見155の
+    # Excelの手法をPDFへ適用): `ExtractTextFromPDFAction`には`PagesToExtract`
+    # (`ExtractionMode`: All/Single/Range)を固定する3兄弟セレクタがあり、真のaction_idは
+    # `Pdf.ExtractTextFromPDF.ExtractText`等の3セグメント形式——知見78時点のフラットな
+    # `Pdf.ExtractTextFromPDF`は実際のDSLでは一度もマッチしなかった(知見156で修正)。
+    # オプション引数(PageNumber/FromPageNumber/ToPageNumber/Password/DetectLayout)を
+    # 省略した最小形――PAD UI側でデフォルトのまま変更していない場合に一致する。
+    dsl = "Pdf.ExtractTextFromPDF.ExtractText PDFFile: $'''C:\\test.pdf''' ExtractedText=> ExtractedText"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
@@ -2431,10 +2430,11 @@ def test_generate_python_from_pdf_extract_text_minimal_params_uses_defaults() ->
 
 
 def test_generate_python_from_pdf_extract_text_all_params_given_converts() -> None:
-    # 知見78と同じ合成(synthetic)テキスト――オプション引数を全て明示した場合の経路。
+    # 知見156: `ExtractTextFromPage`セレクタ(`PagesToExtract=Single`固定、decompileで
+    # 確認済みの実際の列挙値——`SinglePage`ではない)。
     dsl = (
-        "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf''' "
-        "PagesToExtract: Pdf.ExtractionMode.SinglePage PageNumber: 2 FromPageNumber: 1 "
+        "Pdf.ExtractTextFromPDF.ExtractTextFromPage PDFFile: $'''C:\\test.pdf''' "
+        "PageNumber: 2 FromPageNumber: 1 "
         "ToPageNumber: 3 Password: $'''secret''' DetectLayout: True "
         "ExtractedText=> ExtractedText"
     )
@@ -2443,7 +2443,7 @@ def test_generate_python_from_pdf_extract_text_all_params_given_converts() -> No
     compile(code, "<generated>", "exec")
     assert (
         "ExtractedText = pdf_actions.extract_text_from_pdf('C:\\\\test.pdf', "
-        "pages_to_extract='SinglePage', page_number=2, from_page_number=1, to_page_number=3, "
+        "pages_to_extract='Single', page_number=2, from_page_number=1, to_page_number=3, "
         "password='secret', detect_layout=True)" in code
     )
     assert "# TODO" not in code
@@ -2452,19 +2452,18 @@ def test_generate_python_from_pdf_extract_text_all_params_given_converts() -> No
 def test_generate_python_from_pdf_extract_text_without_output_var_falls_back_to_todo() -> None:
     # `node.output_var`無しは実機では起こらない想定外の形だが、でっち上げたコードを
     # 出力せず安全にTODOへ倒ることを確認する(他のTier1/2アクションと同じ安全策)。
-    dsl = "Pdf.ExtractTextFromPDF PDFFile: $'''C:\\test.pdf'''"
+    dsl = "Pdf.ExtractTextFromPDF.ExtractText PDFFile: $'''C:\\test.pdf'''"
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Pdf.ExtractTextFromPDF" in code
+    assert "# TODO: map PAD action: Pdf.ExtractTextFromPDF.ExtractText" in code
 
 
 def test_generate_python_from_pdf_extract_images_minimal_params_uses_defaults() -> None:
-    # design/dsl_format_findings.md 知見79: 知見78と同じ3経路収束(decompile式・UI自身の
-    # AutomationId・set_focus()+{ENTER}でのPADデザイナー自身による実機受理)で
-    # `Pdf.ExtractImagesFromPDF`を確認済み。PAD側に`OutputArgument`が無い(ファイル書き出し
-    # のみ)ため、他のアクションと違い`node.output_var`を要求しない。
+    # 知見156: `ExtractImagesFromPDFAction`も同じ3兄弟セレクタ構造。PAD側に
+    # `OutputArgument`が無い(ファイル書き出しのみ)ため、他のアクションと違い
+    # `node.output_var`を要求しない。
     dsl = (
-        "Pdf.ExtractImagesFromPDF PDFFile: $'''C:\\test.pdf''' "
+        "Pdf.ExtractImagesFromPDF.ExtractImages PDFFile: $'''C:\\test.pdf''' "
         "ImagesFolder: $'''C:\\out''' ImagesName: $'''page'''"
     )
     tree = build_block_tree(parse_dsl(dsl))
@@ -2480,10 +2479,10 @@ def test_generate_python_from_pdf_extract_images_minimal_params_uses_defaults() 
 
 
 def test_generate_python_from_pdf_extract_tables_all_params_given_converts() -> None:
-    # 知見79と同じ合成(synthetic)テキスト。
+    # 知見156: `ExtractTablesFromPDFAction`も同じ3兄弟セレクタ構造(`ExtractTables`=All固定)。
     dsl = (
-        "Pdf.ExtractTablesFromPDF PDFFile: $'''C:\\test.pdf''' "
-        "PagesToExtract: Pdf.ExtractionMode.All MultiPageTables: False "
+        "Pdf.ExtractTablesFromPDF.ExtractTables PDFFile: $'''C:\\test.pdf''' "
+        "MultiPageTables: False "
         "SetFirstRowAsHeader: False ExtractedPDFTables=> Tables"
     )
     tree = build_block_tree(parse_dsl(dsl))
@@ -2653,20 +2652,19 @@ def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo
 
 
 def test_generate_python_from_word_full_scope_in_batch_converts_all_actions() -> None:
-    # design/dsl_format_findings.md 知見80: Word.*のaction_idは全て、PADデザイナー自身の
-    # 検索結果TreeItemのAutomationIdを直接読んで実機確認済み。パラメータ名は
-    # docs-local/pad_word_findings.mdのdecompile調査から。
+    # design/dsl_format_findings.md 知見157: 知見80の「Word.*のaction_idは実機確認済み」は
+    # アクショングループのAutomationId確認に過ぎず、`CloseWord`/`FindAndReplaceWord`/
+    # `LaunchWord`/`ReadFromWord`/`SaveWord`/`WriteToWord`は実際には兄弟セレクタを持ち、
+    # 真のaction_idは`Word.<グループ>.<ActionName>`という3セグメント形式だった
+    # (従来のフラットな判定は実際のDSLでは一度もマッチしなかった、知見155のExcelと同種)。
     dsl = (
-        "Word.LaunchWord LaunchWordMode: Word.LaunchWordMode.NewDocument "
-        "ReadOnly: False Instance=> WordInstance\n"
-        "Word.WriteToWord Instance: WordInstance Text: $'''hello''' "
-        "WriteMode: Word.WriteWordMode.EndOfDocument\n"
-        "Word.ReadFromWord Instance: WordInstance "
-        "ReadMode: Word.ReadWordMode.WholeDocument WordData=> WordData\n"
-        "Word.FindAndReplaceWord Instance: WordInstance TextToFind: $'''a''' "
-        "TextToReplaceWith: $'''b''' AllMatches: True\n"
-        "Word.SaveWord Instance: WordInstance SaveMode: Word.SaveWordMode.Save\n"
-        "Word.CloseWord Instance: WordInstance CloseMode: Word.CloseWordMode.DoNotSave"
+        "Word.LaunchWord.Launch Instance=> WordInstance\n"
+        "Word.WriteToWord.WriteEndOfDocument Instance: WordInstance Text: $'''hello'''\n"
+        "Word.ReadFromWord.Read Instance: WordInstance WordData=> WordData\n"
+        "Word.FindAndReplaceWord.FindAndReplaceAllWithoutWildcards Instance: WordInstance "
+        "TextToFind: $'''a''' TextToReplaceWith: $'''b'''\n"
+        "Word.SaveWord.Save Instance: WordInstance\n"
+        "Word.CloseWord.Close Instance: WordInstance"
     )
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -2701,54 +2699,46 @@ def test_generate_python_from_word_full_scope_in_batch_converts_all_actions() ->
 
 def test_generate_python_from_word_unsupported_modes_fall_back_to_todo() -> None:
     # ページ/ブックマーク系はライブWordのレンダリング/ライブコレクション依存のため
-    # pad_action_lib側がNotImplementedErrorにする——でっち上げたコードを出力せず安全に
-    # TODOへ倒れることを確認する。既知のMatchWildCards=Trueリテラルも同様。
-    page_mode_dsl = (
-        "Word.ReadFromWord Instance: WordInstance ReadMode: Word.ReadWordMode.Page "
-        "WordData=> WordData"
-    )
+    # スコープ外(知見157のセレクタ監査でHide/ShowAllから確定)——でっち上げたコードを
+    # 出力せず安全にTODOへ倒れることを確認する。ワイルドカード系も同様。
+    page_mode_dsl = "Word.ReadFromWord.ReadPage Instance: WordInstance WordData=> WordData"
     tree = build_block_tree(parse_dsl(page_mode_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Word.ReadFromWord" in code
+    assert "# TODO: map PAD action: Word.ReadFromWord.ReadPage" in code
 
-    bookmark_write_dsl = (
-        "Word.WriteToWord Instance: WordInstance Text: $'''x''' "
-        "WriteMode: Word.WriteWordMode.StartOfBookmark"
-    )
+    bookmark_write_dsl = "Word.WriteToWord.WriteStartOfBookmark Instance: WordInstance Text: $'''x'''"
     tree = build_block_tree(parse_dsl(bookmark_write_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Word.WriteToWord" in code
+    assert "# TODO: map PAD action: Word.WriteToWord.WriteStartOfBookmark" in code
 
     wildcard_dsl = (
-        "Word.FindAndReplaceWord Instance: WordInstance TextToFind: $'''a''' "
-        "TextToReplaceWith: $'''b''' MatchWildCards: True"
+        "Word.FindAndReplaceWord.FindAndReplaceSingleWildcards Instance: WordInstance "
+        "TextToFind: $'''a''' TextToReplaceWith: $'''b'''"
     )
     tree = build_block_tree(parse_dsl(wildcard_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Word.FindAndReplaceWord" in code
+    assert "# TODO: map PAD action: Word.FindAndReplaceWord.FindAndReplaceSingleWildcards" in code
 
 
 def test_generate_python_from_powerpoint_full_scope_batch_converts_all_actions() -> None:
-    # design/dsl_format_findings.md 知見80: PowerPoint.*のaction_idも同じ経路で実機確認済み。
-    # パラメータ名はdocs-local/pad_powerpoint_findings.mdのdecompile調査から。
+    # design/dsl_format_findings.md 知見158: 知見80の「PowerPoint.*のaction_idは実機
+    # 確認済み」はアクショングループのAutomationId確認に過ぎず、`AddPowerPointSlide`/
+    # `ClosePowerPoint`/`DeletePowerPointSlide`/`LaunchPowerPoint`/`ReadFromPowerPoint`/
+    # `SavePowerPoint`/`WriteToPowerPoint`は実際には兄弟セレクタを持ち、真のaction_idは
+    # `PowerPoint.<グループ>.<ActionName>`という3セグメント形式だった(知見155-157の
+    # Excel/PDF/Wordと同種の潜在バグ)。`MovePowerPointSlide`は兄弟セレクタが無く、
+    # 既存のフラットな形式のままで正しい。
     dsl = (
-        "PowerPoint.LaunchPowerPoint LaunchPowerPointMode: "
-        "PowerPoint.LaunchPowerPointMode.NewPresentation ReadOnly: False "
-        "Instance=> PPTInstance\n"
-        "PowerPoint.AddPowerPointSlide Instance: PPTInstance "
-        "AddSlidePosition: PowerPoint.AddSlidePosition.LastSlide SlideIndex=> NewSlideIndex\n"
-        "PowerPoint.WriteToPowerPoint Instance: PPTInstance Text: $'''hello''' "
-        "WriteMode: PowerPoint.WriteMode.FirstSlide\n"
-        "PowerPoint.ReadFromPowerPoint Instance: PPTInstance "
-        "ReadMode: PowerPoint.ReadMode.WholePresentation PowerPointData=> PPTData\n"
-        "PowerPoint.DeletePowerPointSlide Instance: PPTInstance "
-        "DeleteSlidePosition: PowerPoint.DeleteSlidePosition.LastSlide\n"
+        "PowerPoint.LaunchPowerPoint.Launch Instance=> PPTInstance\n"
+        "PowerPoint.AddPowerPointSlide.AddSlideAsLast Instance: PPTInstance "
+        "SlideIndex=> NewSlideIndex\n"
+        "PowerPoint.WriteToPowerPoint.WriteToFirstSlide Instance: PPTInstance Text: $'''hello'''\n"
+        "PowerPoint.ReadFromPowerPoint.Read Instance: PPTInstance PowerPointData=> PPTData\n"
+        "PowerPoint.DeletePowerPointSlide.DeleteSlideLast Instance: PPTInstance\n"
         "PowerPoint.MovePowerPointSlide SourceInstance: PPTInstance SourceSlidePosition: 1 "
         "DestinationInstance: PPTInstance DestinationSlidePosition: 2\n"
-        "PowerPoint.SavePowerPoint Instance: PPTInstance "
-        "SaveMode: PowerPoint.SaveMode.Save\n"
-        "PowerPoint.ClosePowerPoint Instance: PPTInstance "
-        "CloseMode: PowerPoint.CloseMode.DoNotSave"
+        "PowerPoint.SavePowerPoint.Save Instance: PPTInstance\n"
+        "PowerPoint.ClosePowerPoint.Close Instance: PPTInstance"
     )
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)

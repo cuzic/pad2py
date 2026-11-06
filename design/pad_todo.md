@@ -347,9 +347,24 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     判定は**実際のDSLでは一度もマッチせず常にTODOへ落ちていた**(潜在バグ、decompileで
     発見・修正)。decompile(`pad2py-fetch-excel-dll`)で各セレクタの固定列挙値を特定し、
     正しい3セグメント形式へ結線し直した(`pad_action_lib.excel_actions`側は変更不要)。
-    - [ ] 💻🖥️ **残課題**: `Word`/`PowerPoint`/`PDF`モジュールも知見80の同じ手法
-      (グループ名のAutomationId確認のみ)で「完了」と記録されているため、同種の潜在
-      バグが無いか`ActionSelectorBase`一括列挙監査を適用して確認する必要がある。
+    - [x] 💻 **同種の潜在バグをWord/PowerPoint/PDFでも発見・修正(知見156-158)**:
+      `pad2py-fetch-pdf-dll`/`pad2py-fetch-word-dll`/`pad2py-fetch-powerpoint-dll`で
+      DLL本体を取得しdecompile、`ActionSelectorBase`一括列挙監査を適用した結果、
+      3モジュール全てで同種の潜在バグを確認。PDF: `ExtractImagesFromPDF`/
+      `ExtractTablesFromPDF`/`ExtractTextFromPDF`の3グループ(各3兄弟セレクタ、
+      `PagesToExtract`固定)。Word: `CloseWord`/`FindAndReplaceWord`/`LaunchWord`/
+      `ReadFromWord`/`SaveWord`/`WriteToWord`の6グループ。PowerPoint:
+      `AddPowerPointSlide`/`ClosePowerPoint`/`DeletePowerPointSlide`/
+      `LaunchPowerPoint`/`ReadFromPowerPoint`/`SavePowerPoint`/`WriteToPowerPoint`の
+      7グループ。いずれも正しい3セグメント形式へ結線し直した(`pad_action_lib`側は
+      変更不要)。副産物として、既存のPDF合成テストが実在しない列挙値`SinglePage`
+      (実際は`Single`)を仮定していた誤りも発見・修正。
+      - [ ] 💻🖥️ **残課題**: `Pdf.ExtractPages`/`Pdf.MergeFiles`は`[Action(...)]`に
+        `Id`属性が無く`Name`属性のみを持つ(兄弟セレクタも無し)——`Id`無しの場合に
+        本当にクラス名がaction_idになるのか、`Name`が何らかの形で影響するのかが
+        今回のdecompileだけでは未確定のまま(新たな未確認事項、既存結線は変更せず
+        現状維持)。`Word.InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装
+        のため対象外のまま。
 - [x] 💻 `GenerateDataTableFromCSVAction`/`ConvertDataTableToCSVAction`の`ColumnsSeparator`が
   `SystemDefault`以外(Comma/Semicolon/Tab)で常にTODOへ倒れていたゲート漏れ、および
   両方の`CustomColumnsSeparator`兄弟セレクタ(`ReadCustomSeparator`/`DataTableToCSVCustomSeparator`)。

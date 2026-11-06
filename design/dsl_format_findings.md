@@ -2651,3 +2651,19 @@ VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系�
 既存の`tests/test_pad_codegen.py::test_generate_python_from_excel_full_scope_in_batch_converts_all_actions`/`test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo`も、同じ誤ったフラットなaction_id形式でDSLを手書きしていたため「自己整合的に見えるが実在しない形式を検証していた」テストだった——正しい3セグメント形式に修正した。
 
 **今後の方針**: PDF/Word/PowerPointモジュールも知見80の同じ手法(グループ名のAutomationIdのみ確認)で「完了」と記録されているため、同種の潜在バグ(フラットなaction_id判定が実際には3セグメント形式で一度もマッチしない)が無いか、同じ`ActionSelectorBase`一括列挙監査を適用して確認する必要がある——次回以降の調査対象として記録する。
+
+## 156-158. PDF/Word/PowerPointにも同じ`ActionSelectorBase`一括列挙監査を適用——知見155と全く同種の潜在バグを3モジュール全てで発見・修正(知見80の「完了」記録が3モジュール分全て取消し)
+
+知見155でExcelに発見した「知見80はアクション**グループ**のAutomationIdしか確認しておらず、真のDSL action_idは3セグメント形式だった」という潜在バグが、同じ知見80の手法で「完了」と記録されていたPDF/Word/PowerPointの残り3モジュールにも存在するかを確認した。`pad2py-fetch-pdf-dll`/`pad2py-fetch-word-dll`/`pad2py-fetch-powerpoint-dll`(新規clipwire target)でDLL本体を取得し`ilspycmd`でdecompile、`ActionSelectorBase`派生を辿るリフレクション監査(知見139・150の標準手法)を適用した結果、**3モジュール全てで同種の潜在バグを発見**した。
+
+**知見156(PDF.Actions.dll)**: `ExtractImagesFromPDFAction`/`ExtractTablesFromPDFAction`/`ExtractTextFromPDFAction`の3クラスにそれぞれ`PagesToExtract`(`ExtractionMode`: All/Single/Range)を固定する3兄弟セレクタ(`Extract*`/`Extract*FromPage`/`Extract*FromPageRange`)があった。これら3クラスは`[Action(Id = "ExtractImagesFromPDF")]`等の明示的な`Id`属性でクラス名の`...Action`接尾辞を取り除いており、真のaction_idは`Pdf.ExtractImagesFromPDF.ExtractImages`等の3セグメント形式。**副産物の発見**: 既存の合成テストが`PagesToExtract: Pdf.ExtractionMode.SinglePage`という**実在しない列挙値名**(実際は`Single`)を仮定していた——知見136の`rename_add_text()`の`Prefix`/`Suffix`と同じ種類の誤り。`Pdf.ExtractPages`(`ExtractPagesToNewPDFAction`)/`Pdf.MergeFiles`は兄弟セレクタが存在せず(リフレクションで確認)フラットな形式のままだが、この2クラスは`[Action(Name = "ExtractPages")]`のように`Id`属性ではなく`Name`属性のみを持つ——`Id`無しの場合に本当にクラス名(`ExtractPagesToNewPDFAction`)が使われるのか、`Name`が何らかの形でaction_idに影響するのかは今回のdecompileだけでは確定できず、新たな未確認事項として記録する(既存の結線を変更する根拠は無いため、現状維持のまま)。
+
+**知見157(Word.Actions.dll)**: `CloseWord`/`FindAndReplaceWord`/`LaunchWord`/`ReadFromWord`/`SaveWord`/`WriteToWord`の6グループに兄弟セレクタがあった(いずれも`Id`属性の上書きが無くクラス名がそのまま中間セグメントなので、第3セグメントの欠落のみが問題)。`FindAndReplaceWord`は`{AllMatches, MatchWildCards}`の2×2=4通りの兄弟セレクタ(`FindAndReplaceSingle`/`FindAndReplaceSingleWildcards`/`FindAndReplaceAllWildcards`/`FindAndReplaceAllWithoutWildcards`)で、ワイルドカード系2件は既存の方針通りスコープ外。`InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装のため対象外のまま。
+
+**知見158(PowerPoint.Actions.dll)**: `AddPowerPointSlide`/`ClosePowerPoint`/`DeletePowerPointSlide`/`LaunchPowerPoint`/`ReadFromPowerPoint`/`SavePowerPoint`/`WriteToPowerPoint`の7グループに兄弟セレクタがあった(同じく`Id`属性の上書き無し)。`MovePowerPointSlide`は兄弟セレクタが存在せず、既存のフラットな形式のままで正しい。
+
+**影響の確定**: PDF/Word/PowerPointの合計16グループの`pad_codegen`ディスパッチは、知見80で「確認済み」と記録された後、一度も実際のDSLでマッチせず常にTODOフォールバックに落ちていた——Excelの知見155と完全に同じ構造の潜在バグ。各選択済みセレクタが固定する列挙値(`CloseMode`/`SaveMode`/`ReadMode`/`WriteMode`/`AddSlidePosition`/`DeleteSlidePosition`等)は、decompileした`ActionSelector<T>`サブクラスの`Prop<>.ShouldBe()`から直接ハードコードし、`enum_last()`で動的に読む必要を無くした(セレクタ選択時点で値が一意に確定しているため)。`pad_action_lib`側(`word_actions`/`powerpoint_actions`/`pdf_actions`)の関数シグネチャはいずれも変更不要だった。
+
+既存の`tests/test_pad_codegen.py`の該当する合成(synthetic)バッチテスト4件(PDF×3関数+1件、Word、PowerPoint)も、同じ誤ったフラットなaction_id形式でDSLを手書きしていたため正しい3セグメント形式に修正した。
+
+**教訓の総括**: 知見80の「検索結果TreeItemのAutomationIdを1語の検索で一括確認する」手法は、**アクショングループの存在確認**(「このアクションがPADに存在する」)としては有効だが、**真のDSL action_id文字列の確認**(「このアクションが実際にどう直列化されるか」)には使えない——後者には知見139以降確立してきた`ActionSelectorBase`一括列挙監査(decompile+リフレクション)が必須、という確証レベルの違いを明確に区別する必要がある。今後、新しいモジュールを「完了」と記録する際は、この両方を満たしていることを確認すること。
