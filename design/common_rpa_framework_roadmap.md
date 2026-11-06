@@ -151,7 +151,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
 | 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
 | 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
-| 7. 検証基盤・シミュレータ | (b)生成コード実行フェイク(`tests/fake_pywinauto.py`)は本セッションで初版実装・1件のcodegenテストを移行済み——`.wait()`/`.wait_not()`/`.child_window()`/`.set_focus()`/`.type_keys()`は実装済みだがまだcodegenテストから使われていない。(c)pywin32ラッパーのモックは未着手。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)初版あり、拡張の余地が大きい。(a)(c)(d)は未着手** |
+| 7. 検証基盤・シミュレータ | (b)`tests/fake_pywinauto.py`(pywinauto)・(c)`tests/fake_win32.py`(win32gui/win32con)の2モジュールを実装し、計3件のcodegenテスト(Click/MoveWindow/SetWindowVisibility)を文字列検査のみ→実際の`exec()`検証へ移行済み。`.wait()`/`.wait_not()`/`.child_window()`/`.set_focus()`/`.type_keys()`は(b)に実装済みだがまだcodegenテストから使われていない。`win32timezone`/`win32crypt`は(c)未対応。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)(c)初版あり、拡張の余地が大きい。(a)(d)は未着手** |
 
 ---
 
@@ -167,7 +167,12 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 - [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
 - [x] **層7(b)着手**: `tests/fake_pywinauto.py`を新設(`Desktop`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`のフェイク)、`UIAutomation.Click.Click`の既存codegenテストを実際に`exec()`する形へ1件移行。今後の拡張候補: Window系(`FocusWindow`/`CloseWindow`等)・`win32gui`/`win32con`呼び出し部分のフェイク化
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
-- [ ] 層7(c): `win32timezone`/`win32crypt`/`win32gui`等pywin32呼び出しのモック化(呼び出し引数の検証用、Windows専用テストの一部をLinux上でも実行可能にする)
+- [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
+  `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。
+  `win32gui`/`win32con`はpywinautoと違いLinuxでは`import`自体が失敗するため、属性の
+  差し替えではなく`sys.modules`へのフェイクモジュール注入方式を取った。`MoveWindow`/
+  `SetWindowVisibility`の既存codegenテスト2件を実際に`exec()`する形へ移行。
+  残り: `win32timezone`/`win32crypt`は未着手
 
 ### Phase 1: 追加のみ(既存の出力形式は変えずに内部だけ型を強化)
 

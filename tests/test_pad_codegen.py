@@ -612,6 +612,40 @@ def test_generate_python_maps_move_window_to_win32gui_move_window() -> None:
     assert "win32gui.MoveWindow(_hwnd, 100, 50, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
 
 
+def test_generate_python_from_move_window_actually_moves_against_fake_win32() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(c): 上のテストは生成コードの文字列しか
+    # 検査していなかった——`tests/fake_pywinauto.py`+`tests/fake_win32.py`を組み合わせて
+    # 実際に`exec()`し、`win32gui.MoveWindow()`が正しい引数(既存の`GetWindowRect()`から
+    # 幅/高さを保持しつつX/Yだけ更新)で呼ばれることを検証する。
+    import pywinauto
+
+    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    tree = build_block_tree(parse_dsl(MOVE_WINDOW_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Power Automate | g1g2_test")
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 10, 20, 810, 620)  # 既存の幅800・高さ600を保持する想定
+
+    had_desktop = hasattr(pywinauto, "Desktop")
+    original_desktop = getattr(pywinauto, "Desktop", None)
+    pywinauto.Desktop = make_fake_desktop(ui_registry)
+    try:
+        with fake_win32_modules(win32_registry):
+            exec(code, {})
+    finally:
+        if had_desktop:
+            pywinauto.Desktop = original_desktop
+        else:
+            del pywinauto.Desktop
+
+    assert win32_registry.calls == [("MoveWindow", 0, 100, 50, 800, 600, True)]
+
+
 def test_generate_python_maps_resize_window_to_win32gui_move_window() -> None:
     # design/dsl_format_findings.md 知見119: X/Yは未指定のためその場の`GetWindowRect()`の
     # 値を保持する。
@@ -1506,6 +1540,32 @@ def test_generate_python_from_set_window_visibility_control_based_converts() -> 
         ".wrapper_object().handle, win32con.SW_HIDE)" in code
     )
     assert "# TODO: map PAD action: UIAutomation.SetWindowVisibility.SetVisibility" not in code
+
+    # design/common_rpa_framework_roadmap.md 層7(b)(c): 文字列検査に加えて、実際に
+    # `exec()`してフェイク越しに`win32gui.ShowWindow(..., win32con.SW_HIDE)`が呼ばれる
+    # ことまで検証する。
+    import pywinauto
+
+    from fake_pywinauto import FakeRegistry, make_fake_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    win32_registry = FakeWin32Registry()
+
+    had_desktop = hasattr(pywinauto, "Desktop")
+    original_desktop = getattr(pywinauto, "Desktop", None)
+    pywinauto.Desktop = make_fake_desktop(ui_registry)
+    try:
+        with fake_win32_modules(win32_registry):
+            exec(code, {})
+    finally:
+        if had_desktop:
+            pywinauto.Desktop = original_desktop
+        else:
+            del pywinauto.Desktop
+
+    assert ("ShowWindow", 0, 0) in win32_registry.calls  # handle=0(フェイク既定), SW_HIDE=0
 
 
 def test_generate_python_from_move_window_control_based_converts() -> None:
