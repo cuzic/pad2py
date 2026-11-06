@@ -265,6 +265,15 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   compile()のみだったためexec検証を追加した。`[OK]`扱いの`UIAutomation.*`全9ブランチ
   (`Click.Click`/`CloseByInstanceOrHandle`/`GetUseTimeout`/`IfWindow.IsOpen`/
   `WaitForWindow`系5件)を1件ずつ確認し、全てexec検証が揃ったことを確認した。
+  **2026-11-05追記(`File.IfFile.Exists`/`Folder.IfFolderExists.Exists`の追加、
+  および手書きDSL文字列の既知の落とし穴を発見)**: 両セレクタにexec+eval検証を
+  新規追加する過程で、手書きのテスト用DSL文字列(`"IF (...) THEN\nSET X TO 1\nEND"`、
+  本体をインデントしない)だと`pad_dsl.block_tree`がIFの本体を空と解釈し、`SET X TO 1`
+  がIFの外側(無条件)へ漏れることを発見した——`exec()`後に`namespace["X"] == 1`だけを
+  見るテストは、真の分岐しかテストしていない場合にIFのゲートが壊れていても気づけない
+  (本物のPAD DSLは本体を必ずインデントするため実害は無いが、テストの書き方としては
+  罠)。既存の`IfFile.DoesNotExist`/`IfFolderExists.DoesNotExist`テストに偽の分岐の
+  検証を追加し、この罠を`tests/test_pad_codegen.py`の冒頭docstringに明記した。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

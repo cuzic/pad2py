@@ -3,6 +3,17 @@
 結合テストのフィクスチャは design/dsl_format_findings.md 知見14で実機から
 キャプチャした、SET/IF+ELSE IF+ELSE(ネスト込み)/LOOP系3種/EXIT・NEXT LOOPを
 網羅するg1g2_testフローの生データ。
+
+**手書きDSL文字列を書く際の既知の落とし穴(2026-11-05発見)**: PAD自身のクリップボード
+DSLは`IF`/`LOOP`等の本体を必ずインデントする(`pad_dsl.block_tree`はインデント段差で
+本体を認識する)。手書きのテスト用DSL文字列で`"IF (...) THEN\nSET X TO 1\nEND"`のように
+本体をインデント**しない**と、パーサーは本体を空(IF自身は`pass`のみ)と解釈し、
+`SET X TO 1`はIFの外側(無条件)の文として漏れる——`exec()`後に`namespace["X"] == 1`を
+アサートするだけのテストは、IFのゲートが実際に機能しているかに関わらず常に通ってしまう
+(真の分岐しかテストしていない場合は特に気づきにくい)。条件分岐の実際の動作を検証する
+テストは、生成された`if ...:`行自体を取り出して`eval()`する(真偽どちらの分岐でも
+本体への依存を持たない)か、本体を含めてテストするなら必ず4スペースでインデントする
+こと(真偽両方の分岐を確認する)。
 """
 from __future__ import annotations
 
@@ -3476,6 +3487,49 @@ def test_generate_python_from_if_file_does_not_exist_converts() -> None:
         exec(code, namespace)
         assert namespace["X"] == 1
 
+        # design/common_rpa_framework_roadmap.md 層7(b)の拡張・既知の落とし穴:
+        # 上のアサーションは真の分岐(ファイルが無い)しか見ておらず、仮にIF文の
+        # ゲートが壊れて本体が無条件に実行されるようになっても(例えばテストの
+        # DSL文字列がインデント無しの「フラット」な書き方で、本体が構文的にIFの
+        # 外側へ漏れてしまう場合——PAD自身のクリップボードDSLは本体を必ず
+        # インデントするため本物のキャプチャでは発生しないが、手書きのDSL文字列では
+        # 容易に踏める)、同じ結果(`X == 1`)になるため検出できない。偽の分岐
+        # (ファイルが実在する)でも`SET X TO 1`が実行されないことを`eval()`で
+        # 直接検証し、ゲート自体が機能していることを確認する。
+        existing_path = Path(tmp) / "exists.txt"
+        existing_path.write_text("x", encoding="utf-8")
+        dsl2 = f"IF (File.IfFile.DoesNotExist File: $'''{existing_path}''') THEN\nSET X TO 1\nEND"
+        tree2 = build_block_tree(parse_dsl(dsl2))
+        code2 = generate_python(tree2)
+        if_line = next(line for line in code2.splitlines() if line.startswith("if "))
+        condition_source = if_line.removeprefix("if ").removesuffix(":")
+        namespace2: dict[str, object] = {}
+        exec(code2, namespace2)
+        assert eval(condition_source, namespace2) is False
+
+
+def test_generate_python_from_if_file_exists_evaluates_correctly() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: `File.IfFile.Exists`は
+    # `codegen_coverage.py`の自動フィクスチャ走査では常に[OK]扱いだったが(Tier1バッチ
+    # フィクスチャ経由、`tests/test_pad_codegen_tier1_actions.py`はcompile()のみで
+    # exec()を一度も呼ばない設計)、条件式が実際に正しい真偽値を返すかのexec検証は
+    # 一度も無かった。実在のファイル/存在しないファイルの両方で検証する。
+    with tempfile.TemporaryDirectory() as tmp:
+        existing_path = Path(tmp) / "exists.txt"
+        existing_path.write_text("x", encoding="utf-8")
+        missing_path = Path(tmp) / "missing.txt"
+        for path, expected in ((existing_path, True), (missing_path, False)):
+            dsl = f"IF (File.IfFile.Exists File: $'''{path}''') THEN\nSET X TO 1\nEND"
+            tree = build_block_tree(parse_dsl(dsl))
+            code = generate_python(tree)
+            compile(code, "<generated>", "exec")
+            assert "# TODO" not in code
+            if_line = next(line for line in code.splitlines() if line.startswith("if "))
+            condition_source = if_line.removeprefix("if ").removesuffix(":")
+            namespace: dict[str, object] = {}
+            exec(code, namespace)
+            assert eval(condition_source, namespace) is expected
+
 
 def test_generate_python_from_if_folder_does_not_exist_converts() -> None:
     # design/dsl_format_findings.md 知見137: `Folder.IfFolderExists.Exists`の兄弟セレクタ
@@ -3492,6 +3546,41 @@ def test_generate_python_from_if_folder_does_not_exist_converts() -> None:
         namespace: dict[str, object] = {}
         exec(code, namespace)
         assert namespace["X"] == 1
+
+        # design/common_rpa_framework_roadmap.md 層7(b): 真の分岐だけでは本体がIFの
+        # ゲートを通って実行されたのか無条件に漏れただけなのか区別できない(上の
+        # `test_generate_python_from_if_file_does_not_exist_converts`と同じ理由)ため、
+        # 偽の分岐(フォルダが実在する)でも本体が実行されないことをeval()で確認する。
+        existing_dir = Path(tmp) / "existing_dir"
+        existing_dir.mkdir()
+        dsl2 = f"IF (Folder.IfFolderExists.DoesNotExist Path: $'''{existing_dir}''') THEN\nSET X TO 1\nEND"
+        tree2 = build_block_tree(parse_dsl(dsl2))
+        code2 = generate_python(tree2)
+        if_line = next(line for line in code2.splitlines() if line.startswith("if "))
+        condition_source = if_line.removeprefix("if ").removesuffix(":")
+        namespace2: dict[str, object] = {}
+        exec(code2, namespace2)
+        assert eval(condition_source, namespace2) is False
+
+
+def test_generate_python_from_if_folder_exists_evaluates_correctly() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張:
+    # `test_generate_python_from_if_file_exists_evaluates_correctly`と対になるテスト。
+    with tempfile.TemporaryDirectory() as tmp:
+        existing_dir = Path(tmp) / "existing_dir"
+        existing_dir.mkdir()
+        missing_dir = Path(tmp) / "missing_dir2"
+        for path, expected in ((existing_dir, True), (missing_dir, False)):
+            dsl = f"IF (Folder.IfFolderExists.Exists Path: $'''{path}''') THEN\nSET X TO 1\nEND"
+            tree = build_block_tree(parse_dsl(dsl))
+            code = generate_python(tree)
+            compile(code, "<generated>", "exec")
+            assert "# TODO" not in code
+            if_line = next(line for line in code.splitlines() if line.startswith("if "))
+            condition_source = if_line.removeprefix("if ").removesuffix(":")
+            namespace: dict[str, object] = {}
+            exec(code, namespace)
+            assert eval(condition_source, namespace) is expected
 
 
 def test_generate_python_from_wait_for_file_deleted_converts() -> None:
