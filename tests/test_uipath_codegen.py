@@ -598,14 +598,17 @@ def test_click_with_confirmed_default_type_generates_click_input(
 @pytest.mark.parametrize(
     ("click_type", "mouse_button", "key_modifiers"),
     [
-        # 知見71: 実機でのシリアライズ文字列を確認していないため、でっち
-        # 上げたマッピングでクリック種別を誤らせるより`# TODO`に倒す。
-        ("CLICK_DOUBLE", "BTN_LEFT", "None"),
-        ("CLICK_SINGLE", "BTN_RIGHT", "None"),
+        # 知見102: `KeyModifiers`の非既定値は実在を確認済みだが複数キー
+        # 併用時の正確な区切り文字・pywinautoの`pressed`引数への対応が
+        # 未確認のため、でっち上げたマッピングで誤らせるより`# TODO`に倒す。
         ("CLICK_SINGLE", "BTN_LEFT", "Ctrl"),
+        # 未確認のまま残る値(知見100で発見した`CLICK_UP`/`CLICK_DOWN`は
+        # ドラッグ操作用の押し下げ/離すのみに対応すると推定されるが単体
+        # での正確な対応が未確認)。
+        ("CLICK_UP", "BTN_LEFT", "None"),
     ],
 )
-def test_click_with_non_default_type_is_todo_not_guessed(
+def test_click_with_unconfirmed_type_is_todo_not_guessed(
     click_type: str, mouse_button: str, key_modifiers: str
 ) -> None:
     wf = _wrap(
@@ -620,7 +623,38 @@ def test_click_with_non_default_type_is_todo_not_guessed(
     )
     code = generate_python(wf)
     assert "# TODO: Click with non-default ClickType/MouseButton/KeyModifiers" in code
-    assert ".click_input()" not in code
+    assert ".click_input(" not in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("click_type", "mouse_button", "expected_kwargs"),
+    [
+        # 知見102: `gh api search/code`でGitHub上の実機保存済みXAMLから
+        # 直接確認した実在する値(VM不使用)——pywinautoの実`click_input`
+        # 引数(`base_wrapper.py`/`mouse.py`で確認済み)へマッピングする。
+        ("CLICK_DOUBLE", "BTN_LEFT", "double=True"),
+        ("CLICK_SINGLE", "BTN_RIGHT", "button='right'"),
+        ("CLICK_SINGLE", "BTN_MIDDLE", "button='middle'"),
+        ("CLICK_DOUBLE", "BTN_RIGHT", "double=True, button='right'"),
+    ],
+)
+def test_click_with_confirmed_nondefault_type_generates_real_click_input(
+    click_type: str, mouse_button: str, expected_kwargs: str
+) -> None:
+    wf = _wrap(
+        [
+            ClickNode(
+                selector=_CLICK_SELECTOR,
+                click_type=click_type,
+                mouse_button=mouse_button,
+                key_modifiers="None",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert f".click_input({expected_kwargs})" in code
     _compiles(code)
 
 

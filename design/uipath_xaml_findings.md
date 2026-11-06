@@ -4823,6 +4823,65 @@ flow`を新設し、`_iter_invoke_nodes_for_root`で`SequenceNode`/
 - `FlowSwitch`の比較規則が`_vb_cmp()`と完全に一致するかは実機未確認
   (`Switch<T>`との類推のみ、上記参照)
 
+## 102. `ui:Click`の`ClickType="CLICK_DOUBLE"`・`MouseButton="BTN_RIGHT"`/`"BTN_MIDDLE"`を実機XAML(GitHub実例)+pywinauto実ソースで確認し、実コード生成に対応(VM不使用、知見100の手法をClickへ再適用)
+
+Flowchart(知見100・101)で確立した「`gh api search/code`でGitHub上の
+実機保存済みXAMLを直接検索・確認する」という手法が、他の既知の限界にも
+使えないか検証した。知見71で「実機確認済みの唯一の具体例
+(`CLICK_SINGLE`/`BTN_LEFT`)以外は確証が無い」として`# TODO`に倒していた
+`ui:Click`の`ClickType`/`MouseButton`属性を対象に試したところ、以下が
+実際にUiPath Studioが保存した公開済みXAMLで確認できた:
+
+- `ClickType="CLICK_DOUBLE"`(298件、`HarshadRanganathan/uipath-learning`
+  等の実例で確認)
+- `MouseButton="BTN_RIGHT"`(242件、`michalkulisiewicz/
+  baselinker_subiekt_integrator`の実例で確認、同一ファイル内に
+  `BTN_LEFT`と`BTN_RIGHT`が混在していた)
+- `MouseButton="BTN_MIDDLE"`(6件のみだが実在)
+- `ClickType="CLICK_UP"`/`"CLICK_DOWN"`も実在する(15件・27件)が、
+  ドラッグ操作用に2つの別の`Click`活動(押し下げ→離す)と組み合わせて
+  使われる可能性があり、単体での正確な対応は依然未確認のため今回は
+  対象外のまま`# TODO`に残した
+- `KeyModifiers="Ctrl"`等の非既定値も検索上は実在が示唆されたが
+  (`"KeyModifiers=\"Ctrl\""`で658件)、実際に`ui:Click`要素上でこの値を
+  確認できた実例を見つけられず、複数キー併用時の区切り文字等も不明の
+  ままのため今回は対象外のまま`# TODO`に残した
+
+**pywinauto側の確認**(VM不使用、インストール済みの実`pywinauto`パッケージ
+のソースを直接確認——`.venv/lib/.../pywinauto/base_wrapper.py`・
+`mouse.py`、これも「実機確認」に類する確度の高いソース、知見97の
+openpyxl確認と同じ手法): `click_input(button="left"/"right"/"middle",
+double=False/True, ..., pressed="")`。`pressed`は空白区切りの
+`"control"`/`"shift"`/`"alt"`(小文字、`mouse.py`の`pressed.lower().
+split()`で確認)——これがUiPathの`KeyModifiers`値とどう対応するかは
+依然未確認のため、`KeyModifiers`の非既定値には今回は手を出さなかった。
+
+**余談**: pywinautoの`_set_cursor_pos`のコメント「`handles non-active
+desktop case`」と、実際のエラーメッセージ生成コードを確認したところ、
+知見99でVM実機キャプチャ中に遭遇した`RuntimeError: There is no active
+desktop required for moving mouse cursor!`は、`win32api.SetCursorPos`が
+返す`pywintypes.error`をpywinauto自身がこの特定の既知のケース向けに
+翻訳した文言だと確定した——「アクティブな入力デスクトップにアタッチ
+されていないプロセスからの入力注入」という一般的に知られたWindowsの
+制約に対するpywinauto側の既知の対処だったと分かる(知見99の推測を
+裏付ける追加確認、VM側の問題解決には直結しないが原因の理解を深めた)。
+
+**修正**(`dump_daemon/uipath_codegen/__init__.py`): `_CLICK_TYPE_KWARGS`/
+`_MOUSE_BUTTON_KWARGS`辞書を新設し、`_generate_click_body`が確認済みの
+値の組み合わせから`click_input()`の実引数(`button=`/`double=`)を組み立てる
+よう変更。`KeyModifiers`の確認済み既定値チェックは変更せず(引き続き
+`"None"`のみ安全)。回帰テスト追加(確認済み4通りの組み合わせの実コード
+生成、`CLICK_UP`・`KeyModifiers="Ctrl"`が引き続きTODOに倒れることの確認)、
+UiPath関連テスト全300件通過、リポジトリ全体で全1071件通過。
+
+**この知見で確定したこと**: 知見100で確立した「GitHub上の実機保存済み
+XAMLを直接検索する」手法は、Flowchart固有の問題ではなく、UiPathの
+あらゆる「実機確認が無く`# TODO`に倒していた属性値」に対して一般的に
+有効な調査手法だと分かった——知見71・73で未確認のまま残していた他の
+`ui:Click`属性(`AlterIfDisabled`/`CursorMotionType`/`DelayBefore`/
+`DelayMS`/`SendWindowMessages`/`SimulateClick`)や、他のアクティビティの
+未確認の値についても、同じ手法で追加調査する価値がある。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -1158,3 +1158,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     してハングしないことまで確認。UiPath関連テスト全297件通過、リポジトリ
     全体で全1066件通過。Phase 1の決定文とスコープ実装の食い違い(残タスク
     A)はこれで完全に解消した。
+61. **(完了、2026-11-05)** `ui:Click`の`ClickType="CLICK_DOUBLE"`・
+    `MouseButton="BTN_RIGHT"`/`"BTN_MIDDLE"`の実コード生成に対応(VM
+    不使用、知見102——知見100で確立した「GitHub上の実機保存済みXAMLを
+    `gh api search/code`で直接検索する」手法をClickへ再適用、他の既知の
+    限界にも汎用的に効く調査手法だと確定): いずれも実際にUiPath Studioが
+    保存した公開済みXAMLで確認済み。pywinautoの実`click_input(button=,
+    double=)`引数もインストール済みの実パッケージソースで確認。
+    `KeyModifiers`の非既定値・`CLICK_UP`/`CLICK_DOWN`は複数キー併用時の
+    区切り文字やドラッグ操作との組み合わせが未確認のため引き続き`# TODO`。
+    回帰テスト追加、UiPath関連テスト全300件通過、リポジトリ全体で全1071件
+    通過。

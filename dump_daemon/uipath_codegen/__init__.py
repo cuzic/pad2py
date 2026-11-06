@@ -794,17 +794,33 @@ def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[st
     return [*todo, f"{prefix}pyperclip.copy({VB_CSTR_HELPER_NAME}({text}))"]
 
 
-# `ui:Click`の`ClickType`/`MouseButton`/`KeyModifiers`属性のうち、実機XAML
-# (design/evidence/uipath_xaml_probe/Main.xaml)で確認できた唯一の具体例
-# (単純な左シングルクリック・修飾キー無し)のみを「確認済みの既定値」として
-# 安全に`.click_input()`(pywinautoの既定引数、同じ左シングルクリック)へ
-# 変換する(知見71)。ダブルクリック・右クリック・修飾キー併用等は実機の
-# 具体的なシリアライズ文字列(`CLICK_DOUBLE`等)を確認していないため、
-# でっち上げたマッピングで実際のクリック種別を誤らせるより`# TODO`に倒す
-# 方が安全(`uipath_selector`の`role`属性と同じ「無言でなく安全側に倒す」
-# 方針)。
-_CLICK_TYPE_CONFIRMED_DEFAULTS = (None, "CLICK_SINGLE")
-_MOUSE_BUTTON_CONFIRMED_DEFAULTS = (None, "BTN_LEFT")
+# `ui:Click`の`ClickType`/`MouseButton`属性(知見71で「唯一確認できた
+# 具体例」としていたCLICK_SINGLE/BTN_LEFTの既定値以外)は、知見102で
+# `gh api search/code`を使いGitHub上の実機保存済みXAMLから直接確認した
+# (VM不使用、知見100のFlowchart直列化形確認と同じ手法)——
+# `ClickType="CLICK_DOUBLE"`(ダブルクリック)・`MouseButton="BTN_RIGHT"`/
+# `"BTN_MIDDLE"`(右・中クリック)はいずれも実在する値。これらを
+# pywinautoの`click_input(button=..., double=...)`引数(インストール済みの
+# 実`pywinauto`ソース`base_wrapper.py`/`mouse.py`で確認済み——`button`は
+# `'left'`/`'right'`/`'middle'`、`double`は真偽値)へマッピングする。
+# `CLICK_UP`/`CLICK_DOWN`(実在するが稀、`button_down`/`button_up`の
+# 押し下げ/離すのみに対応すると推定されるが、ドラッグ操作用に2つの別の
+# `Click`活動と組み合わせて使われる可能性があり単体での正確な対応が
+# 未確認)は対象外のまま`# TODO`へ倒す。
+_CLICK_TYPE_KWARGS: dict[str, dict[str, object]] = {
+    "CLICK_SINGLE": {},
+    "CLICK_DOUBLE": {"double": True},
+}
+_MOUSE_BUTTON_KWARGS: dict[str, dict[str, object]] = {
+    "BTN_LEFT": {},
+    "BTN_RIGHT": {"button": "right"},
+    "BTN_MIDDLE": {"button": "middle"},
+}
+# `KeyModifiers`(知見71)は`"Ctrl"`等の非既定値が実在すると確認したが
+# (`gh api search/code`)、複数キー併用時の区切り文字・大文字小文字・
+# pywinautoの`pressed`引数(空白区切りの`"control"`/`"shift"`/`"alt"`、
+# `mouse.py`で確認済み)への正確な対応が未確認のため、依然`# TODO`へ倒す
+# (でっち上げるより安全側)。
 _KEY_MODIFIERS_CONFIRMED_DEFAULTS = (None, "None")
 # `ui:Click.CursorPosition`の`Position`属性(知見73)。実機確認済みの値は
 # `"Center"`のみで、これはpywinautoの`click_input()`既定(ターゲット要素の
@@ -840,9 +856,11 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     if not node.selector:
         return [f"{prefix}# TODO: Click with no selector captured"]
+    click_type = node.click_type or "CLICK_SINGLE"
+    mouse_button = node.mouse_button or "BTN_LEFT"
     if (
-        node.click_type not in _CLICK_TYPE_CONFIRMED_DEFAULTS
-        or node.mouse_button not in _MOUSE_BUTTON_CONFIRMED_DEFAULTS
+        click_type not in _CLICK_TYPE_KWARGS
+        or mouse_button not in _MOUSE_BUTTON_KWARGS
         or node.key_modifiers not in _KEY_MODIFIERS_CONFIRMED_DEFAULTS
     ):
         return [
@@ -863,7 +881,9 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
             f"{prefix}# TODO: Click selector had no mappable attributes: {node.selector}"
         ]
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
-    lines.append(f"{prefix}{rendered.expr}.click_input()")
+    kwargs = {**_CLICK_TYPE_KWARGS[click_type], **_MOUSE_BUTTON_KWARGS[mouse_button]}
+    kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+    lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
     return lines
 
 
