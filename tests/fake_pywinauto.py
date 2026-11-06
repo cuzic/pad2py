@@ -18,9 +18,9 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
 `.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
 `.window_text()`/`.capture_as_image().save()`/`.invoke()`/`.select()`/`.toggle()`/
-`.get_toggle_state()`/`.drag_mouse_input(dst=...)`)のみ——新しい呼び出し形が出てきたら、
-その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
-`AttributeError`で気づけるようにする)。
+`.get_toggle_state()`/`.drag_mouse_input(dst=...)`/`.is_enabled()`)のみ——新しい呼び出し形が
+出てきたら、その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、
+素直に`AttributeError`で気づけるようにする)。
 """
 from __future__ import annotations
 
@@ -50,9 +50,13 @@ class FakeImage:
 class FakeWrapperObject:
     handle: int = 0
     active: bool = True
+    enabled: bool = True
 
     def is_active(self) -> bool:
         return self.active
+
+    def is_enabled(self) -> bool:
+        return self.enabled
 
 
 class FakeControl:
@@ -138,6 +142,7 @@ class FakeRegistry:
     def __init__(self) -> None:
         self._existing_paths: list[list[dict]] = []
         self._active_overrides: list[tuple[list[dict], bool]] = []
+        self._enabled_overrides: list[tuple[list[dict], bool]] = []
         self._window_text_overrides: list[tuple[list[dict], str]] = []
         self._toggle_states: list[list[object]] = []
         self.calls: list[tuple[str, list[dict], dict]] = []
@@ -156,6 +161,11 @@ class FakeRegistry:
         (既定は`True`)。`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため、
         状態はここ(レジストリ側)で保持する。"""
         self._active_overrides.append((path_criteria, active))
+
+    def set_enabled(self, path_criteria: list[dict], enabled: bool) -> None:
+        """指定したパスの`wrapper_object().is_enabled()`が返す値を設定する
+        (既定は`True`)、`set_active()`と同じ仕組み。"""
+        self._enabled_overrides.append((path_criteria, enabled))
 
     def set_window_text(self, path_criteria: list[dict], text: str) -> None:
         """指定したパスの`.window_text()`が返す値を設定する(既定は空文字列、
@@ -199,10 +209,17 @@ class FakeRegistry:
         )
 
     def wrapper_for(self, path: list[dict]) -> FakeWrapperObject:
-        for criteria, active in reversed(self._active_overrides):
+        active = True
+        for criteria, value in reversed(self._active_overrides):
             if self._path_matches(criteria, path):
-                return FakeWrapperObject(active=active)
-        return FakeWrapperObject()
+                active = value
+                break
+        enabled = True
+        for criteria, value in reversed(self._enabled_overrides):
+            if self._path_matches(criteria, path):
+                enabled = value
+                break
+        return FakeWrapperObject(active=active, enabled=enabled)
 
     def record(self, action: str, path: list[dict], kwargs: dict) -> None:
         self.calls.append((action, path, kwargs))

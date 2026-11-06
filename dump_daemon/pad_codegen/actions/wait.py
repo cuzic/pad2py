@@ -5,6 +5,7 @@ from ...pad_dsl import UiElementRef, WaitActionRecord
 from ..context import CodegenContext
 from ..render import INDENT, render_value
 from ..selectors import _build_pywinauto_selector_expr, _ui_element_hint, _window_expr_by_instance_or_title_class
+from ._support import enum_last
 
 _WAIT_ACTION_TARGETS: dict[str, tuple[str, str, str]] = {
     "UIAutomation.WaitForWindow.ToOpen": ("Window", "wait", "exists"),
@@ -12,6 +13,10 @@ _WAIT_ACTION_TARGETS: dict[str, tuple[str, str, str]] = {
     "UIAutomation.WaitForWindow.ToBecomeFocused": ("Window", "wait", "active"),
     "UIAutomation.WaitForWindow.ToLoseFocus": ("Window", "wait_not", "active"),
     "UIAutomation.WaitForWindowContent.WindowToContainElement": ("Element", "wait", "exists"),
+    # design/dsl_format_findings.md 知見196(decompile確認済み): `WindowToContainElement`の
+    # 単純な否定(`ContainsMode.DoesNotContainElement`、`CheckElementState=False`で
+    # `WindowToContainElement`と同じ`Element`パラメータのみ)。
+    "UIAutomation.WaitForWindowContent.WindowToNotContainElement": ("Element", "wait_not", "exists"),
 }
 
 # design/dsl_format_findings.md 知見190・191(decompile確認済み): `conditions.py`の
@@ -94,6 +99,25 @@ def generate(node: WaitActionRecord, indent: int, ctx: CodegenContext) -> list[s
                 f"{prefix}while services_actions.get_service_status({render_value(service)}) != {status_target}:",
                 f"{prefix}{INDENT}time.sleep(0.05)",
             ]
+    if node.action_id == "UIAutomation.WaitForWindowContent.WindowToContainElementInState" and node.timeout_seconds is None:
+        # design/dsl_format_findings.md 知見196(decompile確認済み): `State`列挙値は
+        # `Enabled`/`Disabled`の2値のみ(`CheckForWindowContent()`自体は`IAutomationRuntimeProxy`
+        # 経由のRPC不透明な壁の内側だが、`State`列挙の定義域が2値に限定されているため、
+        # 外部から見える契約——pywinautoの`.is_enabled()`(UIAの`IsEnabled`、曖昧さの無い
+        # 標準プロパティ)と対応付けられる——は確定できる、知見172のRPC不透明性とは別の論点)。
+        element = node.params.get("Element")
+        state = enum_last(node.params.get("State"))
+        if isinstance(element, UiElementRef) and state in ("Enabled", "Disabled"):
+            selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+            if selector_expr is not None:
+                desired = state == "Enabled"
+                condition_expr = (
+                    f"({selector_expr}.exists() and {selector_expr}.wrapper_object().is_enabled() == {desired})"
+                )
+                return [
+                    f"{prefix}while not {condition_expr}:",
+                    f"{prefix}{INDENT}time.sleep(0.05)",
+                ]
     by_instance_or_title_class = _WAIT_FOR_WINDOW_BY_INSTANCE_OR_TITLE_CLASS.get(node.action_id)
     if by_instance_or_title_class is not None:
         method, wait_for, by = by_instance_or_title_class

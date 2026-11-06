@@ -238,10 +238,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `ToBecomeFocused`/`ToLoseFocus` × `ByInstanceOrHandle`/`ByTitleClass`。
       `conditions.py`の`IfWindow`側ロジックを`selectors.py`の
       `_window_expr_by_instance_or_title_class()`へ抽出し`wait.py`と共有する形で実装した。
-      **残り4件は別種のギャップ(未解決)**: `WaitForWindowContent`の
+      残り4件は別種のギャップ: `WaitForWindowContent`の
       `WindowToContainElementInState`/`WindowToContainText`/`WindowToNotContainElement`/
       `WindowToNotContainText`は単純なByリネームではなく判定条件自体が異なる
-      (テキストマッチ・要素状態・否定系)ため今回は見送り。
+      (テキストマッチ・要素状態・否定系)。
+      ✅ **このうち2件を結線完了(知見196)**: `WindowToNotContainElement`
+      (`WindowToContainElement`の単純な否定)・`WindowToContainElementInState`
+      (`State`列挙値が`Enabled`/`Disabled`の2値のみと確定、pywinautoの
+      `.is_enabled()`と対応付け、タイムアウト指定無しの場合のみ対応)。
+      **残り2件(`WindowToContainText`/`WindowToNotContainText`)は依然未解決**:
+      テキストマッチの正確な意味論(部分一致/完全一致・大小文字区別・検索範囲)が
+      実機未確認のため見送り。
   - [x] 💻 **`Services`は知見165の監査対象リストに含まれていなかったと判明・新規4アクション
     結線完了(知見187)**: `Microsoft.Flow.RPA.Desktop.Modules.Services.Actions.dll`を
     新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、

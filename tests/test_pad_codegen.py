@@ -2152,6 +2152,61 @@ def test_generate_python_from_wait_for_window_content_actually_waits_against_fak
     assert registry.calls == []  # exists()自体はcallsに記録されない呼び出し
 
 
+def test_generate_python_from_wait_for_window_content_not_contain_element_converts() -> None:
+    # design/dsl_format_findings.md 知見196: `WindowToNotContainElement`は既存の
+    # `WindowToContainElement`結線の単純な否定(同じ`Element`パラメータのみ)。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    text = text.replace("WindowToContainElement", "WindowToNotContainElement")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert (
+        "while Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').exists():" in code
+    )
+
+    registry = FakeRegistry()
+    # 対象の子孫コントロールが存在しない状態からスタート——`not exists()`は真なので
+    # `WindowToContainElement`なら無限ループするところ、`WindowToNotContainElement`は
+    # 「存在しない」を待つので最初から条件(ループ継続条件)が偽で即座に終了するはず。
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})
+
+
+def test_generate_python_from_wait_for_window_content_in_state_converts() -> None:
+    # design/dsl_format_findings.md 知見196(decompile確認済み): `State`列挙値は
+    # `Enabled`/`Disabled`の2値のみ——pywinautoの`.is_enabled()`と対応付けた。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_content.txt"
+    ).read_text(encoding="utf-8")
+    text = text.replace(
+        "WindowToContainElement Element:",
+        "WindowToContainElementInState State: UIAutomation.State.Enabled Element:",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert "# TODO" not in code
+    assert (
+        "while not (Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').exists() and "
+        "Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit').wrapper_object().is_enabled() == True):" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    registry.set_enabled([{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], True)
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})  # 存在してEnabled=Trueなのでループ条件は最初から偽、即座に終了するはず
+
+
 def test_generate_python_from_real_goto_label_whole_subflow_capture_compiles() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_goto_label.txt").read_text(
         encoding="utf-8"
