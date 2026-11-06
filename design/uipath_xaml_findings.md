@@ -8960,6 +8960,69 @@ Python標準の確認済みAPI。`Recursive="False"`の実機例は確認でき�
 test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`14件)、UiPath
 関連テスト全844件通過、リポジトリ全体で全1897件通過。
 
+## 190. `ui:ForEachFileX`+`ui:ForEachFolderX`を新規実装——`CurrentFile`/`CurrentFolder`をパス文字列として表現、`render.py`に新しい`.FullName`メンバ変換を追加、実装直後のテストで`_SAFE_BARE_MEMBERS`登録漏れによる実行時AttributeErrorを発見・即修正
+
+知見189で発見した`ui:ForEachFolderX`(40件ヒット)+その兄弟活動
+`ui:ForEachFileX`(GitHub code searchで738件ヒット——本調査で遭遇した
+中でも高頻度)を実装した。`UiPath/skills`公式リポジトリのStudio
+実機ground-truthコーパス+実機(`marcelocruzrpa/uipath-ai-skills`の
+資産`PDFExtraction_Main.xaml`)で確認した構成は`Folder`+
+`IncludeSubDirectories`/`IncludeSubFolders`+`OrderBy`(実機確認した
+値は全件`"NameAscFirst"`)+`SkipFolderWithoutPermission`/
+`SkipFoldersWithoutPermission`+`Body`——`ForEachNode`(知見5)とは違い
+**2変数**のデリゲート(`ActivityAction<FileInfo, Int32>`、
+`Argument1`=`CurrentFile`/`Argument2`=`CurrentIndex`)という、本調査で
+初めて遭遇した複数デリゲート変数の構造。新しいパーサーヘルパー
+`_parse_two_arg_delegate_vars()`を追加して対応した。
+
+`CurrentFile`/`CurrentFolder`の表現方法が最大の設計判断だった——
+`render_expr`のチェインメンバアクセス許可リスト(`_apply_chained_
+property`)はメンバ名を問わず未知の名前を安全に拒否する(型情報を
+持たないため)ため、`.NET FileInfo`/`DirectoryInfo`のリッチなオブ
+ジェクトをでっち上げる代わりに、ファイルの絶対パス文字列
+(`.FullName`と同じ値)として表現する最小限の設計を選んだ。
+`IncludeSubDirectories`/`IncludeSubFolders`は`True`/`False`の両方に
+`os.walk()`/`os.scandir()`(いずれもPython標準の確認済みAPI)で対応
+した——再帰時は`os.walk()`の`dirnames`(各階層での直下の子フォルダ
+のみを返す確認済みの挙動)を利用して、ルート自身を含まない全階層の
+サブフォルダ/ファイルを列挙する。`OrderBy`が確認済みの`"NameAscFirst"`
+以外・`SkipFolder(s)WithoutPermission="True"`(権限エラーの握り潰し、
+未モデル化)の場合は`# TODO`へ倒す。
+
+実機サンプル(`CurrentFile.FullName`という実際の使われ方を確認)に
+対応するため、`render.py`の`_apply_chained_property`に新しい
+`.FullName`(そのまま値を返す、パス文字列自体が既にFullName相当の
+ため)というメンバ変換を追加した——`.FullName`自体は`FileInfo`/
+`DirectoryInfo`以外の.NET型(`Type`・`Assembly`等)にも存在するため
+本来は型文脈が必要な変換だが、本トランスパイラの対象範囲でそれらの
+型が使われる実例は一度も確認していないという、既存の`.ToString`/
+`.Length`(型を問わない判定)と同じ現実的なリスク判断を踏襲した。
+
+実装直後のテスト実行で、`_apply_chained_property`に`.FullName`を
+追加しただけでは実機サンプルの`CurrentFile.FullName`(括弧無しの
+メンバアクセス連鎖)が変換されず、生成コードに`CurrentFile.FullName`
+が**そのまま**残ってしまうバグを発見した——`compile()`(構文チェック
+のみ)は通過するが、実行すれば`AttributeError: 'str' object has no
+attribute 'FullName'`で確実にクラッシュする、知見182のRowIndexバグ
+と同種の「構文的には正しいが実行すれば落ちる」バグだった。原因は
+`render.py`の`_render_node`のIdent分岐(知見119: 括弧省略形のメンバ
+アクセス連鎖は字句解析上1トークンとして吸収されるため、`_apply_
+chained_property`とは別の、`_SAFE_BARE_MEMBERS`で許可された名前
+のみを通す独立したゲートを持つ)が、`fullname`を`_SAFE_BARE_MEMBERS`
+に登録していなかったため——`_apply_chained_property`自体にケースを
+追加するだけでは、この手前のゲートを通過できず到達しなかった。
+`_SAFE_BARE_MEMBERS`へ`"fullname"`を追加して即修正し、実機サンプル
+で`CurrentFile.FullName`が正しく`CurrentFile`へ変換されることを
+再確認した。
+
+実機XAML1件(公式資産`PDFExtraction_Main.xaml`、再帰列挙+
+`CurrentFile.FullName`使用)+合成テストで`generate_python()`+
+`compile()`を確認し、実際のファイルシステムに対して非再帰/再帰/
+フォルダ列挙の3パターン全ての実行結果も手動確認した(名前順ソート・
+階層の正しさを含む)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`9件)、UiPath関連テスト全855件通過、
+リポジトリ全体で全1906件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -9036,10 +9099,5 @@ test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`14件)、UiPath
   表現を判断できない、というアーキテクチャ上の前提作業(`DataTable`
   表現の統一、または変数ごとの表現追跡の導入)が必要——着手するなら
   まずそちらを先に設計する必要がある、相対的に大きな調査候補
-- 知見189で発見した`ui:ForEachFolderX`(実機`andumorie/uipath-face-
-  recognition-framework`の`UploadToDataset.xaml`でサブフォルダを
-  反復している実例を確認——`Folder`属性+`ActivityAction`body、
-  `ForEachNode`/`ForEachRow`(知見5・118)と同系統の構造の可能性が
-  高いが未調査)。`DeleteFileX`/`DeleteFolderX`(知見189)と同じ
-  ファイルシステム操作系の「X」付き活動ファミリーの一員と見られ、
-  同様の兄弟活動(`ForEachFileX`等)が存在する可能性もある
+- **(解決)** ~~知見189で発見した`ui:ForEachFolderX`~~ → 知見190で
+  `ui:ForEachFileX`と共に実装済み

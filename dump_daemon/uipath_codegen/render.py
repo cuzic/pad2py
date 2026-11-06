@@ -612,12 +612,16 @@ _CHAINED_PROPERTY_TRANSLATIONS = {
     "trim": "strip",
 }
 
-# 知見119/130/133/146: 括弧省略形の素の変数へのメンバアクセス連鎖
+# 知見119/130/133/146/190: 括弧省略形の素の変数へのメンバアクセス連鎖
 # (`_render_node`のIdent分岐)で、`_apply_chained_property`へそのまま
 # 委ねて良いと確認済みのメンバ名(`_CHAINED_PROPERTY_TRANSLATIONS`の
 # キー群とは別の、1:1の名前変換では済まない特別処理を持つもの)。
-# 小文字で統一(知見146)。
-_SAFE_BARE_MEMBERS = ("tostring", "copy", "length")
+# 小文字で統一(知見146)。`fullname`(知見190、`ForEachFileX`/
+# `ForEachFolderX`の`CurrentFile.FullName`——括弧無しの呼び出しのため
+# このIdent分岐を通る)もここに追加しないと`_apply_chained_property`
+# 側の対応が素通りされ、`CurrentFile.FullName`がそのまま出力されて
+# 実行時`AttributeError`になる(実装直後にテストで発見・即修正)。
+_SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname")
 
 # 知見140: 呼び出しを伴わない静的クラスプロパティの完全修飾名(小文字化
 # 済み)→Python式。`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`
@@ -720,6 +724,22 @@ def _apply_chained_property(base: str, member: str) -> str:
     member_lower = member.lower()
     if member_lower == "tostring":
         return f"{VB_CSTR_HELPER_NAME}({base})"
+    if member_lower == "fullname":
+        # 知見190: `ForEachFileX`/`ForEachFolderX`の`CurrentFile`/
+        # `CurrentFolder`(実機`marcelocruzrpa/uipath-ai-skills`の
+        # `PDFExtraction_Main.xaml`で`CurrentFile.FullName`という
+        # 使い方を確認)は、`.NET FileInfo`/`DirectoryInfo`のリッチな
+        # オブジェクトをでっち上げる代わりに絶対パス文字列そのもの
+        # (`.FullName`と同じ値)として表現する——この表現なら
+        # `.FullName`はそのまま`base`を返すだけで正しい。`.FullName`
+        # という名前自体は`FileInfo`/`DirectoryInfo`以外の.NET型
+        # (`Type`・`Assembly`等)にも存在するため、本来は型文脈が
+        # 必要な変換だが、本トランスパイラの対象範囲(UI Automation/
+        # ファイルシステム操作)でそれらの型が使われる実例は本調査で
+        # 一度も確認していない——`.ToString`/`.Length`等の既存の
+        # メンバ名限定(型を問わない)判定と同じ、確認済みの範囲での
+        # 現実的なリスク判断。
+        return base
     if member_lower == "copy":
         # 知見130: `DataTable.Copy()`(`Dits21/Proyecto-Sistema-RPA-...`
         # の実機XAML`dtUB92.Copy`で発見、括弧無しの呼び出し——VB.NETの

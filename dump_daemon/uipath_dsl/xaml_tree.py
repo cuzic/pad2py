@@ -55,6 +55,8 @@ from .types import (
     FlowStepNode,
     FlowSwitchArm,
     FlowSwitchNode,
+    ForEachFileNode,
+    ForEachFolderNode,
     ForEachNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -976,6 +978,60 @@ def _parse_delete_folder(elem: etree._Element) -> DeleteFolderNode:
     return DeleteFolderNode(
         path=path,
         recursive=_attr_or_none(elem, "Recursive"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_two_arg_delegate_vars(action: etree._Element | None) -> tuple[str, str]:
+    """`ActivityAction<T1, T2>`の`Argument1`/`Argument2`プロパティ要素
+    から、各`DelegateInArgument`の`Name`を抜き出す(`ForEachFileX`/
+    `ForEachFolderX`等の2変数デリゲート向け——`ForEachNode`の単一
+    `Argument`抽出とは別の構造)。"""
+    item_var = ""
+    index_var = ""
+    if action is None:
+        return item_var, index_var
+    arg1_elem = _find_property_element(action, "Argument1")
+    if arg1_elem is not None:
+        for d in _direct_children(arg1_elem):
+            item_var = _attr(d, "Name") or ""
+    arg2_elem = _find_property_element(action, "Argument2")
+    if arg2_elem is not None:
+        for d in _direct_children(arg2_elem):
+            index_var = _attr(d, "Name") or ""
+    return item_var, index_var
+
+
+def _parse_for_each_file(elem: etree._Element) -> ForEachFileNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    item_var, index_var = _parse_two_arg_delegate_vars(action)
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return ForEachFileNode(
+        folder=_attr_expr(elem, "Folder"),
+        include_sub_directories=_attr_or_none(elem, "IncludeSubDirectories"),
+        order_by=_attr_or_none(elem, "OrderBy"),
+        skip_without_permission=_attr_or_none(elem, "SkipFolderWithoutPermission"),
+        item_var=item_var,
+        index_var=index_var,
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_for_each_folder(elem: etree._Element) -> ForEachFolderNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    item_var, index_var = _parse_two_arg_delegate_vars(action)
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return ForEachFolderNode(
+        folder=_attr_expr(elem, "Folder"),
+        include_sub_folders=_attr_or_none(elem, "IncludeSubFolders"),
+        order_by=_attr_or_none(elem, "OrderBy"),
+        skip_without_permission=_attr_or_none(elem, "SkipFoldersWithoutPermission"),
+        item_var=item_var,
+        index_var=index_var,
+        body=body,
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1910,6 +1966,8 @@ _DISPATCH = {
     (UI_NS, "PathExists"): _parse_path_exists,
     (UI_NS, "DeleteFileX"): _parse_delete_file,
     (UI_NS, "DeleteFolderX"): _parse_delete_folder,
+    (UI_NS, "ForEachFileX"): _parse_for_each_file,
+    (UI_NS, "ForEachFolderX"): _parse_for_each_folder,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

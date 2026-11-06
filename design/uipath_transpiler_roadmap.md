@@ -2456,3 +2456,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      調査候補に追加。実機XAML4件で確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`14件)、
      UiPath関連テスト全844件通過、リポジトリ全体で全1897件通過。
+
+148. **(完了、2026-11-06)** `ui:ForEachFileX`+`ui:ForEachFolderX`を
+     新規実装(知見190): 本調査で初めて遭遇した2変数デリゲート
+     (`CurrentFile`/`CurrentIndex`)構造に対応する新パーサーヘルパー
+     `_parse_two_arg_delegate_vars()`を追加。`CurrentFile`/
+     `CurrentFolder`はパス文字列として表現、`os.walk()`/
+     `os.scandir()`で再帰/非再帰の両方に対応。実機の`CurrentFile.
+     FullName`使用に対応するため`render.py`に新しい`.FullName`メンバ
+     変換を追加したが、`_apply_chained_property`だけでは`_SAFE_BARE_
+     MEMBERS`の手前のゲートを通過できず、実装直後のテストで生成コード
+     に`CurrentFile.FullName`がそのまま残り実行時`AttributeError`に
+     なるバグを発見・即修正(`_SAFE_BARE_MEMBERS`に`"fullname"`を
+     追加)。実機XAML1件(公式資産)+合成データでの実ファイルシステム
+     走査(非再帰/再帰/フォルダ列挙の3パターン)を手動確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     9件)、UiPath関連テスト全855件通過、リポジトリ全体で全1906件
+     通過。

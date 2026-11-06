@@ -93,6 +93,8 @@ from ..uipath_dsl.types import (
     FlowDecisionNode,
     FlowStepNode,
     FlowSwitchNode,
+    ForEachFileNode,
+    ForEachFolderNode,
     ForEachNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -346,11 +348,12 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import shutil")
     # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)・
     # `os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`(Recursive=
-    # False)変換先、知見189)も同じ`os`モジュールのため同じ条件に
-    # まとめる。
+    # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
+    # `ForEachFolder`変換先、知見190)も同じ`os`モジュールのため同じ
+    # 条件にまとめる。
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
-        or "os.rmdir(" in line
+        or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
         for line in body
     ):
         imports.append("import os")
@@ -501,6 +504,10 @@ def _generate_node(
         return _generate_if(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, ForEachFileNode):
+        return _generate_for_each_file(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, ForEachFolderNode):
+        return _generate_for_each_folder(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, TryCatchNode):
         return _generate_try_catch(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SwitchNode):
@@ -3433,6 +3440,91 @@ def _generate_delete_folder_body(node: DeleteFolderNode, indent: int) -> list[st
         return todo
     call = "shutil.rmtree" if node.recursive == "True" else "os.rmdir"
     return [f"{prefix}{call}({path})"]
+
+
+# 知見190: `ui:ForEachFileX`。`CurrentFile`はファイルの絶対パス文字列
+# (`.NET FileInfo.FullName`と同じ値)として表現する——`os.scandir()`
+# (非再帰)/`os.walk()`(再帰)はいずれもPython標準の確認済みAPI。
+# `OrderBy`は実機確認済みの`"NameAscFirst"`(名前昇順)のみ対応し、
+# `SkipFolderWithoutPermission="True"`(権限エラーを握り潰す動作、
+# 未モデル化)は`# TODO`へ倒す。
+def _generate_for_each_file(
+    node: ForEachFileNode, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.order_by not in (None, "NameAscFirst"):
+        return [
+            f"{prefix}# TODO: ForEachFile with unconfirmed OrderBy "
+            f"({node.order_by!r}) — only NameAscFirst is confirmed, "
+            "refusing to guess"
+        ]
+    if node.skip_without_permission == "True":
+        return [
+            f"{prefix}# TODO: ForEachFile with SkipFolderWithoutPermission "
+            "set — permission-error suppression not modeled, refusing to "
+            "guess"
+        ]
+    folder = render_expr(node.folder)
+    if node.include_sub_directories == "True":
+        entries_expr = (
+            f"sorted((os.path.join(_dp, _fn) for _dp, _dns, _fns in "
+            f"os.walk({folder}) for _fn in _fns), key=os.path.basename)"
+        )
+    else:
+        entries_expr = (
+            f"sorted((_e.path for _e in os.scandir({folder}) if "
+            "_e.is_file()), key=os.path.basename)"
+        )
+    item_var = node.item_var or "CurrentFile"
+    index_var = node.index_var or "CurrentIndex"
+    lines = [f"{prefix}for {index_var}, {item_var} in enumerate({entries_expr}):"]
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+    )
+    lines.extend(body)
+    return lines
+
+
+# 知見190: `ui:ForEachFolderX`(`ForEachFile`の兄弟活動)。`os.walk()`の
+# `dirnames`(各階層での直下の子フォルダのみを返す確認済みの挙動)を
+# 利用して、ルート自身を含まない全階層のサブフォルダを列挙する。
+def _generate_for_each_folder(
+    node: ForEachFolderNode, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.order_by not in (None, "NameAscFirst"):
+        return [
+            f"{prefix}# TODO: ForEachFolder with unconfirmed OrderBy "
+            f"({node.order_by!r}) — only NameAscFirst is confirmed, "
+            "refusing to guess"
+        ]
+    if node.skip_without_permission == "True":
+        return [
+            f"{prefix}# TODO: ForEachFolder with SkipFoldersWithoutPermission "
+            "set — permission-error suppression not modeled, refusing to "
+            "guess"
+        ]
+    folder = render_expr(node.folder)
+    if node.include_sub_folders == "True":
+        entries_expr = (
+            f"sorted((os.path.join(_dp, _dn) for _dp, _dns, _fns in "
+            f"os.walk({folder}) for _dn in _dns), key=os.path.basename)"
+        )
+    else:
+        entries_expr = (
+            f"sorted((_e.path for _e in os.scandir({folder}) if "
+            "_e.is_dir()), key=os.path.basename)"
+        )
+    item_var = node.item_var or "CurrentFolder"
+    index_var = node.index_var or "CurrentIndex"
+    lines = [f"{prefix}for {index_var}, {item_var} in enumerate({entries_expr}):"]
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+    )
+    lines.extend(body)
+    return lines
 
 
 # 知見117: `ui:BuildDataTable`。`TableInfo`に埋め込まれた.NET `DataSet`の

@@ -68,6 +68,8 @@ from dump_daemon.uipath_dsl import (
     FlowStepNode,
     FlowSwitchArm,
     FlowSwitchNode,
+    ForEachFileNode,
+    ForEachFolderNode,
     ForEachNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -3548,6 +3550,136 @@ def test_delete_folder_with_unrecognized_recursive_is_todo_not_guessed():
     wf = _wrap([DeleteFolderNode(path=Literal(value="d"), recursive=None)])
     code = generate_python(wf)
     assert "# TODO: DeleteFolder with unrecognized/unset Recursive" in code
+    _compiles(code)
+
+
+def test_for_each_file_non_recursive_uses_scandir():
+    """知見190: `ui:ForEachFileX`(GitHub code searchで738件ヒット)。
+    `IncludeSubDirectories="False"`(既定)は`os.scandir()`が直接
+    対応する。"""
+    wf = _wrap(
+        [
+            ForEachFileNode(
+                folder=Literal(value="d"),
+                include_sub_directories="False",
+                order_by="NameAscFirst",
+                item_var="CurrentFile",
+                index_var="CurrentIndex",
+                body=[LogMessageNode(message=VbExpr(text="CurrentFile"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for CurrentIndex, CurrentFile in enumerate(sorted((_e.path for _e in os.scandir('d') if _e.is_file()), key=os.path.basename)):" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_for_each_file_recursive_uses_os_walk():
+    """`IncludeSubDirectories="True"`は`os.walk()`が全階層のファイルを
+    対象に直接対応する。"""
+    wf = _wrap(
+        [
+            ForEachFileNode(
+                folder=Literal(value="d"),
+                include_sub_directories="True",
+                order_by="NameAscFirst",
+                body=[LogMessageNode(message=VbExpr(text="CurrentFile"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.walk('d')" in code
+    assert "for CurrentIndex, CurrentFile in enumerate(" in code
+    _compiles(code)
+
+
+def test_for_each_file_current_file_full_name_returns_path_itself():
+    """知見190: `CurrentFile.FullName`(実機`marcelocruzrpa/uipath-ai-
+    skills`資産`PDFExtraction_Main.xaml`で確認)は、`CurrentFile`が
+    既に絶対パス文字列として表現されているため`render_expr`で
+    そのまま`CurrentFile`を返す。"""
+    wf = _wrap(
+        [
+            ForEachFileNode(
+                folder=Literal(value="d"),
+                order_by="NameAscFirst",
+                body=[LogMessageNode(message=VbExpr(text="CurrentFile.FullName"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "logging.info(_vb_cstr(CurrentFile))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_for_each_file_with_unconfirmed_order_by_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ForEachFileNode(
+                folder=Literal(value="d"),
+                order_by="DateAscFirst",
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ForEachFile with unconfirmed OrderBy" in code
+    _compiles(code)
+
+
+def test_for_each_file_with_skip_without_permission_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ForEachFileNode(
+                folder=Literal(value="d"),
+                order_by="NameAscFirst",
+                skip_without_permission="True",
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ForEachFile with SkipFolderWithoutPermission" in code
+    _compiles(code)
+
+
+def test_for_each_folder_non_recursive_uses_scandir():
+    """知見190: `ui:ForEachFolderX`(GitHub code searchで40件ヒット)。"""
+    wf = _wrap(
+        [
+            ForEachFolderNode(
+                folder=Literal(value="d"),
+                include_sub_folders="False",
+                order_by="NameAscFirst",
+                item_var="CurrentFolder",
+                index_var="CurrentIndex",
+                body=[LogMessageNode(message=VbExpr(text="CurrentFolder"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_e.is_dir()" in code
+    assert "for CurrentIndex, CurrentFolder in enumerate(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_for_each_folder_recursive_uses_os_walk_dirnames():
+    wf = _wrap(
+        [
+            ForEachFolderNode(
+                folder=Literal(value="d"),
+                include_sub_folders="True",
+                order_by="NameAscFirst",
+                body=[LogMessageNode(message=Literal(value="x"), level="Info")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for _dp, _dns, _fns in os.walk('d') for _dn in _dns" in code
     _compiles(code)
 
 

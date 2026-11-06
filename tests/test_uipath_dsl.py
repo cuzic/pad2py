@@ -43,6 +43,8 @@ from dump_daemon.uipath_dsl import (
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
+    ForEachFileNode,
+    ForEachFolderNode,
     ForEachNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -1637,6 +1639,64 @@ def test_delete_folder_properties():
     assert isinstance(node, DeleteFolderNode)
     assert node.path == VbExpr(text="folder")
     assert node.recursive == "True"
+
+
+def test_for_each_file_properties():
+    """知見190: `ui:ForEachFileX`(GitHub code searchで738件ヒット)。
+    実機`marcelocruzrpa/uipath-ai-skills`資産(`PDFExtraction_Main.
+    xaml`)で確認した、2変数デリゲート(`CurrentFile`/`CurrentIndex`)+
+    `IncludeSubDirectories="True"`の実例。"""
+    xml = (
+        f"<ui:ForEachFileX {_UI_XMLNS} DisplayName=\"For Each File\" "
+        'Folder="[folder]" IncludeSubDirectories="True" OrderBy="NameAscFirst">'
+        "<ui:ForEachFileX.Body>"
+        '<ActivityAction x:TypeArguments="si:FileInfo, x:Int32">'
+        '<ActivityAction.Argument1>'
+        '<DelegateInArgument x:TypeArguments="si:FileInfo" Name="CurrentFile" />'
+        "</ActivityAction.Argument1>"
+        '<ActivityAction.Argument2>'
+        '<DelegateInArgument x:TypeArguments="x:Int32" Name="CurrentIndex" />'
+        "</ActivityAction.Argument2>"
+        '<Sequence DisplayName="Do" />'
+        "</ActivityAction>"
+        "</ui:ForEachFileX.Body>"
+        "</ui:ForEachFileX>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ForEachFileNode)
+    assert node.folder == VbExpr(text="folder")
+    assert node.include_sub_directories == "True"
+    assert node.order_by == "NameAscFirst"
+    assert node.item_var == "CurrentFile"
+    assert node.index_var == "CurrentIndex"
+    assert node.body == []
+
+
+def test_for_each_folder_properties():
+    """知見190: `ui:ForEachFolderX`(`ForEachFile`の兄弟活動、GitHub
+    code searchで40件ヒット)。"""
+    xml = (
+        f"<ui:ForEachFolderX {_UI_XMLNS} DisplayName=\"For Each Folder\" "
+        'Folder="[folder]" IncludeSubFolders="False" OrderBy="NameAscFirst">'
+        "<ui:ForEachFolderX.Body>"
+        '<ActivityAction x:TypeArguments="si:DirectoryInfo, x:Int32">'
+        '<ActivityAction.Argument1>'
+        '<DelegateInArgument x:TypeArguments="si:DirectoryInfo" Name="CurrentFolder" />'
+        "</ActivityAction.Argument1>"
+        '<ActivityAction.Argument2>'
+        '<DelegateInArgument x:TypeArguments="x:Int32" Name="CurrentIndex" />'
+        "</ActivityAction.Argument2>"
+        '<Sequence DisplayName="Do" />'
+        "</ActivityAction>"
+        "</ui:ForEachFolderX.Body>"
+        "</ui:ForEachFolderX>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ForEachFolderNode)
+    assert node.folder == VbExpr(text="folder")
+    assert node.include_sub_folders == "False"
+    assert node.item_var == "CurrentFolder"
+    assert node.index_var == "CurrentIndex"
 
 
 def test_log_message_properties():

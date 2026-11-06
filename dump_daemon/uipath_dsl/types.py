@@ -1105,6 +1105,65 @@ class DeleteFolderNode:
 
 
 @dataclass
+class ForEachFileNode:
+    """`<ui:ForEachFileX>`(知見190、`UiPath.System.Activities`、GitHub
+    code searchで738件ヒット——知見189で発見した`ui:ForEachFolderX`
+    (40件)の兄弟活動)。`UiPath/skills`公式リポジトリのStudio実機
+    ground-truthコーパス+実機2件(`marcelocruzrpa/uipath-ai-skills`
+    の資産`PDFExtraction_Main.xaml`)で確認した構成は`Folder`
+    (走査対象)+`IncludeSubDirectories`(ground-truthの既定値
+    `"False"`)+`OrderBy`(実機確認した値は全件`"NameAscFirst"`)+
+    `SkipFolderWithoutPermission`(ground-truthの既定値`"False"`)+
+    `Body`(`ActivityAction<FileInfo, Int32>`——`ForEachNode`(知見5)
+    とは違い**2変数**のデリゲート、`Argument1`=`CurrentFile`/
+    `Argument2`=`CurrentIndex`)。
+
+    `CurrentFile`はPythonの単純な文字列(ファイルの絶対パス、.NET
+    `FileInfo.FullName`と同じ値)として表現する——`render_expr`の
+    チェインメンバアクセス許可リスト(`_apply_chained_property`)は
+    メンバ名を問わず未知の名前を安全に拒否するため、`FileInfo`型の
+    リッチなオブジェクトをでっち上げる代わりに最小限で確認済みの
+    表現(パス文字列そのもの)を選んだ——実機で唯一確認できた
+    `CurrentFile.FullName`という使い方だけ、`render.py`に新しい
+    `.FullName`(そのまま値を返す、パス文字列自体が既にFullName相当
+    のため)という狭いメンバ変換を追加して対応する。`IncludeSub
+    Directories`は`True`/`False`両方に`os.walk()`/`os.scandir()`で
+    対応するが、`OrderBy`が`"NameAscFirst"`以外・
+    `SkipFolderWithoutPermission`が`"True"`の場合は`# TODO`へ倒す
+    (権限エラーを握り潰す動作は未モデル化)。"""
+
+    folder: Expr = None
+    include_sub_directories: str | None = None
+    order_by: str | None = None
+    skip_without_permission: str | None = None
+    item_var: str = ""
+    index_var: str = ""
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
+class ForEachFolderNode:
+    """`<ui:ForEachFolderX>`(知見190、`ForEachFile`の兄弟活動、GitHub
+    code searchで40件ヒット——知見189で発見)。属性構成は`ForEachFile`
+    と同型(`IncludeSubFolders`/`SkipFoldersWithoutPermission`という
+    別名の属性のみ、意味論は同じ)。`CurrentFolder`も同じ理由で
+    フォルダの絶対パス文字列として表現する。`IncludeSubFolders=True`
+    の場合は`os.walk()`が列挙する**全ての階層の**サブフォルダを対象に
+    する(ルート自身は含まない、`os.walk()`の`dirnames`が各階層で
+    子フォルダのみを返す確認済みの挙動を利用)。"""
+
+    folder: Expr = None
+    include_sub_folders: str | None = None
+    order_by: str | None = None
+    skip_without_permission: str | None = None
+    item_var: str = ""
+    index_var: str = ""
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2225,6 +2284,8 @@ Node = (
     | PathExistsNode
     | DeleteFileNode
     | DeleteFolderNode
+    | ForEachFileNode
+    | ForEachFolderNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode
