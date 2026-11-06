@@ -2102,3 +2102,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      既存テスト全1698件に退行無し、実機XAML2件で再検証。回帰テスト
      追加(`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全659件
      通過、リポジトリ全体で全1699件通過。
+
+122. **(完了、2026-11-06)** `ui:SetFocus`(`Activate`の同義の別活動)
+     を新規実装(知見164): `UiPath/skills`公式ground-truthコーパスで
+     `ui:Activate`と属性構成が完全に同一(`Target`+`DelayBefore`/
+     `DelayMS`/`ContinueOnError`)だと確認、GitHub上68件ヒット・実機
+     (`JoeIaquinto/UiPath-VidCreator`等)で`DisplayName`が`"Set
+     Focus '...'"`になる同義の別活動と確認した。`_parse_activate`は
+     タグ名に依存しない汎用実装のため、`_DISPATCH`に1行追加するだけ
+     で済んだ——このtickで最も経済的な実装。副産物として、タグ名
+     自体が`GetValue`になる`GetText`系の実例・`ui:Check`/
+     `ui:Highlight`という未実装活動を発見し、次の棚卸し候補として
+     記録した。回帰テスト追加(`tests/test_uipath_dsl.py`1件)、
+     UiPath関連テスト全660件通過、リポジトリ全体で全1700件通過。

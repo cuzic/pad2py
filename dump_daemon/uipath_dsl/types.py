@@ -379,7 +379,18 @@ class ActivateNode:
     だけの活動であるため)。pywinautoの`set_focus()`(両バックエンドの
     `base_wrapper`で共通にサポートされる確認済みの標準API)が直接
     対応する——`move_mouse_input()`のような既定値の罠(知見157)は
-    無い、最も単純な変換の1つ。"""
+    無い、最も単純な変換の1つ。
+
+    知見164追記: `ui:SetFocus`(`UiPath/skills`公式ground-truthコーパス
+    +`JoeIaquinto/UiPath-VidCreator`等の実機XAML、GitHub code searchで
+    68件ヒット)は`DisplayName`が`"Set Focus '...'"`になる同義の別活動
+    だと判明した——`Target`+`DelayBefore`/`DelayMS`/`ContinueOnError`
+    という属性構成が`Activate`と完全に同一(`AttachWindow`/
+    `WindowScope`/`BrowserScope`、知見153・158・161と同じ「同義の別名
+    活動」パターン)。`_parse_activate`は属性名のみを汎用的に読む
+    (タグ名に依存しない)ため、新しい専用のパーサー関数は追加せず
+    `_DISPATCH`に同じ`_parse_activate`を2つのタグ名で登録するだけで
+    済んだ——このノード型を再利用するあらゆる活動と同様。"""
 
     selector: str | None = None
     display_name: str | None = None

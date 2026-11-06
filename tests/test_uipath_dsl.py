@@ -840,6 +840,25 @@ def test_target_selector_normalizes_x_null_to_none():
     assert node.selector is None
 
 
+def test_set_focus_reuses_activate_node():
+    """知見164: `ui:SetFocus`(GitHub code searchで68件ヒット)は
+    `DisplayName`が`"Set Focus '...'"`になる`Activate`の同義の別活動
+    (`JoeIaquinto/UiPath-VidCreator`等の実機XAMLで確認)——属性構成が
+    完全に同一(`Target`+`DelayBefore`/`DelayMS`/`ContinueOnError`)
+    なため同じ`ActivateNode`を返す。"""
+    xml = (
+        f"<ui:SetFocus {_UI_XMLNS} DisplayName=\"Set Focus 'obs64.exe OBS'\">"
+        "<ui:SetFocus.Target>"
+        "<ui:Target Selector=\"&lt;wnd app='obs64.exe' /&gt;\" />"
+        "</ui:SetFocus.Target>"
+        "</ui:SetFocus>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ActivateNode)
+    assert "obs64.exe" in node.selector
+    assert node.display_name == "Set Focus 'obs64.exe OBS'"
+
+
 def test_log_message_properties():
     xml = (
         f"<ui:LogMessage {_UI_XMLNS} "

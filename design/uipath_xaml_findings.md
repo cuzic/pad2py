@@ -7771,7 +7771,59 @@ _target_selector(elem)`という1行呼び出しへ置き換えた——この10
 を使って`{x:Null}`→`None`正規化を直接確認)、UiPath関連テスト全
 659件通過、リポジトリ全体で全1699件通過。
 
+## 164. `ui:SetFocus`(`Activate`の同義の別活動)を新規実装——`UiPath/skills`公式ground-truthコーパスで構造の同一性を即座に確認できた好例、副産物として`GetValue`タグ名直書き実例を発見
+
+知見128で発見した`marcelocruzrpa/uipath-ai-skills`のStudio実機
+ground-truthコーパス(`UiPath.UIAutomation.Activities/25.10/`配下)を
+知見162の`ui:Activate`に続いて再び活用し、同ディレクトリの
+`SetFocus.xaml`を確認したところ、`ui:Activate`と属性構成が完全に
+同一(`Target`+`DelayBefore`/`DelayMS`/`ContinueOnError`のみ)だと
+判明した。GitHub code search(`"ui:SetFocus" extension:xaml`)で68件
+ヒットし、実機(`JoeIaquinto/UiPath-VidCreator`の`Main.xaml`・
+`PakamTharunReddy/RPA`の`Browser_fillvalues.xaml`)で`DisplayName`が
+`"Set Focus '...'"`になる同義の別活動(`AttachWindow`/`WindowScope`/
+`BrowserScope`、知見153・158・161と同じ「同義の別名活動」パターン)
+だと確認した。
+
+`_parse_activate`は属性名のみを汎用的に読む(タグ名自体には依存
+しない)実装だったため、新しい専用パーサー関数を追加する必要が無く、
+`_DISPATCH`に`(UI_NS, "SetFocus"): _parse_activate`を1行追加するだけ
+で実装できた——このtickで最も経済的な実装になった。
+
+実機XAML(`PakamTharunReddy/RPA`の`Browser_fillvalues.xaml`)で
+`generate_python()`+`compile()`を実行し、`# Set Focus 'INPUT
+name'`というコメント付きで(セレクタがWeb系属性のため既知の制約で
+`# TODO: Activate selector had no mappable attributes`へ倒れる
+ケースだったが)正しく動くことを確認した——ラベルが`"SetFocus"`
+ではなく`"Activate"`のままなのは意図的な単純化(`WindowScope`/
+`BrowserScope`のように複数の判別フィールドを持つ構造ではなく、
+`display_name`の直前コメントで既に区別できるため)。
+
+副産物として、この実機XAMLで`<GetValue ContinueOnError="{x:Null}" />`
+という**タグ名を`ui:GetText`ではなく`GetValue`で直書きした実例**を
+発見した——知見111の`GetTextNode`docstringが「公式ドキュメントは裏の
+CLR型を`UiPath.Core.Activities.GetValue`(プロパティ名は`Value`)と
+記載しているが、実機XAML上の属性名は常に`Text`」と記録していた話とは
+別に、**タグ名自体が`GetValue`になる実例**(属性名は不明、`Text`では
+なく生成コードが「Get Text」というコメントで表示されたことから
+UiPath Studio側はこれを`GetText`活動として表示しているらしい)——
+次の調査候補として記録する(未実装)。同じファイルで`ui:Check`
+(チェックボックス操作)・`ui:Highlight`(要素の視覚的ハイライト)も
+未実装の活動として遭遇した——いずれも次の棚卸し候補。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全
+660件通過、リポジトリ全体で全1700件通過。
+
 ## 今後の調査候補(未着手)
+- **(新規、知見164で発見)** `<GetValue ContinueOnError="{x:Null}" />`
+  というタグ名自体が`GetValue`になる実例(`PakamTharunReddy/RPA`の
+  `Browser_fillvalues.xaml`で発見)——属性名・`Target`構造が未確認
+  (知見111の`GetTextNode`は`ui:GetText`タグのみ対応、`Text`属性名も
+  未確認のこのタグ名では動かない)。次の調査候補として記録する
+- **(新規、知見164で発見)** `ui:Check`(チェックボックス操作、
+  `Action="Check"`属性を確認)・`ui:Highlight`(`Color`/`HighlightTime`
+  属性を確認、要素の視覚的ハイライト)が未実装——同じ実機XAMLで遭遇。
+  次の棚卸し候補として記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造
