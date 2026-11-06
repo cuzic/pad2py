@@ -34,6 +34,7 @@ from dump_daemon.uipath_dsl import (
     SetToClipboardNode,
     SwitchNode,
     TryCatchNode,
+    TypeIntoNode,
     UnknownActivityNode,
     VbExpr,
     WhileNode,
@@ -207,6 +208,66 @@ def test_click_selector(main_wf):
     assert click.key_modifiers == "None"
     # 知見73: `ui:Click.CursorPosition`配下の`Position`属性も捕捉される。
     assert click.cursor_position == "Center"
+
+
+_UI_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_type_into_selector_and_nullable_attrs():
+    """知見110: `ui:TypeInto`。`UiPath/skills`公式リポジトリの実機保存済み
+    XAML(Classicパッケージ用テストフィクスチャ)の属性構成をそのまま
+    合成XMLで再現する——`ClickBeforeTyping`/`EmptyField`以外は全て
+    `{x:Null}`(nullable、`None`に正規化される)。"""
+    xml = (
+        f"<ui:TypeInto {_UI_XMLNS} "
+        'ActivateBefore="{x:Null}" AlterIfDisabled="{x:Null}" ContinueOnError="{x:Null}" '
+        'DelayBefore="{x:Null}" DelayBetweenKeys="{x:Null}" DelayMS="{x:Null}" '
+        'SendWindowMessages="{x:Null}" SimulateType="{x:Null}" ClickBeforeTyping="NONE" '
+        'DisplayName="Type Into \'Account Number\'" EmptyField="False" Text="8891245">'
+        "<ui:TypeInto.Target>"
+        "<ui:Target Selector=\"&lt;wnd title='Vendor Master' /&gt;&lt;wnd ctrlid='txtAccountNumber' /&gt;\" />"
+        "</ui:TypeInto.Target>"
+        "</ui:TypeInto>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TypeIntoNode)
+    assert "txtAccountNumber" in node.selector
+    assert node.text == Literal(value="8891245")
+    assert node.empty_field == Literal(value="False")
+    assert node.click_before_typing == Literal(value="NONE")
+    assert node.activate_before is None
+    assert node.alter_if_disabled is None
+    assert node.continue_on_error is None
+    assert node.delay_before is None
+    assert node.delay_ms is None
+    assert node.delay_between_keys is None
+    assert node.send_window_messages is None
+    assert node.simulate_type is None
+
+
+def test_type_into_legacy_activate_attribute_name():
+    """知見110: 古い(2017〜2021年頃の)サードパーティ実機XAMLでは
+    `ActivateBefore`ではなく`Activate`という属性名で同じ意味の値が
+    直列化されている(パッケージバージョン間のリネームと推定)。
+    どちらの属性名でも`activate_before`フィールドに正規化される。"""
+    xml = (
+        f"<ui:TypeInto {_UI_XMLNS} "
+        'Activate="False" ClickBeforeTyping="True" DisplayName="T" '
+        'EmptyField="True" Text="hi">'
+        "<ui:TypeInto.Target>"
+        "<ui:Target Selector=\"&lt;wnd title='Notepad' /&gt;\" />"
+        "</ui:TypeInto.Target>"
+        "</ui:TypeInto>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TypeIntoNode)
+    assert node.activate_before == Literal(value="False")
+    assert node.click_before_typing == Literal(value="True")
+    assert node.empty_field == Literal(value="True")
 
 
 def test_invoke_workflow_file(main_wf):

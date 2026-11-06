@@ -48,6 +48,7 @@ from .types import (
     SwitchArm,
     SwitchNode,
     TryCatchNode,
+    TypeIntoNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -415,6 +416,37 @@ def _parse_click(elem: etree._Element) -> ClickNode:
     )
 
 
+def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    # `Activate`/`ActivateBefore`の表記揺れ(`TypeIntoNode`のdocstring参照)。
+    # 同じXAMLに両方が同時に現れた実例は確認していないため、どちらかが
+    # 存在すればそれを使う(両方無ければ`_attr_expr`が自然に`None`を返す)。
+    activate_before = _attr_expr(elem, "ActivateBefore")
+    if activate_before is None and _attr(elem, "Activate") is not None:
+        activate_before = _attr_expr(elem, "Activate")
+    return TypeIntoNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        text=_attr_expr(elem, "Text"),
+        empty_field=_attr_expr(elem, "EmptyField"),
+        click_before_typing=_attr_expr(elem, "ClickBeforeTyping"),
+        simulate_type=_attr_expr(elem, "SimulateType"),
+        send_window_messages=_attr_expr(elem, "SendWindowMessages"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        delay_between_keys=_attr_expr(elem, "DelayBetweenKeys"),
+        activate_before=activate_before,
+        alter_if_disabled=_attr_expr(elem, "AlterIfDisabled"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
 def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -766,6 +798,7 @@ _DISPATCH = {
     (UI_NS, "InterruptibleDoWhile"): _parse_do_while,
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Click"): _parse_click,
+    (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,

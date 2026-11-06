@@ -267,6 +267,55 @@ class ClickNode:
 
 
 @dataclass
+class TypeIntoNode:
+    """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
+    要素の`Selector`属性(`ClickNode`と同じ構造)。
+
+    `uipath-activities-survey`調査フォーク(design/uipath_feature_catalog.md
+    Part B3)が「実務で最も出現頻度が高いカテゴリ」と評価したUI
+    Automation Classic基本活動群の最初の拡張対象。`gh api search/code`で
+    GitHub上の実機保存済みXAML(`UiPath/skills`公式リポジトリ含む、複数件)
+    を確認した結果、以下の属性はいずれも`{x:Null}`として直列化される
+    実例が確認できた(= nullable、`xaml_tree._attr_expr`経由で捕捉する
+    必要がある。`ClickNode`の`click_type`等とは違い`_attr`では不十分):
+    `ClickBeforeTyping`/`EmptyField`/`SimulateType`/`SendWindowMessages`/
+    `DelayBefore`/`DelayMS`/`DelayBetweenKeys`/`AlterIfDisabled`/
+    `ContinueOnError`/`ActivateBefore`(または`Activate`、下記参照)。
+
+    **`Activate`/`ActivateBefore`の表記揺れ**: UiPath公式の`UiPath/skills`
+    リポジトリのテスト用フィクスチャ(2026年、現行の`Classic`パッケージ)は
+    `ActivateBefore`属性を使うが、複数の古い(2017〜2021年頃の)サードパーティ
+    リポジトリは`Activate`属性を使う——おそらくパッケージバージョン間での
+    リネーム。本パーサーは`activate_before`フィールドに両方を同じ意味として
+    格納する(どちらの属性名でXAMLに現れても後続のコード生成は区別しない)。
+
+    `click_before_typing`の実機確認済みの値は`{x:Null}`/`"False"`/`"True"`/
+    `"NONE"`の4種(NONEがBoolean列挙の`False`相当なのか別の3値enumなのかは
+    未確定——いずれも「クリックしない」として安全側に扱う)。
+
+    `text`はタイプする文字列(`InArgument<String>`相当)。コード生成側
+    (`_generate_type_into`)がpywinautoの`type_keys()`へ変換する際、
+    `~^%+(){}`はpywinauto独自の特殊キー構文として解釈されてしまうため
+    (`dump_daemon/pad_ui_helpers.py`の`set_vb_expression_field`docstringが
+    PAD調査時に発見した同じ罠)、生成コード側でエスケープヘルパーを
+    必ず経由させる。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    text: Expr = None
+    empty_field: Expr = None
+    click_before_typing: Expr = None
+    simulate_type: Expr = None
+    send_window_messages: Expr = None
+    delay_before: Expr = None
+    delay_ms: Expr = None
+    delay_between_keys: Expr = None
+    activate_before: Expr = None
+    alter_if_disabled: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -519,6 +568,7 @@ Node = (
     | BreakNode
     | ParallelNode
     | ClickNode
+    | TypeIntoNode
     | InvokeWorkflowFileNode
     | AppendLineNode
     | ReadTextFileNode

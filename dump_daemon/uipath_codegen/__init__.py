@@ -68,6 +68,7 @@ from ..uipath_dsl.types import (
     SetToClipboardNode,
     SwitchNode,
     TryCatchNode,
+    TypeIntoNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -255,6 +256,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `_vb_bool`(`AndAlso`/`OrElse`のBoolean変換先、知見60)も同様。
     if any(f"{VB_BOOL_HELPER_NAME}(" in line for line in body):
         imports.append(VB_BOOL_HELPER_SOURCE.rstrip("\n"))
+    # `_pywinauto_type_keys_escape`(`TypeInto`→`type_keys()`の特殊文字
+    # エスケープ先、知見110)も同様。
+    if any(f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}(" in line for line in body):
+        imports.append(_TYPE_KEYS_ESCAPE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -333,6 +338,8 @@ def _generate_node(
         return _generate_set_to_clipboard(node, indent)
     if isinstance(node, ClickNode):
         return _generate_click(node, indent)
+    if isinstance(node, TypeIntoNode):
+        return _generate_type_into(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, HttpClientNode):
@@ -1010,6 +1017,174 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
     }
     kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
     lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
+    return lines
+
+
+# `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する
+# (インストール済み`.venv`の`pywinauto/keyboard.py`で確認済み、
+# `dump_daemon/pad_ui_helpers.py`の`set_vb_expression_field`docstringが
+# PAD調査時に発見した同じ罠と同種)。生成コードが`Text`の実際の値を
+# 保証できない(リテラルでもVB式でも、実行時の文字列に上記の文字が
+# 含まれる可能性を否定できない)ため、コード生成側で常にこのヘルパーを
+# 経由させてエスケープする——各特殊文字を`{c}`で囲む(`{`/`}`自身は
+# `{{}`/`{}}}`、`pad_ui_helpers.py`のドキュメント記載と同じ規則)。
+_TYPE_KEYS_ESCAPE_HELPER_NAME = "_pywinauto_type_keys_escape"
+_TYPE_KEYS_ESCAPE_HELPER_SOURCE = '''\
+def _pywinauto_type_keys_escape(s):
+    out = []
+    for ch in s:
+        if ch in "~^%+(){}":
+            out.append("{" + ch + "}")
+        else:
+            out.append(ch)
+    return "".join(out)
+'''
+
+
+def _literal_str(expr: Expr) -> str | None:
+    """`Expr`が確認済みの生リテラル文字列ならその値を返す(`VbExpr`や
+    `None`の場合は`None`——静的に値が分からない/未設定のいずれも、
+    呼び出し側が「既知の確認済み値セット」と比較した際に自然に
+    マッチしなくなり、安全側の`# TODO`分岐へ落ちる)。"""
+    if isinstance(expr, Literal):
+        return expr.value
+    return None
+
+
+# 知見110(本修正): `ui:TypeInto`。`gh api search/code`でGitHub上の実機保存
+# 済みXAML(`UiPath/skills`公式リポジトリの最新Classicパッケージ用テスト
+# フィクスチャ含む、複数件)を確認し、以下を確定した——
+# `ClickBeforeTyping`/`EmptyField`/`SimulateType`/`SendWindowMessages`/
+# `DelayBefore`/`DelayMS`/`DelayBetweenKeys`/`AlterIfDisabled`/
+# `ContinueOnError`/`ActivateBefore`(または旧い`Activate`)はいずれも
+# `{x:Null}`として直列化される実例がある(nullable)。
+#
+# docs.uipath.com「UI Automationの入力方式」ページ(2026-11-05取得)が
+# 既定の入力方式を「ハードウェアドライバー経由のシミュレート」(Hardware
+# Events)と明言しており、これは`pywinauto`の`type_keys()`(`SendInput`を
+# 使う、`click_input()`と同系統)と一致する——`Click`の`SimulateClick`/
+# `SendWindowMessages`で未確定だった「既定値の正確な機構」について、
+# `TypeInto`では公式ドキュメントで確認が取れた点が異なる。ただし
+# `SimulateType`/`SendWindowMessages`が`True`の場合の正確なマッピング
+# (「対象アプリ自身の技術を使う」等、具体的なAPIが未記載)は依然未確認
+# のため、既定値(`None`/`"False"`)以外は`# TODO`へ倒す——`Click`の
+# `SimulateClick`/`SendWindowMessages`と同じ判断。
+#
+# `ClickBeforeTyping`の実機確認済みの値は`{x:Null}`/`"False"`/`"True"`/
+# `"NONE"`の4種。`"NONE"`が真偽値`False`相当の別表記なのか、将来の
+# クリック種別を含む3値enumの一部なのかは未確定だが、いずれも「クリック
+# しない」という解釈は安全側で一致するため、この4値全てを「クリック
+# しない」として扱う。`"True"`のみ、確認済みの既定クリック(`Click`の
+# 既定`CLICK_SINGLE`/`BTN_LEFT`と同じ`click_input()`)を発行する。
+#
+# `EmptyField`(フィールドを消去してから入力)は`True`時の消去手段
+# (UiPathがどのAPIで消去するか)が未確認のため、`None`/`"False"`以外は
+# `# TODO`へ倒す。
+#
+# `Activate`/`ActivateBefore`(`TypeIntoNode`のdocstring参照)は
+# docs.uipath.comで「既定でチェック済み、外すと入力は現在アクティブな
+# ウィンドウへ送られる」と確認済み——`pywinauto`の`type_keys()`の
+# `set_foreground`引数(既定`True`)がこれと一致するため、確認済みの
+# `"True"`/`None`(両方「既定のまま」)はkwargを付けず、確認済みの
+# `"False"`のみ`set_foreground=False`を明示する。それ以外の値(VB式等)
+# は静的に真偽が分からないため`# TODO`へ倒す。
+def _generate_type_into(node: TypeIntoNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_type_into_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_type_into_body(node: TypeIntoNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Type Into with no selector captured"]
+    if node.text is None:
+        return [f"{prefix}# TODO: Type Into with no Text captured"]
+    if _literal_str(node.simulate_type) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Type Into with non-default SimulateType "
+            f"({node.simulate_type!r}) — \"uses the target app's own "
+            "technology\" per UiPath docs, exact mechanism not confirmed, "
+            "refusing to guess"
+        ]
+    if _literal_str(node.send_window_messages) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Type Into with non-default SendWindowMessages "
+            f"({node.send_window_messages!r}) — exact mapping not confirmed, "
+            "refusing to guess"
+        ]
+    click_before = _literal_str(node.click_before_typing)
+    if click_before not in (None, "False", "NONE", "True"):
+        return [
+            f"{prefix}# TODO: Type Into with unrecognized ClickBeforeTyping "
+            f"({node.click_before_typing!r}) — refusing to guess"
+        ]
+    if _literal_str(node.empty_field) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Type Into with EmptyField set "
+            f"({node.empty_field!r}) — exact field-clearing mechanism not "
+            "confirmed, refusing to guess"
+        ]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: Type Into with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented "
+            "by UiPath (unlike DelayBefore), semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.alter_if_disabled is not None:
+        return [
+            f"{prefix}# TODO: Type Into with AlterIfDisabled set "
+            f"({_describe_expr_for_comment(node.alter_if_disabled)}) — "
+            "default not documented by UiPath, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Type Into with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    activate_literal = _literal_str(node.activate_before)
+    if node.activate_before is not None and activate_literal not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Type Into with non-literal Activate/"
+            f"ActivateBefore ({node.activate_before!r}) — refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Type Into selector had no mappable attributes: "
+            f"{node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    delay_between_keys = (
+        _render_value_or_todo(node.delay_between_keys, prefix, todo)
+        if node.delay_between_keys is not None
+        else None
+    )
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    if click_before == "True":
+        lines.append(f"{prefix}{rendered.expr}.click_input()")
+    kwarg_parts: list[str] = []
+    if activate_literal == "False":
+        kwarg_parts.append("set_foreground=False")
+    if delay_between_keys is not None:
+        kwarg_parts.append(f"pause=({VB_NUM_HELPER_NAME}({delay_between_keys}) / 1000.0)")
+    text_arg = f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}({VB_CSTR_HELPER_NAME}({text}))"
+    args = ", ".join([text_arg, *kwarg_parts])
+    lines.append(f"{prefix}{rendered.expr}.type_keys({args})")
     return lines
 
 

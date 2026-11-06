@@ -1235,3 +1235,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     確認済み動作を壊さない範囲で未確認のEncoding名のみ`# TODO`へ倒す。
     回帰テスト追加、UiPath関連テスト全319件通過、リポジトリ全体で全1123件
     通過。
+68. **(完了、2026-11-05)** `ui:TypeInto`の実コード生成に新規対応(VM
+    不使用、知見110——[design/uipath_feature_catalog.md](uipath_feature_catalog.md)
+    のTier A最優先項目への着手第1件、知見100の手法を7回目として再適用):
+    `UiPath/skills`公式リポジトリ含む複数件の実機保存済みXAMLで属性一覧を
+    確認、docs.uipath.comの「UI Automationの入力方式」ページで既定方式が
+    `pywinauto`の`type_keys()`(`SendInput`、`Click`の`click_input()`と
+    同系統)と一致する「ハードウェアドライバー経由のシミュレート」だと
+    確認。`ClickBeforeTyping`(クリック可否)・`Activate`/`ActivateBefore`
+    (`set_foreground`kwarg)・`DelayBefore`/`DelayBetweenKeys`(待機時間)の
+    確認済みの既定値・値セットのみ実コード生成し、`SimulateType`/
+    `SendWindowMessages`(`Click`と同じ理由で機構未確認)・`EmptyField=
+    True`(消去手段未確認)・`DelayMS`(未文書化)・`AlterIfDisabled`/
+    `ContinueOnError`(前例踏襲で見送り)は`# TODO`へ倒す。`pywinauto`の
+    `type_keys()`が`~^%+(){}`を特殊キー構文として解釈する罠
+    (`pad_ui_helpers.py`がPAD調査時に発見した同じ罠)を回避するため、新設の
+    `_pywinauto_type_keys_escape`ヘルパーを常に経由させる。回帰テスト追加
+    (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`24件)、
+    UiPath関連テスト全345件通過、リポジトリ全体で全1158件通過。

@@ -25,6 +25,7 @@ import pytest
 import math
 
 from dump_daemon.uipath_codegen import (
+    _TYPE_KEYS_ESCAPE_HELPER_SOURCE,
     generate_project_from_json,
     generate_project_python,
     generate_python,
@@ -59,6 +60,7 @@ from dump_daemon.uipath_dsl import (
     SwitchNode,
     TryCatchNode,
     CatchArm,
+    TypeIntoNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -784,6 +786,300 @@ def test_click_with_delay_ms_is_todo_not_guessed():
     assert "# TODO: Click with DelayMS set" in code
     assert ".click_input(" not in code
     _compiles(code)
+
+
+_TYPE_INTO_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_type_into_with_known_selector_generates_type_keys():
+    """知見110: 確認済みの既定値のみ(selector以外は全て未設定)の
+    最小ケース——`type_keys()`呼び出しと特殊文字エスケープヘルパーが
+    生成され、クリックやset_foreground等の追加行は出ない。"""
+    wf = _wrap(
+        [TypeIntoNode(selector=_TYPE_INTO_SELECTOR, text=Literal(value="hello"))]
+    )
+    code = generate_python(wf)
+    assert ".type_keys(_pywinauto_type_keys_escape(_vb_cstr('hello')))" in code
+    assert ".click_input()" not in code
+    assert "set_foreground" not in code
+    assert "pause=" not in code
+    _compiles(code)
+
+
+def test_type_into_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([TypeIntoNode(selector=None, display_name="Type Into 'Account Number'")])
+    code = generate_python(wf)
+    assert "# Type Into 'Account Number'" in code
+    assert "# TODO: Type Into with no selector captured" in code
+    _compiles(code)
+
+
+def test_type_into_with_no_selector_is_todo():
+    wf = _wrap([TypeIntoNode(selector=None, text=Literal(value="x"))])
+    code = generate_python(wf)
+    assert "# TODO: Type Into with no selector captured" in code
+    _compiles(code)
+
+
+def test_type_into_with_no_text_is_todo():
+    wf = _wrap([TypeIntoNode(selector=_TYPE_INTO_SELECTOR, text=None)])
+    code = generate_python(wf)
+    assert "# TODO: Type Into with no Text captured" in code
+    _compiles(code)
+
+
+def test_type_into_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [TypeIntoNode(selector="<wnd idx='2' />", text=Literal(value="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into selector had no mappable attributes" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize("simulate_type", [Literal(value="True"), Literal(value="CUSTOM")])
+def test_type_into_with_non_default_simulate_type_is_todo_not_guessed(simulate_type):
+    """知見110: `SimulateType=True`(「対象アプリ自身の技術を使う」)は
+    公式ドキュメントに具体的なAPIの記載が無く、`Click`の`SimulateClick`
+    と同じ理由ででっち上げず`# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR, text=Literal(value="x"), simulate_type=simulate_type
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with non-default SimulateType" in code
+    assert ".type_keys(" not in code
+    _compiles(code)
+
+
+def test_type_into_with_non_default_send_window_messages_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                send_window_messages=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with non-default SendWindowMessages" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "click_before_typing",
+    [None, Literal(value="False"), Literal(value="NONE")],
+)
+def test_type_into_with_no_click_before_typing_generates_plain_type_keys(click_before_typing):
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                click_before_typing=click_before_typing,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".click_input()" not in code
+    assert ".type_keys(" in code
+    _compiles(code)
+
+
+def test_type_into_with_click_before_typing_true_generates_click_then_type():
+    """知見110: `ClickBeforeTyping="True"`は実機XAML(複数件)で確認済み
+    ——`Click`の確認済み既定クリック(単純左シングルクリック)を先に
+    発行してからタイプする。"""
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                click_before_typing=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    lines = [ln for ln in code.splitlines() if ".click_input()" in ln or ".type_keys(" in ln]
+    assert len(lines) == 2
+    assert lines[0].strip().endswith(".click_input()")
+    assert ".type_keys(" in lines[1]
+    _compiles(code)
+
+
+def test_type_into_with_unrecognized_click_before_typing_is_todo():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                click_before_typing=Literal(value="SOMETHING_ELSE"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with unrecognized ClickBeforeTyping" in code
+    _compiles(code)
+
+
+def test_type_into_with_empty_field_true_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                empty_field=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with EmptyField set" in code
+    _compiles(code)
+
+
+def test_type_into_with_delay_ms_is_todo_not_guessed():
+    """知見106と同じ理由(`DelayMS`は`TypeInto`公式ドキュメントにも記載
+    無し)——`Click`と一貫した判断。"""
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR, text=Literal(value="x"), delay_ms=Literal(value="2000")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with DelayMS set" in code
+    assert ".type_keys(" not in code
+    _compiles(code)
+
+
+def test_type_into_with_alter_if_disabled_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                alter_if_disabled=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with AlterIfDisabled set" in code
+    _compiles(code)
+
+
+def test_type_into_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_type_into_with_delay_before_generates_time_sleep():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                delay_before=Literal(value="500"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_type_into_with_delay_between_keys_generates_pause_kwarg():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                delay_between_keys=Literal(value="20"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "pause=(_vb_num('20') / 1000.0)" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    ("activate_before", "expect_kwarg"),
+    [
+        (None, False),
+        (Literal(value="True"), False),
+        (Literal(value="False"), True),
+    ],
+)
+def test_type_into_activate_before_maps_to_set_foreground(activate_before, expect_kwarg):
+    """知見110: docs.uipath.comの「UI Automationの入力方式」ページで
+    `Activate`(既定チェック済み、外すと入力は現在アクティブなウィンドウへ
+    送られる)の既定が確認できたため、`pywinauto`の`type_keys()`の
+    `set_foreground`既定(`True`)と対応付けられる——確認済みの`"True"`/
+    `None`はkwarg無し(既定のまま)、`"False"`のみ明示する。"""
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                activate_before=activate_before,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ("set_foreground=False" in code) == expect_kwarg
+    _compiles(code)
+
+
+def test_type_into_with_non_literal_activate_before_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            TypeIntoNode(
+                selector=_TYPE_INTO_SELECTOR,
+                text=Literal(value="x"),
+                activate_before=VbExpr(text="someCondition"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Type Into with non-literal Activate" in code
+    _compiles(code)
+
+
+def test_type_into_escapes_pywinauto_special_characters_in_literal_text():
+    """`pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として
+    解釈するため(`dump_daemon/pad_ui_helpers.py`が発見した同じ罠)、
+    生成コードは常にエスケープヘルパーを経由する——実際に実行して
+    `send_keys`相当のキー列ではなく元の文字列が復元されることまでは
+    このテストの範囲外(pywinauto自体の単体テストの領域)だが、
+    ヘルパー関数自体の変換結果は検証する。"""
+    wf = _wrap(
+        [TypeIntoNode(selector=_TYPE_INTO_SELECTOR, text=Literal(value="100% {a+b}"))]
+    )
+    code = generate_python(wf)
+    assert "def _pywinauto_type_keys_escape(" in code
+    _compiles(code)
+    # 生成コード全体の`exec()`は`from pywinauto import Desktop`を含み
+    # Windows専用パッケージのため本テスト環境(Linux)では実行できない
+    # ——ヘルパー関数自体の定義のみを分離して実行し、変換結果を検証する。
+    namespace: dict[str, object] = {}
+    exec(_TYPE_KEYS_ESCAPE_HELPER_SOURCE, namespace)  # noqa: S102
+    escape = namespace["_pywinauto_type_keys_escape"]
+    assert escape("100% {a+b}") == "100{%} {{}a{+}b{}}"
 
 
 @pytest.mark.parametrize(

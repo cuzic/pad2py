@@ -5211,6 +5211,73 @@ VBの挙動と一致している**可能性が高い(両言語とも「オブジ
 解決できない問題)で、現時点では過剰な実装になると判断し、知見として
 記録するのみでコード変更は見送った。
 
+## 110. `ui:TypeInto`を実機XAML(GitHub実例、`UiPath/skills`公式リポジトリ含む)+公式ドキュメント(UI Automationの入力方式)で確認し、実コード生成に対応——UiPath機能カタログ(design/uipath_feature_catalog.md)のTier A最優先項目への着手第1件(VM不使用、知見100の手法を再適用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+(「UI Automation Classic基本活動の残り」)の最初の実装対象として、
+`Click`(知見100-106)に続く2件目のUI Automation Classic基本活動として
+`ui:TypeInto`を調査・実装した。
+
+**`gh api search/code`で確認した属性一覧**: `UiPath/skills`公式リポジトリ
+(2026年、`activity-packages/classic-typeinto-field-not-cleared`という
+Classicパッケージ専用のテストフィクスチャ)を含む複数件の実機保存済み
+XAMLを確認した結果、以下の属性は全て`{x:Null}`として直列化される実例が
+ある(nullable、知見106と同じ理由で`_attr_expr`経由で捕捉する必要がある):
+`ClickBeforeTyping`/`EmptyField`/`SimulateType`/`SendWindowMessages`/
+`DelayBefore`/`DelayMS`/`DelayBetweenKeys`/`AlterIfDisabled`/
+`ContinueOnError`/`ActivateBefore`。
+
+**`Activate`/`ActivateBefore`の表記揺れ**: `UiPath/skills`(最新)は
+`ActivateBefore`を使うが、2017〜2021年頃の複数のサードパーティ
+リポジトリは同じ意味で`Activate`という属性名を使っている——パッケージ
+バージョン間でのリネームと推定(確証は取れていないが、両方を同じ
+フィールドとして受け入れることで実害は無い)。
+
+**`ClickBeforeTyping`の値セット**: `{x:Null}`/`"False"`/`"True"`/
+`"NONE"`の4種を実機で確認。`"NONE"`が`False`相当の別表記か将来の3値
+enumの一部かは未確定だが、「クリックしない」という解釈は4値とも安全側で
+一致するため、`"True"`以外を全て「クリックしない」として扱った。
+
+**公式ドキュメントで確認(入力方式)**: docs.uipath.comの
+「UI Automationの入力方式」ページで、既定の入力方式を「ハードウェア
+ドライバー経由のシミュレート」(Hardware Events、フォアグラウンド必須)と
+明言していると確認した——これは`pywinauto`の`type_keys()`(`SendInput`を
+使う、`Click`の`click_input()`と同系統、知見71-73で既に実コード生成に
+使っている既定経路と同じ機構)と一致する。`Click`の`SimulateClick`/
+`SendWindowMessages`では「既定値の正確な機構」自体が未確認だったのに対し、
+`TypeInto`ではこの一点が公式ドキュメントで確認できた、という違いがある
+(知見で記録しておく価値のある非対称性)。ただし`SimulateType`/
+`SendWindowMessages`が`True`の場合の具体的なAPI(「対象アプリ自身の
+技術を使う」等、何のAPIかは記載無し)は依然未確認のため、`Click`と同じ
+理由でコード生成は見送り(`# TODO`)。
+
+**`Activate`の意味論**: 同ページで「既定でチェック済み、外すと入力は
+現在アクティブなウィンドウへ送られる」と確認——`pywinauto`の
+`type_keys()`の`set_foreground`引数(既定`True`)と対応付けられる。
+確認済みの`"True"`/未設定は既定のままkwarg無し、確認済みの`"False"`のみ
+`set_foreground=False`を明示する。
+
+**`EmptyField`は見送り**: `True`時にUiPathが実際に使うフィールド消去
+手段(`SetValue("")`なのか選択範囲+削除なのか)が未確認のため、`Click`の
+方針と同じく確認済みの既定値(`None`/`"False"`)のみ対応し、`True`は
+`# TODO`に倒した。
+
+**`type_keys()`の特殊文字エスケープが必須**: `pywinauto`の`type_keys()`は
+`~^%+(){}`を独自の特殊キー構文として解釈する——これは本プロジェクトが
+PAD調査時に既に発見していた罠(`dump_daemon/pad_ui_helpers.py`の
+`set_vb_expression_field`docstring参照)と同一で、`TypeInto`の生成コードに
+そのまま当てはまる。`Text`の実行時の値(リテラルでもVB式でも)が安全だと
+静的に保証できないため、コード生成側は常に新設の
+`_pywinauto_type_keys_escape`ヘルパー(`{`/`}`自身も含め各特殊文字を
+`{c}`で囲む)を経由させる——他の`VB_*`ヘルパーと同じ「使用時のみ注入」
+方式(`_collect_imports`)。
+
+`dump_daemon/uipath_dsl/types.py`に`TypeIntoNode`、`xaml_tree.py`に
+`_parse_type_into`(`(UI_NS, "TypeInto")`へディスパッチ登録)、
+`uipath_codegen/__init__.py`に`_generate_type_into`を追加。
+`tests/test_uipath_dsl.py`に2件・`tests/test_uipath_codegen.py`に24件
+追加、全1158件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
