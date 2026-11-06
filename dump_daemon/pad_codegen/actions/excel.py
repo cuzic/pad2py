@@ -1,23 +1,34 @@
 """`Excel.*`のcodegen。
 
-`pad_action_lib.excel_actions`へ委譲する。知見80で、action_id文字列は全てPADデザイナー
-自身の検索結果`TreeItem`のUIA `AutomationId`プロパティを直接読んで実機確認済み
-(知見77と同じ経路——検索語を入力して結果を読むだけで、キーボード追加やクリップボード
-貼り付けさえ不要)。パラメータ名は実機UIではなく、各`*Action`クラスの`InputArgument`/
-`OutputArgument`属性宣言(ilspycmdによるdecompile、docs-local/pad_excel_findings.md)
-から読み取った値——DSL上の実際の直列化形式(特に`Instance`のような不透明参照が
-どう表現されるか)はまだ実機未確認。
+`pad_action_lib.excel_actions`へ委譲する。知見80では、action_id文字列はPADデザイナー
+自身の検索結果`TreeItem`のUIA `AutomationId`を直接読んで「`Excel.ReadFromExcel`等の
+14アクションが存在する」ことまでは確認していたが、これはアクション**グループ**の
+AutomationIdであり、他の全モジュール(知見139以降のWeb/XML/Cmd/Text/Cryptography/
+Database/File)と全く同じ`ActionSelectorBase`一括列挙監査を知見155で適用した結果、
+`LaunchExcel`/`CloseExcel`/`SaveExcel`/`ReadFromExcel`/`WriteToExcel`/
+`DeleteWorksheet`/`RenameWorksheet`/`SetActiveWorksheet`の8グループには実際には
+兄弟セレクタがあり、DSL上の真のaction_idは`Excel.<グループ>.<ActionName>`という
+3セグメント形式だと判明した(`ActionName`=各`ActionSelector<T>`サブクラスの
+`UseName(...)`の値、知見150で確立した`.Arguments`監査と同じ原理)——従来のフラットな
+`Excel.ReadFromExcel`等の判定は、実際には存在しない形式のため**常にマッチせず
+TODOフォールバックへ落ちていた**(知見155で発見・修正)。`AddWorksheet`/
+`GetActiveWorksheet`/`GetAllWorksheets`/`GetColumnName`/`GetFirstFreeColumnRow`/
+`GetFirstFreeRowOnColumn`の6件は兄弟セレクタが存在せず、フラットな形式のままで
+正しい。
 
 `Instance`(`ExcelInstanceHandle`への参照)は、PAD側では不透明な参照だが、Pythonコード
 生成の観点では他の変数参照と全く同じ(`LaunchExcel`の出力変数名をそのまま後続アクションの
 引数として使うだけ)——`window_instance`問題のような特別な結線は不要。
 
-ライブExcel COM専用の機能(`LaunchInNewInstance`/`Visible`/マクロ実行・セル書式の
-レンダリング・ライブ選択範囲等)は`pad_action_lib.excel_actions`側で最初からスコープ外
-(docs-local/pad_excel_findings.md)。このモジュールでも、該当パラメータが明示的に
-非対応の値を持つ場合(`GetCellContentsMode`が`TypedValues`以外・`ReadMode`/`WriteMode`が
-`Selection`/`ActiveCell`等)は、でっち上げたコードを出力せず安全にTODOフォールバックへ
-委ねる。
+ライブExcel COM専用の機能(`LaunchInNewInstance=False`での既存プロセスアタッチ・
+`ReadMode`/`WriteMode`の`Selection`/`ActiveCell`等)は、知見155のセレクタ監査で
+各セレクタが固定する`Prop<>.ShouldBe()`値から判別し、`pad_action_lib.excel_actions`
+側のスコープ外(docs-local/pad_excel_findings.md)と一致する場合のみ`None`を返して
+TODOフォールバックへ委ねる。各セレクタが固定する列挙値(`ReadMode`/`WriteMode`/
+`SaveMode`/`CloseMode`/`FindWorksheetBy`/`LaunchExcelMode`等)は、でっち上げではなく
+decompileした`ActionSelector<T>`サブクラスの`Prop<>.ShouldBe()`呼び出しそのもの
+(知見155)から直接書き起こしたもので、`enum_last()`でDSLから動的に読む必要は無い
+(セレクタが選ばれた時点で値は一意に確定している)。
 """
 from __future__ import annotations
 
@@ -37,21 +48,14 @@ def _enum_arg(p: dict, name: str, default: str) -> str | None:
     return repr(default)
 
 
-def _optional_path_arg(p: dict, name: str) -> str | None:
-    """`FileObject`系のオプション引数(省略時はPythonの`None`リテラル)を返す。"""
-    if name in p:
-        return safe_render(p.get(name))
-    return "None"
-
-
-def _worksheet_lookup_args(p: dict) -> str | None:
-    """`FindWorksheetBy`/`Name`/`Index`の3引数を結合したPython式の断片を返す。"""
-    find_by = _enum_arg(p, "FindWorksheetBy", "Name")
+def _worksheet_lookup_args(p: dict, find_by: str) -> str | None:
+    """`FindWorksheetBy`(セレクタごとに固定、知見155)/`Name`/`Index`の3引数を
+    結合したPython式の断片を返す。"""
     name = safe_render(p.get("Name", ""))
     index = safe_render(p.get("Index", 0))
-    if find_by is None or name is None or index is None:
+    if name is None or index is None:
         return None
-    return f"find_worksheet_by={find_by}, name={name}, index={index}"
+    return f"find_worksheet_by={find_by!r}, name={name}, index={index}"
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -61,56 +65,80 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
     prefix = INDENT * indent
     p = node.params
 
-    if action_id == "Excel.LaunchExcel":
+    # 知見155: `LaunchExcel`の兄弟セレクタ4件。`LaunchInNewInstance=False`
+    # (既存プロセスへのアタッチ、`UnderExistingProcess`接尾辞)はライブCOM専用のため
+    # スコープ外。
+    if action_id == "Excel.LaunchExcel.Launch":
         if not node.output_var:
-            return None
-        launch_mode = _enum_arg(p, "LaunchExcelMode", "NewDocument")
-        path = _optional_path_arg(p, "Path")
-        read_only = safe_render(p.get("ReadOnly", False))
-        if launch_mode is None or path is None or read_only is None:
             return None
         return [
             f"{prefix}{node.output_var} = excel_actions.launch_excel("
-            f"launch_excel_mode={launch_mode}, path={path}, read_only={read_only})"
+            f"launch_excel_mode='NewDocument', path=None, read_only=False)"
         ]
 
-    if action_id == "Excel.SaveExcel":
+    if action_id == "Excel.LaunchExcel.LaunchAndOpen":
+        path = safe_render(p.get("Path"))
+        read_only = safe_render(p.get("ReadOnly", False))
+        if path is None or read_only is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = excel_actions.launch_excel("
+            f"launch_excel_mode='StoredDocument', path={path}, read_only={read_only})"
+        ]
+
+    # 知見155: `SaveExcel`の兄弟セレクタ2件(`SaveMode`は`Save`/`SaveAs`で固定)。
+    if action_id == "Excel.SaveExcel.Save":
         instance = safe_render(p.get("Instance"))
         if instance is None:
             return None
-        save_mode = _enum_arg(p, "SaveMode", "Save")
-        document_path = _optional_path_arg(p, "DocumentPath")
-        if save_mode is None or document_path is None:
+        return [f"{prefix}excel_actions.save_excel({instance}, save_mode='Save')"]
+
+    if action_id == "Excel.SaveExcel.SaveAs":
+        instance = safe_render(p.get("Instance"))
+        document_path = safe_render(p.get("DocumentPath"))
+        if instance is None or document_path is None:
             return None
         return [
-            f"{prefix}excel_actions.save_excel({instance}, save_mode={save_mode}, "
+            f"{prefix}excel_actions.save_excel({instance}, save_mode='SaveAs', "
             f"document_path={document_path})"
         ]
 
-    if action_id == "Excel.CloseExcel":
+    # 知見155: `CloseExcel`の兄弟セレクタ3件(`CloseMode`は`DoNotSave`/`Save`/`SaveAs`で固定)。
+    if action_id == "Excel.CloseExcel.Close":
         instance = safe_render(p.get("Instance"))
         if instance is None:
             return None
-        close_mode = _enum_arg(p, "CloseMode", "DoNotSave")
-        document_path = _optional_path_arg(p, "DocumentPath")
-        if close_mode is None or document_path is None:
+        return [f"{prefix}excel_actions.close_excel({instance}, close_mode='DoNotSave')"]
+
+    if action_id == "Excel.CloseExcel.CloseAndSave":
+        instance = safe_render(p.get("Instance"))
+        if instance is None:
+            return None
+        return [f"{prefix}excel_actions.close_excel({instance}, close_mode='Save')"]
+
+    if action_id == "Excel.CloseExcel.CloseAndSaveAs":
+        instance = safe_render(p.get("Instance"))
+        document_path = safe_render(p.get("DocumentPath"))
+        if instance is None or document_path is None:
             return None
         return [
-            f"{prefix}excel_actions.close_excel({instance}, close_mode={close_mode}, "
+            f"{prefix}excel_actions.close_excel({instance}, close_mode='SaveAs', "
             f"document_path={document_path})"
         ]
 
-    if action_id == "Excel.ReadFromExcel":
+    # 知見155: `ReadFromExcel`の兄弟セレクタ5件のうち、`Read`(`ReadMode=Selection`、
+    # ライブExcel UIの現在の選択範囲)はスコープ外。`ReadMode`はセレクタごとに固定。
+    _EXCEL_READ_MODE_BY_ACTION_NAME = {
+        "Excel.ReadFromExcel.ReadCell": "SingleCell",
+        "Excel.ReadFromExcel.ReadCells": "RangeOfCells",
+        "Excel.ReadFromExcel.ReadAllCells": "AllCells",
+        "Excel.ReadFromExcel.ReadNamedCell": "NamedCells",
+    }
+    read_mode_literal = _EXCEL_READ_MODE_BY_ACTION_NAME.get(action_id)
+    if read_mode_literal is not None:
         instance = safe_render(p.get("Instance"))
         if instance is None or not node.output_var:
             return None
-        if "ReadMode" in p:
-            read_mode_literal = enum_last(p.get("ReadMode"))
-            if read_mode_literal is None or read_mode_literal == "Selection":
-                return None
-            read_mode = repr(read_mode_literal)
-        else:
-            read_mode = repr("SingleCell")
         if "GetCellContentsMode" in p:
             contents_mode = enum_last(p.get("GetCellContentsMode"))
             if contents_mode is None or contents_mode != "TypedValues":
@@ -134,23 +162,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [
             f"{prefix}{node.output_var} = excel_actions.read_from_excel({instance}, "
-            f"read_mode={read_mode}, start_column={start_column}, start_row={start_row}, "
+            f"read_mode={read_mode_literal!r}, start_column={start_column}, start_row={start_row}, "
             f"end_column={end_column}, end_row={end_row}, cell_name={cell_name}, "
             f"first_line_is_header={first_line_is_header}, trim_empty_cells={trim_empty_cells})"
         ]
 
-    if action_id == "Excel.WriteToExcel":
+    # 知見155: `WriteToExcel`の兄弟セレクタ3件のうち、`Write`(`WriteMode=ActiveCell`、
+    # ライブExcel UIのアクティブセル)はスコープ外。`WriteMode`はセレクタごとに固定。
+    _EXCEL_WRITE_MODE_BY_ACTION_NAME = {
+        "Excel.WriteToExcel.WriteCell": "SpecifiedCell",
+        "Excel.WriteToExcel.WriteNamedCell": "NamedCells",
+    }
+    write_mode_literal = _EXCEL_WRITE_MODE_BY_ACTION_NAME.get(action_id)
+    if write_mode_literal is not None:
         instance = safe_render(p.get("Instance"))
         value = safe_render(p.get("Value"))
         if instance is None or value is None:
             return None
-        if "WriteMode" in p:
-            write_mode_literal = enum_last(p.get("WriteMode"))
-            if write_mode_literal is None or write_mode_literal == "ActiveCell":
-                return None
-            write_mode = repr(write_mode_literal)
-        else:
-            write_mode = repr("SpecifiedCell")
         column = safe_render(p.get("Column", "A"))
         row = safe_render(p.get("Row", 1))
         cell_name = safe_render(p.get("CellName", ""))
@@ -158,8 +186,8 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if None in (column, row, cell_name, write_to_all_cells):
             return None
         return [
-            f"{prefix}excel_actions.write_to_excel({instance}, {value}, write_mode={write_mode}, "
-            f"column={column}, row={row}, cell_name={cell_name}, "
+            f"{prefix}excel_actions.write_to_excel({instance}, {value}, "
+            f"write_mode={write_mode_literal!r}, column={column}, row={row}, cell_name={cell_name}, "
             f"write_to_all_cells={write_to_all_cells})"
         ]
 
@@ -175,30 +203,48 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{prefix}excel_actions.add_worksheet({instance}, {name}, worksheet_position={position})"
         ]
 
-    if action_id == "Excel.DeleteWorksheet":
+    # 知見155: `DeleteWorksheet`/`RenameWorksheet`/`SetActiveWorksheet`はいずれも
+    # `FindWorksheetBy`(`Index`/`Name`)で分かれる2つの兄弟セレクタを持つ
+    # (`ActionName`はグループ名と異なり`<Group>By<Index|Name>`系の表記)。
+    _EXCEL_DELETE_WORKSHEET_FIND_BY = {
+        "Excel.DeleteWorksheet.DeleteWorksheetByIndex": "Index",
+        "Excel.DeleteWorksheet.DeleteWorksheetByName": "Name",
+    }
+    find_by = _EXCEL_DELETE_WORKSHEET_FIND_BY.get(action_id)
+    if find_by is not None:
         instance = safe_render(p.get("Instance"))
         if instance is None:
             return None
-        lookup_args = _worksheet_lookup_args(p)
+        lookup_args = _worksheet_lookup_args(p, find_by)
         if lookup_args is None:
             return None
         return [f"{prefix}excel_actions.delete_worksheet({instance}, {lookup_args})"]
 
-    if action_id == "Excel.RenameWorksheet":
+    _EXCEL_RENAME_WORKSHEET_FIND_BY = {
+        "Excel.RenameWorksheet.RenameWorksheetWithIndex": "Index",
+        "Excel.RenameWorksheet.RenameWorksheetWithName": "Name",
+    }
+    find_by = _EXCEL_RENAME_WORKSHEET_FIND_BY.get(action_id)
+    if find_by is not None:
         instance = safe_render(p.get("Instance"))
         new_name = safe_render(p.get("NewName"))
         if instance is None or new_name is None:
             return None
-        lookup_args = _worksheet_lookup_args(p)
+        lookup_args = _worksheet_lookup_args(p, find_by)
         if lookup_args is None:
             return None
         return [f"{prefix}excel_actions.rename_worksheet({instance}, {new_name}, {lookup_args})"]
 
-    if action_id == "Excel.SetActiveWorksheet":
+    _EXCEL_SET_ACTIVE_WORKSHEET_FIND_BY = {
+        "Excel.SetActiveWorksheet.ActivateWorksheetByIndex": "Index",
+        "Excel.SetActiveWorksheet.ActivateWorksheetByName": "Name",
+    }
+    find_by = _EXCEL_SET_ACTIVE_WORKSHEET_FIND_BY.get(action_id)
+    if find_by is not None:
         instance = safe_render(p.get("Instance"))
         if instance is None:
             return None
-        lookup_args = _worksheet_lookup_args(p)
+        lookup_args = _worksheet_lookup_args(p, find_by)
         if lookup_args is None:
             return None
         return [f"{prefix}excel_actions.set_active_worksheet({instance}, {lookup_args})"]

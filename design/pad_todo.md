@@ -337,6 +337,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   ハング無しに閉じる新手法(`WindowPattern.Close()`の直接COM呼び出し)を発見し、
   `memory: pad2py_run_without_rdp`に記録した。Tier3アクションの往復確認・挙動確認は
   引き続きRDP接続が前提(🖥️のまま、優先度は低)。
+  - [x] 💻 **訂正(知見155)**: 上記「`Excel.*`14件結線完了」は、知見80のAutomationId
+    確認(アクション**グループ**の存在確認のみ)を「action_id自体の実機確認」と誤って
+    混同していた——`ActionSelectorBase`一括列挙監査(知見139以降の標準手法)を初めて
+    `Excel.Actions.dll`に適用したところ、`LaunchExcel`/`CloseExcel`/`SaveExcel`/
+    `ReadFromExcel`/`WriteToExcel`/`DeleteWorksheet`/`RenameWorksheet`/
+    `SetActiveWorksheet`の8グループは実際には兄弟セレクタを持ち、真のaction_idは
+    `Excel.<グループ>.<ActionName>`という3セグメント形式だった——従来のフラットな
+    判定は**実際のDSLでは一度もマッチせず常にTODOへ落ちていた**(潜在バグ、decompileで
+    発見・修正)。decompile(`pad2py-fetch-excel-dll`)で各セレクタの固定列挙値を特定し、
+    正しい3セグメント形式へ結線し直した(`pad_action_lib.excel_actions`側は変更不要)。
+    - [ ] 💻🖥️ **残課題**: `Word`/`PowerPoint`/`PDF`モジュールも知見80の同じ手法
+      (グループ名のAutomationId確認のみ)で「完了」と記録されているため、同種の潜在
+      バグが無いか`ActionSelectorBase`一括列挙監査を適用して確認する必要がある。
 - [x] 💻 `GenerateDataTableFromCSVAction`/`ConvertDataTableToCSVAction`の`ColumnsSeparator`が
   `SystemDefault`以外(Comma/Semicolon/Tab)で常にTODOへ倒れていたゲート漏れ、および
   両方の`CustomColumnsSeparator`兄弟セレクタ(`ReadCustomSeparator`/`DataTableToCSVCustomSeparator`)。

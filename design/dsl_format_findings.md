@@ -2622,3 +2622,32 @@ VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系�
 `pad_codegen/actions/file.py`の`_RENAME_SCHEME_TRANSFORMS`ディスパッチを拡張し、各変換関数が`(ループ前に1回だけ出すセットアップ行のリスト, _rename_new_baseを計算する式)`のタプルを返す設計に変更した——`MakeSequential`系はバッチ内で状態共有する`SequentialNumberer`をループ前に1回だけ生成する必要があるため(既存の4つの単純な文字列変換セレクタは空リストを返すだけで済む)。`Separator`列挙→実際の文字への変換は`_support.RENAME_SEPARATOR_TO_CHAR`に切り出し、`CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`と同じパターンで管理する。
 
 テストは`tests/test_pad_action_lib_file.py`に`rename_add_datetime()`/`rename_make_sequential()`/`file_timestamp()`の新規テスト5件(既存の区切り文字無し仮定テストも知見154を踏まえて`separator=""`明示に修正)、`tests/test_pad_codegen.py`に4セレクタ分のexec検証テストを追加した。これで`File.Actions.dll`の`RenameFiles`系(`RenameScheme`列挙の全6パターン)が結線完了した。
+
+## 155. Excel.Actions.dllに`ActionSelectorBase`一括列挙監査(知見139以降の標準手法)を初適用——知見80の「14アクション確認済み」はグループ名のみで、実際のaction_idは8グループで3セグメント形式だった(既存の「完了済み」結線が実際には一度もマッチしていなかった潜在バグ)
+
+知見139以降、Web/XML/Cmd/Text/Cryptography/Database/File/Folder/Variablesの各モジュールには`ActionSelectorBase`一括列挙監査を適用してきたが、PDF/Excel/Word/PowerPointの4モジュール(知見80で「Tier3スコープ内アクション全件のaction_id確認・codegen結線が完了」と記録されていた)にはこの監査を一度も適用していなかった。「ToDo何が残っているか」の洗い出しの一環でExcel.Actions.dllに適用したところ、重大な見落としが見つかった。
+
+知見80の手法(PADデザイナーの検索結果`TreeItem`のAutomationIdを直接読む)は、**アクション検索パネルに表示される項目のAutomationId**を確認したものだった——これは「`Excel.ReadFromExcel`というアクション(グループ)が存在する」ことの確認であり、実際にそのアクションをキャンバスに追加して選択(モード)を決めた後の**真のDSL action_id文字列**ではなかった。VM上のリフレクション(`Microsoft.Flow.RPA.Desktop.Modules.Excel.Actions.dll`を`[System.Reflection.Assembly]::LoadFrom()`→`GetTypes()`→`ActionSelectorBase`派生を辿る、知見139と同じ手法)で確認したところ、Excel.Actions.dllには95以上の`ActionSelector<T>`サブクラスが存在し、知見80で「14アクション」として確認した以下8グループには実際に兄弟セレクタがあった:
+
+| グループ | 兄弟セレクタ(`ActionName`) | 固定される列挙値 |
+| --- | --- | --- |
+| `LaunchExcel` | `Launch`/`LaunchAndOpen`/`LaunchUnderExistingProcess`/`LaunchAndOpenUnderExistingProcess` | `LaunchExcelMode`(New/Stored)×`LaunchInNewInstance`(True/False) |
+| `CloseExcel` | `Close`/`CloseAndSave`/`CloseAndSaveAs` | `CloseMode`(DoNotSave/Save/SaveAs) |
+| `SaveExcel` | `Save`/`SaveAs` | `SaveMode`(Save/SaveAs) |
+| `ReadFromExcel` | `Read`/`ReadCell`/`ReadCells`/`ReadAllCells`/`ReadNamedCell` | `ReadMode`(Selection/SingleCell/RangeOfCells/AllCells/NamedCells) |
+| `WriteToExcel` | `Write`/`WriteCell`/`WriteNamedCell` | `WriteMode`(ActiveCell/SpecifiedCell/NamedCells) |
+| `DeleteWorksheet` | `DeleteWorksheetByIndex`/`DeleteWorksheetByName` | `FindWorksheetBy`(Index/Name) |
+| `RenameWorksheet` | `RenameWorksheetWithIndex`/`RenameWorksheetWithName` | 同上 |
+| `SetActiveWorksheet` | `ActivateWorksheetByIndex`/`ActivateWorksheetByName` | 同上 |
+
+残り6グループ(`AddWorksheet`/`GetActiveWorksheet`/`GetAllWorksheets`/`GetColumnName`/`GetFirstFreeColumnRow`/`GetFirstFreeRowOnColumn`)は兄弟セレクタが存在せず、既存のフラットな`Excel.<グループ名>`形式のままで正しいと確認できた。
+
+**影響の確定**: `pad_codegen/actions/excel.py`は上記8グループを全てフラットな2セグメント形式(`action_id == "Excel.ReadFromExcel"`等)で判定していた——これは実際のDSL(3セグメント形式)とは文字列として一致しないため、**実際のPADフローからエクスポートされたDSLでは一度も発火せず、常にTODOフォールバックに落ちていた**。知見80の時点で実機確認済みと記録されていたが、その確認は「アクションが存在する」ことだけであり「パラメータの直列化形式(action_id自体)」は依然decompileの推測のままだった、という確証レベルの取り違えが原因。
+
+`pad2py-fetch-excel-dll`(新規clipwire target)でDLL本体を取得し`ilspycmd`でdecompileし、各`ActionSelector<T>`サブクラスの`Prop<>.ShouldBe()`/`Show<>()`/`Hide<>()`呼び出しを直接読み、どのパラメータがどの値に固定されるかを確定した。`ReadFromExcel.Read`(ReadMode=Selection)・`WriteToExcel.Write`(WriteMode=ActiveCell)・`LaunchExcel.LaunchUnderExistingProcess`/`LaunchAndOpenUnderExistingProcess`(LaunchInNewInstance=False、既存の生きているExcelプロセスへのCOMアタッチ)は、既存の`pad_action_lib.excel_actions`のスコープ外(openpyxlでは再現不可)と一致するため、意図的に結線せずTODOへ委ねた。
+
+`pad_action_lib.excel_actions`自体の関数シグネチャ(`launch_excel()`/`close_excel()`/`save_excel()`/`read_from_excel()`/`write_to_excel()`/`delete_worksheet()`/`rename_worksheet()`/`set_active_worksheet()`)はいずれも変更不要だった——問題は`pad_codegen`側のディスパッチキー(action_id文字列)だけだったため、各セレクタの固定列挙値をハードコードした3セグメント形式のディスパッチへ置き換えるだけで済んだ(`enum_last()`で動的に読む必要は無い、セレクタが選ばれた時点で値は一意に確定しているため)。
+
+既存の`tests/test_pad_codegen.py::test_generate_python_from_excel_full_scope_in_batch_converts_all_actions`/`test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo`も、同じ誤ったフラットなaction_id形式でDSLを手書きしていたため「自己整合的に見えるが実在しない形式を検証していた」テストだった——正しい3セグメント形式に修正した。
+
+**今後の方針**: PDF/Word/PowerPointモジュールも知見80の同じ手法(グループ名のAutomationIdのみ確認)で「完了」と記録されているため、同種の潜在バグ(フラットなaction_id判定が実際には3セグメント形式で一度もマッチしない)が無いか、同じ`ActionSelectorBase`一括列挙監査を適用して確認する必要がある——次回以降の調査対象として記録する。

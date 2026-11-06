@@ -2543,27 +2543,29 @@ def test_generate_python_from_pdf_merge_files_with_passwords_falls_back_to_todo(
 
 
 def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -> None:
-    # design/dsl_format_findings.md 知見80: Excel.*のaction_idは全て、PADデザイナー自身の
-    # 検索結果TreeItemのAutomationIdを直接読んで実機確認済み(知見77と同じ経路、キーボード
-    # 追加さえ不要)。パラメータ名はdocs-local/pad_excel_findings.mdのdecompile調査から。
+    # design/dsl_format_findings.md 知見155: 知見80では「14アクションが存在する」ことを
+    # PADデザイナーの検索結果TreeItemのAutomationIdで確認していたが、これはアクション
+    # グループのAutomationIdであり、`LaunchExcel`/`WriteToExcel`/`ReadFromExcel`/
+    # `DeleteWorksheet`/`RenameWorksheet`/`SetActiveWorksheet`/`SaveExcel`/`CloseExcel`は
+    # 実際には兄弟セレクタを持ち、DSL上の真のaction_idは`Excel.<グループ>.<ActionName>`
+    # という3セグメント形式(`ActionSelectorBase`一括列挙監査で確認)——従来のこのテストの
+    # フラットなaction_id(`Excel.LaunchExcel`等)は実在しない形式だった(知見155で修正)。
+    # パラメータ名はdocs-local/pad_excel_findings.mdのdecompile調査から。
     # `Instance`はPAD側では不透明な参照だが、Python側では他の変数参照と同じ
     # (ここではLaunchExcelの出力変数名をそのまま後続アクションに渡す)。
     dsl = (
-        "Excel.LaunchExcel LaunchExcelMode: Excel.LaunchExcelMode.NewDocument "
-        "ReadOnly: False Instance=> ExcelInstance\n"
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
         "Excel.AddWorksheet Instance: ExcelInstance Name: $'''Sheet2''' "
         "WorksheetPosition: Excel.WorksheetPosition.Last\n"
-        "Excel.WriteToExcel Instance: ExcelInstance Value: $'''hello''' "
-        "WriteMode: Excel.WriteExcelMode.SpecifiedCell Column: $'''B''' Row: 2\n"
-        "Excel.ReadFromExcel Instance: ExcelInstance "
-        "ReadMode: Excel.ReadExcelCellsMode.SingleCell StartColumn: $'''B''' StartRow: 2 "
-        "CellValue=> CellValue\n"
-        "Excel.DeleteWorksheet Instance: ExcelInstance "
-        "FindWorksheetBy: Excel.FindWorksheetBy.Name Name: $'''Sheet2'''\n"
-        "Excel.RenameWorksheet Instance: ExcelInstance NewName: $'''Renamed''' "
-        "FindWorksheetBy: Excel.FindWorksheetBy.Index Index: 0\n"
-        "Excel.SetActiveWorksheet Instance: ExcelInstance "
-        "FindWorksheetBy: Excel.FindWorksheetBy.Name Name: $'''Renamed'''\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''hello''' "
+        "Column: $'''B''' Row: 2\n"
+        "Excel.ReadFromExcel.ReadCell Instance: ExcelInstance "
+        "StartColumn: $'''B''' StartRow: 2 CellValue=> CellValue\n"
+        "Excel.DeleteWorksheet.DeleteWorksheetByName Instance: ExcelInstance Name: $'''Sheet2'''\n"
+        "Excel.RenameWorksheet.RenameWorksheetWithIndex Instance: ExcelInstance "
+        "NewName: $'''Renamed''' Index: 0\n"
+        "Excel.SetActiveWorksheet.ActivateWorksheetByName Instance: ExcelInstance "
+        "Name: $'''Renamed'''\n"
         "Excel.GetActiveWorksheet Instance: ExcelInstance "
         "Name=> SheetName Index=> SheetIndex\n"
         "Excel.GetAllWorksheets Instance: ExcelInstance Worksheets=> SheetNames\n"
@@ -2572,8 +2574,8 @@ def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -
         "FirstFreeColumn=> FreeCol FirstFreeRow=> FreeRow\n"
         "Excel.GetFirstFreeRowOnColumn Instance: ExcelInstance Column: $'''A''' "
         "FirstFreeRowOnColumn=> FreeRowOnA\n"
-        "Excel.SaveExcel Instance: ExcelInstance SaveMode: Excel.SaveExcelMode.Save\n"
-        "Excel.CloseExcel Instance: ExcelInstance CloseMode: Excel.CloseExcelMode.DoNotSave"
+        "Excel.SaveExcel.Save Instance: ExcelInstance\n"
+        "Excel.CloseExcel.Close Instance: ExcelInstance"
     )
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
@@ -2616,41 +2618,38 @@ def test_generate_python_from_excel_full_scope_in_batch_converts_all_actions() -
     assert (
         "FreeRowOnA = excel_actions.get_first_free_row_on_column(ExcelInstance, 'A')" in code
     )
-    assert "excel_actions.save_excel(ExcelInstance, save_mode='Save', document_path=None)" in code
-    assert (
-        "excel_actions.close_excel(ExcelInstance, close_mode='DoNotSave', document_path=None)"
-        in code
-    )
+    assert "excel_actions.save_excel(ExcelInstance, save_mode='Save')" in code
+    assert "excel_actions.close_excel(ExcelInstance, close_mode='DoNotSave')" in code
     assert "# TODO" not in code
 
 
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
-    # ライブExcel UIの「現在の選択範囲/アクティブセル」依存の値は、openpyxlベースの
-    # バックエンドでは意味を持たないため(docs-local/pad_excel_findings.md)、でっち上げた
-    # コードを出力せず安全にTODOへ倒れることを確認する。
-    read_selection_dsl = (
-        "Excel.ReadFromExcel Instance: ExcelInstance "
-        "ReadMode: Excel.ReadExcelCellsMode.Selection CellValue=> CellValue"
-    )
+    # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
+    # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、
+    # ライブExcel UIのアクティブセル)はセレクタ自体がスコープ外の値に固定されているため、
+    # でっち上げたコードを出力せず安全にTODOへ倒れることを確認する。
+    read_selection_dsl = "Excel.ReadFromExcel.Read Instance: ExcelInstance"
     tree = build_block_tree(parse_dsl(read_selection_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Excel.ReadFromExcel" in code
+    assert "# TODO: map PAD action: Excel.ReadFromExcel.Read" in code
 
-    write_active_cell_dsl = (
-        "Excel.WriteToExcel Instance: ExcelInstance Value: $'''x''' "
-        "WriteMode: Excel.WriteExcelMode.ActiveCell"
-    )
+    write_active_cell_dsl = "Excel.WriteToExcel.Write Instance: ExcelInstance Value: $'''x'''"
     tree = build_block_tree(parse_dsl(write_active_cell_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Excel.WriteToExcel" in code
+    assert "# TODO: map PAD action: Excel.WriteToExcel.Write" in code
 
     plain_text_dsl = (
-        "Excel.ReadFromExcel Instance: ExcelInstance "
+        "Excel.ReadFromExcel.ReadCell Instance: ExcelInstance "
         "GetCellContentsMode: Excel.GetCellContentsMode.PlainText CellValue=> CellValue"
     )
     tree = build_block_tree(parse_dsl(plain_text_dsl))
     code = generate_python(tree)
-    assert "# TODO: map PAD action: Excel.ReadFromExcel" in code
+    assert "# TODO: map PAD action: Excel.ReadFromExcel.ReadCell" in code
+
+    launch_under_existing_process_dsl = "Excel.LaunchExcel.LaunchUnderExistingProcess Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(launch_under_existing_process_dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Excel.LaunchExcel.LaunchUnderExistingProcess" in code
 
 
 def test_generate_python_from_word_full_scope_in_batch_converts_all_actions() -> None:
