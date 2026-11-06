@@ -197,8 +197,63 @@ def test_save_word_unsupported_extension_raises(tmp_path: Path) -> None:
         wa.save_word(instance, save_mode="SaveAs", document_path=str(tmp_path / "out.rtf"))
 
 
-def test_attach_and_insert_image_not_implemented() -> None:
+def test_attach_to_running_word_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         wa.attach_to_running_word()
-    with pytest.raises(NotImplementedError):
-        wa.insert_image_to_word()
+
+
+def _make_png(path: Path) -> None:
+    from PIL import Image
+
+    Image.new("RGB", (4, 4), color="red").save(path)
+
+
+def test_insert_image_to_word_end_of_document_appends(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見177(decompile確認済み): `InsertImageToWord`の
+    # `StartOfDocument`/`EndOfDocument`(`Source=File`固定)のみ対応。
+    image = tmp_path / "pic.png"
+    _make_png(image)
+    instance = wa.launch_word(mode="NewDocument")
+    wa.write_to_word(instance, "Hello", write_mode="StartOfDocument")
+    wa.insert_image_to_word(instance, str(image), insert_image_mode="EndOfDocument")
+    dest = tmp_path / "out.docx"
+    wa.save_word(instance, save_mode="SaveAs", document_path=str(dest))
+
+    reloaded = docx.Document(str(dest))
+    assert reloaded.inline_shapes
+    # 既存のテキストがそのまま残り、画像は末尾に追加される(先頭ではない)。
+    assert reloaded.paragraphs[0].text == "Hello"
+
+
+def test_insert_image_to_word_start_of_document_prepends(tmp_path: Path) -> None:
+    image = tmp_path / "pic.png"
+    _make_png(image)
+    instance = wa.launch_word(mode="NewDocument")
+    wa.write_to_word(instance, "Hello", write_mode="StartOfDocument")
+    wa.insert_image_to_word(instance, str(image), insert_image_mode="StartOfDocument")
+
+    assert instance.document.inline_shapes
+    # 画像を含む新しい段落が先頭に挿入され、既存のテキストは2番目の段落へ押し出される。
+    assert instance.document.paragraphs[0].text == ""
+    assert instance.document.paragraphs[1].text == "Hello"
+
+
+def test_insert_image_to_word_missing_file_raises(tmp_path: Path) -> None:
+    instance = wa.launch_word(mode="NewDocument")
+    with pytest.raises(wa.InsertImageWordError):
+        wa.insert_image_to_word(instance, str(tmp_path / "missing.png"))
+
+
+def test_insert_image_to_word_instance_none_raises() -> None:
+    with pytest.raises(wa.WordInstanceNotInitializedError):
+        wa.insert_image_to_word(None, "x.png")
+
+
+def test_insert_image_to_word_bookmark_and_text_relative_modes_not_implemented(tmp_path: Path) -> None:
+    # `StartOfBookmark`/`EndOfBookmark`/`StartOfText`/`EndOfText`はでっち上げず保留。
+    image = tmp_path / "pic.png"
+    _make_png(image)
+    instance = wa.launch_word(mode="NewDocument")
+    for mode in ("StartOfBookmark", "EndOfBookmark", "StartOfText", "EndOfText"):
+        with pytest.raises(NotImplementedError):
+            wa.insert_image_to_word(instance, str(image), insert_image_mode=mode)

@@ -3233,6 +3233,52 @@ def test_generate_python_from_word_full_scope_batch_actually_executes_correctly(
     assert any("world" in p.text for p in reopened.paragraphs)
 
 
+def test_generate_python_from_word_insert_image_document_start_and_end_converts(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見177(decompile確認済み): `InsertImageToWord`の
+    # `Source=File`固定の兄弟セレクタのうち`StartOfDocument`/`EndOfDocument`の2件のみ
+    # python-docxで再現可能。
+    from PIL import Image
+
+    image_path = tmp_path / "pic.png"
+    Image.new("RGB", (4, 4), color="blue").save(image_path)
+    dest = tmp_path / "out.docx"
+    dsl = (
+        "Word.LaunchWord.Launch Instance=> WordInstance\n"
+        "Word.WriteToWord.WriteEndOfDocument Instance: WordInstance Text: $'''hello'''\n"
+        f"Word.InsertImageToWord.InsertImageDocumentEndFromFile Instance: WordInstance Path: $'''{image_path}'''\n"
+        f"Word.SaveWord.SaveAs Instance: WordInstance DocumentPath: $'''{dest}'''\n"
+        "Word.CloseWord.Close Instance: WordInstance"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        f"word_actions.insert_image_to_word(WordInstance, '{image_path}', "
+        "insert_image_mode='EndOfDocument')" in code
+    )
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+
+    import docx
+
+    reopened = docx.Document(str(dest))
+    assert reopened.inline_shapes
+    assert reopened.paragraphs[0].text == "hello"
+
+
+def test_generate_python_keeps_insert_image_bookmark_mode_as_todo() -> None:
+    # 知見177: ブックマーク相対(`StartOfBookmark`等)は実機未確認のため安全にTODOへ倒す。
+    dsl = (
+        "Word.InsertImageToWord.InsertImageBookmarkStartFromFile Instance: WordInstance "
+        "Path: $'''C:\\\\pic.png''' Bookmark: $'''MyBookmark'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD action: Word.InsertImageToWord.InsertImageBookmarkStartFromFile" in code
+
+
 def test_generate_python_from_word_unsupported_modes_fall_back_to_todo() -> None:
     # ページ/ブックマーク系はライブWordのレンダリング/ライブコレクション依存のため
     # スコープ外(知見157のセレクタ監査でHide/ShowAllから確定)——でっち上げたコードを

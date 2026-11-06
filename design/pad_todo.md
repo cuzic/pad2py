@@ -480,7 +480,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       中間セグメントになると確定した。既存の`Pdf.ExtractPages`/`Pdf.MergeFiles`結線
       (フラットな2セグメント形式)は当初から正しかった(修正不要)。
       `Word.InsertImageToWord`(8セレクタ)は`pad_action_lib`側に未実装
-        のため対象外のまま。
+        のため対象外のまま。**訂正(知見177)**: `tools/pad_selector_audit.py`の
+        再適用で再調査したところ、`StartOfDocument`/`EndOfDocument`(`Source=File`
+        固定)の2件は実はpython-docxの`add_picture()`/`insert_paragraph_before()`
+        で再現可能だったと判明し新規結線した——「`InsertImageToWord`全体が
+        未実装」という過去の判断は必要以上に広い除外だった。ブックマーク相対・
+        テキスト相対・クリップボードソースの残り9件は依然対象外(理由は個別に
+        確認済み、知見177参照)。
     - [x] 💻 **テスト基盤の死角を解消(知見174)**: Excel/Word/PowerPointの「全スコープ
       バッチ」テストが文字列一致の`compile()`のみで一度も`exec()`していなかったと判明
       (知見124/129/130と同じ死角)。各モジュールに実際に`exec()`して出力変数の値・

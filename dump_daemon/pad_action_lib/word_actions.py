@@ -68,6 +68,10 @@ class FindAndReplaceError(PadActionError):
     pass
 
 
+class InsertImageWordError(PadActionError):
+    pass
+
+
 @dataclass
 class WordInstanceHandle:
     """不透明な「Wordインスタンス」ハンドル(実際のライブCOMではなく`docx.Document`を保持)。"""
@@ -264,8 +268,38 @@ def attach_to_running_word(*_args: object, **_kwargs: object) -> WordInstanceHan
     )
 
 
-def insert_image_to_word(*_args: object, **_kwargs: object) -> None:
-    raise NotImplementedError(
-        "InsertImageToWord (all position/clipboard source variants) is out of scope "
-        "for the python-docx based implementation"
-    )
+def insert_image_to_word(
+    instance: WordInstanceHandle | None,
+    path: str,
+    insert_image_mode: str = "StartOfDocument",
+) -> None:
+    """design/dsl_format_findings.md 知見177(decompile確認済み): `InsertImageMode`の
+    `StartOfDocument`/`EndOfDocument`(`Source=File`固定)のみ対応する。ブックマーク相対
+    (`StartOfBookmark`/`EndOfBookmark`、python-docxにブックマークナビゲーションAPIが無い)・
+    テキスト相対(`StartOfText`/`EndOfText`、実機の`TextToFind`位置特定アルゴリズムが
+    未確認)・クリップボード画像ソース(`Source=Clipboard`、OSクリップボードの画像読み取り
+    機構が本プロジェクトに未確立)は、でっち上げず`NotImplementedError`のままにする。
+    """
+    if instance is None:
+        raise WordInstanceNotInitializedError("Instance is required")
+    if instance.read_only:
+        raise WordOperationOnReadOnlyDocumentError(instance.path or "")
+    if insert_image_mode not in ("StartOfDocument", "EndOfDocument"):
+        raise NotImplementedError(
+            f"InsertImageToWord mode {insert_image_mode!r} depends on Word's live Bookmarks "
+            "collection or TextToFind position search; python-docx has no equivalent API"
+        )
+    if not Path(path).is_file():
+        raise InsertImageWordError(f"image file not found: {path!r}")
+    document = instance.document
+    try:
+        if insert_image_mode == "EndOfDocument":
+            document.add_picture(path)
+        else:  # StartOfDocument
+            if document.paragraphs:
+                new_paragraph = document.paragraphs[0].insert_paragraph_before()
+            else:
+                new_paragraph = document.add_paragraph()
+            new_paragraph.add_run().add_picture(path)
+    except Exception as exc:
+        raise InsertImageWordError(str(exc)) from exc

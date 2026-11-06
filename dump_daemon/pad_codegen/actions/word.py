@@ -159,4 +159,23 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"match_entire_word={match_entire_word}, match_wild_cards=False)"
         ]
 
+    # design/dsl_format_findings.md 知見177(decompile確認済み): `InsertImageToWord`の
+    # `Source=File`固定の兄弟セレクタのうち、`StartOfDocument`/`EndOfDocument`の2件のみ
+    # python-docxで再現可能(ブックマーク相対・テキスト相対・クリップボードソースは
+    # `pad_action_lib.word_actions.insert_image_to_word()`側で`NotImplementedError`)。
+    _WORD_INSERT_IMAGE_MODE_BY_ACTION_NAME = {
+        "Word.InsertImageToWord.InsertImageDocumentStartFromFile": "StartOfDocument",
+        "Word.InsertImageToWord.InsertImageDocumentEndFromFile": "EndOfDocument",
+    }
+    insert_image_mode = _WORD_INSERT_IMAGE_MODE_BY_ACTION_NAME.get(action_id)
+    if insert_image_mode is not None:
+        instance = safe_render(p.get("Instance"))
+        path = safe_render(p.get("Path"))
+        if instance is None or path is None:
+            return None
+        return [
+            f"{prefix}word_actions.insert_image_to_word({instance}, {path}, "
+            f"insert_image_mode={insert_image_mode!r})"
+        ]
+
     return None
