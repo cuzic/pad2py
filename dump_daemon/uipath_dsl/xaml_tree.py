@@ -52,6 +52,7 @@ from .types import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetAttributeNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
     HighlightNode,
@@ -688,6 +689,16 @@ def _parse_minimize_window(elem: etree._Element) -> WindowStateNode:
 
 def _parse_restore_window(elem: etree._Element) -> WindowStateNode:
     return _parse_window_state(elem, "restore")
+
+
+def _parse_get_attribute(elem: etree._Element) -> GetAttributeNode:
+    return GetAttributeNode(
+        selector=_target_selector(elem),
+        display_name=_attr(elem, "DisplayName"),
+        attribute=_attr(elem, "Attribute"),
+        result=_in_argument_property_expr(elem, "Result"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
 
 
 def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
@@ -1608,6 +1619,7 @@ _DISPATCH = {
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "GetFullText"): _parse_get_full_text,
     (UI_NS, "GetValue"): _parse_get_value,
+    (UI_NS, "GetAttribute"): _parse_get_attribute,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,

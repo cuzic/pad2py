@@ -90,6 +90,7 @@ from ..uipath_dsl.types import (
     FlowStepNode,
     FlowSwitchNode,
     ForEachNode,
+    GetAttributeNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
     HighlightNode,
@@ -494,6 +495,8 @@ def _generate_node(
         return _generate_send_hotkey(node, indent)
     if isinstance(node, GetTextNode):
         return _generate_get_text(node, indent)
+    if isinstance(node, GetAttributeNode):
+        return _generate_get_attribute(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
@@ -1633,6 +1636,39 @@ def _generate_window_state_body(node: WindowStateNode, indent: int) -> list[str]
             "— error-continuation mapping not confirmed, refusing to guess"
         ]
     return [f'{prefix}Desktop(backend="uia").window(active_only=True).{node.method}()']
+
+
+# 知見174: `ui:GetAttribute`(GitHub code searchで274件ヒット)。
+# `Attribute`は開放的な語彙(`"checked"`/`"innerText"`/
+# `"relativeVisibility"`等、UiPathのブラウザ拡張がDOM/アクセシビリティ
+# ツリーから取得する)で、pywinauto(Win32/UIAバックエンドのみ、ブラウザの
+# JS/DOM注入機能を持たない)側にこれを安全に代替できる汎用APIが存在しない
+# ——`Attribute`の値を問わず常に`# TODO`へ倒す(知見38の`role`属性と同じ
+# 「VM実機検証なしに新しいマッピングを追加しない」という安全側の判断)。
+def _generate_get_attribute(node: GetAttributeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_attribute_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_attribute_body(node: GetAttributeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: GetAttribute with no selector captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: GetAttribute with no output Result captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: GetAttribute with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    attribute_desc = f"Attribute={node.attribute!r}" if node.attribute else "no Attribute set"
+    return [
+        f"{prefix}# TODO: GetAttribute ({attribute_desc}) — no pywinauto/UIA "
+        "equivalent confirmed for arbitrary DOM/accessibility attribute "
+        "retrieval, refusing to guess"
+    ]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

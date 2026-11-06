@@ -40,6 +40,7 @@ from dump_daemon.uipath_dsl import (
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     ForEachNode,
+    GetAttributeNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
     HighlightNode,
@@ -1082,6 +1083,31 @@ def test_restore_window_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, WindowStateNode)
     assert node.method == "restore"
+
+
+def test_get_attribute_selector_and_properties():
+    """知見174: `ui:GetAttribute`(GitHub code searchで274件ヒット)。
+    `Target`+`Attribute`+`Result`+`ContinueOnError`という構成——実機
+    `iamgauravjoshi/Shopping-Bot-using-RPA`で確認した`Attribute=
+    "innerText"`の実例。"""
+    xml = (
+        f"<ui:GetAttribute {_UI_XMLNS} DisplayName=\"Get Attribute\" "
+        'Attribute="innerText">'
+        "<ui:GetAttribute.Result>"
+        '<OutArgument x:TypeArguments="x:String">[out_Rating]</OutArgument>'
+        "</ui:GetAttribute.Result>"
+        "<ui:GetAttribute.Target>"
+        "<ui:Target Selector=\"&lt;wnd cls='Notepad' /&gt;\" />"
+        "</ui:GetAttribute.Target>"
+        "</ui:GetAttribute>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetAttributeNode)
+    assert "Notepad" in node.selector
+    assert node.display_name == "Get Attribute"
+    assert node.attribute == "innerText"
+    assert node.result == VbExpr(text="out_Rating")
+    assert node.continue_on_error is None
 
 
 def test_log_message_properties():

@@ -546,6 +546,38 @@ class WindowStateNode:
 
 
 @dataclass
+class GetAttributeNode:
+    """`<ui:GetAttribute>`(知見174、GitHub code searchで274件ヒット)。
+    `Target`+`Attribute`(属性名、実機確認済みの値は`"checked"`/
+    `"innerText"`/`"relativeVisibility"`——UiPathのブラウザ拡張機能が
+    DOM/アクセシビリティツリーから取得する任意の属性名)+`Result`
+    (出力、`GetText`/`GetFullText`と同じ`_in_argument_property_expr`
+    形)+`ContinueOnError`という構成——実機3件(`rohanbaraskar/
+    UiPath-11`・`miyaichi/CalculateClientSecurityHash`・
+    `iamgauravjoshi/Shopping-Bot-using-RPA`)で確認。
+
+    `Attribute`は開放的な語彙(UiPathのブラウザ拡張が内部でDOM属性/
+    アクセシビリティプロパティへ変換する仕組みで、値ごとに全く別の
+    取得経路を要求する)——pywinauto(Win32/UIAバックエンドのみ、
+    ブラウザのJS/DOM注入機能を持たない)側にこれを安全に代替できる
+    汎用APIが存在しない。`"checked"`はUIAのTogglePattern
+    (`get_toggle_state()`、知見165で確認済み)で近似できる可能性が
+    あるが、実機のブラウザ要素で本当にDOMの`checked`プロパティと
+    UIAのToggle状態が一致するかは(知見38の`role`属性のような
+    ハードクラッシュのリスクも含め)VM実機検証なしに確定できないため、
+    `Attribute`の値を問わず常に`# TODO`へ倒す——ただし「unknown
+    activity」の生の属性ダンプより、`Attribute`名を明示した読みやすい
+    `# TODO`にする価値はある(将来VM実機検証が済んだ属性値だけを
+    個別に有効化できる土台にもなる)。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    attribute: str | None = None
+    result: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1623,6 +1655,7 @@ Node = (
     | CloseApplicationNode
     | CloseWindowNode
     | WindowStateNode
+    | GetAttributeNode
     | KillProcessNode
     | CloseTabNode
     | TypeIntoNode

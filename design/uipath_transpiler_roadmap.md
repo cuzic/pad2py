@@ -2245,3 +2245,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `generate_python()`+`compile()`を確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、
      UiPath関連テスト全719件通過、リポジトリ全体で全1763件通過。
+
+132. **(完了、2026-11-06)** `ui:GetAttribute`(GitHub code searchで
+     274件ヒット)を新規実装(知見174): `Attribute`は開放的な語彙
+     (UiPathのブラウザ拡張がDOM/アクセシビリティツリーから取得)で、
+     pywinauto側に安全な汎用代替が無いため、`Attribute`の値を問わず
+     常に`# TODO`へ倒す——知見38の`role`属性(実機`KeyError`で裏付け
+     済み)と同じ「VM未検証の属性マッピングは追加しない」判断を正面
+     から適用。`Attribute`名を明示した読みやすい`# TODO`を生成する
+     価値のみを目的に新規実装(常にTODOへ倒れる活動でもノード型を
+     モデル化する価値があると判断した初めての例)。実機XAML3件で
+     `generate_python()`+`compile()`を確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
+     UiPath関連テスト全725件通過、リポジトリ全体で全1769件通過。

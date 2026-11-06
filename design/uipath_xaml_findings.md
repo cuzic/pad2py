@@ -8242,6 +8242,52 @@ giipxls2kvs`の`XLS2KVS.xaml`)で`generate_python()`+`compile()`を
 test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、UiPath
 関連テスト全719件通過、リポジトリ全体で全1763件通過。
 
+## 174. `ui:GetAttribute`(GitHub code searchで274件ヒット)を新規実装——`Attribute`の値を問わず常に`# TODO`へ倒す、知見38の`role`と同じ「VM未検証の属性マッピングは追加しない」判断を初めて正面から適用したケース
+
+`ui:MaximizeWindow`系(知見173)に続き、`ui:GetAttribute`(GitHub code
+searchで274件ヒット)を調査した。実機3件(`rohanbaraskar/UiPath-11`・
+`miyaichi/CalculateClientSecurityHash`・`iamgauravjoshi/Shopping-Bot-
+using-RPA`)で確認した構造は`Target`+`Attribute`(属性名の文字列、
+実機確認済みの値は`"checked"`/`"innerText"`/`"relativeVisibility"`)+
+`Result`(出力、`GetText`/`GetFullText`と同じ`_in_argument_property_
+expr`形)+`ContinueOnError`。
+
+`Attribute`は開放的な語彙——UiPathのブラウザ拡張機能がDOM/
+アクセシビリティツリーから値ごとに全く別の経路で取得する仕組みで
+ある。pywinauto(Win32/UIAバックエンドのみ、ブラウザのJS/DOM注入
+機能を一切持たない)側にこれを安全に代替できる汎用APIが存在しない。
+`"checked"`はUIAのTogglePattern(`get_toggle_state()`、知見165で
+確認済み)で近似できる「かもしれない」という仮説はあるが、実機の
+ブラウザ要素で本当にDOMの`checked`プロパティとUIAのToggle状態が
+一致するかは独立に確認できておらず、知見38で`role`属性を
+`control_type`へそのまま渡した際に実機`KeyError`というハード
+クラッシュで裏付けられた「UiPathの語彙とpywinautoの語彙が一致する
+保証は無い」という教訓を踏まえると、仮説のまま実装するのは本調査
+全体を貫く「確認済みの安全な変換のみ」という方針に反する。
+
+そのため本活動は`Attribute`の値を一切区別せず、常に`# TODO`へ倒す
+設計にした——ただし「unknown activity」の生の属性ダンプに比べて、
+`Attribute`名を明示した読みやすい`# TODO`(例: `# TODO: GetAttribute
+(Attribute='innerText') — no pywinauto/UIA equivalent confirmed for
+arbitrary DOM/accessibility attribute retrieval, refusing to guess`)
+を生成する価値はある——将来、実機VM(pad2py-pad-host)で特定の
+`Attribute`値(例えば`"checked"`)だけを個別に実機検証できれば、その
+値だけを有効化する拡張の土台にもなる。これは本調査全体で初めて
+「常にTODOへ倒れる活動」を、ノード型を適切にモデル化する価値がある
+と判断して新規実装した例——Highlight(知見166、常に成功+コメント)
+とは対照的な判断だが、両方とも「架空のAPIをでっち上げない」という
+同じ方針の別の現れ方。
+
+実機XAML3件で`generate_python()`+`compile()`を実行し、3種の
+`Attribute`値すべてで名前付きの`# TODO`が正しく生成されることを
+確認した(`miyaichi/...`の実機セレクタは`<wnd ...>`で部分的に
+マッピング可能、`iamgauravjoshi/...`は`<webctrl ...>`で完全に
+未マッピング——いずれにせよ`Attribute`自体の理由で`# TODO`になる
+ため、セレクタのマッピング可否に関わらず安全に倒れることを確認)。
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`5件)、UiPath関連テスト全725件通過、
+リポジトリ全体で全1769件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetAttributeNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
     HighlightNode,
@@ -2205,6 +2206,75 @@ def test_window_state_with_continue_on_error_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: MaximizeWindow with ContinueOnError set" in code
     assert ".maximize()" not in code
+    _compiles(code)
+
+
+_GET_ATTRIBUTE_SELECTOR = "<wnd cls='Notepad' />"
+
+
+def test_get_attribute_always_declines_with_named_todo():
+    """知見174: `ui:GetAttribute`(GitHub code searchで274件ヒット)。
+    `Attribute`は開放的な語彙(UiPathのブラウザ拡張がDOM/アクセシビリ
+    ティツリーから取得する)で、pywinauto側に安全な汎用代替が無いため
+    値を問わず常に`# TODO`へ倒す——VM実機検証なしに新しいマッピングを
+    追加しない(知見38の`role`属性と同じ判断)。"""
+    wf = _wrap(
+        [
+            GetAttributeNode(
+                selector=_GET_ATTRIBUTE_SELECTOR,
+                attribute="innerText",
+                result=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetAttribute (Attribute='innerText')" in code
+    _compiles(code)
+
+
+def test_get_attribute_with_no_selector_is_todo():
+    wf = _wrap([GetAttributeNode(selector=None, result=VbExpr(text="result"))])
+    code = generate_python(wf)
+    assert "# TODO: GetAttribute with no selector captured" in code
+    _compiles(code)
+
+
+def test_get_attribute_with_no_result_is_todo():
+    wf = _wrap([GetAttributeNode(selector=_GET_ATTRIBUTE_SELECTOR, result=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetAttribute with no output Result captured" in code
+    _compiles(code)
+
+
+def test_get_attribute_with_continue_on_error_is_todo():
+    wf = _wrap(
+        [
+            GetAttributeNode(
+                selector=_GET_ATTRIBUTE_SELECTOR,
+                result=VbExpr(text="result"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetAttribute with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_get_attribute_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            GetAttributeNode(
+                selector=_GET_ATTRIBUTE_SELECTOR,
+                display_name="Get Attribute",
+                attribute="checked",
+                result=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Get Attribute" in code
+    assert "# TODO: GetAttribute (Attribute='checked')" in code
     _compiles(code)
 
 
