@@ -1101,6 +1101,51 @@ class OpenApplicationNode:
 
 
 @dataclass
+class OpenBrowserNode:
+    """`<ui:OpenBrowser Url="..." BrowserType="...">...</ui:OpenBrowser>`
+    (知見168、知見167で発見、GitHub code searchで2648件ヒット——
+    `OpenApplication`の複数実例ヒットより多い)。`OpenApplication`
+    (知見154)と同じ`ActivityAction`+`DelegateInArgument`(`Name`は
+    `"ContextTarget"`固定)のラッパーを持つが、`Target`/`Selector`は
+    一切持たない(既存のウィンドウに接続するのではなく、新しいブラウザ
+    インスタンスを起動して`Url`へ移動する活動であるため)。
+
+    実機5件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`・`allenlooplee/RPABook`・`piyushagarwal08/JU-Notes`・
+    `miyaichi/CalculateClientSecurityHash`)で確認した属性は`Url`
+    (生リテラル/動的VB式の両方を確認)・`BrowserType`(`"IE"`/
+    `"Chrome"`/`"Firefox"`、実機確認済み)・`Hidden`/`NewSession`/
+    `Private`(Boolean、実機確認済みの既定値は`Hidden="False"`/
+    `NewSession="True"`/`Private="False"`——`Hidden="True"`の実例も
+    確認したが「ヘッドレスモード」の正確な再現方法が未確認)・
+    `UiBrowser`(開いたブラウザ参照を受け取る出力バインディング、
+    `OpenApplication`の`ApplicationWindow`と同種)・
+    `CommunicationMethod`(実機で一度も非`{x:Null}`の値を確認できず
+    意味論未確認)。
+
+    `BrowserType`別の実行ファイルパスは実機XAMLから直接読み取れず
+    (OS/インストール環境依存の推測が必要になる)、`OpenApplication`の
+    `subprocess.Popen([file_name])`のような「XAMLに明示された絶対
+    パスをそのまま使う」安全な経路が無い——その代わり、Python標準
+    ライブラリの`webbrowser.open(url)`(特定のブラウザ実行ファイルパス
+    を一切推測せず、OS既定の方法でURLを開く、確認済みの標準API)を
+    使う。`BrowserType`で指定された特定のブラウザが実際に開かれる
+    ことまでは主張しない(`# WARNING`で明示)——`Hidden`/`NewSession`/
+    `Private`/`UiBrowser`/`CommunicationMethod`が確認済みの既定値から
+    外れている場合は`# TODO`へ倒す。"""
+
+    url: Expr = None
+    browser_type: str | None = None
+    hidden: Expr = None
+    new_session: Expr = None
+    private: Expr = None
+    ui_browser: Expr = None
+    communication_method: Expr = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelApplicationScopeNode:
     """`<ui:ExcelApplicationScope WorkbookPath="...">...</ui:ExcelApplicationScope>`
     (知見22、`ActivityAction`+`DelegateInArgument`で`ForEach`と同じ構造)。"""
@@ -1463,6 +1508,7 @@ Node = (
     | ExcelWriteCellNode
     | AttachWindowNode
     | OpenApplicationNode
+    | OpenBrowserNode
     | ExcelApplicationScopeNode
     | WordApplicationScopeNode
     | WordReplaceTextNode

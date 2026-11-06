@@ -76,6 +76,7 @@ from dump_daemon.uipath_dsl import (
     MessageBoxNode,
     MultipleAssignNode,
     OpenApplicationNode,
+    OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -3357,6 +3358,130 @@ def test_open_application_child_todo_still_surfaces():
     )
     code = generate_python(wf)
     assert "subprocess.Popen(" in code
+    assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
+    _compiles(code)
+
+
+def test_open_browser_launches_via_webbrowser_module_and_recurses_into_body():
+    """知見168: `ui:OpenBrowser`(GitHub code searchで2648件ヒット)。
+    `BrowserType`別の実行ファイルパスがXAMLに明示されないため、
+    `OpenApplication`の`subprocess.Popen([file_name])`のような経路は
+    使えず、Python標準ライブラリの`webbrowser.open(url)`(特定のブラウザ
+    実行ファイルパスを一切推測しない確認済みの標準API)を使う。"""
+    wf = _wrap(
+        [
+            OpenBrowserNode(
+                url=Literal(value="https://example.com"),
+                browser_type="Chrome",
+                body=[WriteLineNode(text=Literal(value="hi"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "webbrowser.open(_vb_cstr('https://example.com'))" in code
+    assert "import webbrowser" in code
+    assert "BrowserType='Chrome'" in code
+    assert "print(_vb_cstr('hi'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_open_browser_display_name_becomes_a_comment():
+    wf = _wrap(
+        [OpenBrowserNode(url=Literal(value="https://example.com"), display_name="Open Browser")]
+    )
+    code = generate_python(wf)
+    assert "# Open Browser" in code
+    assert "webbrowser.open(" in code
+    _compiles(code)
+
+
+def test_open_browser_with_no_url_is_todo_not_guessed():
+    wf = _wrap([OpenBrowserNode(url=None)])
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with no Url captured" in code
+    _compiles(code)
+
+
+def test_open_browser_with_hidden_is_todo_not_guessed():
+    """知見168: `piyushagarwal08/JU-Notes`の実機XAMLで確認済みの
+    `Hidden="True"`——「ヘッドレスモード」の正確な再現方法が未確認
+    ででっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [OpenBrowserNode(url=Literal(value="https://example.com"), hidden=Literal(value="True"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with Hidden set" in code
+    assert "webbrowser.open" not in code
+    _compiles(code)
+
+
+def test_open_browser_with_non_default_new_session_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            OpenBrowserNode(
+                url=Literal(value="https://example.com"), new_session=Literal(value="False")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with non-default NewSession set" in code
+    _compiles(code)
+
+
+def test_open_browser_with_private_is_todo_not_guessed():
+    wf = _wrap(
+        [OpenBrowserNode(url=Literal(value="https://example.com"), private=Literal(value="True"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with Private set" in code
+    _compiles(code)
+
+
+def test_open_browser_with_ui_browser_output_binding_is_todo_not_guessed():
+    """知見168: `piyushagarwal08/JU-Notes`の実機XAMLで確認済みの
+    `UiBrowser="[firefox]"`出力バインディング——`OpenApplication`の
+    `ApplicationWindow`と同じ理由(UiElement出力変数が未実装)で
+    でっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            OpenBrowserNode(
+                url=Literal(value="https://example.com"), ui_browser=VbExpr(text="firefox")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with UiBrowser output binding set" in code
+    _compiles(code)
+
+
+def test_open_browser_with_communication_method_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            OpenBrowserNode(
+                url=Literal(value="https://example.com"),
+                communication_method=Literal(value="Attach"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenBrowser with CommunicationMethod set" in code
+    _compiles(code)
+
+
+def test_open_browser_child_todo_still_surfaces():
+    """知見168: スコープ自体は`# TODO`にならないが、未対応な子の
+    `# TODO`は引き続き正しく出る(知見84・154と同じ教訓)。"""
+    wf = _wrap(
+        [
+            OpenBrowserNode(
+                url=Literal(value="https://example.com"),
+                body=[InvokeCodeNode(code="content=content.ToUpper()")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "webbrowser.open(" in code
     assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
     _compiles(code)
 

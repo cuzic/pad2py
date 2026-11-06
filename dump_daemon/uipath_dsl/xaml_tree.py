@@ -64,6 +64,7 @@ from .types import (
     MultipleAssignNode,
     Node,
     OpenApplicationNode,
+    OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -1124,6 +1125,23 @@ def _parse_open_application(elem: etree._Element) -> OpenApplicationNode:
     )
 
 
+def _parse_open_browser(elem: etree._Element) -> OpenBrowserNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return OpenBrowserNode(
+        url=_attr_expr(elem, "Url"),
+        browser_type=_attr(elem, "BrowserType"),
+        hidden=_attr_expr(elem, "Hidden"),
+        new_session=_attr_expr(elem, "NewSession"),
+        private=_attr_expr(elem, "Private"),
+        ui_browser=_attr_expr(elem, "UiBrowser"),
+        communication_method=_attr_expr(elem, "CommunicationMethod"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScopeNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -1544,6 +1562,7 @@ _DISPATCH = {
     (UI_NS, "WindowScope"): _parse_window_scope,
     (UI_NS, "BrowserScope"): _parse_browser_scope,
     (UI_NS, "OpenApplication"): _parse_open_application,
+    (UI_NS, "OpenBrowser"): _parse_open_browser,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,

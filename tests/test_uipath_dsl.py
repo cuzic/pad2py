@@ -51,6 +51,7 @@ from dump_daemon.uipath_dsl import (
     MessageBoxNode,
     MultipleAssignNode,
     OpenApplicationNode,
+    OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -1394,6 +1395,58 @@ def test_open_application_dynamic_file_name_and_nullable_attrs():
     assert node.application_window is None
     assert node.timeout_ms is None
     assert node.continue_on_error is None
+    assert node.body == []
+
+
+def test_open_browser_url_and_browser_type():
+    """知見168: `ui:OpenBrowser`(GitHub code searchで2648件ヒット)。
+    `OpenApplication`と同じ`ActivityAction`+`DelegateInArgument`
+    ラッパーを持つが`Target`/`Selector`は一切持たない(既存ウィンドウ
+    に接続するのではなく新しいブラウザインスタンスを起動する活動の
+    ため)。実機(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`)で確認した属性構成をそのまま再現する。"""
+    xml = (
+        f"<ui:OpenBrowser {_UI_XMLNS} "
+        'UiBrowser="{x:Null}" BrowserType="IE" DisplayName="Open Browser" '
+        'Hidden="False" NewSession="True" Private="False" '
+        'Url="https://www.google.com/">'
+        "<ui:OpenBrowser.Body>"
+        '<ActivityAction x:TypeArguments="x:Object">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Object" Name="ContextTarget" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:OpenBrowser.Body>"
+        "</ui:OpenBrowser>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, OpenBrowserNode)
+    assert node.url == Literal(value="https://www.google.com/")
+    assert node.browser_type == "IE"
+    assert node.hidden == Literal(value="False")
+    assert node.new_session == Literal(value="True")
+    assert node.private == Literal(value="False")
+    assert node.ui_browser is None
+    assert node.communication_method is None
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
+
+
+def test_open_browser_dynamic_url_and_output_binding():
+    """知見168: `Url`は実機で動的VB式(`[NewsUrl]`、`allenlooplee/
+    RPABook`)の実例も確認済み。`UiBrowser`は出力バインディングの実例
+    (`[firefox]`、`piyushagarwal08/JU-Notes`)を確認済み。"""
+    xml = (
+        f"<ui:OpenBrowser {_UI_XMLNS} "
+        'BrowserType="Firefox" UiBrowser="[firefox]" Url="[NewsUrl]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, OpenBrowserNode)
+    assert node.url == VbExpr(text="NewsUrl")
+    assert node.ui_browser == VbExpr(text="firefox")
     assert node.body == []
 
 

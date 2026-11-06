@@ -102,6 +102,7 @@ from ..uipath_dsl.types import (
     MultipleAssignNode,
     Node,
     OpenApplicationNode,
+    OpenBrowserNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -316,6 +317,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見154)も同様。
     if any("subprocess.Popen(" in line for line in body):
         imports.append("import subprocess")
+    # `webbrowser`(`OpenBrowser`→`webbrowser.open(...)`変換先、知見168)
+    # も同様。
+    if any("webbrowser.open(" in line for line in body):
+        imports.append("import webbrowser")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -493,6 +498,8 @@ def _generate_node(
         return _generate_attach_window(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, OpenApplicationNode):
         return _generate_open_application(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, OpenBrowserNode):
+        return _generate_open_browser(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, WordApplicationScopeNode):
@@ -2555,6 +2562,75 @@ def _generate_open_application_body(
     return lines
 
 
+# 知見168: `ui:OpenBrowser`(GitHub code searchで2648件ヒット)。
+# `OpenApplication`(知見154)と違い`BrowserType`別の実行ファイルパスが
+# XAMLに明示されず推測が必要になるため、`subprocess.Popen([file_name])`
+# のような経路が使えない——代わりにPython標準ライブラリの
+# `webbrowser.open(url)`(特定のブラウザ実行ファイルパスを一切推測せず
+# OS既定の方法でURLを開く、確認済みの標準API)を使う。`BrowserType`で
+# 指定された特定のブラウザが実際に開かれることまでは主張しない。
+def _generate_open_browser(
+    node: OpenBrowserNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_open_browser_body(node, indent, invoke_resolver, out_arg_resolver)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_open_browser_body(
+    node: OpenBrowserNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.url is None:
+        return [f"{prefix}# TODO: OpenBrowser with no Url captured"]
+    if _literal_str(node.hidden) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: OpenBrowser with Hidden set "
+            f"({node.hidden!r}) — headless-mode reproduction not confirmed, "
+            "refusing to guess"
+        ]
+    if _literal_str(node.new_session) not in (None, "True"):
+        return [
+            f"{prefix}# TODO: OpenBrowser with non-default NewSession set "
+            f"({node.new_session!r}) — session-reuse semantics not "
+            "confirmed, refusing to guess"
+        ]
+    if _literal_str(node.private) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: OpenBrowser with Private set "
+            f"({node.private!r}) — private/incognito mode reproduction not "
+            "confirmed, refusing to guess"
+        ]
+    if node.ui_browser is not None:
+        return [
+            f"{prefix}# TODO: OpenBrowser with UiBrowser output binding set "
+            f"({_describe_expr_for_comment(node.ui_browser)}) — UiBrowser "
+            "output variable not modeled, refusing to guess"
+        ]
+    if node.communication_method is not None:
+        return [
+            f"{prefix}# TODO: OpenBrowser with CommunicationMethod set "
+            f"({_describe_expr_for_comment(node.communication_method)}) — "
+            "semantics not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    url = _render_value_or_todo(node.url, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}# WARNING: BrowserType={node.browser_type!r} requested — "
+        "webbrowser.open() uses the OS default browser, not necessarily "
+        "this one"
+    ]
+    lines.append(f"{prefix}webbrowser.open({VB_CSTR_HELPER_NAME}({url}))")
+    lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
+    return lines
+
+
 def _generate_excel_application_scope(
     node: ExcelApplicationScopeNode, indent: int,
     invoke_resolver: dict[str, str] | None = None,
@@ -3495,7 +3571,7 @@ def _child_node_lists(node: Node) -> list[list[Node]]:
         return [node.branches]
     if isinstance(node, (ExcelApplicationScopeNode, WordApplicationScopeNode)):
         return [node.body]
-    if isinstance(node, (AttachWindowNode, OpenApplicationNode)):
+    if isinstance(node, (AttachWindowNode, OpenApplicationNode, OpenBrowserNode)):
         return [node.body]
     return []
 

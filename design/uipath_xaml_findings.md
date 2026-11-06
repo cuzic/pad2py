@@ -7952,14 +7952,56 @@ Robotic-Process-Automation-Projects`)で構造を確認した結果、
 (`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全676件通過、
 リポジトリ全体で全1716件通過。
 
+## 168. `ui:OpenBrowser`(GitHub code searchで2648件ヒット)を新規実装——`webbrowser`標準ライブラリで実行ファイルパスの推測を避ける新しい判断パターン
+
+知見167で発見した`ui:OpenBrowser`(GitHub code searchで2648件ヒット
+——`OpenApplication`より多い、新しいブラウザインスタンスを起動する
+活動)を実装した。実機5件(`PacktPublishing/Robotic-Process-
+Automation-RPA-for-Developers`・`allenlooplee/RPABook`・
+`piyushagarwal08/JU-Notes`・`miyaichi/CalculateClientSecurityHash`)
+で構造を確認した結果、`OpenApplication`(知見154)と同じ
+`ActivityAction`+`DelegateInArgument`ラッパーを持つが`Target`/
+`Selector`は一切持たない(既存ウィンドウに接続するのではなく新規
+起動する活動であるため)。属性は`Url`(生リテラル/動的VB式の両方を
+確認)・`BrowserType`(`"IE"`/`"Chrome"`/`"Firefox"`)・`Hidden`/
+`NewSession`/`Private`(Boolean、既定値は`"False"`/`"True"`/
+`"False"`——`Hidden="True"`の実例も確認したが「ヘッドレスモード」の
+再現方法は未確認)・`UiBrowser`(出力バインディング、`[firefox]`の
+実例を確認)・`CommunicationMethod`(実機で一度も非`{x:Null}`の値を
+確認できず意味論未確認)。
+
+設計上の重要な判断: `OpenApplication`の`subprocess.Popen([file_
+name])`という「XAMLに明示された絶対パスをそのまま使う」安全な経路が
+`OpenBrowser`には使えない——`BrowserType`別の実行ファイルパスはXAML
+に一切現れず、OS/インストール環境依存の推測(`chrome.exe`がどこに
+あるか等)が必要になってしまう。知見151(`ui:Delay`)以来の「確認済み
+の標準APIを使い、新しい前提を持ち込まない」方針に従い、Python標準
+ライブラリの`webbrowser.open(url)`(特定のブラウザ実行ファイルパスを
+一切推測せずOS既定の方法でURLを開く、確認済みの標準API)を採用した
+——`BrowserType`で指定された特定のブラウザが実際に開かれることまで
+は主張せず`# WARNING`で明示する。これは知見154の`OpenApplication`
+(XAMLに明示されたパスがあるので直接起動できる)とは対照的な、「確認
+済みのプロセス起動経路が無い場合は、OS抽象化層の標準ライブラリに
+頼る」という新しい判断パターン。
+
+`dump_daemon/uipath_dsl/types.py`に`OpenBrowserNode(url, browser_
+type, hidden, new_session, private, ui_browser, communication_
+method, body, display_name)`、`xaml_tree.py`に`_parse_open_browser`
+(`OpenApplication`と同じ`ActivityAction`抽出)+`(UI_NS,
+"OpenBrowser")`の`_DISPATCH`登録、`uipath_codegen/__init__.py`に
+`_generate_open_browser`/`_generate_open_browser_body`(`Hidden`/
+`NewSession`の非既定値・`Private`/`UiBrowser`/`CommunicationMethod`
+が設定されている場合は`# TODO`へ倒す)を追加し、`_child_node_lists`
+(知見88が警告する複数ファイル結線用の別registry)にも登録。`webbrowser`
+の`import`検出条件を`_collect_imports`に追加。実機XAML
+(`PacktPublishing`の`Weather.xaml`)で`generate_python()`+
+`compile()`を実行し、`import webbrowser`+`# WARNING: BrowserType=
+'IE' requested...`+`webbrowser.open(_vb_cstr('https://www.google.
+com/'))`が正しく生成されることを確認した(2件全て)。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`9件)、
+UiPath関連テスト全687件通過、リポジトリ全体で全1727件通過。
+
 ## 今後の調査候補(未着手)
-- **(新規、知見167で発見)** `ui:OpenBrowser`(`BrowserType`/`Hidden`/
-  `NewSession`/`Private`/`UiBrowser`/`Url`属性を確認、`allenlooplee/
-  RPABook`の実機XAMLで遭遇)が未実装——`ui:OpenApplication`(知見154)
-  と同種の「実際に新しいプロセス(ブラウザ)を起動する」活動と推定
-  されるが、`subprocess.Popen`で単純にブラウザexeを起動するだけで
-  `Url`への自動ナビゲーションまで再現できるかは未確認。次の棚卸し
-  候補として記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

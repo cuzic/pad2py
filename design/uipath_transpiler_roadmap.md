@@ -2160,3 +2160,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      次の棚卸し候補として記録した。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件)、UiPath関連テスト全676件通過、
      リポジトリ全体で全1716件通過。
+
+126. **(完了、2026-11-06)** `ui:OpenBrowser`(GitHub code searchで
+     2648件ヒット——`OpenApplication`より多い)を新規実装(知見168):
+     `OpenApplication`(知見154)の`subprocess.Popen([file_name])`
+     という「XAMLに明示された絶対パスをそのまま使う」経路が使えない
+     (`BrowserType`別の実行ファイルパスがXAMLに現れず推測が必要に
+     なる)ため、Python標準ライブラリの`webbrowser.open(url)`
+     (特定のブラウザ実行ファイルパスを一切推測しない確認済みの標準
+     API)を採用した——「確認済みのプロセス起動経路が無い場合は、OS
+     抽象化層の標準ライブラリに頼る」という新しい判断パターン。
+     `Hidden`/`NewSession`の非既定値・`Private`/`UiBrowser`/
+     `CommunicationMethod`が設定されている場合は`# TODO`へ倒す。
+     実機XAML(`PacktPublishing`の`Weather.xaml`)で`webbrowser.open()`
+     +`# WARNING`コメントが正しく生成されることを確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     9件)、UiPath関連テスト全687件通過、リポジトリ全体で全1727件
+     通過。
