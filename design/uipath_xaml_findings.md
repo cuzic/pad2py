@@ -7287,18 +7287,76 @@ Selector注釈コメント・DisplayName・Selector未設定・空本体・子�
 `# TODO`透過の各パターンを個別にテスト)、UiPath関連テスト全609件
 通過、リポジトリ全体で全1635件通過。
 
+## 154. `ui:OpenApplication`(スコープ活動の棚卸し第2弾)を実装——`AttachWindow`とは異なり実際にプロセスを起動するコードを生成
+
+知見153の`ui:AttachWindow`に続き、「子を持つスコープ活動が軒並み
+未実装」というパターン(知見151・152で発見)の第2弾として
+`ui:OpenApplication`(`UiPath.Core.Activities`)を実装した。
+
+実機構造を確認したところ、`AttachWindow`とは違い`ExcelApplication
+Scope`(知見22)と同じ`ActivityAction`+`DelegateInArgument`のラッパー
+を持つ(`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`
+の`KeyboardActions.xaml`で確認: `DelegateInArgument.Name`は
+`"ContextTarget"`固定)。ただし子活動(`TypeInto`/`SendHotkey`)は
+実機で`ContextTarget`を一切参照しておらず、`AttachWindow`と同じ
+「子は絶対セレクタを自己完結的に保持する」設計が当てはまるため、
+本実装でも`ContextTarget`は束縛しない。
+
+`AttachWindow`との決定的な違いは、`AttachWindow`が既存のウィンドウに
+「接続する」だけなのに対し、`OpenApplication`は実際に新しいプロセスを
+「起動する」活動である点——よって`AttachWindow`の「注釈コメント+
+透過的再帰」だけでは不十分で、`subprocess.Popen([file_name])`という
+実行可能なコードを追加生成する。
+
+実機5件(`piyushagarwal08/JU-Notes`・`spritlesoftware/
+Uipath-RPA-AutomationProjects`・`masatomix/My_Attended_Framework`・
+`allenlooplee/RPABook`・`JoeIaquinto/UiPath-VidCreator`)を調査した
+結果、`FileName`は生リテラル(`"C:\Windows\System32\notepad.exe"`)と
+動的VB式(`"[in_Config(\"UiDemoPath\").ToString]"`)の両方を確認した
+一方、`Arguments`(`"[in_TestLogFile]"`、`allenlooplee/RPABook`)・
+`ApplicationWindow`(開いたウィンドウ参照を受け取る出力バインディング、
+`"[OBSWindow]"`、`JoeIaquinto/UiPath-VidCreator`)・`WorkingDirectory`・
+`TimeoutMS`(`"2000"`)・`ContinueOnError`(`"True"`)も非`{x:Null}`の
+実例を確認した——いずれも正確な意味論(Windowsコマンドライン引数の
+分割規則・UiElement出力変数の表現・「ウィンドウが現れるまで待つ」
+ポーリング挙動)が未確認のため、知見148以来の「でっち上げるよりは
+安全」の方針でこれらが設定されている場合は個別に`# TODO`へ倒す。
+
+`dump_daemon/uipath_dsl/types.py`に`OpenApplicationNode(file_name,
+selector, arguments, working_directory, application_window,
+timeout_ms, continue_on_error, body, display_name)`、`xaml_tree.py`に
+`_parse_open_application`(`_find_activity_action`+`_unwrap_body_
+sequence`、`ExcelApplicationScope`と同じ抽出方法)+`(UI_NS,
+"OpenApplication")`の`_DISPATCH`登録、`uipath_codegen/__init__.py`に
+`_generate_open_application`/`_generate_open_application_body`
+(`FileName`のみ確認済みの単純な場合だけ`subprocess.Popen([...])`を
+生成、`Selector`は注釈コメント、子は`_generate_body`で再帰生成)を
+追加し、`_child_node_lists`(知見88が警告する複数ファイル結線用の
+別registry)にも`AttachWindowNode`と一緒にタプルで登録。`subprocess`
+の`import`検出条件を`_collect_imports`に追加。
+
+実機XAML(`KeyboardActions.xaml`)で再検証したところ、以前は
+「unknown activity (Open Application)」の`# TODO`1つに潰れていた
+箇所が、`subprocess.Popen(['C:\\Windows\\System32\\notepad.exe'])`→
+`# Attach window: ...`→(子の)`TypeInto`の`type_keys()`呼び出し→
+`SendHotkey`の`type_keys('^s')`呼び出し、という一連の実行可能な
+コードとして正しく連鎖生成されることを確認した——知見151(`Delay`)・
+152(`SendHotkey`)・153(`AttachWindow`)の実装がこの1件で初めて
+真に連動して活きた格好になる。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`9件、
+FileName動的式・Arguments/WorkingDirectory/ApplicationWindow/
+TimeoutMS/ContinueOnError各declineパターン・DisplayName・子TODO
+透過を個別にテスト)、UiPath関連テスト全620件通過、リポジトリ全体で
+全1648件通過。
+
 ## 今後の調査候補(未着手)
 - **(部分的に解決)** 子を持つスコープ活動が軒並み未実装という
-  パターン(知見151・152で発見)のうち`ui:AttachWindow`は知見153で
-  透過的ラッパーとして実装済み。残り: `ui:OpenApplication`(知見152
-  で遭遇)・基本WF版`ForEach`(`ui:ForEach`とは別の`{http://
-  schemas.microsoft.com/netfx/2009/xaml/activities}ForEach`、知見151
-  で遭遇)。`ui:OpenApplication`は`ui:AttachWindow`と同じ「子は絶対
-  セレクタを自己完結的に保持する」設計が当てはまるはずで、同じ透過的
-  ラッパー方式で実装できる可能性が高い——次の実装候補として有望。
-  基本WF版`ForEach`は`ui:ForEach`(既に実装済み)とは別の構造
-  (`CurrentItem`ではなく`DelegateInArgument`経由の変数束縛の可能性)
-  のため個別に実機調査が必要
+  パターン(知見151・152で発見)のうち`ui:AttachWindow`(知見153)・
+  `ui:OpenApplication`(知見154)は実装済み。残り: 基本WF版`ForEach`
+  (`ui:ForEach`とは別の`{http://schemas.microsoft.com/netfx/2009/
+  xaml/activities}ForEach`、知見151で遭遇)。`ui:ForEach`(既に実装
+  済み)とは別の構造(`CurrentItem`ではなく`DelegateInArgument`経由
+  の変数束縛の可能性)のため個別に実機調査が必要
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

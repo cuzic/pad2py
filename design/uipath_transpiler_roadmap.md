@@ -1943,3 +1943,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      5件)、UiPath関連テスト全609件通過、リポジトリ全体で全1635件
      通過。
+
+112. **(完了、2026-11-06)** `ui:OpenApplication`(スコープ活動の棚卸し
+     第2弾)を新規実装(知見154): `AttachWindow`(知見153)とは違い
+     `ExcelApplicationScope`と同じ`ActivityAction`+`DelegateInArgument`
+     のラッパーを持つが、子は`ContextTarget`を参照しない設計のため
+     同様に束縛しない。`AttachWindow`との決定的な違い——実際に新しい
+     プロセスを起動する活動のため、`FileName`のみ確認済みの単純な
+     場合に`subprocess.Popen([...])`を生成する。`Arguments`/
+     `WorkingDirectory`/`ApplicationWindow`(出力バインディング)/
+     `TimeoutMS`/`ContinueOnError`はいずれも実機で非`{x:Null}`の実例を
+     確認したが正確な意味論が未確認のため`# TODO`へ倒す。実機XAMLで
+     再検証し、知見151(`Delay`)・152(`SendHotkey`)・153
+     (`AttachWindow`)の実装がこの1件で初めて真に連動して活きることを
+     確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`9件)、UiPath関連テスト全620件通過、
+     リポジトリ全体で全1648件通過。

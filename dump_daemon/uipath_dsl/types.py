@@ -858,6 +858,43 @@ class AttachWindowNode:
 
 
 @dataclass
+class OpenApplicationNode:
+    """`<ui:OpenApplication FileName="..." Selector="...">...
+    </ui:OpenApplication>`(知見154、`UiPath.Core.Activities`。GitHub
+    code searchで複数実例ヒット)。`AttachWindowNode`(知見153)とは違い
+    `ActivityAction`+`DelegateInArgument`のラッパーを持つ(実機
+    `PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`の
+    `KeyboardActions.xaml`で確認: `x:TypeArguments="x:Object"`・
+    `DelegateInArgument`の`Name`は`"ContextTarget"`固定)——`ExcelApplication
+    Scope`(知見22)と同じ構造。ただし`AttachWindow`と同じ理由(子活動が
+    `selector`を自己完結的に保持する設計)で`ContextTarget`は本実装では
+    束縛しない(子が参照している実例を確認していない)。
+
+    `FileName`は実機で生リテラル(`"C:\\Windows\\System32\\notepad.exe"`)
+    と動的VB式(`"[in_Config(\"UiDemoPath\").ToString]"`、
+    `piyushagarwal08/JU-Notes`)の両方を確認済み。`Arguments`
+    (`"[in_TestLogFile]"`、`allenlooplee/RPABook`)・`ApplicationWindow`
+    (開いたウィンドウ参照を受け取る出力バインディング、`"[OBSWindow]"`、
+    `JoeIaquinto/UiPath-VidCreator`)・`WorkingDirectory`・`TimeoutMS`・
+    `ContinueOnError`も実機で非`{x:Null}`の実例を確認済みだが、いずれも
+    (Windowsコマンドライン引数の分割規則/UiElement出力変数の表現/
+    「ウィンドウが現れるまで待つ」ポーリング挙動)の正確な意味論が
+    未確認のため、本実装では`FileName`(+`Selector`の注釈コメント)
+    のみサポートし、それ以外が設定されている場合は`# TODO`へ倒す
+    (でっち上げるよりは安全)。"""
+
+    file_name: Expr = None
+    selector: str | None = None
+    arguments: Expr = None
+    working_directory: Expr = None
+    application_window: Expr = None
+    timeout_ms: Expr = None
+    continue_on_error: Expr = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelApplicationScopeNode:
     """`<ui:ExcelApplicationScope WorkbookPath="...">...</ui:ExcelApplicationScope>`
     (知見22、`ActivityAction`+`DelegateInArgument`で`ForEach`と同じ構造)。"""
@@ -1215,6 +1252,7 @@ Node = (
     | ExcelReadCellNode
     | ExcelWriteCellNode
     | AttachWindowNode
+    | OpenApplicationNode
     | ExcelApplicationScopeNode
     | WordApplicationScopeNode
     | WordReplaceTextNode

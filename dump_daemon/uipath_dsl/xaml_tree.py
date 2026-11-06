@@ -58,6 +58,7 @@ from .types import (
     MessageBoxNode,
     MultipleAssignNode,
     Node,
+    OpenApplicationNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -925,6 +926,23 @@ def _parse_attach_window(elem: etree._Element) -> AttachWindowNode:
     )
 
 
+def _parse_open_application(elem: etree._Element) -> OpenApplicationNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return OpenApplicationNode(
+        file_name=_attr_expr(elem, "FileName"),
+        selector=_attr(elem, "Selector"),
+        arguments=_attr_expr(elem, "Arguments"),
+        working_directory=_attr_expr(elem, "WorkingDirectory"),
+        application_window=_attr_expr(elem, "ApplicationWindow"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScopeNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -1333,6 +1351,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "AttachWindow"): _parse_attach_window,
+    (UI_NS, "OpenApplication"): _parse_open_application,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,

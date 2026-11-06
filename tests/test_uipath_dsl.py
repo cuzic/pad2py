@@ -46,6 +46,7 @@ from dump_daemon.uipath_dsl import (
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
+    OpenApplicationNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -997,6 +998,61 @@ def test_attach_window_unwraps_body_sequence():
     assert node.display_name == "Attach to Notepad"
     assert len(node.body) == 1
     assert isinstance(node.body[0], SendHotkeyNode)
+
+
+def test_open_application_unwraps_activity_action_body():
+    """知見154: `ui:OpenApplication`。`AttachWindow`(知見153)とは違い
+    `ActivityAction`+`DelegateInArgument`のラッパーを持つ(実機
+    `PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`の
+    `KeyboardActions.xaml`で確認: `DelegateInArgument.Name`は
+    `"ContextTarget"`固定)——`ExcelApplicationScope`と同じ構造。"""
+    xml = (
+        f"<ui:OpenApplication {_UI_XMLNS} "
+        'DisplayName="Open Application \'notepad.exe\'" '
+        'FileName="C:\\Windows\\System32\\notepad.exe" '
+        'Selector="&lt;wnd app=\'notepad.exe\' /&gt;">'
+        "<ui:OpenApplication.Body>"
+        '<ActivityAction x:TypeArguments="x:Object">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Object" Name="ContextTarget" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:OpenApplication.Body>"
+        "</ui:OpenApplication>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, OpenApplicationNode)
+    assert node.file_name == Literal(value="C:\\Windows\\System32\\notepad.exe")
+    assert "notepad.exe" in node.selector
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
+
+
+def test_open_application_dynamic_file_name_and_nullable_attrs():
+    """知見154: `FileName`は実機で動的VB式の実例も確認済み
+    (`piyushagarwal08/JU-Notes`の`[in_Config("UiDemoPath").ToString]`)。
+    `Arguments`/`WorkingDirectory`/`ApplicationWindow`/`TimeoutMS`/
+    `ContinueOnError`は`{x:Null}`(未設定、`None`に正規化される)。"""
+    xml = (
+        f"<ui:OpenApplication {_UI_XMLNS} "
+        'ApplicationWindow="{x:Null}" Arguments="{x:Null}" '
+        'TimeoutMS="{x:Null}" WorkingDirectory="{x:Null}" '
+        'DisplayName="Open Application" '
+        'FileName="[in_Config(&quot;UiDemoPath&quot;).ToString]" '
+        'Selector="&lt;wnd app=\'uidemo.exe\' /&gt;" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, OpenApplicationNode)
+    assert node.file_name == VbExpr(text='in_Config("UiDemoPath").ToString')
+    assert node.arguments is None
+    assert node.working_directory is None
+    assert node.application_window is None
+    assert node.timeout_ms is None
+    assert node.continue_on_error is None
+    assert node.body == []
 
 
 def test_word_application_scope_and_replace_text_in_document():

@@ -84,6 +84,7 @@ from ..uipath_dsl.types import (
     MessageBoxNode,
     MultipleAssignNode,
     Node,
+    OpenApplicationNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -294,6 +295,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見119)も同様。
     if any("logging.info(" in line or "logging.error(" in line for line in body):
         imports.append("import logging")
+    # `subprocess`(`OpenApplication`→`subprocess.Popen(...)`変換先、
+    # 知見154)も同様。
+    if any("subprocess.Popen(" in line for line in body):
+        imports.append("import subprocess")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -457,6 +462,8 @@ def _generate_node(
         return _generate_http_client(node, indent)
     if isinstance(node, AttachWindowNode):
         return _generate_attach_window(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, OpenApplicationNode):
+        return _generate_open_application(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, WordApplicationScopeNode):
@@ -2134,6 +2141,77 @@ def _generate_attach_window(
     return _with_scope_child_display_name(node, lines, prefix)
 
 
+# 知見154: `ui:OpenApplication`。`AttachWindow`(知見153)と同じ理由
+# (子活動が`selector`を自己完結的に保持する設計)で`ContextTarget`
+# (`ActivityAction`+`DelegateInArgument`の束縛変数)は束縛しない。
+# `FileName`のみ(+`Selector`の注釈コメント)の確認済みの単純な場合
+# だけ`subprocess.Popen([...])`で実際に起動するコードを生成し、
+# `Arguments`/`WorkingDirectory`/`ApplicationWindow`/`TimeoutMS`/
+# `ContinueOnError`のいずれかが設定されている場合は、それぞれの正確な
+# 意味論(Windowsコマンドライン分割規則/UiElement出力変数表現/
+# ウィンドウ出現待ちのポーリング挙動)が未確認のため`# TODO`へ倒す
+# (でっち上げるよりは安全)——「開いたプロセスの準備ができるまで待つ」
+# 挙動自体も本実装では再現しない(`ExcelApplicationScope`のライブ
+# マクロ実行未対応と同種の既知の限界)。
+def _generate_open_application(
+    node: OpenApplicationNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_open_application_body(node, indent, invoke_resolver, out_arg_resolver)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_open_application_body(
+    node: OpenApplicationNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: OpenApplication with no FileName captured"]
+    if node.arguments is not None:
+        return [
+            f"{prefix}# TODO: OpenApplication with Arguments set "
+            f"({_describe_expr_for_comment(node.arguments)}) — Windows "
+            "command-line splitting semantics not confirmed, refusing to guess"
+        ]
+    if node.working_directory is not None:
+        return [
+            f"{prefix}# TODO: OpenApplication with WorkingDirectory set "
+            f"({_describe_expr_for_comment(node.working_directory)}) — "
+            "refusing to guess"
+        ]
+    if node.application_window is not None:
+        return [
+            f"{prefix}# TODO: OpenApplication with ApplicationWindow output "
+            f"binding set ({_describe_expr_for_comment(node.application_window)}) "
+            "— UiElement output variable not modeled, refusing to guess"
+        ]
+    if node.timeout_ms is not None:
+        return [
+            f"{prefix}# TODO: OpenApplication with TimeoutMS set "
+            f"({_describe_expr_for_comment(node.timeout_ms)}) — wait-for-"
+            "window-ready polling behavior not modeled, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: OpenApplication with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    try:
+        file_name = render_expr(node.file_name)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    lines: list[str] = [f"{prefix}subprocess.Popen([{VB_CSTR_HELPER_NAME}({file_name})])"]
+    if node.selector:
+        lines.append(f"{prefix}# Attach window: {node.selector}")
+    lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
+    return lines
+
+
 def _generate_excel_application_scope(
     node: ExcelApplicationScopeNode, indent: int,
     invoke_resolver: dict[str, str] | None = None,
@@ -3074,7 +3152,7 @@ def _child_node_lists(node: Node) -> list[list[Node]]:
         return [node.branches]
     if isinstance(node, (ExcelApplicationScopeNode, WordApplicationScopeNode)):
         return [node.body]
-    if isinstance(node, AttachWindowNode):
+    if isinstance(node, (AttachWindowNode, OpenApplicationNode)):
         return [node.body]
     return []
 

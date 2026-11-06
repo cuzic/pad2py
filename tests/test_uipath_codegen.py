@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     LogMessageNode,
     MessageBoxNode,
     MultipleAssignNode,
+    OpenApplicationNode,
     ParallelNode,
     ReadTextFileNode,
     RethrowNode,
@@ -2775,6 +2776,146 @@ def test_attach_window_child_todo_still_surfaces():
     )
     code = generate_python(wf)
     assert "# Attach window:" in code
+    assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
+    _compiles(code)
+
+
+def test_open_application_launches_process_and_recurses_into_body():
+    """知見154: `ui:OpenApplication`。`FileName`のみ(確認済みの単純な
+    場合)は`subprocess.Popen([...])`で実際に起動するコードを生成し、
+    子はそのまま再帰生成される(`AttachWindow`と同じ透過的ラッパー、
+    ただし`ContextTarget`は束縛しない)。"""
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="C:\\Windows\\System32\\notepad.exe"),
+                selector="<wnd app='notepad.exe' />",
+                body=[WriteLineNode(text=Literal(value="hi"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "subprocess.Popen([_vb_cstr('C:\\\\Windows\\\\System32\\\\notepad.exe')])" in code
+    assert "# Attach window: <wnd app='notepad.exe' />" in code
+    assert "print(_vb_cstr('hi'))" in code
+    assert "import subprocess" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_open_application_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                body=[],
+                display_name="Open Notepad",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Open Notepad" in code
+    assert "subprocess.Popen(" in code
+    _compiles(code)
+
+
+def test_open_application_with_no_file_name_is_todo_not_guessed():
+    wf = _wrap([OpenApplicationNode(file_name=None)])
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with no FileName captured" in code
+    _compiles(code)
+
+
+def test_open_application_with_arguments_is_todo_not_guessed():
+    """知見154: `allenlooplee/RPABook`の実機XAMLで確認済みの
+    `Arguments="[in_TestLogFile]"`——Windowsコマンドライン分割規則が
+    未確認のためでっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                arguments=VbExpr(text="in_TestLogFile"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with Arguments set" in code
+    assert "subprocess.Popen" not in code
+    _compiles(code)
+
+
+def test_open_application_with_application_window_is_todo_not_guessed():
+    """知見154: `JoeIaquinto/UiPath-VidCreator`の実機XAMLで確認済みの
+    `ApplicationWindow="[OBSWindow]"`(開いたウィンドウの出力バインド)
+    ——UiElement出力変数が未実装のためでっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="obs64.exe"),
+                application_window=VbExpr(text="OBSWindow"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with ApplicationWindow output binding set" in code
+    _compiles(code)
+
+
+def test_open_application_with_working_directory_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                working_directory=Literal(value="C:\\Temp"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with WorkingDirectory set" in code
+    _compiles(code)
+
+
+def test_open_application_with_timeout_ms_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                timeout_ms=Literal(value="2000"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with TimeoutMS set" in code
+    _compiles(code)
+
+
+def test_open_application_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: OpenApplication with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_open_application_child_todo_still_surfaces():
+    """知見154: スコープ自体は`# TODO`にならないが、未対応な子の
+    `# TODO`は引き続き正しく出る(知見84・153と同じ教訓)。"""
+    wf = _wrap(
+        [
+            OpenApplicationNode(
+                file_name=Literal(value="notepad.exe"),
+                body=[InvokeCodeNode(code="content=content.ToUpper()")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "subprocess.Popen(" in code
     assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
     _compiles(code)
 
