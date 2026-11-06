@@ -9,11 +9,24 @@ API呼び出しをでっち上げず`# TODO`コメントに倒す)を踏襲す�
 
 **条件式は値とは異なる失敗モードを採用する**(`pad_codegen`の
 `IfActionRecord`処理と同じ判断): `If.Condition`/`While.Condition`/
-`Switch.Expression`が安全にPython式へ変換できない場合、でっち上げた真偽値で
-制御フロー全体を誤らせるよりコード生成自体を失敗させる(`NotImplementedError`
+`DoWhile.Condition`/`Switch.Expression`/`ForEach.Values`が安全に
+Python式へ変換できない場合、でっち上げた真偽値/反復対象で制御フロー
+全体を誤らせるよりコード生成自体を失敗させる(`NotImplementedError`
 をそのまま伝播させる)。値(`Assign`の右辺等)が変換できない場合は
 `# TODO`コメント+`None`プレースホルダへ倒す(値の誤りは局所的だが、
-条件の誤りは分岐全体を反転させうるため)。
+条件・反復対象の誤りは分岐/ループ全体に影響するため)。
+
+知見155追記: `ForEach.Values`はこの一覧に当初明記されていなかったが、
+`_generate_for_each`の実装は(ドキュメント化されていないまま)既に
+このモジュールが元から持つ厳格モードを採用していた——実機XAML
+(`plaah/web-application-with-rpa-dhl`、未確認の`config(...)`関数呼び出し
+を`Values`に含む)で実際にこの経路を踏んだ際に発見し、当初は見落としか
+意図的な設計か不明な論点として記録していたが、再検討の結果「反復対象を
+誤って推測すると、ループの**全ての**反復が間違ったデータに対して実行
+される」というのは「分岐全体を反転させる」のと同じ、むしろそれ以上の
+影響範囲を持つ失敗モードであり、`Assign`の右辺1箇所限定の誤りとは
+性質が異なると判断——既存の実装(厳格モード)を変更せず、この
+docstringへ`ForEach.Values`を正式に明記することで方針を確定した。
 
 **複数ファイル結線**: `generate_project_python()`が、`Invoke Workflow File`
 で参照されるサブワークフロー(同じディレクトリ内の別`.xaml`)を実際に辿り、
@@ -672,6 +685,10 @@ def _generate_for_each(
     out_arg_resolver: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
     prefix = INDENT * indent
+    # `Values`も`If`/`While`/`Switch`と同じ厳格な失敗モード(モジュール
+    # docstring参照、知見155で明文化): 反復対象を誤って推測すると全ての
+    # 反復が間違ったデータに対して実行されてしまうため、変換できなければ
+    # `NotImplementedError`をそのまま伝播させてコード生成自体を失敗させる。
     values = render_expr(node.values)
     lines = [f"{prefix}for {node.item_var or '_item'} in {values}:"]
     body = _ensure_nonempty_suite(

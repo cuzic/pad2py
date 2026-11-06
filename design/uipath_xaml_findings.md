@@ -7415,23 +7415,39 @@ Expression`と同じ「条件式の変換失敗はコード生成自体を失敗
 test_uipath_dsl.py`2件、暗黙形・明示`.Body`ラップ形を個別にテスト)、
 UiPath関連テスト全622件通過、リポジトリ全体で全1656件通過。
 
+## 156. `ForEach.Values`の失敗モード方針を確定(知見155が残した論点の解決、動作変更無し)
+
+知見155で記録した「`ForEach.Values`の変換失敗時に`If.Condition`/
+`While.Condition`/`Switch.Expression`と同じ厳格な例外伝播モードが
+(ドキュメント化されないまま)既に実装されていたが、意図的な設計か
+見落としか未確定」という論点を再検討し、方針を確定した。
+
+`pad_codegen`の`IfActionRecord`処理の判断根拠(「値の誤りは局所的だが、
+条件の誤りは分岐全体を反転させうるため」)を再確認した結果、
+`ForEach.Values`も同じ理屈が当てはまる、むしろそれ以上の影響範囲を
+持つと判断した: 反復対象を誤って推測すると、ループの**全ての**
+反復が間違ったデータに対して実行されてしまう——これは「分岐が
+反転する」のと同種か、それより広い影響範囲(1回のif分岐 vs N回の
+繰り返し全て)であり、`Assign`の右辺1箇所限定の誤りとは明確に性質が
+異なる。よって既存の実装(厳格モード、変更無し)が妥当という結論に
+達し、モジュールdocstring(`dump_daemon/uipath_codegen/__init__.py`
+冒頭)の「条件式は値とは異なる失敗モードを採用する」の列挙に
+`ForEach.Values`(および同じ理由で既に厳格モードだった`DoWhile.
+Condition`、こちらも列挙漏れだった)を正式に追記し、`_generate_
+for_each`自体にも`_generate_if`と同水準の説明コメントを追加した。
+
+実装上の変更は無く、ドキュメントと既存コードの整合性を取っただけ——
+ただし「このモジュールのコードが実際にどう振る舞うか」を正確に反映
+したドキュメントが無い状態は、将来の実装者が誤って挙動を変えてしまう
+リスクがあったため、知見155で発見した実機XAMLの再現経路
+(`config(...)`という未確認関数呼び出しが`Values`に含まれる場合)を
+回帰テストとして`tests/test_uipath_codegen.py`に追加し
+(`test_for_each_with_unparseable_values_raises`、`test_if_with_
+unparseable_condition_raises`と同じ形)、この方針が将来のリファクタ
+で意図せず壊れないよう固定した。UiPath関連テスト全623件通過、
+リポジトリ全体で全1657件通過。
+
 ## 今後の調査候補(未着手)
-- **(新規、知見155で発見)** `ForEach.Values`の変換失敗時の挙動が
-  `If.Condition`/`While.Condition`/`Switch.Expression`と同じ厳格な
-  例外伝播モードになっている(`_generate_for_each`が`render_expr`を
-  try/exceptで囲んでいない)が、これはモジュールdocstringの「条件式は
-  値とは異なる失敗モードを採用する」の列挙に`ForEach.Values`が含まれて
-  いないため、意図的な設計なのか見落としなのか未確定——`plaah/
-  web-application-with-rpa-dhl`の実機XAMLで実際に踏んだ
-  (`config(...)`という未確認関数呼び出しが`Values`に含まれ、
-  `generate_python()`全体が`NotImplementedError`で停止した)。
-  「反復対象を誤って推測すると全く違うデータで繰り返すか0回/無限
-  ループになりうる」という点では条件式と同種のリスクがあるため、
-  現状維持(厳格モード)が妥当という見方もあるが、`Assign`の値と同じ
-  ように局所的な`# TODO`+空リストへのフォールバックにする方が
-  (他の活動の生成を壊さないという意味で)実用上望ましいという見方
-  もあり、方針を決めるには既存の`If`/`While`/`Switch`の判断根拠
-  (`pad_codegen`の`IfActionRecord`処理)を再確認した上での検討が必要
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

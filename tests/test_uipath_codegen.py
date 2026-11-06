@@ -1161,6 +1161,27 @@ def test_for_each_over_array_literal():
     _compiles(code)
 
 
+def test_for_each_with_unparseable_values_raises():
+    """知見155: `ForEach.Values`は`If.Condition`/`While.Condition`/
+    `Switch.Expression`と同じ厳格な失敗モード(モジュールdocstring
+    参照)——反復対象を誤って推測すると全ての反復が間違ったデータに対し
+    て実行されてしまうため、でっち上げた反復対象で分岐全体を誤らせる
+    よりコード生成自体を失敗させる。`plaah/web-application-with-
+    rpa-dhl`の実機XAMLで未確認の関数呼び出し(`config(...)`)が
+    `Values`に使われている実例を確認し、その経路を再現する。"""
+    wf = _wrap(
+        [
+            ForEachNode(
+                item_var="item",
+                values=VbExpr(text="config(\"watch_folder\").ToString()"),
+                body=[],
+            )
+        ]
+    )
+    with pytest.raises(NotImplementedError):
+        generate_python(wf)
+
+
 def test_for_each_row_parses_and_iterates_list_of_dict_data_table():
     """知見118: `ui:ForEachRow`(`UiPath.System.Activities`)は`ui:ForEach`
     と同じ`ForEachNode`/`_generate_for_each`をそのまま再利用する——

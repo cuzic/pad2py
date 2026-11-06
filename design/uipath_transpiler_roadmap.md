@@ -1981,3 +1981,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      未確定の設計判断)ことを発見し、次の調査候補として記録した。
      回帰テスト追加(`tests/test_uipath_dsl.py`2件)、UiPath関連テスト
      全622件通過、リポジトリ全体で全1656件通過。
+
+114. **(完了、2026-11-06)** `ForEach.Values`の失敗モード方針を確定
+     (知見156——知見155が残した論点の解決、動作変更無し): `pad_codegen`
+     の`IfActionRecord`の判断根拠を再確認し、「反復対象を誤って推測
+     すると全ての反復が間違ったデータに対して実行される」は「分岐が
+     反転する」のと同種かそれ以上の影響範囲と判断——既存の厳格モード
+     (変更無し)が妥当と結論し、モジュールdocstringに`ForEach.Values`
+     (と列挙漏れだった`DoWhile.Condition`)を正式に追記、
+     `_generate_for_each`にも説明コメントを追加した。回帰テスト追加
+     (`tests/test_uipath_codegen.py`1件、`test_if_with_unparseable_
+     condition_raises`と同じ形で`NotImplementedError`伝播を固定)、
+     UiPath関連テスト全623件通過、リポジトリ全体で全1657件通過。
