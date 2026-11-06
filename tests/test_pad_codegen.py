@@ -2018,6 +2018,22 @@ def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_co
     assert "AutomationWindow2 = Desktop(backend=\"uia\").window(handle=win32gui.GetForegroundWindow())" in code
     assert "WindowTitle2 = AutomationWindow2.window_text()" in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b)(c)の拡張: `.window_text()`を
+    # fake_pywinautoに追加し、実際に`exec()`してフォアグラウンドウィンドウのハンドル解決
+    # ・タイトル取得まで一通り検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(handle=42)
+    ui_registry.set_window_text([{"handle": 42}], "Untitled - Notepad")
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_foreground(42)
+    namespace: dict[str, object] = {}
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, namespace)
+    assert namespace["WindowTitle2"] == "Untitled - Notepad"
+
 
 def test_generate_python_from_real_if_image_exists_on_screen_capture_raises() -> None:
     # design/dsl_format_findings.md 知見58: 「If image」(UIAutomation.IfImage.ExistsOnScreen)も

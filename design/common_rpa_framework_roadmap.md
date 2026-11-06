@@ -197,6 +197,11 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   呼び出し列を組み立てているか」という層7(b)の守備範囲そのものなので、`.click_input()`
   が3段の正しいフルパスで(ループ2回分)呼ばれることまで確認し、退行(チェーンが途中で
   切れる)を検知できるようにした。
+  **2026-11-05追記(`GetForegroundWindow`、知見117)**: `fake_pywinauto.py`に
+  `.window_text()`(`set_window_text()`で値を設定できるgetter、`set_active()`と同じ
+  レジストリ側状態保持パターン)を追加し、`win32gui.GetForegroundWindow()`→
+  `Desktop(...).window(handle=...)`→`.window_text()`という3段の変換を一通りexec検証
+  できるようにした。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

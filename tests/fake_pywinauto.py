@@ -16,9 +16,9 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
-`.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`)
-のみ——新しい呼び出し形が出てきたら、その都度ここに追加する(未対応の呼び出しをでっち上げて
-成功させるのではなく、素直に`AttributeError`で気づけるようにする)。
+`.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
+`.window_text()`)のみ——新しい呼び出し形が出てきたら、その都度ここに追加する(未対応の
+呼び出しをでっち上げて成功させるのではなく、素直に`AttributeError`で気づけるようにする)。
 """
 from __future__ import annotations
 
@@ -93,6 +93,9 @@ class FakeControl:
         self._registry.record("wait_not", self._full_path(), {"criteria": criteria, "timeout": timeout})
         return self
 
+    def window_text(self) -> str:
+        return self._registry.window_text_for(self._full_path())
+
 
 class FakeRegistry:
     """1テスト分のフェイクUI状態(スクリプト可能)+呼び出しログ。"""
@@ -100,6 +103,7 @@ class FakeRegistry:
     def __init__(self) -> None:
         self._existing_paths: list[list[dict]] = []
         self._active_overrides: list[tuple[list[dict], bool]] = []
+        self._window_text_overrides: list[tuple[list[dict], str]] = []
         self.calls: list[tuple[str, list[dict], dict]] = []
 
     def register_window(self, **criteria: object) -> None:
@@ -116,6 +120,17 @@ class FakeRegistry:
         (既定は`True`)。`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため、
         状態はここ(レジストリ側)で保持する。"""
         self._active_overrides.append((path_criteria, active))
+
+    def set_window_text(self, path_criteria: list[dict], text: str) -> None:
+        """指定したパスの`.window_text()`が返す値を設定する(既定は空文字列、
+        `set_active()`と同じくレジストリ側で状態を保持する)。"""
+        self._window_text_overrides.append((path_criteria, text))
+
+    def window_text_for(self, path: list[dict]) -> str:
+        for criteria, text in reversed(self._window_text_overrides):
+            if self._path_matches(criteria, path):
+                return text
+        return ""
 
     def exists(self, path: list[dict]) -> bool:
         return any(self._path_matches(existing, path) for existing in self._existing_paths)
