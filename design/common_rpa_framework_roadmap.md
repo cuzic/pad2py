@@ -214,6 +214,9 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   続けて`Title`+`Class`ベースの兄弟セレクタ(`IsOpenByTitleClass`等)4モードにも同じ
   10パターンを追加し、`IfWindow`の3系統(Control/WindowInstance/TitleClass)全てで
   真偽値レベルの検証が揃った。
+  **2026-11-05追記(`GetWindow.Get`/`SetWindowVisibility.SetVisibilityByTitleClass`)**:
+  `GetWindow.Get`(`.GetUseTimeout`の兄弟セレクタ)は代入された変数の`.criteria`まで、
+  `SetVisibilityByTitleClass`は`win32gui.ShowWindow()`の呼び出し引数までexec検証を追加した。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

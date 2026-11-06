@@ -1630,6 +1630,15 @@ def test_generate_python_from_get_window_get_selector_without_timeout_converts()
     assert "AutomationWindow2 = Desktop(backend=\"uia\").window(title='Untitled - Notepad')" in code
     assert "# TODO: map PAD action: UIAutomation.GetWindow.Get" not in code
 
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    namespace: dict[str, object] = {}
+    with fake_pywinauto_desktop(registry):
+        exec(code, namespace)
+    assert namespace["AutomationWindow2"].criteria == {"title": "Untitled - Notepad"}
+
 
 def test_generate_python_from_close_window_close_selector_converts() -> None:
     # design/dsl_format_findings.md 知見117の追記(decompile確認済み): `CloseWindow`の
@@ -1810,6 +1819,16 @@ def test_generate_python_from_set_window_visibility_by_title_class_converts() ->
         "win32gui.ShowWindow(Desktop(backend='uia').window(title='Notepad').wrapper_object().handle, "
         "win32con.SW_SHOW)" in code
     )
+
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Notepad")
+    win32_registry = FakeWin32Registry()
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
+    assert win32_registry.calls == [("ShowWindow", 0, 5)]
 
 
 def test_generate_python_from_set_window_visibility_control_based_converts() -> None:
