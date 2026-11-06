@@ -7042,6 +7042,28 @@ new_object`+`_NEW_OBJECT_CLASSES`。`dump_daemon/uipath_dsl/types.py`
 `tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に4件
 追加、UiPath関連テスト全566件通過、リポジトリ全体で全1544件通過。
 
+## 149. `Rethrow`(`Throw`と対になる.NET Workflow Foundation本体の基本活動)を新規実装(知見148の直後に確認した体系的棚卸し、VM不使用)
+
+知見148で`Throw`を実装した直後、その対になる`Rethrow`
+(`System.Activities.Statements.Rethrow`——`Catch`ブロック内で現在
+捕捉中の例外を再発生させる、属性を一切持たないリーフ活動)も同様に
+未実装のままだったことに気づいた(知見147・148で見つけた「基本的な
+.NET活動の見落とし」パターンの棚卸しを即座に行った結果)。
+
+Pythonの`except`ブロック内の引数無し`raise`文(現在処理中の例外を
+再発生させる)が全く同じ意味論で直接対応する——属性が無いため解析
+対象のデータも無く、でっち上げの懸念も無い最も単純な変換の1つ。
+`TryCatch`(知見11)の`Catch`ブロックで「ログだけ出して元の例外を
+そのまま再発生させる」という定石パターンに非常に高頻度で使われる
+はずの活動であるにも関わらず、今まで見落とされていた。
+
+`dump_daemon/uipath_dsl/types.py`に`RethrowNode`(属性無しのリーフ)、
+`xaml_tree.py`に`_parse_rethrow`+`(WF_NS, "Rethrow")`の`_DISPATCH`
+登録、`uipath_codegen/__init__.py`に`_generate_rethrow`(`_with_scope_
+child_display_name`経由で`raise`を1行生成)を追加。`tests/
+test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に2件追加、
+UiPath関連テスト全569件通過、リポジトリ全体で全1547件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

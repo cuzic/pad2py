@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     MultipleAssignNode,
     ParallelNode,
     ReadTextFileNode,
+    RethrowNode,
     SelectItemNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -3690,6 +3691,32 @@ def test_throw_with_unconfirmed_exception_class_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: unresolved VB expression:" in code
     assert "raise" not in code
+    _compiles(code)
+
+
+def test_rethrow_maps_to_bare_raise():
+    """知見149: `Rethrow`(`Throw`の対になる、属性無しのリーフ活動)は
+    `except`ブロック内の引数無し`raise`文(現在処理中の例外を再発生
+    させる)と全く同じ意味論で直接対応する。"""
+    wf = _wrap(
+        [
+            TryCatchNode(
+                try_body=[],
+                catches=[CatchArm(exception_type="s:Exception", body=[RethrowNode()])],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "raise" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_rethrow_display_name_becomes_a_comment():
+    wf = _wrap([RethrowNode(display_name="Re-raise it")])
+    code = generate_python(wf)
+    assert "# Re-raise it" in code
+    assert "raise" in code
     _compiles(code)
 
 

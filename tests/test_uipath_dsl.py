@@ -46,6 +46,7 @@ from dump_daemon.uipath_dsl import (
     MultipleAssignNode,
     ParallelNode,
     ReadTextFileNode,
+    RethrowNode,
     SelectItemNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -586,6 +587,16 @@ def test_throw_properties():
     assert isinstance(node, ThrowNode)
     assert node.exception == VbExpr(text='New Exception("boom")')
     assert node.display_name == "Boom"
+
+
+def test_rethrow_properties():
+    """知見149: `Rethrow`(.NET Workflow Foundation本体の標準活動、
+    `Throw`の対になる属性無しのリーフ活動)。`Catch`ブロック内で現在
+    捕捉中の例外を再発生させる定石パターン。"""
+    xml = f'<Rethrow {_UI_XMLNS} DisplayName="Re-raise" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RethrowNode)
+    assert node.display_name == "Re-raise"
 
 
 def test_log_message_properties():

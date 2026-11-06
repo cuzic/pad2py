@@ -1875,3 +1875,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_expr.py`3件・`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
      UiPath関連テスト全566件通過、リポジトリ全体で全1544件通過。
+
+107. **(完了、2026-11-06)** `Rethrow`(`Throw`と対になる.NET Workflow
+     Foundation本体の基本活動)を新規実装(知見149——知見148の直後に
+     確認した体系的棚卸し): 属性を一切持たないリーフ活動で、
+     Pythonの引数無し`raise`文(現在処理中の例外を再発生させる)が
+     全く同じ意味論で直接対応——でっち上げの懸念も無い最も単純な
+     変換の1つ。`TryCatch`の`Catch`ブロックで非常に高頻度に使われる
+     はずの定石パターンにも関わらず、`Throw`と同時に見落とされていた。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`2件)、UiPath関連テスト全569件通過、
+     リポジトリ全体で全1547件通過。

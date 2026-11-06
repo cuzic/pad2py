@@ -83,6 +83,7 @@ from ..uipath_dsl.types import (
     Node,
     ParallelNode,
     ReadTextFileNode,
+    RethrowNode,
     SelectItemNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -463,6 +464,8 @@ def _generate_node(
         return _generate_write_line(node, indent)
     if isinstance(node, ThrowNode):
         return _generate_throw(node, indent)
+    if isinstance(node, RethrowNode):
+        return _generate_rethrow(node, indent)
     if isinstance(node, LogMessageNode):
         return _generate_log_message(node, indent)
     if isinstance(
@@ -2141,6 +2144,16 @@ def _generate_throw_body(node: ThrowNode, indent: int) -> list[str]:
     except NotImplementedError as e:
         return _todo_value(prefix, str(e))
     return [f"{prefix}raise {exc}"]
+
+
+# 知見149: `Rethrow`(.NET Workflow Foundation本体の標準活動、知見148の
+# `Throw`の対になる、属性を一切持たないリーフ活動)。`Catch`ブロック内で
+# 現在捕捉中の例外を再発生させる——Pythonの引数無し`raise`文(`except`
+# ブロック内で現在処理中の例外を再発生させる)が全く同じ意味論で直接
+# 対応する。でっち上げの懸念が無い単純な変換。
+def _generate_rethrow(node: RethrowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    return _with_scope_child_display_name(node, [f"{prefix}raise"], prefix)
 
 
 # 知見119: `ui:LogMessage`。実機確認済みの`Level`は`"Info"`/`"Error"`のみ

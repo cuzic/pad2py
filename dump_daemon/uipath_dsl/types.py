@@ -678,6 +678,19 @@ class ThrowNode:
 
 
 @dataclass
+class RethrowNode:
+    """`<Rethrow />`(知見149、`System.Activities.Statements.Rethrow`
+    ——`Throw`(知見148)の対になる、.NET Workflow Foundation本体の標準
+    活動。属性を一切持たないリーフ活動で、`Catch`ブロック内で現在捕捉中
+    の例外を再発生させる)。Pythonの`except`ブロック内の引数無し`raise`
+    文(現在処理中の例外を再発生させる)が全く同じ意味論で直接対応する
+    ——`TryCatch`(知見11)の`Catch`ブロックで非常に高頻度に使われる
+    定石パターンにも関わらず、`Throw`と同時に見落とされていた。"""
+
+    display_name: str | None = None
+
+
+@dataclass
 class LogMessageNode:
     """`<ui:LogMessage Level="..." Message="..." />`(知見119、
     `UiPath.System.Activities`、`PacktPublishing/
@@ -1090,6 +1103,7 @@ Node = (
     | CommentNode
     | WriteLineNode
     | ThrowNode
+    | RethrowNode
     | LogMessageNode
     | ExcelReadCellNode
     | ExcelWriteCellNode

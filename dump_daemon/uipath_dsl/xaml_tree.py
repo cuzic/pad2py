@@ -58,6 +58,7 @@ from .types import (
     Node,
     ParallelNode,
     ReadTextFileNode,
+    RethrowNode,
     SelectItemNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -789,6 +790,10 @@ def _parse_throw(elem: etree._Element) -> ThrowNode:
     )
 
 
+def _parse_rethrow(elem: etree._Element) -> RethrowNode:
+    return RethrowNode(display_name=_attr(elem, "DisplayName"))
+
+
 _LOG_LEVEL_ENUM_PREFIX = "UiPath.Core.Activities.LogLevel."
 
 
@@ -1240,6 +1245,7 @@ _DISPATCH = {
     (WF_NS, "Parallel"): _parse_parallel,
     (WF_NS, "WriteLine"): _parse_write_line,
     (WF_NS, "Throw"): _parse_throw,
+    (WF_NS, "Rethrow"): _parse_rethrow,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
