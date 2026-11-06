@@ -191,6 +191,12 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   `ResizeWindow.ResizeByInstanceOrHandle`/`SetWindowVisibility.SetVisibilityByInstanceOrHandle`
   の4件もexec検証へ拡張した(`Title`/`Class`ベースの兄弟セレクタとは別の変数解決経路を
   通る分岐のため、独立した検証価値がある)。
+  **2026-11-05追記(多要素内部セレクタのチェーン、知見56の退行防止)**: 電卓の「7」ボタン
+  (`Window`→`CalcFrame`→`Button`の3段チェーン)の`compile()`のみテストにexec検証を
+  追加した。知見56のバグ(チェーンが中間のpane要素止まりになる)はまさに「正しい形の
+  呼び出し列を組み立てているか」という層7(b)の守備範囲そのものなので、`.click_input()`
+  が3段の正しいフルパスで(ループ2回分)呼ばれることまで確認し、退行(チェーンが途中で
+  切れる)を検知できるようにした。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

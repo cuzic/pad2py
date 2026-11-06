@@ -1940,6 +1940,44 @@ def test_generate_python_chains_all_elements_of_a_multi_element_internal_selecto
     assert 'window(title=\'Calculator\').child_window(class_name=\'CalcFrame\'))' not in code
 
 
+def test_generate_python_from_calculator_button_actually_clicks_full_chain_against_fake_pywinauto() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: 上のテストは生成コードの
+    # *文字列*しか検査していなかった——知見56のバグ(チェーンが中間のpane止まりになる)は
+    # まさに「正しい形の呼び出し列を組み立てているか」という層7(b)の守備範囲そのものなので、
+    # 実際に`exec()`し、`.click_input()`が3段チェーンの正しいフルパスで(ループ2回分)
+    # 呼ばれることまで検証する。
+    import os
+
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_calculator_button.txt").read_text(
+        encoding="utf-8"
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    # このフィクスチャも`Scripting.RunPythonScript`でハードコードされたWindowsパスへの
+    # 書き込みを含むため、一時ディレクトリへ退避してからexec()する。
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmp, fake_pywinauto_desktop(registry):
+        try:
+            os.chdir(tmp)
+            exec(code, {})
+        finally:
+            os.chdir(original_cwd)
+
+    expected_path = [
+        {"title": "Calculator"},
+        {"class_name": "CalcFrame"},
+        {"class_name": "Button", "title": "7"},
+    ]
+    click_calls = [c for c in registry.calls if c[0] == "click_input"]
+    assert click_calls == [("click_input", expected_path, {})] * 2  # ループ2回分
+
+
 def test_generate_python_from_real_get_window_whole_subflow_capture_compiles() -> None:
     # design/dsl_format_findings.md 知見57: GetWindow(UIAutomation.GetWindow.GetUseTimeout)は
     # 未対応アクションとして知見38/46と同じ安全なTODOフォールバックに倒れ、架空のウィンドウ
