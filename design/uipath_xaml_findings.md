@@ -5112,6 +5112,55 @@ v1のMessageBox変換方式自体の設計判断(知見79のdocstringが既に
 フォールバック確認)、UiPath関連テスト全313件通過、リポジトリ全体で
 全1109件通過。
 
+## 108. `Append Line`/`Read Text File`の`Encoding`/`UseDefaultEncoding`を公式ドキュメントで確認し、実在するエンコーディング食い違いバグを発見・修正(VM不使用、知見100の手法を再適用)
+
+知見107に続き、`ui:AppendLine`/`ui:ReadTextFile`の既存コード生成ロジック
+を読み返したところ、`Encoding`/`UseDefaultEncoding`属性が一切捕捉されて
+おらず、`encoding="utf-8"`が無条件にハードコードされていたと判明した
+——これは単なる「捕捉済みデータの未活用」(知見92〜95)ではなく、
+**実在する属性自体を一度も見ていなかった**ケースで、知見107のMessageBox
+と同系統の発見。
+
+**公式ドキュメントで確認**(docs.uipath.com、VM不使用): `Append Line`は
+`Encoding`/`UseDefaultEncoding`の両方を持つ——`UseDefaultEncoding=True`
+(既定)ならOSの既定エンコーディング、`False`で`Encoding`未指定なら
+(BOM検出に失敗した場合)**UTF-8**が既定として選ばれる、と明記。一方
+`Read Text File`は`Encoding`のみ持ち(`UseDefaultEncoding`相当のプロパティ
+は存在しない)、`Encoding`未指定時の既定はBOM検出→失敗時は**システムの
+ANSIコードページ**(UTF-8とは異なる)と明記。
+
+**発見した実在するバグ**: 実機フィクスチャ(`Main.xaml`)の`Append Line`
+は`UseDefaultEncoding="False"`・`Encoding`未指定で、この組み合わせの
+確定済みの既定(UTF-8)と既存のハードコード`encoding="utf-8"`がたまたま
+一致していたため、これまで発覚していなかった。しかし`UseDefaultEncoding
+=True`(既定値、`Append Line`の最も基本的な使い方)の場合は本来OSの既定
+エンコーディングになるはずで、無条件の`utf-8`ハードコードと食い違って
+いた——実機フィクスチャにこの組み合わせの実例が無かったことによる
+既知のギャップ(他の多くの知見と違い、今回は実機データでの確認ではなく
+公式ドキュメントとの読み合わせで発覚)。
+
+**修正**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `AppendLineNode`に`encoding`/
+`use_default_encoding`、`ReadTextFileNode`に`encoding`を追加して捕捉。
+`_resolve_append_line_encoding()`が確定済みの組み合わせ(`False`+未指定
+→`"utf-8"`、`True`/未設定→`None`=kwarg自体を付けずOS既定に委ねる、
+`Encoding="UTF-8"`明示→`"utf-8"`)だけをマッピングし、それ以外
+(`"Unicode"`等の未確認のエンコーディング名)は`# TODO`へ倒す。
+`ReadTextFile`は既存の`encoding="utf-8"`ハードコード(実機フィクスチャの
+round-trip(`Append Line`が書いたUTF-8ファイルを読む)で正しく動作する
+ことを確認済み)はそのまま変更せず、`Encoding`が確認済みの`"UTF-8"`
+以外に明示的に設定されている場合のみ`# TODO`へ倒す——既存の確認済み
+動作を壊さない範囲での最小限の修正に留めた。
+
+回帰テスト追加(`UseDefaultEncoding`4パターンの解決確認・未確認
+エンコーディング名のTODOフォールバック)、UiPath関連テスト全319件通過、
+リポジトリ全体で全1123件通過。
+
+**この知見で確定したこと**: 知見100の調査手法(GitHub実例検索)は構造・
+値の実在確認に強いが、本知見は**既存コードを公式ドキュメントと読み合わせる
+だけで発見できた**(知見76〜78・86〜88と同系統の「既存実装の読み返し」
+手法)——両方の手法を併用する価値を改めて確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

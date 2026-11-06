@@ -288,19 +288,36 @@ class InvokeWorkflowFileNode:
 
 @dataclass
 class AppendLineNode:
-    """`<ui:AppendLine FileName="..." Text="..." />`(知見15)。"""
+    """`<ui:AppendLine FileName="..." Text="..." />`(知見15)。
+
+    `encoding`/`use_default_encoding`は知見108で追加——UiPath公式
+    ドキュメント(docs.uipath.com/activities/other/latest/workflow/
+    append-line)で確認済み: `UseDefaultEncoding=True`(既定)なら
+    OSの既定エンコーディング、`False`で`Encoding`未指定なら
+    (BOM検出に失敗した場合)UTF-8が既定として選ばれる。実機フィクスチャ
+    (`Main.xaml`)で`UseDefaultEncoding="False"`(`Encoding`未指定)の
+    実例を確認済み。"""
 
     file_name: Expr
     text: Expr
+    encoding: str | None = None
+    use_default_encoding: str | None = None
 
 
 @dataclass
 class ReadTextFileNode:
     """`<ui:ReadTextFile FileName="..." Content="..." />`(知見16、`Content`は
-    `OutArgument`相当で`[VarName]`角括弧形)。"""
+    `OutArgument`相当で`[VarName]`角括弧形)。
+
+    `encoding`は知見108で追加——UiPath公式ドキュメントで`Encoding`未指定
+    時はBOM検出→(検出失敗時)システムのANSIコードページが使われると確認
+    済み(`Append Line`の`UseDefaultEncoding=False`時の既定——UTF-8とは
+    異なる)。`ReadTextFile`には`UseDefaultEncoding`相当のプロパティは
+    無い(公式ドキュメントに記載無し)。"""
 
     file_name: Expr
     content: Expr
+    encoding: str | None = None
 
 
 @dataclass

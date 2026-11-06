@@ -431,12 +431,19 @@ def _parse_invoke_workflow_file(elem: etree._Element) -> InvokeWorkflowFileNode:
 
 
 def _parse_append_line(elem: etree._Element) -> AppendLineNode:
-    return AppendLineNode(file_name=_attr_expr(elem, "FileName"), text=_attr_expr(elem, "Text"))
+    return AppendLineNode(
+        file_name=_attr_expr(elem, "FileName"),
+        text=_attr_expr(elem, "Text"),
+        encoding=_attr(elem, "Encoding"),
+        use_default_encoding=_attr(elem, "UseDefaultEncoding"),
+    )
 
 
 def _parse_read_text_file(elem: etree._Element) -> ReadTextFileNode:
     return ReadTextFileNode(
-        file_name=_attr_expr(elem, "FileName"), content=_attr_expr(elem, "Content")
+        file_name=_attr_expr(elem, "FileName"),
+        content=_attr_expr(elem, "Content"),
+        encoding=_attr(elem, "Encoding"),
     )
 
 

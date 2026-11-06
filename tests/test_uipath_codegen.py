@@ -51,6 +51,7 @@ from dump_daemon.uipath_dsl import (
     Literal,
     MessageBoxNode,
     ParallelNode,
+    ReadTextFileNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -1710,6 +1711,60 @@ def test_append_line_text_uses_vb_cstr_not_python_str(tmp_path) -> None:
     exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
     namespace["Test"]()
     assert out_file.read_text(encoding="utf-8") == "4\n"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_kwarg"),
+    [
+        # 知見108: `UseDefaultEncoding=False`・`Encoding`未指定(実機
+        # フィクスチャの実例)はUiPath公式ドキュメント確認済みの既定で
+        # UTF-8になる。
+        ({"use_default_encoding": "False"}, ', encoding=\'utf-8\''),
+        # `Encoding="UTF-8"`明示も同じ。
+        ({"encoding": "UTF-8"}, ', encoding=\'utf-8\''),
+        # `UseDefaultEncoding=True`(または未設定)はOSの既定——`encoding=`
+        # kwarg自体を付けない(Pythonの`open()`も省略時はロケール既定)。
+        ({"use_default_encoding": "True"}, ""),
+        ({}, ""),
+    ],
+)
+def test_append_line_encoding_resolution(kwargs, expected_kwarg):
+    """知見108: `Encoding`/`UseDefaultEncoding`は従来一切捕捉されておらず
+    `encoding="utf-8"`が無条件に埋め込まれていた——確認済みの組み合わせ
+    だけを正しくマッピングする。"""
+    wf = _wrap([AppendLineNode(file_name=Literal(value="out.txt"), text=Literal(value="x"), **kwargs)])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert f'with open(\'out.txt\', "a"{expected_kwarg}) as _f:' in code
+    _compiles(code)
+
+
+def test_append_line_with_unconfirmed_encoding_is_todo_not_guessed():
+    """知見108: `Encoding`が確認済みの`"UTF-8"`以外の場合は、Pythonの
+    コーデック名への正確な対応が未確認のため`# TODO`に倒す。"""
+    wf = _wrap(
+        [AppendLineNode(file_name=Literal(value="out.txt"), text=Literal(value="x"), encoding="Unicode")]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Append Line with unconfirmed Encoding 'Unicode'" in code
+    _compiles(code)
+
+
+def test_read_text_file_with_unconfirmed_encoding_is_todo_not_guessed():
+    """知見108: `ReadTextFile`も同様——`Encoding`が確認済みの`"UTF-8"`
+    以外の場合は`# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            ReadTextFileNode(
+                file_name=Literal(value="out.txt"),
+                content=VbExpr(text="content"),
+                encoding="Windows-1252",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Text File with unconfirmed Encoding 'Windows-1252'" in code
+    _compiles(code)
 
 
 def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:

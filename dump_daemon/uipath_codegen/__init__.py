@@ -766,6 +766,28 @@ def _generate_parallel(
     return lines
 
 
+# 知見108: `Append Line`の`Encoding`/`UseDefaultEncoding`(UiPath公式
+# ドキュメントで確認済み——`UseDefaultEncoding=True`(既定)ならOSの既定
+# エンコーディング、`False`で`Encoding`未指定なら(BOM検出失敗時)UTF-8が
+# 既定として選ばれる)の確定済みの組み合わせだけをPythonの`open(encoding=
+# ...)`へマッピングする。`_UNCONFIRMED_ENCODING`は呼び出し側が`# TODO`へ
+# 倒すための見張り値。
+_UNCONFIRMED_ENCODING = object()
+
+
+def _resolve_append_line_encoding(node: AppendLineNode):
+    if node.encoding is not None:
+        if node.encoding.strip().upper() == "UTF-8":
+            return "utf-8"
+        return _UNCONFIRMED_ENCODING
+    if node.use_default_encoding == "False":
+        return "utf-8"
+    # True または未設定: OSの既定エンコーディング——Pythonの`open()`も
+    # `encoding=`を省略すればロケールの既定エンコーディングを使うため、
+    # kwarg自体を付けないことがそのまま正しいマッピングになる。
+    return None
+
+
 def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
     """`Text`は`InArgument<String>`型(知見15)——非文字列式が束縛された場合、
     VBは`CStr`と同じ書式規則で暗黙に文字列化する(知見46参照)。実機で
@@ -783,22 +805,50 @@ def _generate_append_line(node: AppendLineNode, indent: int) -> list[str]:
     公式ドキュメント・実データのいずれでも確定できず、実世界の報告も
     矛盾している(design/uipath_xaml_findings.md参照)——`open()`は
     Pythonプロセスの実行時カレントディレクトリ基準で解決する、既知の
-    残課題として明示的に未解決のまま残す。"""
+    残課題として明示的に未解決のまま残す。
+
+    知見108: `Encoding`/`UseDefaultEncoding`は従来一切捕捉されておらず
+    `encoding="utf-8"`が無条件に埋め込まれていた——`UseDefaultEncoding=
+    False`・`Encoding`未指定(実機フィクスチャの実例)では結果的に正しい
+    値だったが、`UseDefaultEncoding=True`(既定)の場合は本来OSの既定
+    エンコーディングになるはずで食い違っていた(実機フィクスチャには
+    この組み合わせの実例が無かったため発覚していなかった)。"""
     prefix = INDENT * indent
+    encoding = _resolve_append_line_encoding(node)
+    if encoding is _UNCONFIRMED_ENCODING:
+        return [
+            f"{prefix}# TODO: Append Line with unconfirmed Encoding "
+            f"{node.encoding!r} — refusing to guess the Python codec name"
+        ]
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
     text = _render_value_or_todo(node.text, prefix, todo)
+    encoding_kwarg = f", encoding={encoding!r}" if encoding else ""
     return [
         *todo,
-        f'{prefix}with open({file_name}, "a", encoding="utf-8") as _f:',
+        f'{prefix}with open({file_name}, "a"{encoding_kwarg}) as _f:',
         f'{INDENT * (indent + 1)}_f.write({VB_CSTR_HELPER_NAME}({text}) + "\\n")',
     ]
 
 
 def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
     """`FileName`の相対パス解決基準の既知の残課題は`_generate_append_line`
-    (知見82)と同じ。"""
+    (知見82)と同じ。
+
+    知見108: `Encoding`が明示的に設定されていて、かつ確認済みの`"UTF-8"`
+    以外の場合は`# TODO`へ倒す——`ReadTextFile`には`UseDefaultEncoding`
+    相当のプロパティが無く(公式ドキュメント確認済み)、`Encoding`未指定
+    時の既定(BOM検出→失敗時はシステムのANSIコードページ)は`Append
+    Line`の`UseDefaultEncoding=False`時の既定(UTF-8)とは異なるため、
+    既存の`encoding="utf-8"`はそのまま変更しない(実機フィクスチャの
+    round-trip(`Append Line`が書いたUTF-8ファイルを読む)で正しく動作
+    することを確認済みの既存動作を壊さないため)。"""
     prefix = INDENT * indent
+    if node.encoding is not None and node.encoding.strip().upper() != "UTF-8":
+        return [
+            f"{prefix}# TODO: Read Text File with unconfirmed Encoding "
+            f"{node.encoding!r} — refusing to guess the Python codec name"
+        ]
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
     target = _render_value_or_todo(node.content, prefix, todo)
