@@ -3953,6 +3953,26 @@ def test_read_text_file_with_unconfirmed_encoding_is_todo_not_guessed():
     _compiles(code)
 
 
+def test_read_text_file_with_unrenderable_content_target_is_todo_not_invalid_python():
+    """知見138: `node.content`(代入先)のレンダリングが失敗する場合
+    (知見74の添字曖昧性等)、`if todo: return todo`の欠落により
+    `None = open(...)...`という構文的に無効なコードを生成していた
+    ——他の全ての「targetへ代入する」生成関数が既に守っている規約への
+    抜け漏れを修正した(知見136・137と同じバグの第3の発生箇所)。"""
+    wf = _wrap(
+        [
+            ReadTextFileNode(
+                file_name=Literal(value="out.txt"),
+                content=VbExpr(text="CurrentRow(0)"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression:" in code
+    assert "None = " not in code
+    _compiles(code)
+
+
 def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:
     """`SetToClipboard`の`Text`も`Append Line`と同じ`InArgument<String>`
     (知見46追補)——`pyperclip.copy()`自体は非文字列でも`str()`で救済して

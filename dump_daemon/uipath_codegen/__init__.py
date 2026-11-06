@@ -1038,10 +1038,15 @@ def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
     todo: list[str] = []
     file_name = _render_value_or_todo(node.file_name, prefix, todo)
     target = _render_value_or_todo(node.content, prefix, todo)
-    return [
-        *todo,
-        f'{prefix}{target} = open({file_name}, encoding="utf-8").read()',
-    ]
+    # 知見138: `target`(`node.content`、代入先)のレンダリングが失敗した
+    # 場合、ここで`if todo: return todo`無しに代入文を組み立てると知見
+    # 136・137と同じ`None = ...`という構文的に無効なコードを生成して
+    # しまう——他の全ての「targetへ代入する」生成関数が既に守っている
+    # 「todoが1件でもあれば代入文自体を生成しない」という規約に、この
+    # 関数だけが従っていなかった(抜け漏れ)。
+    if todo:
+        return todo
+    return [f'{prefix}{target} = open({file_name}, encoding="utf-8").read()']
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:

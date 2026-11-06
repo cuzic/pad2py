@@ -6612,6 +6612,41 @@ is None`(`.To`自体が未捕捉)の場合だが、今回発見したのは`targ
 `tests/test_uipath_codegen.py`に1件追加、UiPath関連テスト全531件通過、
 リポジトリ全体で全1455件通過。
 
+## 138. 【重大バグ・体系的な棚卸し】`ReadTextFile`にも同じ「代入先レンダリング失敗→無効なPythonコード」バグを発見・修正、他の全生成関数を体系的に棚卸しして健全性を確認(知見137の「同種のパターンが他にも潜んでいないか」を即座に実行、VM不使用)
+
+知見137で記録した「同種のパターン(他の活動の`target`的な位置)が
+他にも潜んでいないか」という申し送りを、新しい実機バッチを待たずに
+即座に実行した——`uipath_codegen/__init__.py`内の`target = _render_
+value_or_todo(...)`という形の呼び出し全箇所(`grep`で機械的に抽出)を
+1つずつ確認し、直後に`if todo: return todo`(またはそれに相当する、
+いずれかの値のレンダリングが失敗した場合に代入文自体を生成しない
+ガード)があるかを棚卸しした。
+
+**発見: `_generate_read_text_file`(`ReadTextFile`)にも同じ欠落が
+あった**。他の約10個の類似関数(`DatabaseConnect`/`DatabaseDisconnect`/
+`ExecuteQuery`/`ExecuteNonQuery`/`ExcelReadCell`/`ExcelReadRange`/
+`GetOutlookMailMessages`/`InputDialog`(知見131で自分が書いた箇所も
+含めて確認済み)等)は全て正しく`if todo: return todo`を守っていたが、
+`_generate_read_text_file`だけがこのガードを欠いており、`node.content`
+(読み取り結果の代入先)のレンダリングが失敗すると`None = open(...)...`
+という構文的に無効なコードを生成しうる状態だった——知見136・137と
+全く同じ根本原因(「失敗時に例外無く`"None"`を返す`_render_value_
+or_todo`を代入先位置で無防備に使う」)の、第3の発生箇所。
+
+**修正**: `_generate_read_text_file`に`if todo: return todo`を追加——
+`file_name`/`content`いずれかのレンダリングが失敗した場合は代入文
+自体を生成せず`# TODO`群のみを返す(他の類似関数と同じ、確立済みの
+規約に単純に合わせただけ)。
+
+**棚卸しの結果(他の全箇所は健全と確認)**: `_generate_assign`(知見
+136・137で既に修正済み)・`_generate_read_text_file`(今回修正)以外の
+全ての`target = ...`呼び出し箇所(約12箇所)は、既に`if todo: return
+todo`または同等のガードを備えていることを確認した——新たな修正は不要。
+
+`dump_daemon/uipath_codegen/__init__.py`の`_generate_read_text_file`
+のみ変更。`tests/test_uipath_codegen.py`に1件追加、UiPath関連テスト
+全532件通過、リポジトリ全体で全1460件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
