@@ -78,10 +78,18 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   `expr_runtime.pad_equal()`を新設し`render_condition()`/`_render_expr_as_python()`の
   両方で`=`→`pad_equal(a, b)`・`<>`→`not pad_equal(a, b)`に変更、`variables_actions.py`の
   重複実装もこちらへ統一した。
-- [ ] 🖥️ `UIAutomation.IfImage.ExistsOnScreen`のPython変換ロジック(画像照合の意味論)。
+- [x] 🖥️ `UIAutomation.IfImage.ExistsOnScreen`のPython変換ロジック(画像照合の意味論)。
   `IfImageAction.Images`は`List<PngEncodedImage>`(実際にスクリーンキャプチャで切り出した
   PNGバイナリそのもの、paste/Tier1アクションの組み合わせでは作れない)で、実機のUI要素
   リポジトリ/画像セレクタ取得にはRDPが必要(知見38/39/42)という制約で真にRDP必要。
+  ✅ **実装完了(知見207)**: desktop access下でドラッグ選択による画像キャプチャを実機実行、
+  実際のPNGバイナリを含む`ImageRepositorySymbol`を初めて取得した。`FindAllImages: False`・
+  画像1件のみ・`SearchAlgorithm: Legacy`という実機確認済みの組み合わせに限定して
+  `pad_codegen`へ結線(`imgrepo[...]`角括弧リスト構文専用の`ImageRepositoryRefList`型、
+  `control_repository.parse_image_repository()`、`pad_action_lib.ui_image_actions.
+  image_exists_on_screen()`——`pyautogui.locateOnScreen()`への委譲、PADのTolerance値は
+  線形近似でconfidenceへ変換する旨を明記した非厳密対応)。複数画像・`FindAllImages: True`・
+  他アルゴリズムは引き続き未確認のため`NotImplementedError`のまま。
   ✅ **訂正・結線完了(知見196・199)**: 当初ここに一緒に挙げていた
   `UIAutomation.IfWindowContains.WindowContainsElement`は、「RDP必要」という本項目の判断が
   誤りだったと判明——`IfWindowContainsAction`は`WaitForWindowContentAction`と全く同じ

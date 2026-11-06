@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from dump_daemon.control_repository import parse_control_repository
+from dump_daemon.control_repository import parse_control_repository, parse_image_repository
 from dump_daemon.pad_codegen import (
     generate_python,
     render_condition,
@@ -2941,11 +2941,11 @@ def test_generate_python_from_get_window_foreground_mode_with_two_output_vars_co
     assert namespace["WindowTitle2"] == "Untitled - Notepad"
 
 
-def test_generate_python_from_real_if_image_exists_on_screen_capture_raises() -> None:
-    # design/dsl_format_findings.md 知見58: 「If image」(UIAutomation.IfImage.ExistsOnScreen)も
-    # 知見54のIfActionRecord/NotImplementedErrorフォールバックをそのまま再利用でき、
-    # コード変更は不要だった——画像マッチングのPython対応(pyautogui.locateOnScreen等)は
-    # 実機検証が無いため、架空の変換をでっち上げずはっきり失敗させる。
+def test_generate_python_from_real_if_image_exists_on_screen_capture_raises_without_image_repository() -> None:
+    # design/dsl_format_findings.md 知見58・206: 知見206で`UIAutomation.IfImage.
+    # ExistsOnScreen`自体は結線したが、`image_repository`(`parse_image_repository()`の
+    # 戻り値)を渡さずに`generate_python()`を呼んだ場合は`imgrepo['Image']`参照を解決できず、
+    # 従来通り安全にNotImplementedErrorへ倒れることを確認する(架空の変換はでっち上げない)。
     text = (FIXTURES_DIR / "if_image_exists_on_screen.txt").read_text(encoding="utf-8")
     tree = build_block_tree(parse_dsl(text))
     with pytest.raises(NotImplementedError, match="UIAutomation.IfImage.ExistsOnScreen"):
@@ -3053,6 +3053,63 @@ def test_generate_python_from_real_if_function_unreachable_names_raise(function_
     tree = build_block_tree(parse_dsl(dsl))
     with pytest.raises(NotImplementedError, match=function_name):
         generate_python(tree)
+
+
+def test_generate_python_from_real_if_image_exists_on_screen_converts() -> None:
+    # design/dsl_format_findings.md 知見58・206: 知見75のペースト往復手法で確立した
+    # 「アクションリストにDSLをペースト→保存→全選択コピーで読み戻す」手順を使い、
+    # Notepadのタイトルバー付近をドラッグ選択キャプチャした実機DSLをそのまま保存した
+    # fixture。`Images: [imgrepo['Image']] FindAllImages: False
+    # SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy`という、実機確認済みの
+    # 組み合わせのみ結線する。
+    text = (FIXTURES_DIR / "if_image_exists_on_screen_with_end.txt").read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    image_repository = parse_image_repository(text)
+    assert set(image_repository) == {"Image"}
+    code = generate_python(tree, repository=repository, image_repository=image_repository)
+    compile(code, "<generated>", "exec")
+    assert "if ui_image_actions.image_exists_on_screen('images/Image.png', tolerance=10):" in code
+    assert "from dump_daemon.pad_action_lib import ui_image_actions" in code
+    assert "# TODO" not in code
+    assert "NotImplementedError" not in code
+
+
+def test_generate_python_from_if_image_without_image_repository_raises() -> None:
+    # 画像リポジトリ(`# [ControlRepository]`セクション)を伴わない単体アクションのコピー等、
+    # `imgrepo['Image']`参照先が解決できない場合は安全にNotImplementedErrorへ倒す。
+    text = (FIXTURES_DIR / "if_image_exists_on_screen_with_end.txt").read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    with pytest.raises(
+        NotImplementedError, match="UIAutomation.IfImage.ExistsOnScreen"
+    ):
+        generate_python(tree)
+
+
+def test_generate_python_from_if_image_with_unconfirmed_params_raises() -> None:
+    # `FindAllImages: True`・複数画像リスト・`Legacy`以外の`SearchAlgorithm`は実機未確認
+    # のため、でっち上げずNotImplementedErrorへ倒す(design/dsl_format_findings.md 知見206)。
+    text = (FIXTURES_DIR / "if_image_exists_on_screen_with_end.txt").read_text(encoding="utf-8")
+    text = text.replace("FindAllImages: False", "FindAllImages: True")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    image_repository = parse_image_repository(text)
+    with pytest.raises(
+        NotImplementedError, match="UIAutomation.IfImage.ExistsOnScreen"
+    ):
+        generate_python(tree, repository=repository, image_repository=image_repository)
+
+
+def test_extract_images_decodes_real_screenshot_png() -> None:
+    # design/dsl_format_findings.md 知見58・206: `pad2py_cli.extract_images()`が
+    # `ImageRepositorySymbol`内の実機キャプチャ済みPNGバイナリを正しくデコードできることを
+    # 確認する(先頭8バイトはPNGのマジックナンバー)。
+    from dump_daemon.pad2py_cli import extract_images
+
+    text = (FIXTURES_DIR / "if_image_exists_on_screen_with_end.txt").read_text(encoding="utf-8")
+    images = extract_images(text)
+    assert set(images) == {"Image.png"}
+    assert images["Image.png"].startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_generate_python_from_pdf_extract_text_minimal_params_uses_defaults() -> None:

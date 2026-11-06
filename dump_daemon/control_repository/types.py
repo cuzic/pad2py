@@ -26,6 +26,23 @@ class ControlRepositorySelectorElement:
 
 
 @dataclass(frozen=True)
+class ImageRepositoryEntry:
+    """画像リポジトリ(`imgrepo`シンボル)の1エントリ(表示名1つ分)。
+
+    `UIAutomation.IfImage.ExistsOnScreen`等が参照する、実際にスクリーンキャプチャで
+    切り出したPNGバイナリそのもの(design/dsl_format_findings.md 知見58・206で実機確認済み)。
+    `screenshot_base64`は`# [ControlRepository]`JSON内の`"Screenshot"`フィールドの値を
+    そのまま保持する(Base64エンコード済みPNG)——デコードはこの型を使う側の責務とする
+    (`decode_screenshot_png()`参照)。
+    """
+
+    id: str
+    name: str
+    screenshot_base64: str
+    screenshot_path: str
+
+
+@dataclass(frozen=True)
 class ControlRepositoryEntry:
     """UI要素リポジトリの1エントリ(表示名1つ分)。
 

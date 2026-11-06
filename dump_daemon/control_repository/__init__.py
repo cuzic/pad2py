@@ -8,10 +8,11 @@ PADのクリップボードコピーで、フロー(サブフロー)内のアク
 """
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
-from .types import ControlRepositoryEntry, ControlRepositorySelectorElement
+from .types import ControlRepositoryEntry, ControlRepositorySelectorElement, ImageRepositoryEntry
 
 # design/dsl_format_findings.md 知見44(実機検証済み)——フロー内のアクション群を一括選択して
 # コピーすると、クリップボードテキストの末尾にこの区切り行から始まるUI要素リポジトリ全体の
@@ -84,4 +85,46 @@ def parse_control_repository(text: str) -> dict[str, dict[str, ControlRepository
                 entries[entry.name] = entry
         result[symbol_name] = entries
     return result
+
+
+def parse_image_repository(text: str) -> dict[str, ImageRepositoryEntry]:
+    """`# [ControlRepository][PowerAutomateDesktop]`セクション内の`ImageRepositorySymbol`
+    (`imgrepo`シンボル、design/dsl_format_findings.md 知見58・206で実機確認済み)をパースする。
+
+    `ControlRepositorySymbols`(`appmask`、複数シンボルをリストで持つ)とは異なり、
+    `ImageRepositorySymbol`は単一オブジェクトとして直列化される——実機キャプチャで
+    確認できた`"Name": "imgrepo"`という固定名もそのまま返り値のキーには使わず、
+    呼び出し側が`Images`パラメータの`imgrepo['<表示名>']`参照を素直に解決できるよう
+    `{表示名: ImageRepositoryEntry}`の辞書を直接返す(`ControlRepositorySymbols`側の
+    シンボル名ごとのネストは`appmask`以外のシンボル名が実機で確認されていないため、
+    ここでも同じく単純化している)。該当セクションが無い入力・`ImageRepositorySymbol`
+    フィールド自体が無い入力に対しては空の辞書を返す。
+    """
+    _, repo_text = _split_control_repository(text)
+    if repo_text is None or not repo_text.strip():
+        return {}
+
+    data = json.loads(repo_text)
+    symbol = data.get("ImageRepositorySymbol")
+    if not symbol:
+        return {}
+
+    # `Repository`自体が文字列化されたJSON(二重エンコード)であることに注意
+    # (`ControlRepositorySymbols`と同じ構造、知見44)。
+    inner = json.loads(symbol["Repository"])
+    entries: dict[str, ImageRepositoryEntry] = {}
+    for image in inner.get("Images") or []:
+        entry = ImageRepositoryEntry(
+            id=image.get("Id", ""),
+            name=image.get("Name", ""),
+            screenshot_base64=image.get("Screenshot", ""),
+            screenshot_path=image.get("ScreenshotPath", ""),
+        )
+        entries[entry.name] = entry
+    return entries
+
+
+def decode_screenshot_png(entry: ImageRepositoryEntry) -> bytes:
+    """`ImageRepositoryEntry.screenshot_base64`をデコードしたPNGバイナリを返す。"""
+    return base64.b64decode(entry.screenshot_base64)
 

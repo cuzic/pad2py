@@ -46,7 +46,7 @@ from ..pad_dsl import (
     WaitActionRecord,
 )
 from ..pad_dsl.types import OnErrorArmHeader
-from ..control_repository.types import ControlRepositoryEntry
+from ..control_repository.types import ControlRepositoryEntry, ImageRepositoryEntry
 
 __all__ = [
     "CodegenContext",
@@ -62,6 +62,7 @@ __all__ = [
 def generate_python(
     nodes: list[Node],
     repository: dict[str, dict[str, ControlRepositoryEntry]] | None = None,
+    image_repository: dict[str, ImageRepositoryEntry] | None = None,
 ) -> str:
     """ブロック木からスタンドアロンのPythonソースを生成する(末尾改行付き)。
 
@@ -73,11 +74,18 @@ def generate_python(
     を使った実行コードを生成する。でっち上げたセレクタで動くコードを生成することは無い。
     省略時(`None`)は従来通りの挙動(ヒント無し)のまま完全に後方互換。
 
+    `image_repository`は`parse_image_repository()`の戻り値(知見58・206)。渡された場合、
+    `UIAutomation.IfImage.ExistsOnScreen`(確認済みの単一画像パターンのみ)を
+    `ui_image_actions.image_exists_on_screen('images/<表示名>.png', ...)`へ変換する——
+    `generate_python()`自体はPNGバイナリをディスクへ書き出さない(純粋関数のまま)。
+    実際に`images/`配下へPNGファイルを書き出す副作用は呼び出し側(imperative shell、
+    `pad2py_cli.py`の`convert()`)の責務とする。
+
     `CodegenContext`を1回だけ組み立て、以降の全ての内部ヘルパーに明示的な引数として
     渡していく(以前のモジュールグローバル`_active_repository`+`try/finally`を廃止した——
     FCISに沿った、再入可能な純粋関数としての実装)。
     """
-    ctx = CodegenContext(repository=repository or {})
+    ctx = CodegenContext(repository=repository or {}, image_repository=image_repository or {})
     body = _generate_block_body(nodes, indent=0, ctx=ctx)
     imports = []
     if any("time.sleep(" in line for line in body):
@@ -117,6 +125,7 @@ def generate_python(
         "clipboard_actions",
         "display_actions",
         "services_actions",
+        "ui_image_actions",
     ):
         if any(f"{module_name}." in line for line in body):
             imports.append(f"from dump_daemon.pad_action_lib import {module_name}")

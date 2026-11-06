@@ -23,6 +23,7 @@ from dump_daemon.pad_dsl import (
     IfActionRecord,
     IfFunctionRecord,
     IfRecord,
+    ImageRepositoryRefList,
     KeywordRecord,
     LoopForeachRecord,
     LoopRecord,
@@ -1586,10 +1587,11 @@ def test_if_image_exists_on_screen_parsed_from_real_capture() -> None:
     # `ImageRepositorySymbol`(シンボル名`imgrepo`)が、今回初めて実データを持つ実例を確認できた。
     # `Images: [imgrepo['Image']]`という、`appmask['...']`単体参照とは違う**角括弧で囲んだ
     # リスト構文**も初めて実機確認した(「Find all images in the list」トグルが複数画像指定を
-    # 示唆する通り、複数要素を保持できるリストリテラルと推測される)。現在のパーサーは
-    # `appmask[...]`のような専用の`UiElementRef`抽出を`imgrepo[...]`に対しては行わないため、
-    # `[imgrepo['Image']]`全体が不透明な`VarRef`としてテキストのまま保持される——
-    # データを失わない安全なフォールバックであり、クラッシュも誤った構造化も起きない。
+    # 示唆する通り、複数要素を保持できるリストリテラルと推測される)。
+    # **知見206で更新**: 別の実機キャプチャ(desktop access下での再現)を基に、この角括弧
+    # リスト構文専用の`ImageRepositoryRefList`型を新設し、`imgrepo['...']`参照を名前の
+    # タプルとして正しく構造化するようになった(以前の「不透明な`VarRef`のまま保持する
+    # 安全なフォールバック」から昇格)。
     text = (FIXTURES_DIR / "if_image_exists_on_screen.txt").read_text(encoding="utf-8")
     records = parse_dsl(text)
     assert len(records) == 1
@@ -1599,7 +1601,7 @@ def test_if_image_exists_on_screen_parsed_from_real_capture() -> None:
     assert rec.params["FindAllImages"] is False
     assert rec.params["Tolerance"] == 10
     assert rec.params["SearchAlgorithm"] == EnumRef("UIAutomation.ImageFinderAlgorithm.Legacy")
-    assert rec.params["Images"] == VarRef("[imgrepo['Image']]")
+    assert rec.params["Images"] == ImageRepositoryRefList(("Image",))
 
 
 def test_tier1_text_variables_actions_parse_as_generic_action_records() -> None:

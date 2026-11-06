@@ -62,6 +62,22 @@ class UiElementRef:
         return self.path[-1]
 
 
+@dataclass(frozen=True)
+class ImageRepositoryRefList:
+    """`[imgrepo['<表示名>']]`形式の画像リポジトリ参照リスト(**実機検証済み**——
+    design/dsl_format_findings.md 知見58・206)。`UIAutomation.IfImage.ExistsOnScreen`の
+    `Images`パラメータに現れる、`appmask[...]`(`UiElementRef`)とは別の角括弧リスト
+    リテラル構文——`imgrepo['<表示名>']`参照そのものを`[...]`でさらに囲む。実際の画像
+    PNGバイナリ自体はこの参照の先(`# [ControlRepository]`セクションの
+    `ImageRepositorySymbol`、`control_repository.parse_image_repository()`)にある。
+
+    「Find all images in the list」トグルの存在から複数要素(カンマ区切り)を許容する
+    設計だと推測されるが、実機キャプチャで確認できたのは単一要素のケースのみ(知見58)。
+    `names`は`[...]`内に現れた`imgrepo['...']`参照の表示名を出現順に保持する。
+    """
+
+    names: tuple[str, ...]
+
 
 @dataclass
 class ActionRecord:

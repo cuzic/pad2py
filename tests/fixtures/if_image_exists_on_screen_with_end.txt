@@ -1,0 +1,14 @@
+IF (UIAutomation.IfImage.ExistsOnScreen Images: [imgrepo['Image']] FindAllImages: False Tolerance: 10 SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy) THEN
+END
+
+# [ControlRepository][PowerAutomateDesktop]
+
+{
+  "ControlRepositorySymbols": [],
+  "ImageRepositorySymbol": {
+    "Repository": "{\r\n  \"Folders\": [],\r\n  \"Images\": [\r\n    {\r\n      \"Id\": \"03e9d15e-ae3d-4c19-a79d-24ceb4edba7d\",\r\n      \"Name\": \"Image\",\r\n      \"Screenshot\": \"iVBORw0KGgoAAAANSUhEUgAAASwAAAAUCAYAAAA3IwABAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABWSURBVHhe7dQBDQAADMOg+ze962gCIrgBRAgLyBAWkCEsIENYQIawgAxhARnCAjKEBWQIC8gQFpAhLCBDWECGsIAMYQEZwgIyhAVkCAvIEBaQISwgYntukGe0iIykNgAAAABJRU5ErkJggg==\",\r\n      \"ScreenshotPath\": \"imageRepo-screenshots\\\\3ed250be-8a26-4dd8-a667-3b1023ff5f7d.png\"\r\n    }\r\n  ],\r\n  \"Version\": 1\r\n}",
+    "ImportMetadata": {},
+    "Name": "imgrepo"
+  },
+  "ConnectionReferences": []
+}

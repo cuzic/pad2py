@@ -20,7 +20,15 @@ import re
 from ..control_repository import _split_control_repository
 from .block_tree import build_block_tree
 from .line_parser import _parse_line
-from .tokens import _COMMENT_RE, _STRING_RE, _UI_ELEMENT_RE, _UI_ELEMENT_SEGMENT_RE, _unescape_ui_element_segment
+from .tokens import (
+    _COMMENT_RE,
+    _IMAGE_REPOSITORY_LIST_RE,
+    _IMAGE_REPOSITORY_REF_RE,
+    _STRING_RE,
+    _UI_ELEMENT_RE,
+    _UI_ELEMENT_SEGMENT_RE,
+    _unescape_ui_element_segment,
+)
 from .types import (
     ActionRecord,
     BlockNode,
@@ -38,6 +46,7 @@ from .types import (
     IfActionRecord,
     IfFunctionRecord,
     IfRecord,
+    ImageRepositoryRefList,
     KeywordRecord,
     LoopForeachRecord,
     LoopRecord,
@@ -74,6 +83,7 @@ __all__ = [
     "IfActionRecord",
     "IfFunctionRecord",
     "IfRecord",
+    "ImageRepositoryRefList",
     "KeywordRecord",
     "LoopForeachRecord",
     "LoopRecord",
@@ -119,11 +129,23 @@ def parse_dsl(text: str) -> list[Record]:
         )
         return key
 
+    def _stash_image_repository_list(m: re.Match[str]) -> str:
+        key = f"\x00IMG{len(placeholders)}\x00"
+        # 知見58・206: `[imgrepo['A'], imgrepo['B']]`から各`imgrepo['...']`参照の表示名を
+        # 出現順に取り出す(`appmask[...]`と違い`imgrepo[...]`は常に単一セグメント)。
+        placeholders[key] = tuple(
+            _unescape_ui_element_segment(name) for name in _IMAGE_REPOSITORY_REF_RE.findall(m.group(0))
+        )
+        return key
+
     # コメントを先に退避する(本文中に`$'''`等が含まれていても文字列リテラルとして
     # 誤認されないようにするため)。UI要素参照(`appmask['<表示名>']`)も表示名に空白を
-    # 含みうるため同様に退避する。
+    # 含みうるため同様に退避する。画像リポジトリ参照リスト(`[imgrepo['...']]`)は
+    # `appmask[...]`参照と構文が被らないため順序は問わないが、角括弧の対応崩れを防ぐため
+    # UI要素参照と同じタイミングで退避する。
     masked = _COMMENT_RE.sub(_stash_comment, text)
     masked = _STRING_RE.sub(_stash_string, masked)
+    masked = _IMAGE_REPOSITORY_LIST_RE.sub(_stash_image_repository_list, masked)
     masked = _UI_ELEMENT_RE.sub(_stash_ui_element, masked)
 
     records: list[Record] = []

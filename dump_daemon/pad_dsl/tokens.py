@@ -25,6 +25,19 @@ _COMMENT_ESCAPE_RE = re.compile(r"\\(#/|\\)")
 # `(?:\[...\])+`で1個以上の`['...']`セグメントの連なり全体を1つのUI要素参照としてマッチさせる。
 _UI_ELEMENT_RE = re.compile(r"appmask(?:\['(?:\\.|[^'\\])*'\])+")
 _UI_ELEMENT_SEGMENT_RE = re.compile(r"\['((?:\\.|[^'\\])*)'\]")
+# design/dsl_format_findings.md 知見58・206(実機検証済み)——`UIAutomation.IfImage.
+# ExistsOnScreen`の`Images`パラメータは`appmask[...]`とは別の、画像リポジトリへの名前参照
+# `imgrepo['<表示名>']`を**さらに角括弧`[...]`で囲んだ**リスト リテラル構文
+# (`[imgrepo['Image']]`)。`appmask[...]`と違い祖先パス(複数セグメントの連なり)は無く、
+# `imgrepo['...']`は常に単一セグメント。「Find all images in the list」トグルの存在から
+# カンマ区切りの複数要素(`[imgrepo['A'], imgrepo['B']]`)も許容すると推測されるが、
+# 実機キャプチャで確認できたのは単一要素のケースのみ(知見58)——複数要素の区切り文字自体は
+# 未確認のため、`,`区切りという想定はこの正規表現止まりの保守的な拡張であり、でっち上げた
+# 意味論をcodegen側へは一切持ち込まない(`pad_codegen`は単一要素のケースのみ結線する)。
+_IMAGE_REPOSITORY_LIST_RE = re.compile(
+    r"\[\s*imgrepo(?:\['(?:\\.|[^'\\])*'\])+(?:\s*,\s*imgrepo(?:\['(?:\\.|[^'\\])*'\])+)*\s*\]"
+)
+_IMAGE_REPOSITORY_REF_RE = re.compile(r"imgrepo\['((?:\\.|[^'\\])*)'\]")
 # design/dsl_format_findings.md 知見44(実機検証済み)——フロー内のアクション群を一括選択して
 # コピーすると、クリップボードテキストの末尾にこの区切り行から始まるUI要素リポジトリ全体の
 # JSONが同梱される。`parse_dsl()`はこの行以降を通常のDSLレコード列から除外し(除外しないと

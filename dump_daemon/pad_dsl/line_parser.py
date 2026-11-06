@@ -25,6 +25,7 @@ from .types import (
     IfActionRecord,
     IfFunctionRecord,
     IfRecord,
+    ImageRepositoryRefList,
     KeywordRecord,
     LoopForeachRecord,
     LoopRecord,
@@ -132,6 +133,10 @@ def _resolve_value(token: str, placeholders: dict[str, str | tuple[str, ...]]) -
         path = placeholders[token]
         assert isinstance(path, tuple)
         return UiElementRef(path)
+    if token.startswith("\x00IMG") and token in placeholders:
+        names = placeholders[token]
+        assert isinstance(names, tuple)
+        return ImageRepositoryRefList(names)
     if token in placeholders:
         value = placeholders[token]
         assert isinstance(value, str)

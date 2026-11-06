@@ -1,11 +1,13 @@
 """`IfActionRecord`/`ElseIfActionRecord`(`[ConditionAction]`カテゴリ)の条件式codegen。
 
-現状`UIAutomation.IfWindow.*`ファミリーのみ対応(複雑な設定モードを持つ`IfImage`/
-`IfWindowContains`等は意図的に未対応のまま`None`を返す)。
+`UIAutomation.IfWindow.*`ファミリー・`UIAutomation.IfImage.ExistsOnScreen`(実機確認済みの
+単一画像・`FindAllImages: False`・`SearchAlgorithm: Legacy`の組み合わせのみ)に対応。
+その他の複雑な設定モード(`IfWindowContains`のテキストマッチ等)は意図的に未対応のまま
+`None`を返す。
 """
 from __future__ import annotations
 
-from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef
+from ...pad_dsl import ElseIfActionRecord, IfActionRecord, ImageRepositoryRefList, UiElementRef
 from ..context import CodegenContext
 from ..selectors import _build_pywinauto_selector_expr, _window_expr_by_instance_or_title_class
 from ._support import enum_last, safe_render
@@ -106,6 +108,32 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
             return None
         desired = state == "Enabled"
         return f"({selector_expr}.exists() and {selector_expr}.wrapper_object().is_enabled() == {desired})"
+
+    if header.action_id == "UIAutomation.IfImage.ExistsOnScreen":
+        # design/dsl_format_findings.md 知見58・206(実機確認済み): 実機キャプチャで確認
+        # できたのは`Images: [imgrepo['<1件>']] FindAllImages: False
+        # SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy`という組み合わせのみ。
+        # 複数画像リスト(`FindAllImages: True`含む)・`Legacy`以外のアルゴリズムは
+        # 実機未確認のため、でっち上げずTODOへ倒す。Toleranceの実際の画像照合アルゴリズムは
+        # ブラックボックスのため、`ui_image_actions.image_exists_on_screen()`側で明記した
+        # 近似(pyautoguiのconfidenceへの単純な線形変換)に委ねる。
+        images = header.params.get("Images")
+        find_all = header.params.get("FindAllImages")
+        algorithm = enum_last(header.params.get("SearchAlgorithm"))
+        tolerance = header.params.get("Tolerance")
+        if (
+            not isinstance(images, ImageRepositoryRefList)
+            or len(images.names) != 1
+            or find_all is not False
+            or algorithm != "Legacy"
+            or not isinstance(tolerance, int)
+        ):
+            return None
+        entry = ctx.image_repository.get(images.names[0])
+        if entry is None:
+            return None
+        image_path = f"images/{entry.name}.png"
+        return f"ui_image_actions.image_exists_on_screen({image_path!r}, tolerance={tolerance})"
 
     if not header.action_id.startswith("UIAutomation.IfWindow."):
         return None

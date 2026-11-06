@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..control_repository.types import ControlRepositoryEntry
+from ..control_repository.types import ControlRepositoryEntry, ImageRepositoryEntry
 
 
 @dataclass(frozen=True)
@@ -21,9 +21,16 @@ class CodegenContext:
     一部のアクションのTODOコメントにpywinautoセレクタの提案を付記したり、確認済みの
     パラメータの組み合わせに限り実行コードそのものを生成したりするのに使われる
     (`pad_codegen.selectors`参照)。
+
+    `image_repository`は`parse_image_repository()`の戻り値(知見58・206)。
+    `UIAutomation.IfImage.ExistsOnScreen`の`imgrepo['<表示名>']`参照を、実際にキャプチャ
+    されたPNGバイナリ(`ImageRepositoryEntry`)へ解決するために使う(`pad_codegen.actions.
+    conditions`参照)——`generate_python()`自体は純粋関数のままとし、実際にPNGファイルを
+    ディスクへ書き出す副作用は呼び出し側(imperative shell、`pad2py_cli.py`)の責務とする。
     """
 
     repository: dict[str, dict[str, ControlRepositoryEntry]] = field(default_factory=dict)
+    image_repository: dict[str, ImageRepositoryEntry] = field(default_factory=dict)
 
 
 EMPTY_CONTEXT = CodegenContext()

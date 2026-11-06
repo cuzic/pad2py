@@ -3311,3 +3311,25 @@ END
 - 副産物として、**知見75/173/182の「desktop access無しでは新規ダイアログの内容が見えない」という制約が、desktop accessが実際に有効な状態では完全に解消する**ことも確認した——今回全てのダイアログ(アクション編集・UI element picker・Selector builder)が問題なく開き、内部のUIA要素も正しく読み取れた。
 
 **今後の指針**: `pad_todo.md`の該当項目を本知見へのポインタに更新し、「`%変数名%`記法によるセレクタ属性の動的化」自体は実機確認済みとして記録する一方、「`.Name (args)`トレーラ構文の生成元」という元々の問いは依然未解明のまま保留する(真に低優先度のため、次回明確な手がかりが見つかるまで再調査しない)。probeフロー・Notepadはいずれも保存せず`.invoke()`でクリーンに後始終処理した。コード変更は無し(あくまでDSL構文・UI挙動の調査のみ)。
+
+## 207. `UIAutomation.IfImage.ExistsOnScreen`を知見58の到達可能性確認の続きとして実機で画像ドラッグ選択キャプチャ・実際に`pad_codegen`へ結線(知見200〜206で確立したdesktop access下での実機検証の集大成)
+
+desktop accessが生きている間に、`pad_todo.md`最後の🖥️項目だった`UIAutomation.IfImage.ExistsOnScreen`に着手した。知見58でDSL構文自体(`IF (UIAutomation.IfImage.ExistsOnScreen Images: [imgrepo['Image']] FindAllImages: False Tolerance: 10 SearchAlgorithm: UIAutomation.ImageFinderAlgorithm.Legacy) THEN`)は既に実機確認済みだったが、`Images`パラメータが参照する実際のPNGバイナリ(知見44以来ずっと空のままだった`ImageRepositorySymbol`)は未取得のままだった。
+
+**手順**(知見206と同じ`.invoke()`/`click_input()`混在パターン): 検索ボックス+Enterで「If image」アクションを追加 → ダイアログを開く(全てのダイアログ内容がdesktop access下で正しく読める——知見206で確認済みの通り) → 「Select images」→「Capture image」(`SplitButton`)を`.invoke()` → 全画面オーバーレイが開いた状態でNotepadのタイトルバー付近を`pywinauto.mouse.press()`/`move()`/`release()`でドラッグ選択(300×20ピクセルの矩形) → 「Image captured successfully」ダイアログをOK → アクションを保存 → 知見75の往復確認手法で全選択コピー・クリップボード読み取り。
+
+**確認できた事実**:
+- ドラッグ選択操作(マウスの押下→移動→解放)がdesktop access下で正しく機能することを初めて確認した(知見38のCtrl+クリック・知見206のクリック操作に続き、ドラッグ操作も機能する一般化)。
+- `ImageRepositorySymbol`の`Repository`JSON内の`Images`配列に実際にキャプチャしたPNG(Base64、300×20ピクセル、RGBA、193バイト)が入った実例を初めて取得できた——ローカルで`base64.b64decode()`してPillowで開き、サイズが実際のドラッグ範囲と一致することを確認した。
+- `Tolerance`欄のツールチップ文言「Specify how much the image specified can differ from the original one. For basic image matching algorithm, the recommended tolerance is 10 while for advanced, it's 4.」を実機で読み取れた——知見57の`GetWindow`の`Timeout`と同種の「UIに出ないDSLパラメータ」とは逆に、こちらはUIダイアログ自体に説明文があるが、basic/advancedで推奨値のスケールが違う(10 vs 4)ため、単純な0-100や0-1のスケールだとは断定できない情報だった。
+
+**実装(でっち上げを避けた範囲)**: 実機確認できたのは`FindAllImages: False`・画像1件のみ・`SearchAlgorithm: Legacy`という組み合わせに限られるため、`pad_codegen`側もこの組み合わせのみ結線し、それ以外(複数画像リスト・`FindAllImages: True`・他のアルゴリズム)は安全に`NotImplementedError`へ倒す。
+
+- `pad_dsl`: `imgrepo['<表示名>']`をさらに`[...]`で囲んだリスト リテラル構文専用の新しい値型`ImageRepositoryRefList(names: tuple[str, ...])`を追加(`appmask[...]`の`UiElementRef`とは別物——`imgrepo[...]`は常に単一セグメント)。`tokens.py`に`_IMAGE_REPOSITORY_LIST_RE`/`_IMAGE_REPOSITORY_REF_RE`を追加し、`appmask[...]`と同じマスキング→プレースホルダー退避パイプラインに組み込んだ。複数要素(カンマ区切り)の構文も正規表現レベルでは受け付けるが、実機確認できたのは単一要素のみのため、`pad_codegen`側は単一要素のケースのみ扱う。
+- `control_repository`: `ImageRepositoryEntry(id, name, screenshot_base64, screenshot_path)`型と`parse_image_repository()`(`ImageRepositorySymbol`をパース)・`decode_screenshot_png()`(Base64デコードのみ)を追加。
+- `pad_codegen`: `CodegenContext`に`image_repository`フィールドを追加。`conditions.py`の`render_if_window_condition()`に`UIAutomation.IfImage.ExistsOnScreen`の分岐を追加し、確認済みの組み合わせの場合のみ`ui_image_actions.image_exists_on_screen('images/<表示名>.png', tolerance=<N>)`へ変換する。`generate_python()`自体はPNGバイナリを一切ディスクへ書き出さない純粋関数のまま(FCIS)——実際の書き出しは`pad2py_cli.py`の新しい`extract_images()`(純粋関数、`{ファイル名: PNGバイナリ}`を返すだけ)と、それを呼ぶ`main()`(実ファイル出力時のみ`images/`サブディレクトリへ書き出す、imperative shell側の副作用)に分離した。
+- `pad_action_lib/ui_image_actions.py`(新規): `image_exists_on_screen(image_path, tolerance=10)`。`pyautogui.locateOnScreen()`に委譲し、`confidence = 1 - tolerance / 100`という単純な線形近似でTolerance値を変換する——**この変換式はPAD自身の画像照合アルゴリズムとの厳密な対応が実機確認されていない近似**であることをdocstringに明記した(Tolerance欄のツールチップが示唆する「basic=10・advanced=4で推奨値のスケールが違う」という情報から、単純な線形対応では不十分な可能性がある)。`pyautogui`は`dump_daemon`自体の依存関係には含めず(生成スクリプトの実行環境側の依存)、関数内で遅延importしインストールされていなければ`ImageMatchingUnavailableError`を投げる。
+
+**検証**: 実機往復確認済みのDSL+ControlRepository JSON(END行を含む完全なブロック)を`tests/fixtures/if_image_exists_on_screen_with_end.txt`として新規保存(知見58の既存フィクスチャ`if_image_exists_on_screen.txt`はEND行を含まない別の単体キャプチャのため、上書きせず別名で保存——誤って上書きしかけたが`git checkout`で復元した)。`tests/test_pad_codegen.py`に正常系(実際にPNGファイルを経由せず`compile()`のみ確認、生成コードの文字列一致)・`image_repository`未提供時のフォールバック・`FindAllImages: True`等の未確認パラメータでの`NotImplementedError`・`extract_images()`の実PNGデコード、計4件追加。`tests/test_pad_dsl_parser.py`の既存テストも`ImageRepositoryRefList`を返すよう更新した(以前は`VarRef`への安全なフォールバックだったことを記録するコメントを、昇格の経緯として残した)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1219 passed, 28 skippedを確認。`codegen_coverage.py`はこのユニットも引き続き`[ERROR]`扱いのまま(測定ツールが各分岐点を`image_repository`無しの最小ノードとして個別評価する既知の限界——`Variables.IncreaseVariable`等と同種、このモジュールのdocstring参照)——実際の結線確認は上記の専用テストが担う。
+
+probeフロー・Notepadはいずれも保存せず`.invoke()`でクリーンに後始終処理した。これで`pad_todo.md`に残っていた🖥️(RDP必須)項目のうち、`IfImage.ExistsOnScreen`は実装完了、`VariableTrailer`の`.Name (args)`トレーラ構文のみ依然未解明のまま低優先度で保留されている。
