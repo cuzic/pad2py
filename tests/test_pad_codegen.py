@@ -1704,6 +1704,42 @@ def test_generate_python_keeps_drag_and_drop_as_todo_when_click_type_unverified(
     assert "# TODO: map PAD action: UIAutomation.DragAndDropElement" in code
 
 
+def test_generate_python_from_get_ui_control_echoes_resolved_selector() -> None:
+    # design/dsl_format_findings.md 知見175(decompile確認済み): `GetUIControl`は
+    # `ActionBase`直継承(ランタイムプロキシ不使用)で`Execute()`が`UIControl = Control;`
+    # のみ——`Control`(`UiElementRef`)を無変換でechoするだけなので、解決済みの
+    # セレクタ式をそのまま出力変数へ代入すれば、以降の他アクションで通常の変数参照
+    # として再利用できる(`UIAutomation.GetWindow.Get`、知見57と同じパターン)。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    fixture_text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    repo_marker = "# [ControlRepository]"
+    control_repository_block = fixture_text[fixture_text.index(repo_marker) :]
+    dsl = (
+        "UIAutomation.GetUIControl "
+        "Control: appmask['Window \\'Untitled - Notepad\\'']['Document \\'Text Editor\\''] "
+        "UIControl=> CapturedControl\n\n" + control_repository_block
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    repository = parse_control_repository(dsl)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "CapturedControl = Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".child_window(class_name='Edit')" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    namespace: dict[str, object] = {}
+    with fake_pywinauto_desktop(registry):
+        exec(code, namespace)
+    assert namespace["CapturedControl"].criteria == {"class_name": "Edit"}
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別

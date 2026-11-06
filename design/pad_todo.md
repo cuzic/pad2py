@@ -149,9 +149,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       全呼び出しをRPC越しの別プロセス(サンドボックス化されたオートメーション実行ワーカー)へ
       中継するだけ——このインターフェースの全メソッドの実際の挙動は.NETアセンブリとして
       静的取得・decompileできる範囲の外にある。これ以上はRDPでの実機観察以外に道が無い。
-    - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetUIControl`/
-      `GetWindowDetails`: `AttributeName`(`"Own Text"`/`"Exists"`/`"Location and Size"`/
-      `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。
+    - [x] 💻 `GetUIControl`(→`UIAutomation.GetUIControl`) — 知見175でdecompile精査・
+      新規結線完了。`ActionBase`直継承で`IAutomationRuntimeProxy`を一切使わない唯一の
+      例外——`Execute()`は`UIControl = Control;`のみで、`Control`を無変換で出力へ
+      echoするだけと確定。知見57の`GetWindow.Get`と同じ「解決済みセレクタ式を出力変数へ
+      代入」パターンで結線した。
+    - `GetDetailsOfElementInWindow`(→`GetElementDetails`)/`GetWindowDetails`: いずれも
+      `UIAutomationActionBase`派生で知見172の`IAutomationRuntimeProxy`RPC不透明な壁に
+      該当(`GetUIControl`とは違い依然ブロック)。`AttributeName`/`ExtractionOperation`
+      (`"Own Text"`/`"Exists"`/`"Location and Size"`/`"Enabled"`)が実際にどのUIAプロパティ
+      に対応するかは、decompileでは解決不可と確定——RDP実機確認が必要。
     - `UseDesktop`/`IfRemoteDesktopIsAvailableAction`/`WaitForRemoteDesktopAction`:
       リモートデスクトップ機能専用、スコープ外の可能性が高い。
 - [x] 🔍 **同じ手法を全モジュールへ拡大適用・1件結線(知見165)**: `pad2py-sweep-

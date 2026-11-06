@@ -295,4 +295,22 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             drop_expr = _build_pywinauto_selector_expr(drop_over.path, ctx)
             if drag_expr is not None and drop_expr is not None:
                 return [f"{prefix}{drag_expr}.drag_mouse_input(dst={drop_expr})"]
+    if node.action_id == "UIAutomation.GetUIControl":
+        # design/dsl_format_findings.md 知見175(decompile確認済み): `GetUIControl`は
+        # `[Action(Category = "DataExtraction")]`のみ(`Id`/`Name`属性が無く、知見155の
+        # 「クラス名そのものがaction_id」ルール通り`UIAutomation.GetUIControl`)で、
+        # `ActionBase`直継承(`UIAutomationActionBase`ではない——ランタイムプロキシを
+        # 一切使わない)。`Execute()`は`UIControl = Control;`のみ、つまり`Control`
+        # (`UiElementRef`)をそのまま`UIControl`出力へ**無変換でecho**するだけ——
+        # `UIAutomation.GetWindow.Get`(知見57)と同じパターンで、セレクタ式を
+        # 実際に解決した結果を出力変数へ代入すれば、以降の他アクションで通常の
+        # 変数参照として再利用できる。
+        element = node.params.get("Control")
+        output_var = node.output_var
+        if not (isinstance(element, UiElementRef) and output_var):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        return [f"{prefix}{output_var} = {selector_expr}"]
     return None

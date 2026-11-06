@@ -2874,3 +2874,13 @@ pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3
 旧来の文字列一致テスト(`..._converts_all_actions`)はそのまま残し(個々の生成コードの正確な文字列表現を見るテストとしての価値は維持)、新規のexec検証テストを並置する方針を採った——知見129/130と同じ「文字列一致と実行確認は別の懸念であり、両方必要」という教訓に従った。既存の文字列一致版PowerPointテストはクラッシュするDSLをそのまま残しているが、それは`compile()`(構文エラーが無いことの確認)のみなので実害は無い——ただし次に誰かがこの古いテストを安易に`exec()`付きへ「改善」しようとした場合に今回と同じ罠にかかる可能性があるため、コメントで注意書きを追加した。
 
 テストは`tests/test_pad_codegen.py`に3件(Excel/Word/PowerPoint、いずれも`tempfile`を使った実ファイル往復込み)追加。VM/RDPとも不要。
+
+## 175. `UIAutomation.GetUIControl`を新規結線——`ActionBase`直継承のため`IAutomationRuntimeProxy`(知見172のRPC不透明な壁)を一切経由しない唯一の例外だった
+
+知見172で`IAutomationRuntimeProxy`経由のアクションは静的decompileで解決不能と確定した直後、知見129(`GetDetailsOfElementInWindow`/`GetUIControl`/`GetWindowDetails`、`AttributeName`→UIAプロパティ対応が未確認)の残り2件を再確認する中で、`GetUIControl`だけは例外だと判明した。`GetWindowDetails`は`UIAutomationActionBase`派生で`r.GetDetailsOfWindow(element, attributeName, BringToFront)`という全く同じRPC経由(知見172の壁がそのまま適用、依然ブロック継続)だが、`GetUIControl`クラス自体は**`ActionBase`を直接継承し`UIAutomationActionBase`ではない**——`Execute()`の全文は`UIControl = Control;`の1行のみで、ランタイムプロキシを一切使わない。`[Action(Category = "DataExtraction", Order = 26)]`にName/Id属性が無く(知見155の「クラス名そのものがaction_id」ルール通り`UIAutomation.GetUIControl`、`tools/selector_dumps/UIAutomation_flat_actions.txt`で`EffectiveId=`空欄も確認済み)、兄弟セレクタも無い。
+
+つまり`GetUIControl`は「`Control`(`UiElementRef`)を無変換で`UIControl`出力へecho(コピー)するだけ」という、PAD側の意味論自体が完全にdecompileで確定した唯一のケースで、知見57の`UIAutomation.GetWindow.Get`と全く同じ「解決済みのセレクタ式を出力変数へ代入する」パターンがそのまま使える——`Control`が`UiElementRef`で解決できれば、`{output_var} = {selector_expr}`を生成するだけで、以降の他アクションでこの変数を通常のpywinauto参照として再利用できる。
+
+実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.GetUIControl`の分岐を追加。テストは`tests/test_pad_codegen.py`にexec検証テストを1件追加(`fake_pywinauto`で出力変数が実際に正しいセレクタ条件を保持していることまで確認)。
+
+`GetDetailsOfElementInWindow`/`GetWindowDetails`(`AttributeName`/`ExtractionOperation`→UIAプロパティの対応)は、知見172で確定した`IAutomationRuntimeProxy`のRPC不透明な壁にそのまま該当するため、依然`design/pad_todo.md`の「decompileでは解決不可、RDP実機確認が必要」カテゴリに残す。
