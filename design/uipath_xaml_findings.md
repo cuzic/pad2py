@@ -6189,6 +6189,81 @@ uipath_feature_catalog.md`に参照ポインタとして記録した。
 Activities`/`UiPath.Testing.Activities`/`UiPath.UIAutomation.
 Activities`(合計400件超)はまだ未検証——今後のtickで継続する価値がある。
 
+## 129. 【重要】`UiPath/skills`公式リポジトリで240件のC#式言語実機プロジェクトを発見——VB.NET専用という前提の再検討が必要(知見117〜128の手法を継続、VM不使用)
+
+これまでの実機検証(知見117〜128)は、見つかった実プロジェクトが
+全て`expressionLanguage: "VisualBasic"`(VB.NET)だったため気づかなかったが、
+`UiPath`公式GitHub Organizationの`skills`リポジトリ(`uipath-ai-skills`
+とは別物、UiPath社自身が管理するリポジトリ)の`tests/tasks/
+uipath-troubleshoot/activity-packages/`配下に、240件の「特定のエラー
+シナリオを再現するための意図的に構成された」`Main.xaml`プロジェクトが
+あることを発見した(`db-execute-query-timeout-expired`・
+`word-replace-text-headers-skipped`・`uia-alter-if-disabled`等、
+活動パッケージ×エラーシナリオ別に命名)。サンプリングした全ての
+`project.json`(`db-*`系4件・`word-*`系1件・`uia-*`系1件・`sys-*`系1件、
+計7件)が`"expressionLanguage": "CSharp"`だった——これは design/
+uipath_xaml_findings.md本ファイルの「今後の調査候補」に記録済みの
+「C#式言語プロジェクトでのInArgument/OutArgumentの直列化形式の違い」
+(当時はStudio 2021.4.4に式言語選択UIが見当たらず実機確認を断念していた
+項目)に対する、**実機証拠を伴う初めての反証**——これまで「VB.NET固定」
+と結論していたが、より新しいStudio(22.x以降、またはC#を明示指定する
+別の作成経路)で生成されたC#式言語プロジェクトが実在し、しかもこの
+公式リポジトリでは**サンプリングした範囲内で全件がC#**だった。
+
+**実機確認した直列化形式の違い**(`db-execute-query-clr-crash`の
+`DatabaseConnect`より):
+```xml
+<ui:DatabaseConnect.ConnectionString>
+  <InArgument x:TypeArguments="x:String">
+    <CSharpValue x:TypeArguments="x:String">"Server=...;..."</CSharpValue>
+  </InArgument>
+</ui:DatabaseConnect.ConnectionString>
+<ui:DatabaseConnect.DatabaseConnection>
+  <OutArgument x:TypeArguments="uidb:DatabaseConnection">
+    <CSharpReference x:TypeArguments="uidb:DatabaseConnection">dbConnection</CSharpReference>
+  </OutArgument>
+</ui:DatabaseConnect.DatabaseConnection>
+```
+VB.NETの`[...]`角括弧省略記法(知見14)の代わりに、値は`<CSharpValue>`
+(式テキストをC#構文のまま保持、今回の例では単純な文字列リテラル)、
+出力変数参照は`<CSharpReference>`(VBの`OutArgument`直下テキストと違い、
+もう1段ネストした要素)というC#専用のラッパー型で直列化される——VB式の
+`[...]`省略記法は一切使われない。属性ショートハンド形(`Property="[...]"`)
+自体がVB式言語専用の記法であり、C#式言語プロジェクトでは常にこの
+プロパティ要素+`CSharpValue`/`CSharpReference`形になると推測される
+(今回確認した7件のサンプル全てで一貫していた)。
+
+**現状の挙動(クラッシュ無し、正しく保守的)**: `_attr_expr`は`[...]`
+角括弧属性を期待するため、C#式言語のプロパティ要素形では常に`None`を
+返し、既存の「値が無い場合は`# TODO`」という保守的な経路へ正しく
+フォールバックする——`uipath_codegen`はクラッシュせず、でっち上げた
+誤変換も生成しない(今回検証した24件中、例外は0件)。ただし実質的に
+C#式言語プロジェクト全体がほぼ`# TODO`ばかりになり、カバレッジは
+VB.NETプロジェクトに比べて大幅に低い。
+
+**今回は実装を見送る(大規模な設計判断が必要)**: C#式言語への対応は、
+今回のtickで安全に収められる規模を超える——少なくとも(1)
+`<CSharpValue>`/`<CSharpReference>`のプロパティ要素形を一般的に解析
+する経路の新設、(2)C#式テキスト自体を構文解析する全く別の文法
+(`uipath_expr`はVB.NET文法専用、C#は演算子・リテラル構文がVBと異なる
+——例: 文字列連結`&`→`+`、比較`AndAlso`/`OrElse`→`&&`/`||`、代入無し
+三項演算子の構文等)、(3)ワークフロー全体がC#かVBかをどう判定するか
+(`project.json`の`expressionLanguage`は読んでいない——現状の
+`parse_workflow_file`はXAML単体しか読まずProject全体のメタデータには
+アクセスしない設計)が必要になる——`AddDataRow`(知見122)・`row(...)`
+スコープ追跡(知見126)と同種どころか、それ以上に大きい「新しい式言語
+バックエンドの追加」という設計判断であり、今回は見送って重要な設計
+課題として記録する。
+
+**次のtickへの引き継ぎ事項**: この`UiPath/skills`リポジトリの240件の
+シナリオ(`db-*`13件・`word-*`7件・`web-*`4件・`uia-*`1件・`sys-*`2件を
+ダウンロード済み、`/tmp/batch7`は本tick終了時に削除済み)は、公式かつ
+意図的に構成された高品質な実例データであり、C#対応を実施する際の
+一次データ源として再度ダウンロードする価値が非常に高い——VB.NET
+プロジェクトも含まれている可能性があるため(今回は未確認)、全240件の
+`project.json`を先にスキャンして言語別に分類するところから始めると
+良い。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -6225,7 +6300,12 @@ Activities`(合計400件超)はまだ未検証——今後のtickで継続する
   Studioでは全プロジェクトがVB.NET固定**という結論になる。C#式言語の実機確認には
   より新しいStudioバージョン(22.x以降と推定)のインストールが必要——
   今回はインストール済みバージョンの範囲内での追加調査は打ち切り、優先度を
-  下げて保留する
+  下げて保留する → **知見129で実機証拠を発見・更新**: `UiPath/skills`公式
+  リポジトリに240件のC#式言語プロジェクト(`expressionLanguage: "CSharp"`)
+  を発見、Studioインストール無しでGitHub上の実例から直列化形式
+  (`<CSharpValue>`/`<CSharpReference>`プロパティ要素形)を確認できた。
+  対応自体は新しい式言語バックエンドの追加という大規模な設計判断が必要
+  なため見送り継続中(知見129参照)
 - **(解決)** ~~`Invoke Code`に実際に1つ以上の`Argument`を追加した場合の形~~
   → 知見23で解決(`x:Key`付き`InArgument`要素列になる)。残る派生課題:
   方向`Out`/`InOut`の引数を追加した場合に`OutArgument`/`InOutArgument`の

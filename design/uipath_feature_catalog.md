@@ -276,3 +276,21 @@ Activities`の`HttpClient`/`SerializeJson`/`DeserializeJsonArray`
 `DeserializeJsonArray`/`DeserializeXml`/`ExecuteXPath`/`GetNodes`/
 `GetXMLNodes`/`GetXMLNodeAttributes`/`NetHttpRequest`
 (`UiPath.WebAPI.Activities`)。
+
+### 【要検討】C#式言語対応(知見129で実機証拠を発見、2026-11-06)
+
+これまで「VB.NET固定」としていた前提に対する実機反証を発見した——
+UiPath公式`skills`リポジトリの`tests/tasks/uipath-troubleshoot/
+activity-packages/`配下に240件の`Main.xaml`があり、サンプリングした
+7件全てが`expressionLanguage: "CSharp"`だった。VB.NETの`[...]`角括弧
+省略記法の代わりに`<CSharpValue>`/`<CSharpReference>`というC#専用の
+プロパティ要素形で直列化される。現状は`# TODO`への保守的フォールバック
+が正しく働く(クラッシュ無し)が、カバレッジは大幅に下がる。
+
+対応には(1)プロパティ要素形の一般解析、(2)C#式テキスト専用の新しい
+文法(`uipath_expr`はVB.NET文法専用)、(3)ワークフロー単位の言語判定、
+という「新しい式言語バックエンドの追加」が必要——`AddDataRow`・
+`row(...)`スコープ追跡より一段大きいスコープの意思決定であり、着手
+するかどうか自体がユーザーとの意思決定事項になりうる。この240件の
+corpus(`UiPath/skills`リポジトリ、未使用)は対応検討時の一次データ源
+として再利用する価値が高い。詳細は知見129参照。

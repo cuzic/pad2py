@@ -1553,3 +1553,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     `NetHttpRequest`)を実データ待ちの実装候補として`design/
     uipath_feature_catalog.md`に記録。`UiPath.Excel/Mail/System/
     Testing/UIAutomation.Activities`(400件超)は未検証、継続価値あり。
+
+87. **(完了・重要な発見、2026-11-06)** `UiPath/skills`公式リポジトリで
+    240件のC#式言語実機プロジェクトを発見(知見129、コード変更無し):
+    これまで「VB.NET固定」(Studio 2021.4.4に式言語選択UIが無いことから
+    の結論)としていた前提に対する初めての実機反証。UiPath公式の
+    `skills`リポジトリ`tests/tasks/uipath-troubleshoot/
+    activity-packages/`配下に、活動×エラーシナリオ別に命名された240件の
+    `Main.xaml`があり、サンプリングした7件全てが`expressionLanguage:
+    "CSharp"`だった。直列化形式を確認: VB.NETの`[...]`角括弧省略記法
+    (知見14)の代わりに`<CSharpValue>`(値)/`<CSharpReference>`(出力
+    変数参照、1段余分にネスト)というC#専用のプロパティ要素形になる
+    ——`_attr_expr`がマッチせず既存の保守的な`# TODO`フォールバックへ
+    正しく倒れる(24件検証、クラッシュ0件、誤変換無し)。C#対応自体は
+    (1)プロパティ要素形の一般解析、(2)C#式テキスト用の全く別の文法、
+    (3)ワークフロー単位の言語判定という「新しい式言語バックエンドの
+    追加」に相当する大規模な設計判断のため、今回は実装を見送り重要な
+    設計課題として記録(`AddDataRow`・`row(...)`スコープ追跡より大きい
+    スコープ)。次tickへの引き継ぎ: この240件corpus(未使用)を次回C#
+    対応を検討する際の一次データ源として再利用する価値がある。
