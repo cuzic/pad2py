@@ -3045,6 +3045,29 @@ def test_generate_python_from_filter_datatable_end_to_end_via_csv_seeded_tables(
     assert namespace["Filtered"] == [{"Name": "Carol", "Age": "30"}]
 
 
+def test_generate_python_from_filter_list_end_to_end_via_csv_seeded_parameters() -> None:
+    # design/dsl_format_findings.md 知見164-165(`[Action]`属性の網羅列挙監査で新規発見、
+    # decompile確認済み): `FilterList`は`FilterDataTable`と同じ`FilterParameters`
+    # スキーマ(`OPERATOR`/`VALUE`/`RULE`、`COLUMN`列は無し)を使う兄弟アクション——
+    # `Variables.Actions.dll`には`ActionSelectorBase`の兄弟セレクタが無いフラットな
+    # アクションのため、知見139以降の監査手法では見落としていた。
+    dsl = (
+        "SET ParamsCSV TO $'''OPERATOR,VALUE,RULE\nContains,ob,And'''\n"
+        "Variables.GenerateDataTableFromCSV.ReadPredefinedSeparator CSVText: ParamsCSV TrimFields: True "
+        "FirstLineContainsColumnNames: True ReadFieldsAsText: True "
+        "ColumnsSeparator: Variables.CSVColumnsSeparator.SystemDefault CSVTable=> FP\n"
+        "Variables.FilterList ListToFilter: Items FilterParameters: FP IgnoreCase: False "
+        "FilteredList=> Filtered"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {"Items": ["Alice", "Bob", "Carol"]}
+    exec(code, namespace)
+    assert namespace["Filtered"] == ["Bob"]
+
+
 def test_generate_python_from_join_datatable_end_to_end_via_csv_seeded_tables() -> None:
     # design/dsl_format_findings.md 知見124の追記: 知見91の確認済み例(Innerで`Name`列を
     # 結合)をend-to-endで実行する。重複列名への" (2)"付与(知見91実機確認済み)も含めて

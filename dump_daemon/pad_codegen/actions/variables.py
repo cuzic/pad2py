@@ -378,6 +378,27 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{first}, {second}, {join_parameters}, join_operation={join_operation!r})"
         ]
 
+    if action_id == "Variables.FilterList":
+        # design/dsl_format_findings.md 知見164-165(`[Action]`属性の網羅列挙監査で
+        # 新規発見、decompile確認済み): `FilterList`は`FilterDataTable`(知見90)と同じ
+        # `FilterParameters`スキーマ(`OPERATOR`/`VALUE`/`RULE`、`COLUMN`列は無い)を使う
+        # 兄弟アクション——`Variables.Actions.dll`には一切`ActionSelectorBase`の兄弟
+        # セレクタが無いフラットなアクションのため、知見139以降の監査手法では見落として
+        # いた。
+        list_to_filter = safe_render(p.get("ListToFilter"))
+        # 知見72の空バックティック文字列(「フィルタ未設定」)は`filter_datatable()`と
+        # 全く同じ理由で`[]`に読み替える(`FilterListAction.Execute()`も
+        # `FilterParameters.Rows.Count == 0`で元のリストをそのまま返す、decompile確認済み)。
+        raw_filter_parameters = p.get("FilterParameters")
+        filter_parameters = "[]" if raw_filter_parameters == "" else safe_render(raw_filter_parameters)
+        ignore_case = safe_render(p.get("IgnoreCase"))
+        if None in (list_to_filter, filter_parameters, ignore_case) or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = variables_actions.filter_list("
+            f"{list_to_filter}, {filter_parameters}, ignore_case={ignore_case})"
+        ]
+
     if action_id == "Variables.DeleteEmptyRowsFromDataTable":
         table = safe_render(p.get("DataTable"))
         if table is None:

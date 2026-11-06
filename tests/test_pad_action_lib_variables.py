@@ -422,6 +422,75 @@ def test_filter_datatable_match_case_false_ignores_case() -> None:
     assert va.filter_datatable(table, conditions, match_case=False) == table
 
 
+def test_filter_list_no_conditions_returns_copy() -> None:
+    # design/dsl_format_findings.md 知見165(decompile確認済み): `FilterParameters`が
+    # 空なら`FilterListAction.Execute()`自身が元のリストのコピーを返す。
+    items = [1, 2, 3]
+    result = va.filter_list(items, [])
+    assert result == items
+    assert result is not items
+
+
+def test_filter_list_equal_cross_type_when_not_ignore_case() -> None:
+    # 知見165: `IgnoreCase=False`は`pad_equal()`(知見85/88のクロス型数値文字列同値
+    # 判定)に委譲するため、`"30"`(文字列の項目)と`30`(数値のVALUE)が一致する。
+    items = ["30", "25"]
+    conditions = [{"OPERATOR": "Equal", "VALUE": 30, "RULE": "And"}]
+    assert va.filter_list(items, conditions, ignore_case=False) == ["30"]
+
+
+def test_filter_list_equal_pure_string_when_ignore_case() -> None:
+    # 知見165: `IgnoreCase=True`はクロス型の数値文字列同値判定をしない単純な
+    # 大文字小文字区別無し文字列比較——`FilterDataTable`/`JoinDataTable`とは異なる
+    # `FilterList`特有の挙動。
+    items = ["Alice", "BOB"]
+    conditions = [{"OPERATOR": "Equal", "VALUE": "bob", "RULE": "And"}]
+    assert va.filter_list(items, conditions, ignore_case=False) == []
+    assert va.filter_list(items, conditions, ignore_case=True) == ["BOB"]
+
+
+def test_filter_list_not_equal_inverts_equal() -> None:
+    items = ["30", "25"]
+    conditions = [{"OPERATOR": "NotEqual", "VALUE": 30, "RULE": "And"}]
+    assert va.filter_list(items, conditions) == ["25"]
+
+
+def test_filter_list_contains_and_starts_with_and_ends_with() -> None:
+    items = ["Alice", "Bob", "Carol"]
+    assert va.filter_list(items, [{"OPERATOR": "Contains", "VALUE": "ob", "RULE": "And"}]) == ["Bob"]
+    assert va.filter_list(items, [{"OPERATOR": "StartsWith", "VALUE": "Al", "RULE": "And"}]) == ["Alice"]
+    assert va.filter_list(items, [{"OPERATOR": "EndsWith", "VALUE": "rol", "RULE": "And"}]) == ["Carol"]
+    assert va.filter_list(items, [{"OPERATOR": "NotContains", "VALUE": "ob", "RULE": "And"}]) == [
+        "Alice",
+        "Carol",
+    ]
+
+
+def test_filter_list_is_empty_and_is_not_empty() -> None:
+    items = ["", "x", None]
+    assert va.filter_list(items, [{"OPERATOR": "IsEmpty", "VALUE": None, "RULE": "And"}]) == ["", None]
+    assert va.filter_list(items, [{"OPERATOR": "IsNotEmpty", "VALUE": None, "RULE": "And"}]) == ["x"]
+
+
+def test_filter_list_or_rule_combines_groups() -> None:
+    items = ["Alice", "Bob", "Carol"]
+    conditions = [
+        {"OPERATOR": "Equal", "VALUE": "Alice", "RULE": "And"},
+        {"OPERATOR": "Equal", "VALUE": "Carol", "RULE": "Or"},
+    ]
+    assert va.filter_list(items, conditions) == ["Alice", "Carol"]
+
+
+def test_filter_list_unsupported_operator_raises_not_implemented() -> None:
+    # design/dsl_format_findings.md 知見165: `GreaterThan`系・`IsBlank`系は実機の
+    # クロス型比較規則/PADの`Blank`値のPython表現が未確認のため、でっち上げず
+    # 明示的に`NotImplementedError`にする。
+    with pytest.raises(NotImplementedError):
+        va.filter_list(["1", "2"], [{"OPERATOR": "GreaterThan", "VALUE": "1", "RULE": "And"}])
+    with pytest.raises(NotImplementedError):
+        va.filter_list(["1", "2"], [{"OPERATOR": "IsBlank", "VALUE": None, "RULE": "And"}])
+
+
 def test_retrieve_column_into_list() -> None:
     table = [{"a": 1}, {"a": 2}]
     assert va.retrieve_datatable_column_into_list(table, "a") == [1, 2]

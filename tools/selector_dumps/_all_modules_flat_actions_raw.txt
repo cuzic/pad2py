@@ -1,0 +1,112 @@
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Database.Actions.dll===
+CloseConnection | AttrType=ActionAttribute | EffectiveId=Close
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Web.Actions.dll===
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.XML.Actions.dll===
+InsertElement | AttrType=ActionAttribute | EffectiveId=
+ReadXmlFromFile | AttrType=ActionAttribute | EffectiveId=ReadFromFile
+RemoveElement | AttrType=ActionAttribute | EffectiveId=
+RemoveElementAttribute | AttrType=ActionAttribute | EffectiveId=
+SetElementAttribute | AttrType=ActionAttribute | EffectiveId=SetElementAttribute
+SetElementValue | AttrType=ActionAttribute | EffectiveId=
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Cmd.Actions.dll===
+CloseCmdSession | AttrType=ActionAttribute | EffectiveId=Close
+WaitForTextOnCmdSession | AttrType=ActionAttribute | EffectiveId=WaitForText
+WriteToCmdSession | AttrType=ActionAttribute | EffectiveId=Write
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Clipboard.Actions.dll===
+ClearClipboardContents | AttrType=ActionAttribute | EffectiveId=Clear
+GetClipboardText | AttrType=ActionAttribute | EffectiveId=GetText
+SetClipboardText | AttrType=ActionAttribute | EffectiveId=SetText
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.DateTime.Actions.dll===
+AddToDateTime | AttrType=ActionAttribute | EffectiveId=Add
+SubtractDates | AttrType=ActionAttribute | EffectiveId=Subtract
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Text.Actions.dll===
+AppendLineAction | AttrType=ActionAttribute | EffectiveId=AppendLine
+ChangeCaseAction | AttrType=ActionAttribute | EffectiveId=ChangeCase
+ConvertNumberToTextAction | AttrType=ActionAttribute | EffectiveId=FromNumber
+ConvertTextToNumberAction | AttrType=ActionAttribute | EffectiveId=ToNumber
+CreateHTMLContentAction | AttrType=ActionAttribute | EffectiveId=CreateHTMLContent
+CreateRandomTextAction | AttrType=ActionAttribute | EffectiveId=Random
+EscapeForRegularExpressionAction | AttrType=ActionAttribute | EffectiveId=EscapeForRegularExpression
+PadTextAction | AttrType=ActionAttribute | EffectiveId=Pad
+RecognizeEntitiesInTextAction | AttrType=ActionAttribute | EffectiveId=RecognizeEntitiesInText
+ReverseTextAction | AttrType=ActionAttribute | EffectiveId=Reverse
+TrimTextAction | AttrType=ActionAttribute | EffectiveId=Trim
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Cryptography.Actions.dll===
+HashFromFileAction | AttrType=ActionAttribute | EffectiveId=HashFromFile
+HashFromFileWithKeyAction | AttrType=ActionAttribute | EffectiveId=HashFromFileWithKey
+HashTextAction | AttrType=ActionAttribute | EffectiveId=HashText
+HashTextWithKeyAction | AttrType=ActionAttribute | EffectiveId=HashTextWithKey
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.File.Actions.dll===
+ConvertBase64ToFileAction | AttrType=ActionAttribute | EffectiveId=ConvertFromBase64
+ConvertBinaryToFileAction | AttrType=ActionAttribute | EffectiveId=ConvertFromBinary
+ConvertFileToBase64Action | AttrType=ActionAttribute | EffectiveId=ConvertToBase64
+ConvertFileToBinaryAction | AttrType=ActionAttribute | EffectiveId=ConvertToBinary
+CopyFileAction | AttrType=ActionAttribute | EffectiveId=Copy
+DeleteFileAction | AttrType=ActionAttribute | EffectiveId=Delete
+GetFilePathPartAction | AttrType=ActionAttribute | EffectiveId=GetPathPart
+GetTempFilePathAction | AttrType=ActionAttribute | EffectiveId=GetTempPath
+MoveFileAction | AttrType=ActionAttribute | EffectiveId=Move
+WriteTextToFileAction | AttrType=ActionAttribute | EffectiveId=WriteText
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Folder.Actions.dll===
+CopyFolder | AttrType=ActionAttribute | EffectiveId=Copy
+CreateFolder | AttrType=ActionAttribute | EffectiveId=Create
+DeleteFolder | AttrType=ActionAttribute | EffectiveId=Delete
+EmptyFolder | AttrType=ActionAttribute | EffectiveId=Empty
+GetFilesInFolder | AttrType=ActionAttribute | EffectiveId=GetFiles
+GetSpecialFolder | AttrType=ActionAttribute | EffectiveId=
+GetSubfoldersInFolder | AttrType=ActionAttribute | EffectiveId=GetSubfolders
+MoveFolder | AttrType=ActionAttribute | EffectiveId=Move
+RenameFolder | AttrType=ActionAttribute | EffectiveId=Rename
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Variables.Actions.dll===
+AddItemToList | AttrType=ActionAttribute | EffectiveId=
+ClearDataTableAction | AttrType=ActionAttribute | EffectiveId=ClearDataTable
+ClearList | AttrType=ActionAttribute | EffectiveId=
+ConvertCustomObjectToJson | AttrType=ActionAttribute | EffectiveId=
+ConvertJsonToCustomObject | AttrType=ActionAttribute | EffectiveId=
+CreateNewDatatable | AttrType=ActionAttribute | EffectiveId=CreateNewDatatable
+CreateNewList | AttrType=ActionAttribute | EffectiveId=
+DecreaseVariable | AttrType=ActionAttribute | EffectiveId=
+DeleteDuplicateRowsFromDataTableAction | AttrType=ActionAttribute | EffectiveId=DeleteDuplicateRowsFromDataTable
+DeleteEmptyRowsFromDataTableAction | AttrType=ActionAttribute | EffectiveId=DeleteEmptyRowsFromDataTable
+DeleteRowFromDataTable | AttrType=ActionAttribute | EffectiveId=DeleteRowFromDataTable
+FilterDataTableAction | AttrType=ActionAttribute | EffectiveId=FilterDataTable
+FilterList | AttrType=ActionAttribute | EffectiveId=
+FindCommonListItems | AttrType=ActionAttribute | EffectiveId=
+IncreaseVariable | AttrType=ActionAttribute | EffectiveId=
+JoinDataTableAction | AttrType=ActionAttribute | EffectiveId=JoinDataTable
+MergeDataTablesAction | AttrType=ActionAttribute | EffectiveId=MergeDataTables
+MergeLists | AttrType=ActionAttribute | EffectiveId=
+ModifyDataTableItem | AttrType=ActionAttribute | EffectiveId=ModifyDataTableItem
+RemoveDuplicateItemsFromList | AttrType=ActionAttribute | EffectiveId=
+RetrieveDataTableColumnIntoList | AttrType=ActionAttribute | EffectiveId=
+ReverseList | AttrType=ActionAttribute | EffectiveId=
+ShuffleList | AttrType=ActionAttribute | EffectiveId=
+SubtractLists | AttrType=ActionAttribute | EffectiveId=
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Compression.Actions.dll===
+UnzipFiles | AttrType=ActionAttribute | EffectiveId=
+ZipFiles | AttrType=ActionAttribute | EffectiveId=
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Excel.Actions.dll===
+AddWorksheet | AttrType=ActionAttribute | EffectiveId=
+AttachToRunningExcel | AttrType=ActionAttribute | EffectiveId=Attach
+DeleteColumn | AttrType=ActionAttribute | EffectiveId=
+DeleteRow | AttrType=ActionAttribute | EffectiveId=
+GetActiveCellAction | AttrType=ActionAttribute | EffectiveId=GetActiveCell
+GetActiveWorksheet | AttrType=ActionAttribute | EffectiveId=
+GetAllWorksheets | AttrType=ActionAttribute | EffectiveId=
+GetColumnNameAction | AttrType=ActionAttribute | EffectiveId=GetColumnName
+GetFirstFreeColumnRow | AttrType=ActionAttribute | EffectiveId=
+GetFirstFreeRowOnColumn | AttrType=ActionAttribute | EffectiveId=
+GetSelectedCellRange | AttrType=ActionAttribute | EffectiveId=
+GetTableRange | AttrType=ActionAttribute | EffectiveId=
+InsertColumn | AttrType=ActionAttribute | EffectiveId=
+InsertRow | AttrType=ActionAttribute | EffectiveId=
+RunExcelMacro | AttrType=ActionAttribute | EffectiveId=RunMacro
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.Word.Actions.dll===
+AttachToRunningWord | AttrType=ActionAttribute | EffectiveId=Attach
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.PowerPoint.Actions.dll===
+AttachToRunningPowerPoint | AttrType=ActionAttribute | EffectiveId=
+CopyPastePowerPointSlide | AttrType=ActionAttribute | EffectiveId=
+MovePowerPointSlide | AttrType=ActionAttribute | EffectiveId=
+===MODULE:Microsoft.Flow.RPA.Desktop.Modules.PDF.Actions.dll===
+ExtractPagesToNewPDFAction | AttrType=ActionAttribute | EffectiveId=ExtractPages
+MergePDFFilesAction | AttrType=ActionAttribute | EffectiveId=MergeFiles

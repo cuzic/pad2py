@@ -131,6 +131,26 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `"Enabled"`)が実際にどのUIAプロパティに対応するか未確認。
     - `UseDesktop`/`IfRemoteDesktopIsAvailableAction`/`WaitForRemoteDesktopAction`:
       リモートデスクトップ機能専用、スコープ外の可能性が高い。
+- [x] 🔍 **同じ手法を全モジュールへ拡大適用・1件結線(知見165)**: `pad2py-sweep-
+  all-flat-actions`でDatabase/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/
+  File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDFを一括監査
+  (`tools/selector_dumps/_all_modules_flat_actions_raw.txt`)。ほとんどは既に
+  結線済みと確認(Database/Web/XML/Cmd/Clipboard/DateTime/Cryptography/File/
+  Folder/Compressionは0件)。`Variables.FilterList`(`FilterDataTable`と同じ
+  `FilterParameters`スキーマ、知見90の兄弟アクション)を新規発見・結線した
+  (Contains/StartsWith/EndsWith/IsEmpty/Equal/NotEqual等10演算子のみ、
+  GreaterThan系・IsBlank系は実機規則/Blank値のPython表現が未確認のため
+  `NotImplementedError`に留めた)。
+  - [ ] 💻🖥️ **残課題(知見165で発見、未精査)**:
+    - `Excel.DeleteColumn`/`DeleteRow`/`InsertColumn`/`InsertRow`: openpyxlの
+      `delete_cols()`/`delete_rows()`/`insert_cols()`/`insert_rows()`に対応
+      しそうな有力候補(知見155のExcelスコープ内の可能性が高い)。
+    - `Excel.GetTableRange`: Excel Table構造体のレンジ取得、COM専用か要確認。
+    - `PowerPoint.CopyPastePowerPointSlide`: クロスプレゼンテーションのコピー、
+      `MovePowerPointSlide`と同種の複合動作(同じくNotImplementedError委譲か)。
+    - `Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`/
+      `Excel.RunMacro`/`Excel.GetSelectedCellRange`: ライブCOM専用、知見155の
+      スコープ外パターンと同じ可能性が高い。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

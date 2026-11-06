@@ -582,6 +582,74 @@ def join_datatable(
     return result
 
 
+def _filter_list_condition_matches(item: object, condition: Row, ignore_case: bool) -> bool:
+    operator = str(condition.get("OPERATOR"))
+    value = condition.get("VALUE")
+    text = "" if item is None else str(item)
+    value_text = "" if value is None else str(value)
+    text_cmp = text.lower() if ignore_case else text
+    value_cmp = value_text.lower() if ignore_case else value_text
+    if operator == "Contains":
+        return value_cmp in text_cmp
+    if operator == "NotContains":
+        return value_cmp not in text_cmp
+    if operator == "StartsWith":
+        return text_cmp.startswith(value_cmp)
+    if operator == "NotStartsWith":
+        return not text_cmp.startswith(value_cmp)
+    if operator == "EndsWith":
+        return text_cmp.endswith(value_cmp)
+    if operator == "NotEndsWith":
+        return not text_cmp.endswith(value_cmp)
+    if operator == "IsEmpty":
+        return text == ""
+    if operator == "IsNotEmpty":
+        return text != ""
+    if operator == "Equal":
+        # design/dsl_format_findings.md 知見165(decompile確認済み): `IgnoreCase=True`は
+        # 単純な大文字小文字区別無し文字列比較(クロス型の数値文字列同値判定はしない)、
+        # `IgnoreCase=False`の場合のみ`pad_equal()`(知見85/88のクロス型同値判定)に
+        # 委譲する——`FilterDataTable`/`JoinDataTable`とは異なり`IgnoreCase`が比較
+        # アルゴリズム自体を切り替える`FilterList`特有の挙動。
+        if ignore_case:
+            return text_cmp == value_cmp
+        return _pad_compare_equal(item, value)
+    if operator == "NotEqual":
+        if ignore_case:
+            return text_cmp != value_cmp
+        return not _pad_compare_equal(item, value)
+    # `GreaterThan`/`GreaterThanOrEqual`/`LessThan`/`LessThanOrEqual`(実機のクロス型
+    # 比較規則が未確認、知見97のJoinDataTableでの「常に文字列比較」と矛盾しうる)・
+    # `IsBlank`/`IsNotBlank`(PADの`Blank`値に対応するPython表現が未確立)は、
+    # でっち上げず明示的に未対応とする——呼び出し元の`pad_codegen`はこれらの演算子が
+    # 使われている場合、安全にTODOフォールバックへ倒す。
+    raise NotImplementedError(f"Unsupported FilterList operator: {operator!r}")
+
+
+def filter_list(items: list, conditions: DataTable, ignore_case: bool = False) -> list:
+    """design/dsl_format_findings.md 知見165(decompile確認済み): `FilterParameters`は
+    `FilterDataTable`(知見90)と同じ`OPERATOR`/`VALUE`/`RULE`列を持つDataTableだが、
+    `COLUMN`列は無い(各リスト項目そのものが評価対象)。`FilterListUtilities.
+    EvaluateFilterConditions()`/`EvaluateSingleCondition()`をdecompileして確認した
+    とおり、`FilterDataTable`と同じOR区切りのAND-group群として評価する。
+    """
+    if not conditions:
+        return list(items)
+    groups: list[list[Row]] = [[]]
+    for i, condition in enumerate(conditions):
+        if i > 0 and condition.get("RULE") == "Or":
+            groups.append([])
+        groups[-1].append(condition)
+
+    def item_matches(item: object) -> bool:
+        return any(
+            all(_filter_list_condition_matches(item, cond, ignore_case) for cond in group)
+            for group in groups
+        )
+
+    return [item for item in items if item_matches(item)]
+
+
 def retrieve_datatable_column_into_list(table: DataTable, column: str) -> list:
     """`ColumnNameOrIndex`は列名/列インデックスの両方を受け付ける(知見133参照)。"""
     resolved = _resolve_column_name(table, column)

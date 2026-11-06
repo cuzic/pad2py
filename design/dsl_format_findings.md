@@ -2755,3 +2755,17 @@ VM上で`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラス
 - `UseDesktop`/`IfRemoteDesktopIsAvailableAction`/`WaitForRemoteDesktopAction`: リモートデスクトップ機能専用——このプロジェクトのスコープ外である可能性が高い。
 
 テストは`tests/test_pad_codegen.py`に`FocusTextField`のexec検証テストを追加した。`design/pad_todo.md`に残り14候補を新規TODOとして記録する。
+
+## 165. 知見164の「フラット`[Action]`クラス」監査を全モジュールへ拡大適用——`Variables.FilterList`を新規結線、Excel/Word/PowerPointに追加のCOM専用/openpyxl候補を発見
+
+知見164でUIAutomation.Actions.dllに適用した「`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラスを直接列挙し、`ActionSelectorBase`一括列挙の結果(セレクタを持つクラスの集合)と突き合わせる」手法を、`pad2py-sweep-all-flat-actions`(新規clipwire target、複数DLLを1回で処理)で残りの主要モジュール(Database/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDF)にも適用した。結果は`tools/selector_dumps/_all_modules_flat_actions_raw.txt`に保存し、既存の結線済みaction_id集合と突き合わせたところ、ほとんどは既に結線済みと確認できた(Database/Web/XML/Cmd/Clipboard/DateTime/Cryptography/File/Folder/Compressionは1件の未結線も無し)。
+
+**新規発見・結線1件(`Variables.FilterList`)**: `Variables.Actions.dll`に兄弟セレクタの無いフラットなアクションとして存在し、これまで全く未着手だった。decompileした`FilterListUtilities.EvaluateFilterConditions()`/`EvaluateSingleCondition()`から、`FilterParameters`は知見90の`FilterDataTable`と同じ`OPERATOR`/`VALUE`/`RULE`列を持つDataTable(`COLUMN`列は無い——各リスト項目そのものが評価対象)で、OR区切りのAND-group群として評価する同じ構造だと確認した。
+
+**`FilterList`特有の非自明な挙動(decompile確認済み)**: `IgnoreCase`は単なる大文字小文字の区別だけでなく、`Equal`/`NotEqual`の**比較アルゴリズム自体を切り替える**——`IgnoreCase=True`の場合は文字列化した値同士の単純な大文字小文字区別無し比較(クロス型の数値文字列同値判定はしない)、`IgnoreCase=False`の場合のみ`ComparisonCalculator.Compare`(=`expr_runtime.pad_equal()`、知見85/88のクロス型同値判定)に委譲する。これは`FilterDataTable`/`JoinDataTable`の`MatchCase`/暗黙の規則とは異なる、`FilterList`固有の仕様。
+
+`GreaterThan`/`GreaterThanOrEqual`/`LessThan`/`LessThanOrEqual`(実機のクロス型比較規則が知見97のJoinDataTableの「常に文字列比較」と矛盾しうるため未確認)と`IsBlank`/`IsNotBlank`(PADの`Blank`値に対応するPython表現がこのプロジェクトには無い)は、でっち上げず`NotImplementedError`にした——Contains/NotContains/StartsWith/NotStartsWith/EndsWith/NotEndsWith/IsEmpty/IsNotEmpty/Equal/NotEqualの10演算子のみ実装。
+
+**Excel/Word/PowerPointの追加候補(未実装のまま記録)**: `Excel.Attach`/`Word.Attach`/`PowerPoint.AttachToRunningPowerPoint`(いずれもライブCOMプロセスへのアタッチ、知見155のスコープ外パターンと同じ)、`Excel.RunMacro`(ライブExcel COM専用)、`Excel.GetSelectedCellRange`(ライブUIの現在選択範囲、同スコープ外)、`Excel.DeleteColumn`/`DeleteRow`/`InsertColumn`/`InsertRow`(openpyxlの`delete_cols()`/`delete_rows()`/`insert_cols()`/`insert_rows()`に対応しそうな有力候補、未精査)、`Excel.GetTableRange`(Excel Table構造体のレンジ取得、COM専用か要確認)、`PowerPoint.CopyPastePowerPointSlide`(クロスプレゼンテーションのコピー、`MovePowerPointSlide`と同種の複合動作)。`design/pad_todo.md`に新規TODOとして記録する。
+
+テストは`tests/test_pad_action_lib_variables.py`に`filter_list()`の単体テスト8件、`tests/test_pad_codegen.py`にCSVシード経由のend-to-end exec検証1件を追加した。
