@@ -2916,3 +2916,13 @@ decompileで`InsertImageToWord.Execute()`を精査し直すと、`InsertImageMod
 これにより、本プロジェクトが対象とする全Tier1/2/3モジュール(Database/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDF/UIAutomation)のセレクタ監査(`ActionSelectorBase`一括列挙+フラットアクション一括列挙の両方)が完全に網羅され、`tools/pad_selector_audit.py --module <全モジュール>`を実行して未結線候補が出るのは意図的な既知除外(ライブCOM専用・RDP必須・外部ライブラリ未導入等、個別にdecompileまたは実機で確認済み)のみという状態に到達したと確定した。
 
 `tools/selector_dumps/Clipboard_flat_actions.txt`/`Compression_flat_actions.txt`を新規保存(知見164の`UIAutomation_flat_actions.txt`と同じ命名規則・フォーマット——`tools/pad_selector_audit.py`本体の`--dump`が期待するシブリングセレクタ専用フォーマットとは異なるため、同名の`Clipboard.txt`/`Compression.txt`ではなく明示的に`_flat_actions`サフィックスを付けて区別した)。コード変更は無し(確認のみ)。
+
+## 179. `design/common_rpa_framework_roadmap.md`層3の残課題「`ActionSelectorBase`列挙用PowerShellスクリプト自体の資産化」を完了——`tools/pad_selector_audit.ps1`を新規コミット
+
+知見139以降、`ActionSelectorBase`派生型を列挙する手順(モジュール名を引数にした`clipwire`のアドホックターゲット)を知見139/159/165/171/178等のたびに都度書き直していた。これをパラメータ化された1本のスクリプトに資産化した——`design/common_rpa_framework_roadmap.md`層3が「次の課題」として明記していた残り半分(Pythonツール`tools/pad_selector_audit.py`自体は知見159で資産化済みだったが、VM側のPowerShellスクリプトは専用の`.ps1`ファイルとしてまだコミットされていなかった)。
+
+`tools/pad_selector_audit.ps1`(`-Dlls <DLLファイル名の配列>`・`-Root <インストールディレクトリ、既定値あり>`のパラメータを持つ)は、知見139-178で蓄積した標準手順(BaseTypeチェーンを`ActionSelector*`まで遡って対象型を判定、直接の親`ActionSelector<TTarget>`の型引数からターゲットクラス名を取得、`ActionName`プロパティをインスタンス化して読み取る)をそのまま1本化しただけで、新しい判定ロジックは何も追加していない(でっち上げ無し)。読み取り専用(`Execute()`を一切呼ばずインスタンス化のみ)なので、Designer UIを操作中の他セッションがいても安全に実行できる既存の方針を維持する。
+
+**実機で動作確認済み**: `Microsoft.Flow.RPA.Desktop.Modules.Database.Actions.dll`に対して実行した出力が既存のコミット済み`tools/selector_dumps/Database.txt`(5行)と完全一致、`Microsoft.Flow.RPA.Desktop.Modules.Excel.Actions.dll`に対しても既存の`tools/selector_dumps/Excel.txt`(103行)と`diff`でバイト単位の完全一致を確認した——このスクリプトが過去の全ての監査結果を再現できる(後方互換)ことを実証した。
+
+実装: `tools/pad_selector_audit.ps1`を新規コミット。`design/common_rpa_framework_roadmap.md`の層3セクションとPhase 0のチェックリスト項目を`[x]`完了に更新した。コード変更(`pad_action_lib`/`pad_codegen`)は無し、`tools/pad_selector_audit.py`本体も無変更。

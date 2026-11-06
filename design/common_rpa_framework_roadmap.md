@@ -98,20 +98,22 @@ ConversionResult = Converted | Unsupported
 
 **目指す形**: 今回の監査で使った「`ActionSelectorBase`を継承する全型をリフレクションで列挙し、既存codegenの`action_id`マッピングと突き合わせる」手順を、**コミットされたスクリプト+コマンド**にする。
 
-✅ **PAD側は実装完了(2026-11-06、知見159)**: `tools/pad_selector_audit.py`(AST走査で
-`pad_codegen/actions/<module>.py`からwire済みaction_id集合を抽出し、VMリフレクション
-dumpと突き合わせる)を実装し、`tools/selector_dumps/{Excel,Word,PowerPoint,PDF}.txt`
-(知見139のテンプレート形式でコミット、decompile結果自体は非追跡のまま)で実際に
-運用した。知見155-158で発見したExcel/PDF/Word/PowerPointの潜在バグ(action_idが
-3セグメント形式なのにcodegen側がフラット判定で一度もマッチしていなかった)の検証・
-回帰防止に使えることを確認済み。`ActionSelectorBase`由来の全型を列挙するVM側の
-PowerShellスクリプト自体は、知見139-158を通じて確立した標準テンプレート(`clipwire`
-のad-hoc targetとして都度生成)をそのまま使っており、専用の`.ps1`ファイルとしては
-まだ資産化していない(次の課題)。
+✅ **PAD側は実装完了(2026-11-06、知見159・知見179で完結)**: `tools/pad_selector_audit.py`
+(AST走査で`pad_codegen/actions/<module>.py`からwire済みaction_id集合を抽出し、VM
+リフレクションdumpと突き合わせる)を実装し、`tools/selector_dumps/{Excel,Word,
+PowerPoint,PDF,...}.txt`(知見139のテンプレート形式でコミット、decompile結果自体は
+非追跡のまま)で実際に運用した。知見155-158で発見したExcel/PDF/Word/PowerPointの
+潜在バグ(action_idが3セグメント形式なのにcodegen側がフラット判定で一度もマッチして
+いなかった)の検証・回帰防止に使えることを確認済み。`ActionSelectorBase`由来の全型を
+列挙するVM側のPowerShellスクリプト自体も、知見139-158を通じて確立した標準テンプレート
+(`clipwire`のad-hoc targetとして都度生成していた)を汎用化し、`tools/pad_selector_
+audit.ps1`として資産化完了(知見179)——`Database.Actions.dll`/`Excel.Actions.dll`で
+既存のコミット済みdump(`Database.txt`/`Excel.txt`)と完全一致する出力を生成することを
+実機で確認済み。
 
 ```
 tools/pad_selector_audit.py      # [済み] dispatch関数群をAST走査してwire済みaction_id集合を抽出
-tools/pad_selector_audit.ps1     # [未着手] VM上でActionSelectorBase由来の全型を列挙するスクリプト自体の資産化
+tools/pad_selector_audit.ps1     # [済み・知見179] VM上でActionSelectorBase由来の全型を列挙するスクリプト自体の資産化
 ```
 
 実行結果は「未結線セレクタ一覧」としてCIやレポートに出力し、`pad_todo.md`への反映を半自動化する。UiPath側には活動種別が数百〜数千あるため、この種の**体系的な差分発見ツール**が無いと手探りのまま進むことになり、むしろUiPath側こそ優先度が高い。
@@ -199,14 +201,19 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   `JoinParameters`スキーマ・DateTimeタイムゾーン対応表の8項目を、既存知見(知見65・81・83・
   85・86・88・90・91・92・97・98・99・100-107・112・116・127・128・132・133・138)から
   集約した。新しい事実の確認は行っていない(既存知見の再配置のみ)。
-- [ ] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる。
+- [x] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる。
   **2026-11-05追記**: VMが空いたタイミングで実際にこの監査手法(`ActionSelectorBase`
   列挙→`ActionName`読み取り)を`Database`/`Web`/`XML`/`Cmd`/`Text`/`Cryptography`の
   6モジュールに適用し(知見139)、`Database`は新規結線まで完了した。実行したPowerShell
   スクリプトは`~/.config/clipwire/targets.toml`のアドホックターゲット(`pad2py-audit-
-  selectors-batch1`等)としては存在するが、**このリポジトリの`tools/`配下にはまだ
-  コミットしていない**(手法の再利用可能性は実証されたが、汎用スクリプトとしての
-  整備はまだ未着手のまま)——本項目は依然オープン。
+  selectors-batch1`等)としては存在するが、当時は**このリポジトリの`tools/`配下には
+  まだコミットしていなかった**(手法の再利用可能性は実証されたが、汎用スクリプトとしての
+  整備はまだ未着手のまま)。
+  **決着(知見179、2026-11-06)**: アドホックターゲットとして都度書き直していたスクリプトを
+  パラメータ化(`-Dlls`/`-Root`)して`tools/pad_selector_audit.ps1`として資産化した。
+  `Database.Actions.dll`/`Excel.Actions.dll`で実行し、既存のコミット済みdump(`tools/
+  selector_dumps/Database.txt`/`Excel.txt`)と出力が完全一致(バイト単位)することを
+  VM上で実機確認した。
 - [x] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める。
   **2026-11-05実施**: 「番号は不変・追記専用、訂正は新しい知見番号で行う」という規約を
   git履歴で実証確認(知見97が知見91を書き換えずに訂正していることを確認)した上で明記。
