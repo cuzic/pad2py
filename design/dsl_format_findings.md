@@ -2938,3 +2938,19 @@ decompileで`InsertImageToWord.Execute()`を精査し直すと、`InsertImageMod
 実装: `pad_action_lib/excel_actions.py`に`get_table_range()`(`GetTableRangeError`例外クラス新規追加)を実装。`dump_daemon/pad_codegen/actions/excel.py`に`Excel.GetTableRange`(`IsPivot=False`のみ、`IsPivot=True`または非リテラルは安全にTODOへ倒す)の分岐を追加。テストは`tests/test_pad_action_lib_excel.py`に単体テスト4件、`tests/test_pad_codegen.py`にexec検証テスト1件・TODOフォールバック確認1件を追加。VM不要。
 
 **同じ技法で他の「ライブCOM専用」判定も再検証したが、今回は新規発見なし**: 知見171で確認したExcelの`RunMacro`/`GetSelectedCellRange`/`Attach`、PowerPoint の`CopyPastePowerPointSlide`も、同じ`ExcelActions`/`PowerPointOperations`具象実装クラス内の該当メソッド本体を直接読み直した。`AttachToRunningExcelDocument`は`ExcelFunctions.AttachToRunningExcelDocument(...)`でライブプロセスへの直接アタッチ、`RunMacro`はライブExcel上のVBAマクロ実行(`MacroCommandParser`+`Application.Run`相当)、`GetSelectedCellRange`はライブExcel UIの`Selection`プロパティ(現在のユーザー選択範囲、ファイルベースには対応概念が無い)、PowerPointの`CopyPasteSlide`は`Slide.Copy()`+`Slides.Paste()`(Windows OSクリップボード経由のライブCOM操作)——4件とも実装を直接読んでも代替手段が無いと再確認できた。知見180の「同じDLL内の具象実装まで遡る」技法が有効だったのは`GetTableRange`が本当に単純なプロパティ読み取りだったからで、万能というわけではないと確認した。
+
+## 181. 知見180の技法をWordにも適用——`ReadFromWord.ReadBookmark`(`Bookmark.Range.Text`相当)をlxmlでのOOXML直接検索により新規実装、`python-docx`に無い機能を自前で実装した初めての例
+
+知見180・前段の再検証に続き、`Word.Actions.dll`の`IWordOperationsFacade`具象実装クラス(`WordOperationsFacade`)内の`ReadDocumentByPage()`/`ReadDocumentByBookmark()`の実装本体も直接読み直した。
+
+`ReadDocumentByPage()`は`Range(...)[WdInformation.wdNumberOfPagesInDocument]`や`GetSinglePageContent()`(Word COMの`GoTo(wdGoToPage, ...)`相当、ライブレンダリング結果にのみ存在する「ページ」概念)に依存——これはExcelの`RunMacro`等と同じ、ライブCOM無しには原理的に不可能なケースで、知見180の技法を適用しても解決しないと再確認した(`python-docx`はページ分割という概念自体を持たない)。
+
+一方`ReadDocumentByBookmark()`は`((_Document)val).Range(ref obj, ref obj2).Text`——名前で見つけたブックマークの`Range.Start`/`Range.End`間の生テキストを返すだけの**構造的な範囲読み取り**で、ライブレンダリングに依存しない。既存の`design/pad_todo.md`の判断(「`python-docx`にブックマークナビゲーションAPIが無い」)は事実として正しいが、これは「`python-docx`の**高レベル**APIに無い」という意味であり、「OOXML構造上ブックマークの位置特定・テキスト抽出が原理的に不可能」という意味ではなかった——これまでの知見166・175・177・180の「ライブCOM専用か」という切り分けとは異なる、**「高レベルAPIが無いだけで、低レベルのXML操作なら実装できる」という新しいカテゴリ**だったと判明した。
+
+OOXMLでは`<w:bookmarkStart w:name="..." w:id="N"/>`と`<w:bookmarkEnd w:id="N"/>`という2つの空要素でブックマークの範囲が区切られ(`python-docx`の内部表現も`lxml`の`Element`ツリーそのもの、`docx.oxml.ns.qn()`で名前空間付きタグ名を取得できる)、間に挟まれた`<w:t>`要素のテキストを文書順に連結すればWord COMの`Range.Text`と同じ結果になる——`document.element.body.iter()`で文書順の全子孫を列挙し、名前が一致する`bookmarkStart`から同じ`w:id`を持つ`bookmarkEnd`までの区間にある`w:t`のテキストを連結するだけで実装できた。`ReadDocumentByBookmark()`自身の`if (val2 == null || val2.Empty) return string.Empty;`(ブックマークが**見つからない場合も例外にせず空文字列を返す**という非自明な挙動)も確認し、同じ挙動で実装した。
+
+複数段落をまたぐブックマーク(段落境界に`\r`を挿入すべきかどうか、知見81の`"\r".join(...)`規約との整合性)はWord COM実機で未確認のため、`<w:t>`の内容をそのまま連結するだけに留め、でっち上げた`\r`挿入ロジックは追加しなかった——単一段落内のブックマークという典型例でのみ忠実な実装である点を明記した。
+
+書き込み側(`WriteToWord`/`InsertImageToWord`のブックマーク相対モード)は、挿入位置の意味論(既存コンテンツの前後どちらに挿入されるか、`bookmarkStart`/`bookmarkEnd`自体を移動させる必要があるか等)がより複雑で未確認のため、今回は読み取り側のみ先行実装し、書き込み側は依然`NotImplementedError`のまま保留する。
+
+実装: `pad_action_lib/word_actions.py`に`_bookmark_range_text()`(lxml直接検索)を追加し、`read_from_word()`の`Bookmark`モードを無条件`NotImplementedError`から実装へ変更。`dump_daemon/pad_codegen/actions/word.py`に`Word.ReadFromWord.ReadBookmark`の分岐を追加。テストは`tests/test_pad_action_lib_word.py`に単体テスト4件(見つかる場合・空ブックマーク・見つからない場合・保存→再読込往復)、`tests/test_pad_codegen.py`にexec検証テスト1件を追加。VM不要。

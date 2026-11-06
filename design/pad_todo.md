@@ -489,6 +489,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
         未実装」という過去の判断は必要以上に広い除外だった。ブックマーク相対・
         テキスト相対・クリップボードソースの残り9件は依然対象外(理由は個別に
         確認済み、知見177参照)。
+      - [x] 💻 **`Word.ReadFromWord.ReadBookmark`も新規結線完了(知見181)**:
+        `python-docx`に「高レベルAPIが無い」ことは事実だが、OOXMLの
+        `<w:bookmarkStart>`/`<w:bookmarkEnd>`をlxmlで直接検索すれば原理的に
+        可能だったと判明——Word COMの`Bookmark.Range.Text`を`word_actions.
+        _bookmark_range_text()`で再現した。`ReadFromWord.ReadPage`(ライブ
+        ページレンダリング依存)はこの技法でも解決せず依然対象外。書き込み側
+        (`WriteToWord`/`InsertImageToWord`のブックマーク相対モード)は挿入位置の
+        意味論がより複雑なため未着手のまま。
     - [x] 💻 **テスト基盤の死角を解消(知見174)**: Excel/Word/PowerPointの「全スコープ
       バッチ」テストが文字列一致の`compile()`のみで一度も`exec()`していなかったと判明
       (知見124/129/130と同じ死角)。各モジュールに実際に`exec()`して出力変数の値・

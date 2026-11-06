@@ -4,10 +4,19 @@ PADの実装は`Microsoft.Office.Interop.Word`経由でライブWordプロセス
 (`WordInstanceHandle`がCOMの`Application`/`Document`参照を保持)。`python-docx`は
 `.docx`ファイルを直接読み書きするだけでライブアプリを起動しないため、ここでは
 「テキスト内容・基本構造の読み書き」(LaunchWord/CloseWord/SaveWord/ReadFromWordの
-WholeDocumentモード/WriteToWordのStart・EndOfDocumentモード/FindAndReplaceWord)に
-範囲を絞る。ブックマーク操作・クリップボード画像挿入・ライブページ分割・実行中
+WholeDocument・Bookmarkモード/WriteToWordのStart・EndOfDocumentモード/
+FindAndReplaceWord)に範囲を絞る。クリップボード画像挿入・ライブページ分割・実行中
 Wordへのアタッチは、ライブCOMインスタンス無しには原理的に再現できないため
 `NotImplementedError`で明示する(でっち上げた近似は作らない)。
+
+design/dsl_format_findings.md 知見181: `ReadFromWord`の`Bookmark`モードは、
+`python-docx`に高レベルの`Bookmarks`コレクションAPIが無いため、`lxml`経由で
+OOXMLの`<w:bookmarkStart>`/`<w:bookmarkEnd>`を直接検索する低レベル実装
+(`_bookmark_range_text()`)で対応した——Word COMの`Document.Bookmarks[name]
+.Range.Text`と構造的に同じ検索(名前でブックマークを探し、開始〜終了マーカー間の
+テキストを連結する)。`WriteToWord`/`InsertImageToWord`のブックマーク相対モードは
+依然未対応(書き込み側は挿入位置の正確な意味論がより複雑なため、読み取り側のみ
+先行実装した)。
 """
 from __future__ import annotations
 
@@ -16,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import docx
+from docx.oxml.ns import qn
 
 from .errors import PadActionError
 
@@ -149,6 +159,50 @@ def close_word(
     save_word(instance, save_mode=save_mode, document_format=document_format, document_path=document_path)
 
 
+def _bookmark_range_text(document: docx.Document, bookmark_name: str) -> str | None:
+    """design/dsl_format_findings.md 知見181: `python-docx`に高レベルの`Bookmarks`
+    コレクションAPIが無いため、OOXMLの`<w:bookmarkStart>`/`<w:bookmarkEnd>`を
+    文書順(`document.element.body.iter()`)で直接検索し、両マーカーの間にある
+    `<w:t>`要素のテキストを連結する——Word COMの`Bookmark.Range.Text`と同じ
+    「名前で見つけた範囲の生テキスト」。見つからない場合は`None`を返す(呼び出し元が
+    「未発見」と「空のブックマーク」を区別できるようにする、実機は両方とも空文字列を
+    返すため呼び出し元で合流させる)。
+
+    複数の段落をまたぐブックマークは、段落境界に`\\r`を挿入せず`<w:t>`の内容を
+    そのまま連結する——単一段落内のブックマークという典型例の範囲内でのみ忠実
+    (複数段落をまたぐ場合の正確な`\\r`挿入位置はWord COM実機で未確認のため、
+    でっち上げない)。
+    """
+    bookmark_start_tag = qn("w:bookmarkStart")
+    bookmark_end_tag = qn("w:bookmarkEnd")
+    name_attr = qn("w:name")
+    id_attr = qn("w:id")
+    text_tag = qn("w:t")
+
+    descendants = list(document.element.body.iter())
+    start_index: int | None = None
+    bookmark_id: str | None = None
+    for index, element in enumerate(descendants):
+        if element.tag == bookmark_start_tag and element.get(name_attr) == bookmark_name:
+            start_index = index
+            bookmark_id = element.get(id_attr)
+            break
+    if start_index is None:
+        return None
+
+    end_index: int | None = None
+    for index in range(start_index + 1, len(descendants)):
+        if descendants[index].tag == bookmark_end_tag and descendants[index].get(id_attr) == bookmark_id:
+            end_index = index
+            break
+    if end_index is None:
+        return None
+
+    return "".join(
+        element.text or "" for element in descendants[start_index:end_index] if element.tag == text_tag
+    )
+
+
 def read_from_word(
     instance: WordInstanceHandle | None,
     read_mode: str = "WholeDocument",
@@ -167,10 +221,11 @@ def read_from_word(
             f"(requested pages={pages!r}); python-docx has no pagination concept"
         )
     if read_mode == "Bookmark":
-        raise NotImplementedError(
-            f"ReadFromWord Bookmark mode depends on Word's live Bookmarks collection "
-            f"(requested bookmark={bookmark!r}); python-docx has no bookmark navigation API"
-        )
+        # design/dsl_format_findings.md 知見181(decompile確認済み): 実機の
+        # `ReadDocumentByBookmark()`は見つからない場合・空のブックマークの場合の
+        # 両方で空文字列を返す(例外にしない)。
+        text = _bookmark_range_text(instance.document, bookmark)
+        return text if text is not None else ""
     raise ValueError(f"Unknown ReadWordMode: {read_mode!r}")
 
 

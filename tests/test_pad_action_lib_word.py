@@ -5,6 +5,7 @@ from pathlib import Path
 
 import docx
 import pytest
+from docx.oxml.ns import qn
 
 from dump_daemon.pad_action_lib import word_actions as wa
 
@@ -89,10 +90,56 @@ def test_read_from_word_page_mode_not_implemented() -> None:
         wa.read_from_word(instance, read_mode="Page", pages="1")
 
 
-def test_read_from_word_bookmark_mode_not_implemented() -> None:
+def _add_bookmark(paragraph, bookmark_id: str, name: str, text: str) -> None:
+    """テスト用: `<w:bookmarkStart>`/`<w:bookmarkEnd>`を手動で挿入する
+    (`python-docx`に高レベルAPIが無いため、知見181の実装と同じ低レベル手段で
+    テスト用フィクスチャ自体も組み立てる)。"""
+    from docx.oxml import OxmlElement
+
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), bookmark_id)
+    start.set(qn("w:name"), name)
+    paragraph._p.append(start)
+    if text:
+        paragraph.add_run(text)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), bookmark_id)
+    paragraph._p.append(end)
+
+
+def test_read_from_word_bookmark_mode_returns_text_between_markers() -> None:
+    # design/dsl_format_findings.md 知見181(decompile確認済み): `ReadDocumentByBookmark()`
+    # はWord COMの`Bookmarks[name].Range.Text`相当——ブックマーク開始〜終了間のテキスト。
     instance = wa.launch_word(mode="NewDocument")
-    with pytest.raises(NotImplementedError):
-        wa.read_from_word(instance, read_mode="Bookmark", bookmark="b")
+    p = instance.document.add_paragraph()
+    p.add_run("before ")
+    _add_bookmark(p, "0", "MyBookmark", "inside text")
+    p.add_run(" after")
+    assert wa.read_from_word(instance, read_mode="Bookmark", bookmark="MyBookmark") == "inside text"
+
+
+def test_read_from_word_bookmark_mode_empty_bookmark_returns_empty_string() -> None:
+    instance = wa.launch_word(mode="NewDocument")
+    p = instance.document.add_paragraph()
+    _add_bookmark(p, "0", "EmptyBookmark", "")
+    assert wa.read_from_word(instance, read_mode="Bookmark", bookmark="EmptyBookmark") == ""
+
+
+def test_read_from_word_bookmark_mode_not_found_returns_empty_string() -> None:
+    # decompile確認済み: 実機は見つからない場合も例外にせず空文字列を返す。
+    instance = wa.launch_word(mode="NewDocument")
+    assert wa.read_from_word(instance, read_mode="Bookmark", bookmark="NoSuchBookmark") == ""
+
+
+def test_read_from_word_bookmark_mode_round_trips_through_save_reload(tmp_path: Path) -> None:
+    instance = wa.launch_word(mode="NewDocument")
+    p = instance.document.add_paragraph()
+    _add_bookmark(p, "0", "MyBookmark", "saved text")
+    dest = tmp_path / "out.docx"
+    wa.save_word(instance, save_mode="SaveAs", document_path=str(dest))
+
+    reloaded = wa.launch_word(mode="StoredDocument", path=str(dest))
+    assert wa.read_from_word(reloaded, read_mode="Bookmark", bookmark="MyBookmark") == "saved text"
 
 
 def test_read_from_word_requires_instance() -> None:

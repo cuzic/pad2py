@@ -119,6 +119,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"read_mode='WholeDocument', pages='1', bookmark='')"
         ]
 
+    if action_id == "Word.ReadFromWord.ReadBookmark":
+        # design/dsl_format_findings.md 知見181(decompile確認済み): `ReadDocumentByBookmark()`
+        # はWord COMの`Bookmarks[name].Range.Text`相当——`word_actions._bookmark_range_text()`
+        # (`lxml`で`<w:bookmarkStart>`/`<w:bookmarkEnd>`を直接検索)で再現した。
+        instance = safe_render(p.get("Instance"))
+        bookmark = safe_render(p.get("Bookmark"))
+        if instance is None or bookmark is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = word_actions.read_from_word({instance}, "
+            f"read_mode='Bookmark', pages='1', bookmark={bookmark})"
+        ]
+
     # 知見157: `WriteToWord`の兄弟セレクタ4件のうち、`WriteStartOfBookmark`/
     # `WriteEndOfBookmark`(ブックマーク書き込み)はスコープ外。
     _WORD_WRITE_MODE_BY_ACTION_NAME = {

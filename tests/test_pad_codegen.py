@@ -3339,6 +3339,30 @@ def test_generate_python_keeps_insert_image_bookmark_mode_as_todo() -> None:
     assert "# TODO: map PAD action: Word.InsertImageToWord.InsertImageBookmarkStartFromFile" in code
 
 
+def test_generate_python_from_word_read_bookmark_converts() -> None:
+    # design/dsl_format_findings.md 知見181(decompile確認済み): `ReadDocumentByBookmark()`
+    # はWord COMの`Bookmarks[name].Range.Text`相当——`word_actions._bookmark_range_text()`
+    # (lxmlで`<w:bookmarkStart>`/`<w:bookmarkEnd>`を直接検索)で再現した。
+    dsl = (
+        "Word.LaunchWord.Launch Instance=> WordInstance\n"
+        "Word.ReadFromWord.ReadBookmark Instance: WordInstance "
+        "Bookmark: $'''MyBookmark''' WordData=> WordData"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "WordData = word_actions.read_from_word(WordInstance, read_mode='Bookmark', "
+        "pages='1', bookmark='MyBookmark')" in code
+    )
+    assert "# TODO" not in code
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    # ブックマーク自体が無い文書なので、decompile確認済みの「未発見=空文字列」を検証する。
+    assert namespace["WordData"] == ""
+
+
 def test_generate_python_from_word_unsupported_modes_fall_back_to_todo() -> None:
     # ページ/ブックマーク系はライブWordのレンダリング/ライブコレクション依存のため
     # スコープ外(知見157のセレクタ監査でHide/ShowAllから確定)——でっち上げたコードを
