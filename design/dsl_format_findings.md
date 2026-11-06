@@ -2520,3 +2520,7 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 `Username`/`Password`は`Name`が空(プロパティ名そのまま)だと確認できたため、`InvokeSoapServiceUseAuth`を安全に結線した——既存の`invoke_soap_service()`に`use_credentials`/`username`/`password`引数を新規追加し(内部で委譲する`invoke_web_service()`は元から対応済み)、`UseAuthentication=True`時のみこれらを渡すようにした。副産物として`Password`プロパティに`ArgumentStylingAttribute(Sensitive=True)`が付いていることも確認し、他の暗号化系パラメータと同じDPAPI保護値の扱いが必要になる可能性を記録した(今回の実装自体はDPAPI値の読み取りに既存の`safe_render()`がそのまま対応する)。
 
 テストは`tests/test_pad_codegen.py`に1件追加し、`web_actions.invoke_web_service`を差し替えて`use_credentials`/`username`/`password`が正しく渡ることをexec検証した。
+
+## 146. 知見145の反例発見を受け、本セッションで新規結線した全パラメータ名を`InputArgumentAttribute.Name`で再検証——Web.InvokeSoapServiceの`Url`/`Endpoint`以外に反例は無いと確認
+
+知見145で「リフレクションのプロパティ名=DSL名」という経験則の反例(`InvokeSoapServiceAction.Url`が実際には`Endpoint`という名前でDSLに現れる)を発見したため、本セッション(知見139-145)で新規結線した全パラメータ名(`Database`/`XML`/`Cmd`/`Text`/`Cryptography`/`Web.DownloadFromWeb`、計40件超)についてVM上で`InputArgumentAttribute.Name`を一括確認した。結果、知見145の`Url`→`Endpoint`以外には反例が見つからなかった——本セッションの既存結線は全て安全だと確認できた。今後も新しいモジュールのプロパティ名を使う際は、プロパティ名だけでなく必ず`InputArgumentAttribute.Name`(または`OutputArgumentAttribute.Name`)を確認する運用を継続する。
