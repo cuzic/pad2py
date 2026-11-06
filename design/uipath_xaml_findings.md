@@ -7650,14 +7650,49 @@ RequirementLanCur = 'False'`という2つの別々の識別子になっていた
 リテラルの誤爆防止を個別にテスト)、UiPath関連テスト全645件通過、
 リポジトリ全体で全1685件通過。
 
+## 161. `ui:BrowserScope`(「Attach Browser」、`WindowScope`より多い3388件ヒット)を新規実装——`AttachWindowNode`を3回目の再利用
+
+知見159で発見した`ui:BrowserScope`(「Attach Browser」、`GSA/
+Credit_Card_Logging_Bot`の実機XAMLで遭遇)を実装した。GitHub code
+searchで**3388件ヒット**——`ui:WindowScope`(知見158、1688件)より
+さらに多い、実務で非常に高頻度に使われる活動だと判明した。
+
+実機5件(`PacktPublishing/Robotic-Process-Automation-Projects`・
+`piyushagarwal08/JU-Notes`・`miyaichi/CertificationExam1`・
+`allenlooplee/RPABook`)で構造を確認した結果、`ui:WindowScope`と
+完全に同じ`ActivityAction`+`DelegateInArgument`(`Name`は
+`"ContextTarget"`固定)のラッパー構造で、意味論も同じ(既存の
+ウィンドウ/ブラウザに接続して`Body`を実行、起動は行わない)——
+`AttachWindowNode`(知見153・158)を3回目の再利用先として同じ
+ノード型を返すだけで実装できた。ブラウザ固有の追加属性は`Browser`
+(アタッチ先を指す既存の`UiBrowser`型変数への入力参照)・`UiBrowser`
+(アタッチ結果を受け取る出力バインディング、`ApplicationWindow`と
+同種)・`ContinueOnError`の3つで、実機確認した5件全てで`{x:Null}`
+だった——`SearchScope`/`TimeoutMS`は`WindowScope`と共有の既存
+フィールドをそのまま再利用できた。`BrowserType`(`"Chrome"`/
+`"Firefox"`/`"IE"`等、実機確認済み)は単純な注釈情報(どのブラウザ
+エンジンかを示すだけで透過的ラッパーの動作自体には影響しない)として
+保持するのみで、decline判定の対象にはしなかった。
+
+実装中に発見した副産物: `_generate_attach_window_body`の既存の
+`# TODO`文言が`"WindowScope"`で固定ハードコードされていたため、
+`BrowserScope`経由で同じ分岐(`SearchScope`/`TimeoutMS`等の共有
+フィールド)に到達すると不正確なラベルが出てしまう——`node.browser_
+type is not None`(`BrowserScope`のみ設定される)でラベルを
+`"BrowserScope"`/`"WindowScope"`に切り替える小さな修正を同時に
+入れた。
+
+実機XAML(`PacktPublishing`の`Main.xaml`——`UiBrowser`/`Browser`の
+両方が設定されている実例、`piyushagarwal08/JU-Notes`の`Main.xaml`
+——全て`{x:Null}`の単純な実例)で`generate_python()`+`compile()`を
+実行し、前者は`# TODO: BrowserScope with UiBrowser output binding
+set`/`# TODO: BrowserScope with Browser set`へ正しく倒れ、後者は
+`# Attach window: <html app='firefox.exe' .../>`+子の再帰生成が
+正しく動くことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全650件
+通過、リポジトリ全体で全1690件通過。
+
 ## 今後の調査候補(未着手)
-- **(新規、知見159で発見)** `ui:BrowserScope`(「Attach Browser」、
-  `GSA/Credit_Card_Logging_Bot`の実機XAMLで遭遇、`Browser`/
-  `BrowserType`属性を持つ)が未実装——`ui:AttachWindow`/`ui:
-  WindowScope`(知見153・158)と同種の「既存ウィンドウ/ブラウザに
-  接続してBodyを実行する」スコープ活動と推定されるが、ブラウザ固有の
-  追加属性(`BrowserType`等)の意味論は未確認。次の棚卸し候補として
-  記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

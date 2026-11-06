@@ -1165,6 +1165,44 @@ def test_window_scope_reuses_attach_window_node():
     assert node.window is None
 
 
+def test_browser_scope_reuses_attach_window_node():
+    """知見161: `ui:BrowserScope`(「Attach Browser」、GitHub code
+    searchで3388件ヒット——`WindowScope`よりさらに多い)。構造は
+    `WindowScope`と同じ`ActivityAction`+`DelegateInArgument`ラッパー
+    (`PacktPublishing/Robotic-Process-Automation-Projects`等の実機XAML
+    で確認)で、意味論も同じ(既存ブラウザに接続して`Body`を実行)ため
+    同じ`AttachWindowNode`を返す。"""
+    xml = (
+        f"<ui:BrowserScope {_UI_XMLNS} "
+        'Browser="{x:Null}" SearchScope="{x:Null}" TimeoutMS="{x:Null}" '
+        'UiBrowser="{x:Null}" BrowserType="Chrome" '
+        'DisplayName="Attach Browser \'chrome.exe Home\'" '
+        'Selector="&lt;html app=\'chrome.exe\' /&gt;">'
+        "<ui:BrowserScope.Body>"
+        '<ActivityAction x:TypeArguments="x:Object">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Object" Name="ContextTarget" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:BrowserScope.Body>"
+        "</ui:BrowserScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AttachWindowNode)
+    assert "chrome.exe" in node.selector
+    assert node.display_name == "Attach Browser 'chrome.exe Home'"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
+    assert node.browser is None
+    assert node.browser_type == "Chrome"
+    assert node.ui_browser is None
+    assert node.search_scope is None
+    assert node.timeout_ms is None
+
+
 def test_open_application_unwraps_activity_action_body():
     """知見154: `ui:OpenApplication`。`AttachWindow`(知見153)とは違い
     `ActivityAction`+`DelegateInArgument`のラッパーを持つ(実機

@@ -2058,3 +2058,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      修正後は正しく1つの識別子に揃うことを確認した。回帰テスト追加
      (`tests/test_uipath_dsl.py`3件)、UiPath関連テスト全645件通過、
      リポジトリ全体で全1685件通過。
+
+119. **(完了、2026-11-06)** `ui:BrowserScope`(「Attach Browser」、
+     `WindowScope`より多い3388件ヒット)を新規実装(知見161):
+     `WindowScope`(知見158)と完全に同じ`ActivityAction`+
+     `DelegateInArgument`構造・同じ意味論のため、`AttachWindowNode`を
+     3回目の再利用先として同じノード型を返すだけで実装できた。
+     ブラウザ固有の`Browser`(入力参照)・`UiBrowser`(出力バインド)・
+     `ContinueOnError`は実機確認した5件全てで`{x:Null}`——設定時は
+     `# TODO`へ倒す。`BrowserType`は単純な注釈情報のためdecline対象
+     にしない。実装中に`_generate_attach_window_body`の`# TODO`文言が
+     `"WindowScope"`で固定ハードコードされていた不正確さを発見し、
+     `browser_type`の有無でラベルを切り替える修正も同時に入れた。
+     実機XAML2件(`Browser`/`UiBrowser`設定済みの実例、全`{x:Null}`の
+     単純な実例)で両方の経路を検証。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
+     UiPath関連テスト全650件通過、リポジトリ全体で全1690件通過。

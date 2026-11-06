@@ -2274,21 +2274,25 @@ def _generate_attach_window_body(
     out_arg_resolver: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
     prefix = INDENT * indent
+    # 知見161: `BrowserScope`(「Attach Browser」)固有の属性(`browser_
+    # type`)が設定されている場合のみラベルを切り替える——`AttachWindow`
+    # /`WindowScope`では常に`None`のまま。
+    label = "BrowserScope" if node.browser_type is not None else "WindowScope"
     if node.application_window is not None:
         return [
-            f"{prefix}# TODO: WindowScope with ApplicationWindow output "
+            f"{prefix}# TODO: {label} with ApplicationWindow output "
             f"binding set ({_describe_expr_for_comment(node.application_window)}) "
             "— UiElement output variable not modeled, refusing to guess"
         ]
     if node.search_scope is not None:
         return [
-            f"{prefix}# TODO: WindowScope with SearchScope set "
+            f"{prefix}# TODO: {label} with SearchScope set "
             f"({_describe_expr_for_comment(node.search_scope)}) — refusing "
             "to guess"
         ]
     if node.timeout_ms is not None:
         return [
-            f"{prefix}# TODO: WindowScope with TimeoutMS set "
+            f"{prefix}# TODO: {label} with TimeoutMS set "
             f"({_describe_expr_for_comment(node.timeout_ms)}) — wait-for-"
             "window-ready polling behavior not modeled, refusing to guess"
         ]
@@ -2296,6 +2300,29 @@ def _generate_attach_window_body(
         return [
             f"{prefix}# TODO: WindowScope with Window set "
             f"({_describe_expr_for_comment(node.window)}) — refusing to guess"
+        ]
+    # 知見161: `ui:BrowserScope`(「Attach Browser」)固有のフィールド。
+    # `BrowserType`(どのブラウザエンジンかを示すだけの単純な注釈情報、
+    # 実機確認済みの`"Chrome"`/`"Firefox"`/`"IE"`等)は透過的ラッパーの
+    # 動作自体に影響しないためdecline判定の対象にしない。
+    if node.browser is not None:
+        return [
+            f"{prefix}# TODO: BrowserScope with Browser set "
+            f"({_describe_expr_for_comment(node.browser)}) — attaching via "
+            "an existing UiBrowser variable reference (rather than Selector) "
+            "not modeled, refusing to guess"
+        ]
+    if node.ui_browser is not None:
+        return [
+            f"{prefix}# TODO: BrowserScope with UiBrowser output binding set "
+            f"({_describe_expr_for_comment(node.ui_browser)}) — UiBrowser "
+            "output variable not modeled, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: BrowserScope with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
         ]
     lines: list[str] = []
     if node.selector:

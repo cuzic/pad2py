@@ -938,7 +938,21 @@ class AttachWindowNode:
     追加属性を持つが、実機確認した9件以上全てで`{x:Null}`(未設定)
     だった——同じ`AttachWindowNode`を再利用し、これらが設定されている
     場合は(`OpenApplication`の`ApplicationWindow`等と同じ理由で)
-    `# TODO`へ倒す。"""
+    `# TODO`へ倒す。
+
+    知見161追記: `ui:BrowserScope`(「Attach Browser」、GitHub code
+    searchで3388件ヒット——`WindowScope`よりさらに多い!)も同じ意味論
+    (既存のブラウザウィンドウに接続して`Body`を実行、起動は行わない)
+    の別活動だと判明した——`WindowScope`と同じ`ActivityAction`+
+    `DelegateInArgument`のラッパー構造。`Browser`(アタッチ先を指す
+    既存の`UiBrowser`型変数への入力参照、実機確認した9件以上全てで
+    `{x:Null}`)・`UiBrowser`(アタッチ結果を受け取る出力バインディング、
+    `ApplicationWindow`と同種)・`ContinueOnError`という3つの追加属性を
+    持つが、`SearchScope`/`TimeoutMS`は`WindowScope`と共有の既存
+    フィールドをそのまま再利用できた。`BrowserType`(`"Chrome"`/
+    `"Firefox"`/`"IE"`等、実機確認済み)は単純な注釈情報(どのブラウザ
+    エンジンかを示すだけで、透過的ラッパーの動作自体には影響しない)
+    として保持するのみで、decline判定の対象にはしない。"""
 
     selector: str | None = None
     body: list["Node"] = field(default_factory=list)
@@ -947,6 +961,10 @@ class AttachWindowNode:
     search_scope: Expr = None
     timeout_ms: Expr = None
     window: Expr = None
+    browser: Expr = None
+    browser_type: str | None = None
+    ui_browser: Expr = None
+    continue_on_error: Expr = None
 
 
 @dataclass

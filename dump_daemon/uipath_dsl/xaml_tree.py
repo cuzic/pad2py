@@ -1055,6 +1055,26 @@ def _parse_window_scope(elem: etree._Element) -> AttachWindowNode:
     )
 
 
+def _parse_browser_scope(elem: etree._Element) -> AttachWindowNode:
+    """知見161: `ui:BrowserScope`(「Attach Browser」、`WindowScope`
+    (知見158)と同じ`ActivityAction`+`DelegateInArgument`構造の同義
+    活動)。同じ`AttachWindowNode`を返す。"""
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return AttachWindowNode(
+        selector=_attr(elem, "Selector"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+        search_scope=_attr_expr(elem, "SearchScope"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        browser=_attr_expr(elem, "Browser"),
+        browser_type=_attr(elem, "BrowserType"),
+        ui_browser=_attr_expr(elem, "UiBrowser"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
 def _parse_open_application(elem: etree._Element) -> OpenApplicationNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -1485,6 +1505,7 @@ _DISPATCH = {
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "AttachWindow"): _parse_attach_window,
     (UI_NS, "WindowScope"): _parse_window_scope,
+    (UI_NS, "BrowserScope"): _parse_browser_scope,
     (UI_NS, "OpenApplication"): _parse_open_application,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,

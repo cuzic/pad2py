@@ -2955,6 +2955,73 @@ def test_window_scope_with_timeout_ms_is_todo_not_guessed():
     _compiles(code)
 
 
+def test_browser_scope_recurses_into_body_with_selector_comment():
+    """知見161: `ui:BrowserScope`(「Attach Browser」、GitHub code
+    searchで3388件ヒット)。`BrowserType`は単純な注釈情報のため
+    decline判定の対象にせず、`AttachWindow`/`WindowScope`と同じ透過的
+    ラッパーとして子を再帰生成する。"""
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<html app='chrome.exe' />",
+                browser_type="Chrome",
+                body=[WriteLineNode(text=Literal(value="hi"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Attach window: <html app='chrome.exe' />" in code
+    assert "print(_vb_cstr('hi'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_browser_scope_with_browser_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<html app='chrome.exe' />",
+                browser_type="Chrome",
+                browser=VbExpr(text="existingBrowser"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: BrowserScope with Browser set" in code
+    assert "# Attach window:" not in code
+    _compiles(code)
+
+
+def test_browser_scope_with_ui_browser_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<html app='chrome.exe' />",
+                browser_type="Chrome",
+                ui_browser=VbExpr(text="win"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: BrowserScope with UiBrowser output binding set" in code
+    _compiles(code)
+
+
+def test_browser_scope_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AttachWindowNode(
+                selector="<html app='chrome.exe' />",
+                browser_type="Chrome",
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: BrowserScope with ContinueOnError set" in code
+    _compiles(code)
+
+
 def test_open_application_launches_process_and_recurses_into_body():
     """知見154: `ui:OpenApplication`。`FileName`のみ(確認済みの単純な
     場合)は`subprocess.Popen([...])`で実際に起動するコードを生成し、
