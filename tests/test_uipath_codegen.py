@@ -74,6 +74,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RethrowNode,
     SelectItemNode,
+    SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
@@ -1936,6 +1937,207 @@ def test_type_into_escapes_pywinauto_special_characters_in_literal_text():
     exec(_TYPE_KEYS_ESCAPE_HELPER_SOURCE, namespace)  # noqa: S102
     escape = namespace["_pywinauto_type_keys_escape"]
     assert escape("100% {a+b}") == "100{%} {{}a{+}b{}}"
+
+
+_SEND_HOTKEY_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_send_hotkey_single_char_with_ctrl_modifier():
+    """知見152: `piyushagarwal08/JU-Notes`等の実機XAMLで確認済みの最も
+    一般的な形(`Key="s"` + `KeyModifiers="Ctrl"` = Ctrl+S)。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="s"),
+                key_modifiers=Literal(value="Ctrl"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".type_keys('^s')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_send_hotkey_named_special_key_with_no_modifier():
+    """知見152: `Key="enter"`・`KeyModifiers="None"`(`HarshadRanganathan/
+    uipath-learning`の実機XAMLで確認済み)。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="enter"),
+                key_modifiers=Literal(value="None"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".type_keys('{ENTER}')" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "key,expected_token",
+    [
+        ("f5", "{F5}"),
+        ("f24", "{F24}"),
+        ("num7", "{VK_NUMPAD7}"),
+        ("tab", "{TAB}"),
+        ("esc", "{ESC}"),
+        ("pgup", "{PGUP}"),
+        ("home", "{HOME}"),
+        ("up", "{UP}"),
+        ("left", "{LEFT}"),
+    ],
+)
+def test_send_hotkey_confirmed_named_keys(key, expected_token):
+    """知見152: 実機確認済みの特殊キー名(GitHub code searchで個別に
+    実例を確認した`f1`〜`f24`/`num0`〜`num9`/`tab`/`esc`/`pgup`/`home`/
+    `up`/`left`等)はそれぞれpywinautoの対応トークンへ変換する。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value=key),
+                key_modifiers=Literal(value="None"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert f".type_keys('{expected_token}')" in code
+    _compiles(code)
+
+
+def test_send_hotkey_win_modifier_uses_down_up_wrapping():
+    """知見152: `KonduitAI/objectrecognition-rpa`の実機XAML(`Key="up"`/
+    `KeyModifiers="Win"`、ウィンドウ最大化のショートカット)。pywinautoの
+    `^`/`%`/`+`接頭辞構文にWinキーは無いため`{VK_LWIN down}`...
+    `{VK_LWIN up}`で囲む。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="up"),
+                key_modifiers=Literal(value="Win"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".type_keys('{VK_LWIN down}{UP}{VK_LWIN up}')" in code
+    _compiles(code)
+
+
+def test_send_hotkey_multiple_modifiers():
+    """知見152: `cameronmcnz/uipath-tutorials`の実機XAMLで確認済みの
+    `KeyModifiers="Ctrl, Shift"`(`.NET`の`[Flags]`列挙型ToString()
+    直列化形式)。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="5"),
+                key_modifiers=Literal(value="Ctrl, Shift"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".type_keys('^+5')" in code
+    _compiles(code)
+
+
+def test_send_hotkey_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="s"),
+                key_modifiers=Literal(value="Ctrl"),
+                display_name="Save",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Save" in code
+    assert ".type_keys('^s')" in code
+    _compiles(code)
+
+
+def test_send_hotkey_with_no_target_is_todo_not_guessed():
+    """知見152: `AI-Dep/AI-Antigravity`の実機XAMLで確認済みの自己終了
+    タグ(`<ui:SendHotkey Key="esc" ... />`、`Target`無し)は、現在
+    フォーカス中のウィンドウへのグローバル送信と推定されるが未対応
+    ——でっち上げず`# TODO`へ倒す。"""
+    wf = _wrap([SendHotkeyNode(selector=None, key=Literal(value="esc"))])
+    code = generate_python(wf)
+    assert "# TODO: SendHotkey with no Target captured" in code
+    _compiles(code)
+
+
+def test_send_hotkey_with_unrecognized_key_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="unknownkey"),
+                key_modifiers=Literal(value="None"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SendHotkey with unrecognized Key" in code
+    assert ".type_keys(" not in code
+    _compiles(code)
+
+
+def test_send_hotkey_with_win_combined_with_other_modifier_is_todo_not_guessed():
+    """知見152: `Win`と他のモディファイアを同時指定する実例は未確認
+    のため、でっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="d"),
+                key_modifiers=Literal(value="Win, Ctrl"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SendHotkey with unrecognized KeyModifiers" in code
+    _compiles(code)
+
+
+def test_send_hotkey_delay_before_generates_time_sleep():
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="s"),
+                key_modifiers=Literal(value="Ctrl"),
+                delay_before=Literal(value="500"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "time.sleep(" in code
+    assert ".type_keys('^s')" in code
+    _compiles(code)
+
+
+def test_send_hotkey_with_delay_ms_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SendHotkeyNode(
+                selector=_SEND_HOTKEY_SELECTOR,
+                key=Literal(value="s"),
+                key_modifiers=Literal(value="Ctrl"),
+                delay_ms=Literal(value="200"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SendHotkey with DelayMS set" in code
+    _compiles(code)
 
 
 _GET_TEXT_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"

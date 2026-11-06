@@ -1912,3 +1912,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      安全)。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`6件)、UiPath関連テスト全582件通過、
      リポジトリ全体で全1586件通過。
+
+110. **(完了、2026-11-06)** `ui:SendHotkey`(GitHub code searchで1936件
+     ヒットする`Click`/`TypeInto`と同じ基本UI Automation活動)を新規
+     実装(知見152): 実機調査で`SpecialKey`属性が`"True"`/`"False"`/
+     `{x:Null}`/省略のいずれも実例があり信頼できないと判明したため、
+     `Key`の文字列値(1文字の生リテラルか確認済みの特殊キー名)だけで
+     判定する設計に変更。`KeyModifiers`(`.NET`の`[Flags]`列挙型形式、
+     `"Ctrl, Shift"`等の複数同時指定を実機確認)は`Ctrl`/`Alt`/`Shift`
+     をpywinautoの`^`/`%`/`+`接頭辞構文へ、`Win`単独は`{VK_LWIN
+     down}`...`{VK_LWIN up}`の別構文へ変換する。`Target`要素自体が
+     省略された実例(フォーカス中ウィンドウへのグローバル送信と推定)
+     は未対応のまま`# TODO`へ倒す。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`19件)、
+     UiPath関連テスト全603件通過、リポジトリ全体で全1619件通過。

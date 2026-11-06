@@ -7162,7 +7162,93 @@ Pythonの`time.sleep(秒数)`が直接対応する——ブロッキングやユ
 動的式declin・未確認書式declineの6パターンを個別にテスト)、UiPath
 関連テスト全582件通過、リポジトリ全体で全1586件通過。
 
+## 152. `ui:SendHotkey`(GitHub code searchで1936件ヒットする基本UI Automation活動)を新規実装——`SpecialKey`属性が信頼できないという意外な発見付き
+
+`Click`/`TypeInto`と同じ`UiPath.Core.Activities`の基本UI Automation
+活動群のうち、キーボードショートカットを送信する`ui:SendHotkey`
+(GitHub code searchで1936件ヒット)が未実装のまま残っていたことを
+発見した。実機で11件(`PacktPublishing/Robotic-Process-Automation-*`
+複数リポジトリ、`cameronmcnz/uipath-tutorials`、`HarshadRanganathan/
+uipath-learning`、`AI-Dep/AI-Antigravity`、`KonduitAI/
+objectrecognition-rpa`、`GSA/RPA-OSS`、`nkarkare/UDISEAutomation`、
+`piyushagarwal08/JU-Notes`、`JoeIaquinto/UiPath-VidCreator`、
+`whooaaapppp/VendorDetailPerformer`、`miyaichi/CertificationExam4`)の
+`Key`/`KeyModifiers`/`SpecialKey`属性を調査した結果、意外な発見が
+あった: `SpecialKey`属性は`"True"`/`"False"`/`{x:Null}`/属性自体が
+省略、のいずれも実例があり(`cameronmcnz/uipath-tutorials`の
+`ExtractPDFwithAnchors/Main.xaml`で`SpecialKey="{x:Null}"`かつ
+`Key="5"`・`KeyModifiers="Ctrl, Shift"`、`AI-Dep/AI-Antigravity`の
+`FA_CS_Asset_Entry.xaml`で`SpecialKey`属性自体が無く`Key="esc"`かつ
+`Target`要素も省略、という実例を確認)、`Key`が特殊キー名かどうかの
+判定に`SpecialKey`属性の値を信頼して使えるとは言い切れない。実際
+`Key`の文字列値自体が1文字の生リテラルか、既知の特殊キー名
+(`"enter"`/`"tab"`/`"esc"`/`"pgup"`/`"pgdn"`/`"home"`/`"end"`/
+`"up"`/`"down"`/`"left"`/`"right"`/`"del"`/`"f1"`〜`"f24"`/
+`"num0"`〜`"num9"`——いずれもGitHub code searchで個別に実例を確認
+済み)のいずれかで一貫して判定できたため、本実装では`SpecialKey`
+属性自体を一切参照せず`Key`の文字列値だけで判定する設計とした。
+
+`KeyModifiers`は`.NET`の`[Flags]`列挙型のToString()直列化形式
+(`", "`区切り、`cameronmcnz/uipath-tutorials`で`"Ctrl, Shift"`の
+複数同時指定を確認)。`Ctrl`/`Alt`/`Shift`はpywinautoの`type_keys()`
+ミニ言語の`^`/`%`/`+`接頭辞構文に直接対応するが、`Win`
+(`KonduitAI/objectrecognition-rpa`の`KeyModifiers="Win"`、Win+Up/
+Win+Leftのウィンドウ操作ショートカット)は同じ接頭辞構文に無く、
+`{VK_LWIN down}`...`{VK_LWIN up}`で囲む別構文が必要(pywinauto公式
+ドキュメント文字列で確認済みの構文)——`Win`単独の場合のみサポート
+し、他のモディファイアとの併用は未確認のため`# TODO`へ倒す。
+
+また`AI-Dep/AI-Antigravity`の実機XAMLで`<ui:SendHotkey Key="esc"
+DisplayName="..." />`(`Target`要素自体が省略された自己終了タグ)も
+発見した——`Click`/`TypeInto`とは違いTargetが無くても構文的に正当
+という既存の想定(`Target`は必須)を崩す新しい発見。現在フォーカス
+中のウィンドウへグローバルに送信する意味論と推定されるが、本実装
+では対応せず`# TODO`へ倒す(でっち上げるよりは安全)。
+
+`dump_daemon/uipath_dsl/types.py`に`SendHotkeyNode`(`Click`/
+`TypeInto`と同じく`selector`/`key`/`key_modifiers`/`click_before_
+typing`/`empty_field`/`send_window_messages`/`delay_before`/`delay_
+between_keys`/`delay_ms`/`activate`を保持)、`xaml_tree.py`に
+`_parse_send_hotkey`+`(UI_NS, "SendHotkey")`の`_DISPATCH`登録、
+`uipath_codegen/__init__.py`に`_send_hotkey_key_token`(特殊キー名
+テーブル+`f\d+`/`num\d`正規表現)・`_send_hotkey_wrap_with_modifiers`
+(モディファイア→pywinauto接頭辞/Win専用ラップ変換)・
+`_generate_send_hotkey`/`_generate_send_hotkey_body`(`TypeInto`と
+同じ構造——`SendWindowMessages`/`ClickBeforeTyping`/`EmptyField`/
+`DelayMS`/`DelayBetweenKeys`の非既定値は同じ理由で`# TODO`へ倒す)を
+追加。ダウンロード済みの8件の実機XAMLで`generate_python()`+
+`compile()`を実行し、直接到達可能な1件(`KonduitAI/
+objectrecognition-rpa`の`ScoreImage.xaml`)で`Win+Up`/`Win+Left`の
+両方が`{VK_LWIN down}{UP}{VK_LWIN up}`/`{VK_LWIN down}{LEFT}
+{VK_LWIN up}`として正しく生成されることを確認——残り7件の
+`ui:SendHotkey`呼び出しは、知見150・151と同じパターンで未実装の
+別活動(`ui:OpenApplication`、UiPathのアプリ起動スコープ活動)の子
+としてネストされており到達不能だった(今回のスコープ外、ただし
+`ui:AttachWindow`(知見151で遭遇)・`ui:OpenApplication`(今回
+遭遇)という「子を持つスコープ活動が軒並み未実装」というパターンが
+3回連続で確認できたため、次の棚卸し候補として記録しておく)。回帰
+テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`19件、確認済み特殊キー名・Win単独・複数
+モディファイア併用・DisplayName・Target省略・未確認Key・Win併用
+declin・DelayBefore・DelayMS declineの各パターンを個別にテスト)、
+UiPath関連テスト全603件通過、リポジトリ全体で全1619件通過。
+
 ## 今後の調査候補(未着手)
+- **(新規、知見151・152で発見)** 子を持つスコープ活動が軒並み未実装:
+  `ui:AttachWindow`(`ui:AttachWindow.Body`配下に単一の`Sequence`等を
+  持つ、知見151で遭遇)・`ui:OpenApplication`(知見152で遭遇)・
+  基本WF版`ForEach`(`ui:ForEach`とは別の`{http://schemas.microsoft.
+  com/netfx/2009/xaml/activities}ForEach`、知見151で遭遇)。3件連続で
+  「子の活動自体は実装済みなのに親スコープが未実装のため到達不能」
+  というパターンに遭遇したため、次の棚卸し候補として記録する。特に
+  `ui:AttachWindow`/`ui:OpenApplication`は、子の活動(`Click`/
+  `TypeInto`/`SendHotkey`等)が既に確認済みの通り「選択した絶対
+  セレクタを自己完結的に保持する」設計のため、親スコープの子は相対
+  セレクタ解決への依存が無く、スコープ自体を「`Selector`を注釈
+  コメントとして出力し子をそのまま再帰実行する透過的なラッパー」
+  として実装できる可能性が高い(`ExcelApplicationScope`/
+  `WordApplicationScope`のような`scope_var`を使う必要は無いはず)——
+  次の実装候補として有望
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

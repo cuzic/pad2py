@@ -360,6 +360,45 @@ class TypeIntoNode:
 
 
 @dataclass
+class SendHotkeyNode:
+    """`<ui:SendHotkey>`(知見152、GitHub code searchで1936件ヒット——
+    `Click`/`TypeInto`と同じ`UiPath.Core.Activities`の基本UI Automation
+    活動)。`selector`は`ui:SendHotkey.Target`配下の`ui:Target`要素の
+    `Selector`属性(`ClickNode`/`TypeIntoNode`と同じ構造)——ただし実機で
+    `Target`要素自体が省略された自己終了タグの実例(`AI-Dep/
+    AI-Antigravity`の`<ui:SendHotkey Key="esc" DisplayName="..." />`)も
+    確認済み(現在フォーカス中のウィンドウへグローバルに送信する意味論
+    と推定されるが、本パーサーでは未対応——コード生成側で`# TODO`へ倒す)。
+
+    `Key`/`KeyModifiers`/`SpecialKey`の3属性の関係は実機調査で意外な
+    発見があった: `SpecialKey`は`"True"`/`"False"`/`{x:Null}`/属性自体が
+    省略、のいずれも実例があり(`cameronmcnz/uipath-tutorials`の
+    `ExtractPDFwithAnchors/Main.xaml`で`SpecialKey="{x:Null}"`かつ
+    `Key="5"`、`KeyModifiers="Ctrl, Shift"`という実例を確認)、`Key`が
+    特殊キー名かどうかの判定に`SpecialKey`属性の値が実際に信頼できる
+    形で使えるとは言い切れない——`Key`の文字列自体(1文字なら生の
+    キー文字、既知の特殊キー名(`"enter"`/`"tab"`/`"esc"`/`"pgup"`/
+    `"f1"`〜`"f24"`/`"num0"`〜`"num9"`等、全て実機確認済み)に一致すれば
+    特殊キー)から判定する方が安全——`render.py`/`uipath_codegen`側で
+    `SpecialKey`属性自体は一切参照しない設計とした。`KeyModifiers`は
+    `.NET`の`[Flags]`列挙型のToString()直列化形式(`", "`区切り、例:
+    `"Ctrl, Shift"`)で複数同時指定が実機で確認済み——`"Ctrl"`/`"Alt"`/
+    `"Shift"`/`"None"`は確認済みだが`"Win"`は未確認のため`# TODO`へ倒す。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    key: Expr = None
+    key_modifiers: Expr = None
+    click_before_typing: Expr = None
+    empty_field: Expr = None
+    send_window_messages: Expr = None
+    delay_before: Expr = None
+    delay_between_keys: Expr = None
+    delay_ms: Expr = None
+    activate: Expr = None
+
+
+@dataclass
 class GetTextNode:
     """`<ui:GetText>`(知見111)。`selector`は`ui:GetText.Target`配下の
     `ui:Target`要素の`Selector`属性(`ClickNode`/`TypeIntoNode`と同じ構造)。
@@ -1126,6 +1165,7 @@ Node = (
     | ParallelNode
     | ClickNode
     | TypeIntoNode
+    | SendHotkeyNode
     | GetTextNode
     | SelectItemNode
     | UiElementExistsNode

@@ -87,6 +87,7 @@ from ..uipath_dsl.types import (
     ReadTextFileNode,
     RethrowNode,
     SelectItemNode,
+    SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
@@ -429,6 +430,8 @@ def _generate_node(
         return _generate_click(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
+    if isinstance(node, SendHotkeyNode):
+        return _generate_send_hotkey(node, indent)
     if isinstance(node, GetTextNode):
         return _generate_get_text(node, indent)
     if isinstance(node, SelectItemNode):
@@ -1400,6 +1403,178 @@ def _generate_type_into_body(node: TypeIntoNode, indent: int) -> list[str]:
         kwarg_parts.append(f"pause=({VB_NUM_HELPER_NAME}({delay_between_keys}) / 1000.0)")
     text_arg = f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}({VB_CSTR_HELPER_NAME}({text}))"
     args = ", ".join([text_arg, *kwarg_parts])
+    lines.append(f"{prefix}{rendered.expr}.type_keys({args})")
+    return lines
+
+
+# 知見152: `ui:SendHotkey`。実機確認済みの特殊キー名(`Key`属性が1文字の
+# 生リテラルでない場合)——`SpecialKey`属性自体はパース時点(types.py
+# docstring参照)で意図的に無視し、`Key`の文字列値だけで判定する。
+_SEND_HOTKEY_NAMED_KEYS = {
+    "enter": "ENTER",
+    "tab": "TAB",
+    "esc": "ESC",
+    "pgup": "PGUP",
+    "pgdn": "PGDN",
+    "home": "HOME",
+    "end": "END",
+    "up": "UP",
+    "down": "DOWN",
+    "left": "LEFT",
+    "right": "RIGHT",
+    "del": "DEL",
+}
+_SEND_HOTKEY_FKEY_RE = re.compile(r"^f([1-9]|1[0-9]|2[0-4])$")
+_SEND_HOTKEY_NUMPAD_RE = re.compile(r"^num([0-9])$")
+# `~^%+(){}`はpywinautoの`type_keys()`ミニ言語で特殊文字扱いされるため
+# (`_TYPE_KEYS_ESCAPE_HELPER_SOURCE`と同じ規則)、生の1文字キーでもこれら
+# に当たる場合は`{ch}`で囲む——`Key`は常に確認済みのリテラル文字列
+# (`_literal_str`経由)なので、実行時ヘルパーを呼ばず生成時に静的に処理
+# できる。
+_SEND_HOTKEY_SPECIAL_CHARS = "~^%+(){}"
+
+
+def _send_hotkey_key_token(key: str) -> str | None:
+    lowered = key.lower()
+    if lowered in _SEND_HOTKEY_NAMED_KEYS:
+        return f"{{{_SEND_HOTKEY_NAMED_KEYS[lowered]}}}"
+    match = _SEND_HOTKEY_FKEY_RE.match(lowered)
+    if match is not None:
+        return f"{{F{match.group(1)}}}"
+    match = _SEND_HOTKEY_NUMPAD_RE.match(lowered)
+    if match is not None:
+        return f"{{VK_NUMPAD{match.group(1)}}}"
+    if len(key) == 1:
+        if key in _SEND_HOTKEY_SPECIAL_CHARS:
+            return f"{{{key}}}"
+        return key
+    return None
+
+
+# 知見152: `KeyModifiers`は.NETの`[Flags]`列挙型のToString()直列化形式
+# (`", "`区切り、実機確認済み: `"Ctrl, Shift"`)。`Ctrl`/`Alt`/`Shift`は
+# pywinautoの`^`/`%`/`+`接頭辞構文へ直接対応するが、`Win`は同じ接頭辞
+# 構文に無い(Windowsキーをモディファイアとして押し続ける構文は
+# `{VK_LWIN down}`...`{VK_LWIN up}`で囲む必要がある、実機確認済み
+# `KeyModifiers="Win"`単独の実例(`KonduitAI/objectrecognition-rpa`)の
+# みサポートし、他のモディファイアとの併用は未確認のため`# TODO`へ倒す。
+_SEND_HOTKEY_PREFIX_MODIFIERS = {"ctrl": "^", "alt": "%", "shift": "+"}
+
+
+def _send_hotkey_wrap_with_modifiers(
+    key_modifiers_literal: str, key_token: str
+) -> str | None:
+    tokens = [t.strip().lower() for t in key_modifiers_literal.split(",")]
+    if tokens == ["none"]:
+        return key_token
+    if tokens == ["win"]:
+        return f"{{VK_LWIN down}}{key_token}{{VK_LWIN up}}"
+    if "win" in tokens:
+        return None
+    if len(set(tokens)) != len(tokens):
+        return None
+    prefix = ""
+    for name in ("ctrl", "alt", "shift"):
+        if name in tokens:
+            prefix += _SEND_HOTKEY_PREFIX_MODIFIERS[name]
+    if len(prefix) != len(tokens):
+        return None
+    return prefix + key_token
+
+
+def _generate_send_hotkey(node: SendHotkeyNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_send_hotkey_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_send_hotkey_body(node: SendHotkeyNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [
+            f"{prefix}# TODO: SendHotkey with no Target captured (global/"
+            "active-window send not yet supported)"
+        ]
+    key_literal = _literal_str(node.key)
+    if key_literal is None:
+        return [f"{prefix}# TODO: SendHotkey with no confirmed literal Key captured"]
+    key_token = _send_hotkey_key_token(key_literal)
+    if key_token is None:
+        return [
+            f"{prefix}# TODO: SendHotkey with unrecognized Key {key_literal!r} — "
+            "not a confirmed single character or named special key, refusing "
+            "to guess"
+        ]
+    modifiers_literal = _literal_str(node.key_modifiers)
+    if modifiers_literal is None:
+        return [f"{prefix}# TODO: SendHotkey with no confirmed literal KeyModifiers captured"]
+    key_sequence = _send_hotkey_wrap_with_modifiers(modifiers_literal, key_token)
+    if key_sequence is None:
+        return [
+            f"{prefix}# TODO: SendHotkey with unrecognized KeyModifiers "
+            f"{modifiers_literal!r} — refusing to guess"
+        ]
+    if _literal_str(node.send_window_messages) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: SendHotkey with non-default SendWindowMessages "
+            f"({node.send_window_messages!r}) — exact mapping not confirmed, "
+            "refusing to guess"
+        ]
+    click_before = _literal_str(node.click_before_typing)
+    if click_before not in (None, "False", "True"):
+        return [
+            f"{prefix}# TODO: SendHotkey with unrecognized ClickBeforeTyping "
+            f"({node.click_before_typing!r}) — refusing to guess"
+        ]
+    if _literal_str(node.empty_field) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: SendHotkey with EmptyField set "
+            f"({node.empty_field!r}) — exact field-clearing mechanism not "
+            "confirmed, refusing to guess"
+        ]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: SendHotkey with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented "
+            "by UiPath (unlike DelayBefore), semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.delay_between_keys is not None:
+        return [
+            f"{prefix}# TODO: SendHotkey with DelayBetweenKeys set "
+            f"({_describe_expr_for_comment(node.delay_between_keys)}) — a "
+            "single Key press has no \"between keys\" to delay, semantics "
+            "not confirmed, refusing to guess"
+        ]
+    activate_literal = _literal_str(node.activate)
+    if node.activate is not None and activate_literal not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: SendHotkey with non-literal Activate "
+            f"({node.activate!r}) — refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: SendHotkey selector had no mappable attributes: "
+            f"{node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    if click_before == "True":
+        lines.append(f"{prefix}{rendered.expr}.click_input()")
+    kwarg_parts: list[str] = []
+    if activate_literal == "False":
+        kwarg_parts.append("set_foreground=False")
+    args = ", ".join([repr(key_sequence), *kwarg_parts])
     lines.append(f"{prefix}{rendered.expr}.type_keys({args})")
     return lines
 

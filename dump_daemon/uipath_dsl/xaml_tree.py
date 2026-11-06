@@ -61,6 +61,7 @@ from .types import (
     ReadTextFileNode,
     RethrowNode,
     SelectItemNode,
+    SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
@@ -569,6 +570,29 @@ def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
         activate_before=activate_before,
         alter_if_disabled=_attr_expr(elem, "AlterIfDisabled"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
+def _parse_send_hotkey(elem: etree._Element) -> SendHotkeyNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    return SendHotkeyNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        key=_attr_expr(elem, "Key"),
+        key_modifiers=_attr_expr(elem, "KeyModifiers"),
+        click_before_typing=_attr_expr(elem, "ClickBeforeTyping"),
+        empty_field=_attr_expr(elem, "EmptyField"),
+        send_window_messages=_attr_expr(elem, "SendWindowMessages"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_between_keys=_attr_expr(elem, "DelayBetweenKeys"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        activate=_attr_expr(elem, "Activate"),
     )
 
 
@@ -1275,6 +1299,7 @@ _DISPATCH = {
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "TypeInto"): _parse_type_into,
+    (UI_NS, "SendHotkey"): _parse_send_hotkey,
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,

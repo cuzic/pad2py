@@ -49,6 +49,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RethrowNode,
     SelectItemNode,
+    SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
@@ -628,6 +629,40 @@ def test_delay_properties():
     assert isinstance(node, DelayNode)
     assert node.duration == Literal(value="00:00:00.500")
     assert node.display_name == "Wait"
+
+
+def test_send_hotkey_properties():
+    """知見152: `ui:SendHotkey`(GitHub code searchで1936件ヒットする
+    `Click`/`TypeInto`と同じ基本UI Automation活動)。`KeyModifiers`は
+    `.NET`の`[Flags]`列挙型のToString()直列化形式(`", "`区切り、
+    `cameronmcnz/uipath-tutorials`の実機XAMLで`"Ctrl, Shift"`を確認)。"""
+    xml = (
+        f"<ui:SendHotkey {_UI_XMLNS} DisplayName=\"Save\" "
+        'Key="s" KeyModifiers="Ctrl">'
+        "<ui:SendHotkey.Target>"
+        "<ui:Target Selector=\"&lt;wnd title='Notepad' /&gt;\" />"
+        "</ui:SendHotkey.Target>"
+        "</ui:SendHotkey>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SendHotkeyNode)
+    assert "Notepad" in node.selector
+    assert node.key == Literal(value="s")
+    assert node.key_modifiers == Literal(value="Ctrl")
+    assert node.display_name == "Save"
+
+
+def test_send_hotkey_with_no_target_has_none_selector():
+    """知見152: `AI-Dep/AI-Antigravity`の実機XAMLで、`ui:SendHotkey.Target`
+    自体が省略された自己終了タグ(`<ui:SendHotkey Key="esc" ... />`)を
+    確認済み——現在フォーカス中のウィンドウへグローバルに送信する意味論
+    と推定されるが、本パーサーでは`selector=None`として保持するのみ
+    (コード生成側で`# TODO`へ倒す、未対応)。"""
+    xml = f'<ui:SendHotkey {_UI_XMLNS} Key="esc" DisplayName="Close" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SendHotkeyNode)
+    assert node.selector is None
+    assert node.key == Literal(value="esc")
 
 
 def test_log_message_properties():
