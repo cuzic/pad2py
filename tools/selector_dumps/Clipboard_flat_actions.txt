@@ -1,0 +1,3 @@
+ClearClipboardContents | AttrType=ActionAttribute | Id= | Name=Clear | EffectiveId=Clear | HasSelector=False
+GetClipboardText | AttrType=ActionAttribute | Id= | Name=GetText | EffectiveId=GetText | HasSelector=False
+SetClipboardText | AttrType=ActionAttribute | Id= | Name=SetText | EffectiveId=SetText | HasSelector=False

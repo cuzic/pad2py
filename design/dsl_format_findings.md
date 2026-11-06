@@ -2906,3 +2906,13 @@ decompileで`InsertImageToWord.Execute()`を精査し直すと、`InsertImageMod
 `Source=Clipboard`系(OSクリップボードの画像読み取り機構が本プロジェクトに未確立)・ブックマーク相対・テキスト相対は、decompileした通りそれぞれ別の理由で依然`NotImplementedError`のまま(でっち上げず保留継続)。
 
 実装: `pad_action_lib/word_actions.py`の`insert_image_to_word()`を無条件`NotImplementedError`から、`StartOfDocument`/`EndOfDocument`を実装しそれ以外を`NotImplementedError`とする実装へ書き換え(`InsertImageWordError`例外クラスを新規追加、decompile確認済みの`[Throws]`タグ名と一致)。`dump_daemon/pad_codegen/actions/word.py`に`Word.InsertImageToWord.InsertImageDocumentStartFromFile`/`InsertImageDocumentEndFromFile`の2分岐を追加。テストは`tests/test_pad_action_lib_word.py`に単体テスト6件(Pillowで実PNGを生成して実際に`.docx`へ挿入・再読込して検証)、`tests/test_pad_codegen.py`にexec検証テスト1件・TODOフォールバック確認1件を追加。VM不要。
+
+## 178. `tools/pad_selector_audit.py`の全モジュール横断再実行を完了——`Clipboard`/`Compression`の`ActionSelectorBase`一括列挙も新たにVM上で実施し、プロジェクト全モジュールのセレクタ監査が完全網羅に到達したと確定
+
+`pad2py-pad-host`が再度idleになったタイミングで、知見165時点で「`ActionSelectorBase`一括列挙用のVMダンプ自体が未取得」として唯一未監査のまま残っていた`Clipboard`/`Compression`に対し、読み取り専用のリフレクション列挙(Designer UI非依存、既存の「busy/idle問わず安全」の方針通り)を実施した。
+
+`Microsoft.Flow.RPA.Desktop.Modules.Clipboard.Actions.dll`/`Microsoft.Flow.RPA.Desktop.Modules.Compression.Actions.dll`を対象に、知見164で確立した「`[Action]`属性を持つ全クラスを直接列挙し、`ActionSelectorBase`派生型の集合と突き合わせる」手法(`HasSelector`列で判定)を適用した結果、**両モジュールとも兄弟セレクタが1つも存在しない**(`Clipboard`: `ClearClipboardContents`/`GetClipboardText`/`SetClipboardText`の3件、`Compression`: `UnzipFiles`/`ZipFiles`の2件、全て`HasSelector=False`)と確定した——知見165の「`Clipboard`/`Compression`は0件」という以前の確認(別の`_all_modules_flat_actions_raw.txt`一括スイープ経由)と完全に一致し、既存の結線(`codegen_coverage.py`で両モジュールとも100%)に抜けが無いことが二重に確証された。
+
+これにより、本プロジェクトが対象とする全Tier1/2/3モジュール(Database/Web/XML/Cmd/Clipboard/DateTime/Text/Cryptography/File/Folder/Variables/Compression/Excel/Word/PowerPoint/PDF/UIAutomation)のセレクタ監査(`ActionSelectorBase`一括列挙+フラットアクション一括列挙の両方)が完全に網羅され、`tools/pad_selector_audit.py --module <全モジュール>`を実行して未結線候補が出るのは意図的な既知除外(ライブCOM専用・RDP必須・外部ライブラリ未導入等、個別にdecompileまたは実機で確認済み)のみという状態に到達したと確定した。
+
+`tools/selector_dumps/Clipboard_flat_actions.txt`/`Compression_flat_actions.txt`を新規保存(知見164の`UIAutomation_flat_actions.txt`と同じ命名規則・フォーマット——`tools/pad_selector_audit.py`本体の`--dump`が期待するシブリングセレクタ専用フォーマットとは異なるため、同名の`Clipboard.txt`/`Compression.txt`ではなく明示的に`_flat_actions`サフィックスを付けて区別した)。コード変更は無し(確認のみ)。

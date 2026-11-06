@@ -567,6 +567,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     簡易チェックでは見逃していたと判明——`ActionSelectorBase`を基底型として正しく
     辿る方式に監査手法を統一した)。`Compression.Actions.dll`には`ActionSelector`
     サブクラスが1つも無いことも確認(ZipFiles/UnzipFilesは単一モード)。
+    **再確認+`Clipboard.Actions.dll`も新規確認(知見178)**: `Clipboard`(3件)/
+    `Compression`(2件)とも兄弟セレクタ0件と確定(`tools/selector_dumps/
+    Clipboard_flat_actions.txt`/`Compression_flat_actions.txt`)——これで本プロジェクト
+    対象の全モジュールのセレクタ監査(`ActionSelectorBase`一括列挙+フラットアクション
+    一括列挙の両方)が完全網羅に到達した。
   - [x] 💻🖥️ `DateTime.GetCurrentDateTime`にも同じ監査で`Current`/`Windows`/
     `CustomOffset`/`CustomTimeZone`(`Local`以外の4モード)が未結線と判明。
     ✅ **決着(知見138)**: 全モードがVM上の直接呼び出しで解明・結線完了
