@@ -745,10 +745,33 @@ def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
 
+_LOG_LEVEL_ENUM_PREFIX = "UiPath.Core.Activities.LogLevel."
+
+
+def _parse_log_level(elem: etree._Element) -> str | None:
+    """知見122で発見・保留した`Level`の列挙参照形(知見124で解決)。
+    `Level="Info"`のような生の文字列が通常形だが、`[UiPath.Core.
+    Activities.LogLevel.Info]`という、`[...]`角括弧で囲まれたVB式として
+    .NET列挙の完全修飾名を参照する実例も実機XAMLで見つかった。角括弧の
+    中身が確認済みの列挙プレフィックスで始まる場合のみ末尾のメンバー名
+    (`"Info"`)を取り出し、以降は既存の`_LOG_LEVEL_METHODS`(`Info`/
+    `Error`のみ確認済み)にそのまま流す——未知の形は無理に解釈せず、
+    生のテキストをそのまま返して`# TODO`側の診断メッセージに委ねる。"""
+    raw = _attr(elem, "Level")
+    if raw is None:
+        return None
+    if raw.startswith("[") and raw.endswith("]"):
+        inner = raw[1:-1].strip()
+        if inner.startswith(_LOG_LEVEL_ENUM_PREFIX):
+            return inner[len(_LOG_LEVEL_ENUM_PREFIX):]
+        return raw
+    return raw
+
+
 def _parse_log_message(elem: etree._Element) -> LogMessageNode:
     return LogMessageNode(
         message=_attr_expr(elem, "Message"),
-        level=_attr(elem, "Level"),
+        level=_parse_log_level(elem),
         display_name=_attr(elem, "DisplayName"),
     )
 

@@ -567,6 +567,38 @@ def test_log_message_properties():
     assert node.display_name == "Log Message"
 
 
+def test_log_message_level_as_enum_reference():
+    """知見124: `Level`が`[UiPath.Core.Activities.LogLevel.Info]`という
+    `[...]`角括弧VB式で列挙の完全修飾名を参照する実例(実機XAMLで発見)。
+    確認済みのプレフィックスが前置されている場合のみ末尾のメンバー名
+    (`"Info"`)を取り出し、以降は既存の`"Info"`/`"Error"`の確認済み経路
+    へ流す。"""
+    xml = (
+        f"<ui:LogMessage {_UI_XMLNS} "
+        'DisplayName="Log Message" '
+        'Level="[UiPath.Core.Activities.LogLevel.Info]" '
+        'Message="[&quot;done&quot;]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, LogMessageNode)
+    assert node.level == "Info"
+
+
+def test_log_message_level_as_unconfirmed_enum_reference_kept_raw():
+    """知見124: `LogLevel.Warn`等、確認済みプレフィックスは一致するが
+    メンバー名自体が未確認(`"Info"`/`"Error"`以外)の場合は、取り出した
+    メンバー名(`"Warn"`)をそのまま`level`に保持する——コード生成側の
+    `# TODO`診断メッセージで`"Warn"`が読める形になる。"""
+    xml = (
+        f"<ui:LogMessage {_UI_XMLNS} "
+        'Level="[UiPath.Core.Activities.LogLevel.Warn]" '
+        'Message="[&quot;done&quot;]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, LogMessageNode)
+    assert node.level == "Warn"
+
+
 def test_get_outlook_mail_messages_properties():
     """知見120: `ui:GetOutlookMailMessages`(`SendOutlookMailNode`と対になる
     受信側)。`cameronmcnz/uipath-tutorials`の実機XAMLの属性構成を合成XML

@@ -1479,3 +1479,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     同一のInArgument直列化規約(知見14)に基づく以上、活動の種類に依存
     しない水平展開と判断。回帰テスト追加(`tests/test_uipath_dsl.py`
     2件)、UiPath関連テスト全496件通過、リポジトリ全体で全1385件通過。
+
+82. **(完了、2026-11-06)** `ui:LogMessage`の`Level`列挙参照形
+    (`[UiPath.Core.Activities.LogLevel.Info]`)を解決(知見124——知見122
+    で発見・見送った3件の保留項目の1件): `Level`は通常`"Info"`/`"Error"`
+    の生文字列属性だが、実機XAMLでは`[...]`角括弧VB式で.NET列挙の完全
+    修飾名を参照する形でも直列化される実例を発見。`_parse_log_level`を
+    新設し、確認済みプレフィックス`"UiPath.Core.Activities.LogLevel."`で
+    始まる角括弧形からのみ末尾のメンバー名を取り出し、既存の
+    `_LOG_LEVEL_METHODS`(`Info`/`Error`のみ確認済み)による絞り込みと
+    `# TODO`フォールバックへそのまま委ねる——コード生成側のロジックは
+    無変更。残り2件(`InputDialog`・`New Integer() {...}`)は引き続き
+    見送り。回帰テスト追加(`tests/test_uipath_dsl.py`2件)、UiPath関連
+    テスト全498件通過、リポジトリ全体で全1392件通過。

@@ -5972,6 +5972,34 @@ Workflow Foundationの`InArgument`直列化規約(知見14)に基づく同一の
 2箇所のみ変更。`tests/test_uipath_dsl.py`に`If`/`Switch`それぞれの
 プロパティ要素形を合成XMLで再現する回帰テストを2件追加、全1385件通過。
 
+## 124. `ui:LogMessage`の`Level`列挙参照形(`[UiPath.Core.Activities.LogLevel.Info]`)を解決(知見122で発見・保留した項目、VM不使用)
+
+知見122で発見しつつ見送った3件のうちの1件、「`Log Message`の`Level`
+属性がVB式で囲まれた列挙参照(`"[UiPath.Core.Activities.LogLevel.Info]"`)
+になる実例」を解決した。`Level`は通常`"Info"`/`"Error"`という生の
+文字列属性(知見119)だが、実機XAMLでは`[UiPath.Core.Activities.
+LogLevel.Info]`という、`[...]`角括弧VB式で.NET列挙の完全修飾名を
+参照する形でも直列化される——これは知見14の「`[...]`はVisualBasicValue
+の省略記法」という理解と整合する(ただし対象が式ではなく列挙メンバーの
+修飾名である点が、これまでの`[...]`の使われ方とは異なる新しいパターン)。
+
+`xaml_tree.py`に`_parse_log_level`を新設: `Level`の生テキストが
+`[...]`で囲まれ、かつ内部が確認済みのプレフィックス`"UiPath.Core.
+Activities.LogLevel."`で始まる場合のみ末尾のメンバー名(`"Info"`)を
+取り出す。それ以外の形(プレフィックス不一致、角括弧無し)は無理に
+解釈せず生テキストをそのまま返し、既存の`_LOG_LEVEL_METHODS`
+(`Info`/`Error`のみ確認済み、知見119)による絞り込みと`# TODO`への
+フォールバックへそのまま委ねる——`LogMessageNode.level`フィールド自体
+は変更せず常に素の文字列のまま保持し、コード生成側(`_generate_log_
+message_body`)は一切変更していない。これにより`Level="Warn"`等、
+取り出したメンバー名が未確認な場合も、角括弧形・生文字列形どちらでも
+同じ診断品質の`# TODO`メッセージになる。
+
+`tests/test_uipath_dsl.py`に2件追加(確認済みメンバー名`Info`が実コード
+生成へ到達する経路・未確認メンバー名`Warn`が生テキストのまま保持されて
+`# TODO`へ落ちる経路)、全1392件通過。残り2件
+(`InputDialog`・`New Integer() {...}`)は引き続き見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

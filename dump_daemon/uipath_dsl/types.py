@@ -618,7 +618,14 @@ class LogMessageNode:
     Robotic-Process-Automation-Projects`の実機XAMLで発見)。実機確認済み
     の`level`は`"Info"`/`"Error"`のみ——他の値(`"Warn"`/`"Trace"`/
     `"Fatal"`はUiPathのLogLevel列挙として存在が推定されるが実機未確認)は
-    コード生成を見送る。"""
+    コード生成を見送る。
+
+    知見124追記: `Level`は`[UiPath.Core.Activities.LogLevel.Info]`という
+    `[...]`角括弧VB式で列挙の完全修飾名を参照する形でも直列化される
+    (実機確認済み)。`xaml_tree._parse_log_level`がこの形から確認済みの
+    メンバー名(`"Info"`/`"Error"`)だけを取り出し、この`level`フィールド
+    自体は常に素の文字列(`"Info"`/`"Error"`、または未確認の生テキスト)
+    のまま保持する——`Expr`化はしない。"""
 
     message: Expr
     level: str | None = None
