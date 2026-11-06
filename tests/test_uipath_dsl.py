@@ -522,6 +522,8 @@ def test_excel_write_cell_with_dynamic_cell_expression():
     assert node.cell == VbExpr(text='"B"+intCounter.ToString')
     assert node.sheet_name == "Sheet1"
     assert node.text == VbExpr(text="strAdult")
+    # 知見135: `DisplayName`は当初捕捉されていなかった。
+    assert node.display_name == "Write Cell"
 
 
 def test_excel_read_cell_properties():

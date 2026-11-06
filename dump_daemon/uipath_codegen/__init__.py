@@ -1921,7 +1921,11 @@ def _generate_excel_application_scope(
     lines = [f"{prefix}{var} = openpyxl.load_workbook({node.workbook_path!r})"]
     for child in node.body:
         if isinstance(child, ExcelWriteCellNode):
-            lines.extend(_generate_excel_write_cell_in_scope(child, indent, var))
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_write_cell_in_scope(child, indent, var), prefix
+                )
+            )
         elif isinstance(child, ExcelReadCellNode):
             lines.extend(
                 _with_scope_child_display_name(

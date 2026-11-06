@@ -6495,6 +6495,33 @@ test_uipath_codegen.py`に4件追加、UiPath関連テスト全527件通過、
 リポジトリ全体で全1445件通過(並行作業中の別セッションのPAD系問題も
 解消済み)。
 
+## 135. `ExcelWriteCellNode`に`display_name`を追加(知見119で「スコープを絞るため見送った」としていた既知のバックログ項目、VM不使用)
+
+知見119で「`ExcelWriteCellNode`には`display_name`フィールドが(他の
+Excel活動と違い)無い——実機では`DisplayName`属性が存在するため将来
+追加する価値はあるが、今回はスコープを絞るため見送った」と明示的に
+記録していた項目を解決した——新しい実機検証では無く、既に確認済みの
+実機データ(`PacktPublishing/Robotic-Process-Automation-Projects`の
+`Cell="[&quot;B&quot;+intCounter.ToString]" DisplayName="Write Cell"`)
+を元に、既存のテストフィクスチャですら`DisplayName`属性自体は含んで
+いたが未検証だった値を確認・配線しただけの、ノーリスクな後片付け。
+
+`ExcelReadCellNode`/`ExcelReadRangeNode`/`ExcelWriteRangeNode`/
+`ExcelAppendRangeNode`は既に知見84の`_with_scope_child_display_name`
+(スコープ子の生成行を`# {display_name}`コメントで包む共通ヘルパー)を
+使っていたが、`ExcelWriteCellNode`だけが取り残されていた——`types.py`
+に`display_name: str | None = None`フィールドを追加、`xaml_tree.py`の
+`_parse_excel_write_cell`に`display_name=_attr(elem, "DisplayName")`を
+追加、`uipath_codegen/__init__.py`の`_generate_excel_application_scope`
+内の呼び出しを他のExcel活動と同じ`_with_scope_child_display_name`経由
+に変更しただけで、新しい生成ロジックは一切追加していない。
+
+既存の`tests/test_uipath_dsl.py`の`test_excel_write_cell_with_dynamic_
+cell_expression`に`node.display_name == "Write Cell"`の検証を追加
+(XMLフィクスチャ自体は変更無し、元々未検証だった値を検証対象に
+加えただけ)。`tests/test_uipath_codegen.py`に1件追加、UiPath関連
+テスト全528件通過、リポジトリ全体で全1446件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

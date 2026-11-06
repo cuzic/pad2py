@@ -741,6 +741,7 @@ def _parse_excel_write_cell(elem: etree._Element) -> ExcelWriteCellNode:
         cell=_attr_expr(elem, "Cell"),
         sheet_name=_attr(elem, "SheetName") or "",
         text=_attr_expr(elem, "Text"),
+        display_name=_attr(elem, "DisplayName"),
     )
 
 

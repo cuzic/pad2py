@@ -675,11 +675,18 @@ class ExcelWriteCellNode:
     した。`sheet_name`は全てのExcel活動(`ExcelReadRange`/
     `ExcelWriteRange`/`ExcelAppendRange`含む)で実機確認済みの実例が常に
     リテラル文字列("Sheet1"等)だったため`str`のまま残す(他の兄弟活動と
-    一貫性を保つ)。"""
+    一貫性を保つ)。
+
+    知見135追記: `display_name`は他のExcel活動(`ExcelReadCellNode`等)
+    と違い当初欠けていた——実機では`DisplayName`属性が常に存在する
+    (Studioが活動を配置する際に既定で付与するため)ため追加した。知見84
+    で確立した`_with_scope_child_display_name`(スコープ子の生成行を
+    `# {display_name}`コメントで包む)をそのまま適用する。"""
 
     cell: Expr
     sheet_name: str
     text: Expr
+    display_name: str | None = None
 
 
 @dataclass

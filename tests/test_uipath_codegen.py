@@ -3222,6 +3222,32 @@ def test_excel_write_cell_with_no_cell_is_todo():
     _compiles(code)
 
 
+def test_excel_write_cell_display_name_becomes_a_comment():
+    """知見135: `ExcelWriteCellNode`には他のExcel活動(`ExcelReadCellNode`
+    等)と違い`display_name`が無かった——実機では`DisplayName`属性が
+    常に存在するため追加した。知見84の`_with_scope_child_display_name`
+    をそのまま適用する。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelWriteCellNode(
+                        cell=Literal(value="A1"),
+                        sheet_name="Sheet1",
+                        text=Literal(value="hi"),
+                        display_name="Write Cell A1",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Write Cell A1" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_excel_read_cell_with_dynamic_cell_expression_generates_real_code():
     wf = _wrap(
         [

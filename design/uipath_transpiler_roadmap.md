@@ -1652,3 +1652,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     (新しい構文領域として記録、今回は見送り)。回帰テスト追加
     (`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全527件通過、
     リポジトリ全体で全1445件通過。
+
+93. **(完了、2026-11-06)** `ExcelWriteCellNode`に`display_name`を追加
+    (知見135——知見119で「スコープを絞るため見送った」としていた既知の
+    バックログ項目の後片付け): `ExcelReadCellNode`等と違い`display_
+    name`フィールドが無かった——既に確認済みの実機データ(テスト
+    フィクスチャ自体に`DisplayName="Write Cell"`が含まれていたが未
+    検証)を元に、`types.py`へフィールド追加・`xaml_tree.py`の
+    `_parse_excel_write_cell`で捕捉・`_generate_excel_application_
+    scope`内の呼び出しを他のExcel活動と同じ`_with_scope_child_
+    display_name`経由に変更。新しい生成ロジックは追加していない、
+    ノーリスクな後片付け。回帰テスト追加(既存テストへの検証追加1件・
+    `tests/test_uipath_codegen.py`1件)、UiPath関連テスト全528件通過、
+    リポジトリ全体で全1446件通過。
