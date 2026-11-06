@@ -217,6 +217,8 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   **2026-11-05追記(`GetWindow.Get`/`SetWindowVisibility.SetVisibilityByTitleClass`)**:
   `GetWindow.Get`(`.GetUseTimeout`の兄弟セレクタ)は代入された変数の`.criteria`まで、
   `SetVisibilityByTitleClass`は`win32gui.ShowWindow()`の呼び出し引数までexec検証を追加した。
+  `MoveWindow.Move`(Controlベースの兄弟セレクタ)にも`win32gui.MoveWindow()`の引数まで
+  exec検証を追加し、`MoveWindow`系(ByTitleClass/ByInstanceOrHandle/Control)3系統が揃った。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

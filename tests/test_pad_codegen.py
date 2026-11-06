@@ -1885,6 +1885,17 @@ def test_generate_python_from_move_window_control_based_converts() -> None:
     assert "win32gui.MoveWindow(_hwnd, 10, 20, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
     assert "# TODO: map PAD action: UIAutomation.MoveWindow.Move" not in code
 
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 100, 200, 900, 800)  # 既存の幅800・高さ600を保持する想定
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
+    assert win32_registry.calls == [("MoveWindow", 0, 10, 20, 800, 600, True)]
+
 
 def test_generate_python_from_set_window_state_control_based_converts() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
