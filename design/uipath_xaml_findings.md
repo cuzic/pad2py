@@ -9325,6 +9325,51 @@ test_uipath_codegen.py`8件)、UiPath関連テスト全861件通過、リポジ�
 全体は別セッションの並行作業により知見205まで進んでいたが、`design/
 uipath_xaml_findings.md`/本トランスパイラのコード自体には競合は無かった)。
 
+## 197. `ui:GenerateDataTable`を新規実装——知見195で2番目に有望と評価した候補、ground-truthコーパスに無かった`CSVParsing`/`UseColumnHeader`/`AutoDetectTypes`属性を実機で発見、`csv.DictReader`/`str.split()`の二択で安全に対応
+
+知見195で「DataTable操作ファミリーの2番目に有望な候補」と評価した
+`ui:GenerateDataTable`(GitHub code searchで180件ヒット)を実装した。
+`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+(25.10・26.2の両バージョンで内容が完全に同一)は`ColumnSeparators`+
+`ColumnSizes`+`DataTable`+`Input`+`NewLineSeparator`+`Positions`のみ
+だったが、実機3件(`vajrang-b/UiPathIn30Days`)では**ground-truthに
+一切載っていない**`CSVParsing`(`"True"`/`"False"`)・
+`UseColumnHeader`(確認した全件`"True"`)・`AutoDetectTypes`
+(確認できた値は`"False"`)という3つの追加属性を発見した——知見128が
+最初から注記していた「ground-truthコーパスは属性**名**の一覧としては
+権威的だが、新しい値の変換ロジックを実装する根拠にはならない(ほぼ
+全て`{x:Null}`のデフォルトのみ)」という限界が、今回は「そもそも
+ground-truthに存在しない属性が実機には存在する」という、より強い
+形で裏付けられた。
+
+実機で確認した構成(`Input`+`ColumnSeparators`(単一文字、実機は
+`";"`/`","`)+`NewLineSeparator`(実機は改行文字そのもの、または
+`{x:Null}`)+`UseColumnHeader="True"`+`CSVParsing`(True/False両方の
+実例を確認)+`DataTable`(出力)+`AutoDetectTypes`)に基づき、
+`CSVParsing="True"`時はPython標準の`csv`モジュール(`csv.DictReader`、
+`ReadCsvFile`知見185と同じ、引用符で囲まれたフィールド内の区切り
+文字を正しく扱う)、`"False"`時は単純な`str.split()`で対応した
+——いずれも`UseColumnHeader="True"`前提のdict行表現で出力を統一
+できる。固定幅モード(`Positions`/`ColumnSizes`が非null、GitHub検索
+では176件ヒットしたが実際に非null値を使う実例は複数サンプルを
+確認しても一度も見つからなかった)・`UseColumnHeader`が`"True"`
+以外・`AutoDetectTypes="True"`(型推論の正確な意味論——文字列を
+どの.NET型へどう変換するか——が未確認)は常に`# TODO`へ倒す。
+`ColumnSeparators`が複数文字の場合(`csv`モジュールの`delimiter`は
+1文字しか受け付けない)・`NewLineSeparator`がリテラル改行文字以外の
+場合も同様にTODO化する、独自の安全策を追加した。
+
+知見196の`LookupDataTable`と同じ理由(既存のDataTableを読まず新規に
+構築するため、出力の表現形式を自分で選べる)で、知見179の表現非
+統一性問題を回避できることを実装を通じて確認した。実機サンプル2件
+(`CSVParsing="True"`/`"False"`の両方)+合成データで`parse_activity()`
++`generate_python()`+`compile()`を確認し、さらに実際のPython
+インタプリタで両方の分岐(`csv.DictReader`経由/`str.split()`経由)を
+実行し、同一の入力テキストから同一のdict行リストが生成されることを
+手動確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+`tests/test_uipath_codegen.py`11件)、UiPath関連テスト全872件通過、
+リポジトリ全体で全1954件通過(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

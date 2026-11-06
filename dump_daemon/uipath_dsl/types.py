@@ -546,6 +546,44 @@ class WindowStateNode:
 
 
 @dataclass
+class GenerateDataTableNode:
+    """`<ui:GenerateDataTable>`(知見197、GitHub code searchで180件
+    ヒット——知見195で2番目に有望と評価したDataTable操作系候補)。
+    公式ground-truthコーパス(25.10・26.2とも同一)は`ColumnSeparators`
+    +`ColumnSizes`+`DataTable`(出力)+`Input`+`NewLineSeparator`+
+    `Positions`のみだが、実機3件(`vajrang-b/UiPathIn30Days`)では
+    ground-truthに載っていない`CSVParsing`(`"True"`/`"False"`)・
+    `UseColumnHeader`(全件`"True"`)・`AutoDetectTypes`(`"False"`)も
+    確認した——ground-truthコーパスが実機の全属性を網羅していない
+    実例(知見128の既存の注意書きを裏付ける)。
+
+    テキスト(`Input`)を区切り文字(`ColumnSeparators`、実機は`";"`/
+    `","`の単一文字)+改行(`NewLineSeparator`、実機は`"\\n"`相当か
+    未設定)で分割し、1行目を列名とする(`UseColumnHeader="True"`)
+    `DataTable`を構築する活動。`CSVParsing="True"`時はPython標準の
+    `csv`モジュール(引用符で囲まれたフィールド内の区切り文字を正しく
+    扱う、`ReadCsvFile`知見185と同じ`csv.DictReader`)、`"False"`時は
+    単純な`str.split()`で対応する。固定幅モード(`Positions`/
+    `ColumnSizes`が非null)・`UseColumnHeader`が`"True"`以外・
+    `AutoDetectTypes="True"`(型推論の正確な意味論が未確認)は実機での
+    使用例を一度も確認できなかったため、常に`# TODO`へ倒す。既存の
+    DataTableを読まず新規に構築するため、出力は知見183以来一貫して
+    使っているdict行表現で統一できる——知見179の表現非統一性問題を
+    回避できる、知見196の`LookupDataTable`と同じ構造的な利点がある。"""
+
+    display_name: str | None = None
+    input: Expr = None
+    data_table: Expr = None
+    column_separators: Expr = None
+    new_line_separator: Expr = None
+    use_column_header: str | None = None
+    csv_parsing: str | None = None
+    auto_detect_types: str | None = None
+    positions: Expr = None
+    column_sizes: Expr = None
+
+
+@dataclass
 class GetAttributeNode:
     """`<ui:GetAttribute>`(知見174、GitHub code searchで274件ヒット)。
     `Target`+`Attribute`(属性名、実機確認済みの値は`"checked"`/
@@ -2391,6 +2429,7 @@ Node = (
     | CloseApplicationNode
     | CloseWindowNode
     | WindowStateNode
+    | GenerateDataTableNode
     | GetAttributeNode
     | GetPasswordNode
     | LoadImageNode

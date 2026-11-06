@@ -97,6 +97,7 @@ from ..uipath_dsl.types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
@@ -590,6 +591,8 @@ def _generate_node(
         return _generate_send_hotkey(node, indent)
     if isinstance(node, GetTextNode):
         return _generate_get_text(node, indent)
+    if isinstance(node, GenerateDataTableNode):
+        return _generate_generate_data_table(node, indent)
     if isinstance(node, GetAttributeNode):
         return _generate_get_attribute(node, indent)
     if isinstance(node, GetPasswordNode):
@@ -1756,6 +1759,87 @@ def _generate_window_state_body(node: WindowStateNode, indent: int) -> list[str]
 # JS/DOM注入機能を持たない)側にこれを安全に代替できる汎用APIが存在しない
 # ——`Attribute`の値を問わず常に`# TODO`へ倒す(知見38の`role`属性と同じ
 # 「VM実機検証なしに新しいマッピングを追加しない」という安全側の判断)。
+# 知見197: `ui:GenerateDataTable`。既存のDataTableを読まず新規に構築
+# するため、出力は知見183以来のdict行表現で統一できる(知見179の
+# 表現非統一性問題を回避、知見196の`LookupDataTable`と同じ利点)。
+# `CSVParsing="True"`は`csv.DictReader`(`ReadCsvFile`知見185と同じ、
+# 引用符付きフィールドに対応)、`"False"`は単純な`str.split()`で
+# 対応する。固定幅モード(`Positions`/`ColumnSizes`)・
+# `UseColumnHeader`が`"True"`以外・`AutoDetectTypes="True"`は実機未確認
+# のため常に`# TODO`へ倒す。
+def _generate_generate_data_table(node: GenerateDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_generate_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_generate_data_table_body(
+    node: GenerateDataTableNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.input is None or node.data_table is None:
+        return [f"{prefix}# TODO: GenerateDataTable with missing Input/DataTable"]
+    if node.positions is not None or node.column_sizes is not None:
+        return [
+            f"{prefix}# TODO: GenerateDataTable with Positions/ColumnSizes "
+            "set — fixed-width column mode not confirmed in real "
+            "samples, refusing to guess"
+        ]
+    if node.use_column_header != "True":
+        return [
+            f"{prefix}# TODO: GenerateDataTable with UseColumnHeader not "
+            f"set to True ({node.use_column_header!r}) — only the header-"
+            "row case is confirmed, refusing to guess"
+        ]
+    if node.auto_detect_types == "True":
+        return [
+            f"{prefix}# TODO: GenerateDataTable with AutoDetectTypes=True "
+            "— type-inference semantics not confirmed, refusing to guess"
+        ]
+    if node.column_separators is None:
+        return [f"{prefix}# TODO: GenerateDataTable with no ColumnSeparators captured"]
+    if (
+        isinstance(node.column_separators, Literal)
+        and len(node.column_separators.value) != 1
+    ):
+        return [
+            f"{prefix}# TODO: GenerateDataTable with multi-character "
+            f"ColumnSeparators ({node.column_separators.value!r}) — "
+            "csv module requires a single-character delimiter, refusing "
+            "to guess"
+        ]
+    if node.new_line_separator is not None and not (
+        isinstance(node.new_line_separator, Literal)
+        and node.new_line_separator.value == "\n"
+    ):
+        return [
+            f"{prefix}# TODO: GenerateDataTable with non-default "
+            "NewLineSeparator — only the implicit default/literal "
+            '"\\n" case is confirmed, refusing to guess'
+        ]
+    if node.csv_parsing not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: GenerateDataTable with unrecognized/unset "
+            f"CSVParsing ({node.csv_parsing!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    input_text = _render_value_or_todo(node.input, prefix, todo)
+    target = _render_value_or_todo(node.data_table, prefix, todo)
+    sep = _render_value_or_todo(node.column_separators, prefix, todo)
+    if todo:
+        return todo
+    if node.csv_parsing == "True":
+        return [
+            f"{prefix}{target} = list(csv.DictReader(io.StringIO({input_text}), "
+            f"delimiter={sep}))"
+        ]
+    return [
+        f"{prefix}_gdt_header, *_gdt_rows = "
+        f"[_l.split({sep}) for _l in {input_text}.splitlines() if _l]",
+        f"{prefix}{target} = [dict(zip(_gdt_header, _row)) for _row in _gdt_rows]",
+    ]
+
+
 def _generate_get_attribute(node: GetAttributeNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_get_attribute_body(node, indent)

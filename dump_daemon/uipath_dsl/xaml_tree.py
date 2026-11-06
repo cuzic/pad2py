@@ -59,6 +59,7 @@ from .types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
@@ -715,6 +716,24 @@ def _parse_minimize_window(elem: etree._Element) -> WindowStateNode:
 
 def _parse_restore_window(elem: etree._Element) -> WindowStateNode:
     return _parse_window_state(elem, "restore")
+
+
+def _parse_generate_data_table(elem: etree._Element) -> GenerateDataTableNode:
+    data_table = _attr_expr(elem, "DataTable") or _in_argument_property_expr(
+        elem, "DataTable"
+    )
+    return GenerateDataTableNode(
+        display_name=_attr(elem, "DisplayName"),
+        input=_attr_expr(elem, "Input"),
+        data_table=data_table,
+        column_separators=_attr_expr(elem, "ColumnSeparators"),
+        new_line_separator=_attr_expr(elem, "NewLineSeparator"),
+        use_column_header=_attr(elem, "UseColumnHeader"),
+        csv_parsing=_attr(elem, "CSVParsing"),
+        auto_detect_types=_attr(elem, "AutoDetectTypes"),
+        positions=_attr_expr(elem, "Positions"),
+        column_sizes=_attr_expr(elem, "ColumnSizes"),
+    )
 
 
 def _parse_get_attribute(elem: etree._Element) -> GetAttributeNode:
@@ -2054,6 +2073,7 @@ _DISPATCH = {
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "GetFullText"): _parse_get_full_text,
     (UI_NS, "GetValue"): _parse_get_value,
+    (UI_NS, "GenerateDataTable"): _parse_generate_data_table,
     (UI_NS, "GetAttribute"): _parse_get_attribute,
     (UI_NS, "GetPassword"): _parse_get_password,
     (UI_NS, "SelectFile"): _parse_select_file,

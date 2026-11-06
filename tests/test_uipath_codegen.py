@@ -72,6 +72,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
@@ -2232,6 +2233,173 @@ def test_window_state_with_continue_on_error_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: MaximizeWindow with ContinueOnError set" in code
     assert ".maximize()" not in code
+    _compiles(code)
+
+
+def test_generate_data_table_csv_parsing_true_uses_dict_reader():
+    """知見197: `ui:GenerateDataTable`(GitHub code searchで180件
+    ヒット)。`CSVParsing="True"`は`csv.DictReader`(引用符付き
+    フィールドに対応)で、`UseColumnHeader="True"`のdict行表現に
+    対応する。"""
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="textData"),
+                data_table=VbExpr(text="studentDetails"),
+                column_separators=Literal(value=","),
+                use_column_header="True",
+                csv_parsing="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "studentDetails = list(csv.DictReader(io.StringIO(textData), delimiter=','))" in code
+    assert "import csv" in code
+    assert "import io" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_generate_data_table_csv_parsing_false_uses_plain_split():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="Out_Text"),
+                data_table=VbExpr(text="Out_DT"),
+                column_separators=Literal(value=";"),
+                use_column_header="True",
+                csv_parsing="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_l.split(';') for _l in Out_Text.splitlines()" in code
+    assert "Out_DT = [dict(zip(_gdt_header, _row)) for _row in _gdt_rows]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_generate_data_table_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                column_separators=Literal(value=","),
+                use_column_header="True",
+                csv_parsing="True",
+                display_name="Generate Data Table From Text",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Generate Data Table From Text" in code
+    assert "csv.DictReader(" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_missing_input_or_output_is_todo():
+    wf = _wrap([GenerateDataTableNode(input=None, data_table=VbExpr(text="dt"))])
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with missing Input/DataTable" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_positions_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                positions=Literal(value="1,5,10"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with Positions/ColumnSizes set" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_use_column_header_not_true_is_todo():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                use_column_header="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with UseColumnHeader not set to True" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_auto_detect_types_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                use_column_header="True",
+                auto_detect_types="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with AutoDetectTypes=True" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_multi_char_separator_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                use_column_header="True",
+                column_separators=Literal(value="::"),
+                csv_parsing="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with multi-character ColumnSeparators" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_non_default_newline_separator_is_todo():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                use_column_header="True",
+                column_separators=Literal(value=","),
+                new_line_separator=Literal(value=";;"),
+                csv_parsing="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with non-default NewLineSeparator" in code
+    _compiles(code)
+
+
+def test_generate_data_table_with_unrecognized_csv_parsing_is_todo():
+    wf = _wrap(
+        [
+            GenerateDataTableNode(
+                input=VbExpr(text="t"),
+                data_table=VbExpr(text="dt"),
+                use_column_header="True",
+                column_separators=Literal(value=","),
+                csv_parsing=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GenerateDataTable with unrecognized/unset CSVParsing" in code
     _compiles(code)
 
 

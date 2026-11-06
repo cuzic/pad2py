@@ -243,9 +243,11 @@ DataTable`/`AddDataColumn`/`RemoveDataColumn`/`SortDataTable`/
 (新規発見、`DataTable`+`LookupColumn(Index/Name)`+`LookupValue`+
 `TargetColumn(Index/Name)`→単一セル値+行インデックスの出力のみで、
 列スキーマ全体を追跡しなくても対応できる見込み)→実装済み、見立て通り
-表現非統一性問題の影響を受けなかった②`GenerateDataTable`
-(新規発見、テキストを区切り文字/固定幅でDataTableへ変換——既存の
-DataTableを読まず新規に構築するため出力表現を自分で選べる)
+表現非統一性問題の影響を受けなかった②**(完了、知見197)**
+~~`GenerateDataTable`~~(新規発見、テキストを区切り文字/固定幅で
+DataTableへ変換——既存のDataTableを読まず新規に構築するため出力
+表現を自分で選べる)→実装済み、`csv.DictReader`/`str.split()`の
+二択で対応、固定幅モードは実機未確認のため見送り
 ③`RemoveDataColumn`/`AddDataColumn`(スキーマ変更のみで行の値は読まない
 ——知見183の`isinstance(row, dict)`判定と組み合わせればdict行限定で
 部分対応できる可能性)。**依然保留**: `SortDataTable`/

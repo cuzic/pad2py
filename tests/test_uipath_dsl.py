@@ -47,6 +47,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
@@ -1146,6 +1147,30 @@ def test_restore_window_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, WindowStateNode)
     assert node.method == "restore"
+
+
+def test_generate_data_table_properties():
+    """知見197: `ui:GenerateDataTable`(GitHub code searchで180件
+    ヒット)。実機`vajrang-b/UiPathIn30Days`で確認した`CSVParsing`+
+    `ColumnSeparators`+`UseColumnHeader`——ground-truthコーパスには
+    無かった属性群(知見128の既存の注意を裏付ける)。"""
+    xml = (
+        f"<ui:GenerateDataTable {_UI_XMLNS} "
+        'ColumnSizes="{x:Null}" Positions="{x:Null}" CSVParsing="False" '
+        'ColumnSeparators=";" DataTable="[Out_DT]" '
+        'DisplayName="Generate Data Table From Text" Input="[Out_Text]" '
+        'NewLineSeparator="&#10;" UseColumnHeader="True" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GenerateDataTableNode)
+    assert node.input == VbExpr(text="Out_Text")
+    assert node.data_table == VbExpr(text="Out_DT")
+    assert node.column_separators == Literal(value=";")
+    assert node.new_line_separator == Literal(value="\n")
+    assert node.use_column_header == "True"
+    assert node.csv_parsing == "False"
+    assert node.positions is None
+    assert node.column_sizes is None
 
 
 def test_get_attribute_selector_and_properties():

@@ -2549,3 +2549,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      実行(一致あり/無しの両方)で確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`8件)、
      UiPath関連テスト全861件通過、リポジトリ全体で全1943件通過。
+
+155. **(完了、2026-11-06)** `ui:GenerateDataTable`を新規実装(知見197):
+     知見195で2番目に有望と評価したDataTable操作系の候補。
+     ground-truthコーパスに無かった`CSVParsing`/`UseColumnHeader`/
+     `AutoDetectTypes`属性を実機で発見(知見128の限界を裏付け)。
+     `CSVParsing="True"`は`csv.DictReader`、`"False"`は`str.split()`
+     で対応し、いずれも`UseColumnHeader="True"`前提のdict行表現に
+     統一——`LookupDataTable`(知見196)と同じ理由(新規構築のため
+     出力表現を自分で選べる)でDataTable表現非統一性問題を回避した。
+     固定幅モード(`Positions`/`ColumnSizes`)・`AutoDetectTypes=True`・
+     複数文字`ColumnSeparators`・非デフォルト`NewLineSeparator`は常に
+     TODOへ倒す。実機XAML2件+合成データ+実際のPython実行(両分岐)で
+     確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`11件)、UiPath関連テスト全872件通過、
+     リポジトリ全体で全1954件通過。
