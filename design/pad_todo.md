@@ -88,16 +88,27 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   (知見38の`appmask['<表示名>']`名前参照と同じ型)で、ブロッカーの正体は新しいスキーマ
   不明ではなく、既存の「UI要素リポジトリの実セレクタ取得にはRDPか2FA経由のクラウド保存が
   必要」という古い既知の制約(知見38/39/42)そのもの。この2項目は真にRDP必要で確定。
-- [ ] 🖥️ **新規発見(知見160、`tools/pad_selector_audit.py`でUIAutomation.Actions.dll全体を
-  再監査して判明)**: これまで一切着手していなかった8アクション系統が存在する——
-  `ExtractDataFromTable`/`ExtractDataFromWindow`(テーブル/ウィンドウからのデータ抽出)・
-  `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`(チェックボックス/
-  ラジオボタンの選択状態取得)・`PopulateTextFieldInWindow`(テキストフィールド入力)・
-  `SetDropDownListValueInWindow`(ドロップダウン操作)・`TakeScreenshotOfUIElement`
-  (UI要素のスクリーンショット)・`WaitForImageAction`(画像の出現/消失待機、`IfImage`と
-  同系統)。いずれもUI要素セレクタが必要で、`IfImage`/`WindowContainsElement`と同じ
-  「実セレクタ取得にはRDPが必要」制約(知見38/39/42)に該当する可能性が高い——着手には
-  実機セレクタ確認が前提。
+- [x] 💻 **新規発見(知見160、`tools/pad_selector_audit.py`でUIAutomation.Actions.dll全体を
+  再監査して判明)した8系統を精査・1件結線(知見161)**: decompileで精査した結果、
+  `TakeScreenshotOfUIElement`(兄弟セレクタ2件)は`Control`プロパティが`UIAutomation.
+  Click.Click`の`Element`と全く同じ`UiElementRef`機構(パラメータ名に関わらず値の構文
+  だけで判別される)で、動作自体もpywinauto標準API(`capture_as_image().save()`)かつ
+  曖昧さが無いため、`TakeScreenshotOfUIElementAndSaveToFile`(`SaveMode=File`固定)を
+  実機未確認のまま安全に新規結線できた(`SaveMode=Clipboard`固定の兄弟セレクタは
+  OSクリップボード書き込みが別の未実装機構のため見送り)。
+  - [ ] 🖥️🔍 **残課題(知見161で精査・分類)**:
+    - `PopulateTextFieldInWindow`/`SetDropDownListValueInWindow`: セレクタ解決自体は
+      同じ`UiElementRef`機構で可能と確認済み(新たなRDP作業は不要)。残るブロッカーは
+      `PopulateTextMode`(Replace/Append)・`ClickType`・`OptionsNames`/`OptionsIndeces`/
+      `UseRegularExpressions`の正確な挙動が実機未確認なこと——知見81の「Run実行+
+      ファイル書き出し確認」で解決できる見込み(VM上での実機確認が必要、RDP不要)。
+    - `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`: UI要素セレクタ
+      を使わず「現在のウィンドウ全体をスキャンする」操作と判明——出力される識別名の
+      形式(表示テキスト/AutomationId)が実機未確認。
+    - `ExtractDataFromTable`/`ExtractDataFromWindow`: ライブExcel COM書き出しを伴う
+      複合動作で、知見155のExcelスコープ(openpyxlでは再現不可)と同じ制約に抵触。
+    - `WaitForImageAction`: `IfImageAction`と同じ`CheckImageActionBase`系列——知見38/39/42
+      の既知の制約(画像セレクタの実機取得にRDPが必要)がそのまま当てはまる。
 - [~] 💻 ON ERROR/ON BLOCK ERRORの名前付き・複数アームのcodegen結線 — commit (この後のコミット)で、
   知見36の複数アーム構文と知見73の`pad_action_lib`例外タグ(`[Throws]`名=クラス名)を
   `dump_daemon/pad_codegen/error_tags.py`で対応付け、タグ名が既知の場合は実際の

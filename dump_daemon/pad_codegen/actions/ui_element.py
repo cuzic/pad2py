@@ -5,6 +5,7 @@ from ...pad_dsl import ActionRecord, EnumRef, UiElementRef
 from ..context import CodegenContext
 from ..render import INDENT, render_value
 from ..selectors import _build_pywinauto_selector_expr, _is_start_button_element
+from ._support import enum_last, safe_render
 from ._window_state import (
     VISIBILITY_VALUE_TO_BOOL,
     WINDOW_STATE_TO_PYWINAUTO_METHOD,
@@ -145,4 +146,29 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             if title_var:
                 lines.append(f"{prefix}{title_var} = {window_var}.window_text()")
             return lines
+    if node.action_id == "UIAutomation.TakeScreenshotOfUIElement.TakeScreenshotOfUIElementAndSaveToFile":
+        # design/dsl_format_findings.md 知見161(`ActionSelectorBase`一括列挙監査・decompile
+        # 確認済み): `TakeScreenshotOfUIElement`の兄弟セレクタ(`SaveMode=File`固定)。
+        # `Control`(`UIAutomation.Click.Click`の`Element`と同じ`UiElementRef`機構、
+        # `_build_pywinauto_selector_expr()`がそのまま使える)で特定した要素を
+        # pywinautoの`.capture_as_image()`(PIL Imageを返す、知見56で確証済みのセレクタ式
+        # さえ解決できればクリックと同じ信頼度)で撮影し、`.save()`で保存する。`ImageFormat`
+        # 列挙値(`Bmp`/`Png`/`Jpeg`/`Gif`/`Tiff`)はそのまま大文字化するだけでPILの
+        # フォーマット文字列(`"BMP"`/`"PNG"`等)と一致する。`SaveMode=Clipboard`
+        # (既定の兄弟セレクタ`TakeScreenshotOfUIElement`)はOSクリップボードへの画像書き込み
+        # という別の未実装の仕組みが必要なため、でっち上げず安全にTODOへ倒す。
+        element = node.params.get("Control")
+        image_format = enum_last(node.params.get("ImageFormat"))
+        image_file_path = safe_render(node.params.get("ImageFilePath"))
+        dest_var = node.output_vars.get("ImageFile")
+        if not (isinstance(element, UiElementRef) and image_format and image_file_path and dest_var):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        return [
+            f"{prefix}{selector_expr}.capture_as_image().save({image_file_path}, "
+            f"format={image_format.upper()!r})",
+            f"{prefix}{dest_var} = {image_file_path}",
+        ]
     return None

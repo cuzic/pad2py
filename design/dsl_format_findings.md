@@ -2695,3 +2695,17 @@ Excel/Word/PowerPoint/PDFの実際のVMリフレクション出力を`tools/sele
 **UIAutomation.Actions.dllの新規発見(新たなTODO)**: `CloseWindow`/`FocusWindow`/`GetWindow`/`MoveWindow`/`ResizeWindow`/`SetWindowState`/`SetWindowVisibility`/`WaitForWindow`/`WaitForWindowContent`の9系統(知見116-120で確認済み)は`...Base`/`...Action`接尾辞を除去する同じパターンで全て結線済みと確認できた。`IfWindow`/`IfImage`/`IfWindowContains`は`conditions.py`が`action_id.startswith("UIAutomation.IfWindow.")`という前方一致判定を使っており、本ツールの単純な文字列リテラル抽出では検出できない(ツールの既知の盲点、`IfWindow`自体は実際には結線済み・`IfImage`/`IfWindowContains`は`conditions.py`のコメントに明記された意図的な未対応)。
 
 一方、以下8系統は`pad_codegen`のどのファイルにも一切登場せず、**この調査で初めて「存在すら認識していなかった未着手のアクション系統」として発見した**: `ExtractDataFromTable`/`ExtractDataFromWindow`(テーブル/ウィンドウからのデータ抽出)・`GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`(チェックボックス/ラジオボタンの選択状態取得)・`PopulateTextFieldInWindow`(テキストフィールド入力)・`SetDropDownListValueInWindow`(ドロップダウン操作)・`TakeScreenshotOfUIElement`(UI要素のスクリーンショット)・`WaitForImageAction`(画像の出現/消失待機、`IfImageAction`と同系統)。いずれもUI要素セレクタ(知見38以来の既知の制約でRDPが必要)を必要とするため、実装着手には実機セレクタ確認が前提になる——`pad_todo.md`に新規TODOとして記録する。
+
+## 161. 知見160で新規発見したUIAutomationの8系統を精査——`TakeScreenshotOfUIElement`はClickと同じ`UiElementRef`機構を使うだけで実装可能と判明、新規結線完了
+
+知見160で「UIAutomation.Actions.dllに一切着手していなかった8アクション系統を発見」と記録した直後、`pad2py-fetch-uiautomation-dll`でDLL本体を取得し`ilspycmd`でdecompileして各系統を精査した。8系統は実装難度が大きく2つに分かれると判明した。
+
+**低リスク・新規結線した1件(`TakeScreenshotOfUIElement`、兄弟セレクタ2件)**: `Control`プロパティ(`[InputArgument(Order = 1)] public override UIControl Control`、`Name`属性の上書き無し)を持ち、これは`UIAutomation.Click.Click`の`Element`パラメータと全く同じ`UiElementRef`機構——`pad_dsl.line_parser._resolve_value()`はUI要素参照をパラメータ名ではなく値の構文(`appmask[...]`プレースホルダートークン)だけで判別するため、パラメータ名が違っても(`Element`/`Control`/`TextField`/`DropDownList`等)同じ`_build_pywinauto_selector_expr()`(知見56で確証済み)がそのまま使える。本体の動作(`capture_as_image()`でpywinautoがPIL Imageを返し`.save(path, format=...)`で保存)はpywinauto自身の標準API(RPA特有の未検証の意味論ではない)で、`ImageFormat`列挙値(`Bmp`/`Png`/`Jpeg`/`Gif`/`Tiff`)は単純に大文字化するだけでPILの`format=`引数と一致する——曖昧さの無い機能のため実機未確認でも安全に結線できると判断した。兄弟セレクタ`TakeScreenshotOfUIElement`(`SaveMode=Clipboard`固定)はOSクリップボードへの画像書き込みという別の未実装の仕組みが必要なため見送り、`TakeScreenshotOfUIElementAndSaveToFile`(`SaveMode=File`固定)のみ結線した。
+
+**残り7系統は実装を見送った(でっち上げない判断)**:
+- `PopulateTextFieldInWindow`/`SetDropDownListValueInWindow`: `Control`プロパティ自体は同じ`UiElementRef`機構(`Name`属性で`TextField`/`DropDownList`に上書き)で解決可能と確認できたが、`PopulateTextMode`(`Replace`/`Append`)の正確な挙動・`ClickType`がテキスト設定にどう影響するか・`SetDropDownListValueInWindow`の`OptionsNames`/`OptionsIndeces`/`UseRegularExpressions`の正確なマッチング規則は、実際のランタイム実装(`IAutomationRuntimeProxy.PopulateTextFieldInWindow()`/`.SetDropDownListValueInWindow()`、本DLLには実装本体が無く別のランタイムアセンブリ)に委ねられており、decompileだけでは確定できない——知見81の「Run実行+結果比較」による実機確認が必要(セレクタ解決自体は知見56で確証済みなので新たなRDP作業は不要、VM上でRun+ファイル書き出し確認すれば済む見込み)。
+- `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`: 逆コンパイルすると`PerformAutomation(..., (UIControl)null, true)`が常に`null`で呼ばれており、`Control`型のプロパティ自体をクラスが持たない——つまりUI要素セレクタでは無く「現在のウィンドウ全体をスキャンする」操作(出力は選択されたチェックボックス/ラジオボタンの識別名リスト)。識別名の形式(表示テキストか、AutomationIdか)が実機未確認。
+- `ExtractDataFromTable`/`ExtractDataFromWindow`: ライブExcel COM(`IExcelActions`)への書き出しを伴う複合動作で、知見155のExcelスコープ(openpyxlでは再現不可)と同じ制約に直接抵触する。
+- `WaitForImageAction`: `IfImageAction`と同じ`CheckImageActionBase`系列で、知見38/39/42の既知の制約(画像セレクタの実機取得にRDPが必要)がそのまま当てはまる。
+
+テストは`tests/test_pad_codegen.py`に`TakeScreenshotOfUIElementAndSaveToFile`のexec検証テストを追加し、`tests/fake_pywinauto.py`に`.capture_as_image().save()`のフェイクを新規実装した(既存の`FakeControl`/`FakeRegistry`パターンに倣う)。

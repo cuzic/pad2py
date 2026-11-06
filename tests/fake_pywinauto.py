@@ -17,8 +17,9 @@ design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)�
 対応しているAPI表面は`dump_daemon/pad_codegen/actions/*.py`が実際に生成する呼び出し
 (`.exists()`/`.wrapper_object()`/`.child_window()`/`.click_input()`/`.set_focus()`/
 `.close()`/`.type_keys()`/`.wait()`/`.wait_not()`/`.maximize()`/`.minimize()`/`.restore()`/
-`.window_text()`)のみ——新しい呼び出し形が出てきたら、その都度ここに追加する(未対応の
-呼び出しをでっち上げて成功させるのではなく、素直に`AttributeError`で気づけるようにする)。
+`.window_text()`/`.capture_as_image().save()`)のみ——新しい呼び出し形が出てきたら、
+その都度ここに追加する(未対応の呼び出しをでっち上げて成功させるのではなく、素直に
+`AttributeError`で気づけるようにする)。
 """
 from __future__ import annotations
 
@@ -30,6 +31,18 @@ from typing import Iterator
 class FakeElementNotFoundError(Exception):
     """`FakeControl.wrapper_object()`を存在しない要素に対して呼んだ場合(pywinautoの
     `ElementNotFoundError`相当)。"""
+
+
+class FakeImage:
+    """`FakeControl.capture_as_image()`の戻り値(pywinauto実装はPIL Imageを返す、
+    `.save(path, format=...)`だけをフェイクする——画像の内容自体は検証対象外)。"""
+
+    def __init__(self, registry: "FakeRegistry", path: list[dict]) -> None:
+        self._registry = registry
+        self._path = path
+
+    def save(self, fp: object, format: str | None = None) -> None:
+        self._registry.record("capture_as_image.save", self._path, {"fp": fp, "format": format})
 
 
 @dataclass
@@ -95,6 +108,10 @@ class FakeControl:
 
     def window_text(self) -> str:
         return self._registry.window_text_for(self._full_path())
+
+    def capture_as_image(self) -> FakeImage:
+        self._registry.record("capture_as_image", self._full_path(), {})
+        return FakeImage(self._registry, self._full_path())
 
 
 class FakeRegistry:
