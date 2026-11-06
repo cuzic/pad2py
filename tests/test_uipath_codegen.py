@@ -45,6 +45,7 @@ from dump_daemon.uipath_dsl import (
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
+    CloseWindowNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -2072,6 +2073,75 @@ def test_close_application_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: CloseApplication with ContinueOnError set" in code
+    assert ".close()" not in code
+    _compiles(code)
+
+
+_CLOSE_WINDOW_SELECTOR = "<wnd cls='Notepad' />"
+
+
+def test_close_window_with_known_selector_generates_close():
+    """知見172: `ui:CloseWindow`(GitHub code searchで276件ヒット)。
+    `CloseApplication`(知見171)と同じ`close()`を生成する——属性構成
+    (フラット`Selector`、`Target`ラッパー無し)が違うだけ。"""
+    wf = _wrap([CloseWindowNode(selector=_CLOSE_WINDOW_SELECTOR)])
+    code = generate_python(wf)
+    assert ".close()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_close_window_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([CloseWindowNode(selector=None, display_name="Close Window")])
+    code = generate_python(wf)
+    assert "# Close Window" in code
+    assert "# TODO: CloseWindow with no selector captured" in code
+    _compiles(code)
+
+
+def test_close_window_with_no_selector_is_todo():
+    wf = _wrap([CloseWindowNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: CloseWindow with no selector captured" in code
+    _compiles(code)
+
+
+def test_close_window_with_unmappable_selector_is_todo():
+    wf = _wrap([CloseWindowNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: CloseWindow selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_close_window_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CloseWindowNode(
+                selector=_CLOSE_WINDOW_SELECTOR, continue_on_error=Literal(value="True")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CloseWindow with ContinueOnError set" in code
+    assert ".close()" not in code
+    _compiles(code)
+
+
+def test_close_window_with_use_window_is_todo_not_guessed():
+    """知見172: `UseWindow`(既存のウィンドウ参照を再利用する、実機
+    `SuneetPatil/IRCTC-tatkal-booking`で確認した`[browser_window.
+    Element.GetTopLevelWindow]`のようなVB式)はオブジェクト参照自体が
+    未モデル化のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            CloseWindowNode(
+                selector=_CLOSE_WINDOW_SELECTOR,
+                use_window=VbExpr(text="browser_window.Element.GetTopLevelWindow"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CloseWindow with UseWindow set" in code
     assert ".close()" not in code
     _compiles(code)
 

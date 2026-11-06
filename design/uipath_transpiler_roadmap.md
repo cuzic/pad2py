@@ -2218,3 +2218,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `.close()`生成を確認。回帰テスト追加(`tests/test_uipath_dsl.py`
      2件・`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全704件
      通過、リポジトリ全体で全1746件通過。
+
+130. **(完了、2026-11-06)** `ui:CloseWindow`(GitHub code searchで276件
+     ヒット)を新規実装(知見172): `CloseApplication`(知見171)と同じ
+     `close()`意味論だが、`Target`ラッパー無しのフラット`Selector`
+     属性という「Classic」世代の属性慣習(`AttachWindow`/
+     `OpenApplication`と同系統)。`_attr`は`{x:Null}`正規化を行わない
+     ため、本活動で初めて専用パーサーに明示的な正規化を追加。
+     `UseWindow`(既存ウィンドウ参照の再利用)は未モデル化のため
+     `# TODO`へ倒す。実機5件で確認、合成テストで`.close()`生成を確認。
+     `<html>`タグセレクタが未マッピングという`uipath_selector`の既存
+     ギャップにも遭遇(別調査候補として記録、本件のスコープ外)。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`6件)、UiPath関連テスト全710件通過、
+     リポジトリ全体で全1754件通過。

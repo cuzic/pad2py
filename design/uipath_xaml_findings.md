@@ -8132,6 +8132,65 @@ display_name, continue_on_error)`、`xaml_tree.py`に
 `tests/test_uipath_codegen.py`5件)、UiPath関連テスト全704件通過、
 リポジトリ全体で全1746件通過。
 
+## 172. `ui:CloseWindow`(GitHub code searchで276件ヒット)を新規実装——`Target`ラッパー無しのフラット`Selector`属性という「Classic」世代の属性慣習、`{x:Null}`正規化が初めて必要になったケース
+
+知見171の`ui:CloseApplication`に続き、同じ「閉じる」系の兄弟活動として
+`ui:CloseWindow`(GitHub code searchで276件ヒット)を調査した。実機5件
+(`SuneetPatil/IRCTC-tatkal-booking`・`PacktPublishing/Robotic-Process-
+Automation-RPA-for-Developers`・`KonduitAI/mailboxdetection-workflow`・
+`aliya-rahmani/Projects`・`Klaus-in-Tech/Ford.com-scrapper`)で確認した
+属性は`Selector`(`Target`子要素でラップせず、タグ自身の**フラット
+属性**として直接持つ)+`UseWindow`(既存のウィンドウオブジェクト参照を
+再利用する、実機で確認した値は`[browser_window.Element.
+GetTopLevelWindow]`——`OpenBrowser`の`UiBrowser`出力バインディング
+(知見168)等と同じ「未モデル化のオブジェクト参照」カテゴリ)+
+`ContinueOnError`+`TimeoutMS`/`WaitForReady`(他のUI Automation活動と
+同様、生成コードに影響しないため無視)。`UiPath/skills`公式リポジトリ
+の25.10系ground-truthコーパスには存在せず、`AttachWindow`/
+`OpenApplication`(知見154)と同じ旧世代(「Classic」)の属性慣習だと
+確認した。
+
+ここで初めて`{x:Null}`正規化の必要な新しいケースに遭遇した——
+`AttachWindowNode`/`OpenApplicationNode`の`selector=_attr(elem,
+"Selector")`は`_attr_expr`を経由しない生のフラット属性取得のため、
+知見13の`{x:Null}`→`None`正規化を素通りする。`AttachWindow`/
+`OpenApplication`ではSelectorが実質必須の属性で実機上`{x:Null}`に
+なる例が無く問題が潜在していたが、`CloseWindow`は`UseWindow`使用時に
+`Selector="{x:Null}"`になる実例(実機`SuneetPatil/IRCTC-tatkal-
+booking`・`PacktPublishing/...`の2件)が頻出するため、本活動の専用
+パーサー`_parse_close_window`で明示的に`if selector == "{x:Null}":
+selector = None`という正規化を行った(知見163の`_target_selector`と
+同じ規約だが、フラット属性用の別経路のため共通ヘルパー化はしていない
+——`Target`ラッパー構造を前提とする`_target_selector`とは入力形状が
+違うため)。
+
+意味論は`CloseApplication`(知見171)と同一(pywinautoの`close()`、
+`WM_CLOSE`送信)だが、属性構成(`Target`ラッパー無し)が全く違うため
+`CloseApplicationNode`は再利用せず専用の`CloseWindowNode`とした。
+`UseWindow`が設定されている場合は(オブジェクト参照自体が未モデル化
+のため)`# TODO`へ倒す。
+
+実機確認中に別の既知の限界にも再遭遇した——`aliya-rahmani/Projects`・
+`Klaus-in-Tech/Ford.com-scrapper`の実機セレクタは`<html app='chrome.exe'
+title='...' />`(`<wnd .../>`ではなく`<html>`タグ)で、現在の
+`uipath_selector`モジュール(`_map_node`)は`node.tag == "wnd"`判定で
+属性マップを選ぶため`<html>`タグは`_CTRL_ATTR_MAP`(属性0件マッチ)
+に落ちて「no mappable attributes」になる——これは本活動固有の問題
+ではなく`uipath_selector`全体の既存ギャップ(知見143で`<html>`タグへ
+触れた記録はあるが、属性マッピングの拡張は未着手)なので、本調査の
+スコープ外として別の調査候補に回す(下記「今後の調査候補」に追記)。
+実機`<wnd>`ベースのセレクタ(合成テストで再現)では
+`Desktop(backend="uia").window(class_name='Notepad').close()`が正しく
+生成されることを確認した。
+
+`dump_daemon/uipath_dsl/types.py`に`CloseWindowNode(selector,
+use_window, display_name, continue_on_error)`、`xaml_tree.py`に
+`_parse_close_window`+`(UI_NS, "CloseWindow")`の`_DISPATCH`登録、
+`uipath_codegen/__init__.py`に`_generate_close_window`/
+`_generate_close_window_body`を追加。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、UiPath
+関連テスト全710件通過、リポジトリ全体で全1754件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -8178,3 +8237,16 @@ display_name, continue_on_error)`、`xaml_tree.py`に
   → 知見23で解決(`x:Key`付き`InArgument`要素列になる)。残る派生課題:
   方向`Out`/`InOut`の引数を追加した場合に`OutArgument`/`InOutArgument`の
   どちらになるか(今回は`In`のみ確認)
+- 知見172で遭遇した`uipath_selector`モジュールの既存ギャップ——
+  `<html app='...' title='...' />`(ブラウザ/Webページのルートノードを
+  表すセレクタタグ、実機`aliya-rahmani/Projects`・`Klaus-in-Tech/
+  Ford.com-scrapper`の`CloseWindow`実例で確認)が`_map_node`
+  (`dump_daemon/uipath_selector/__init__.py`)の`node.tag == "wnd"`
+  判定で`_CTRL_ATTR_MAP`に落ち、`app`/`title`が一切マッピングされず
+  「no mappable attributes」という過度に保守的な`# TODO`になる。
+  `<html>`ノードが実機のUIAツリー/Webオートメーションでどう扱われる
+  べきか(`wnd`と同じ`app`→無視・`title`→`title`マッピングで十分か、
+  それとも`url`等`html`固有の属性が別に存在するか)を実機XAMLで追加
+  調査してから、`_WND_ATTR_MAP`相当の`_HTML_ATTR_MAP`を追加するか
+  `<html>`を`<wnd>`と同じ扱いにするかを判断する——`Click`/`TypeInto`
+  等、Webページを対象にするあらゆる活動に影響する横断的な改善候補

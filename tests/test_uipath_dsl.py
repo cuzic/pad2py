@@ -24,6 +24,7 @@ from dump_daemon.uipath_dsl import (
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
+    CloseWindowNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -1012,6 +1013,40 @@ def test_close_application_no_selector():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, CloseApplicationNode)
     assert node.selector is None
+
+
+def test_close_window_selector_and_properties():
+    """知見172: `ui:CloseWindow`(GitHub code searchで276件ヒット)。
+    `CloseApplication`(知見171)と同じ`close()`意味論だが、`Selector`
+    をフラット属性として直接持つ「Classic」世代の活動——実機
+    `Klaus-in-Tech/Ford.com-scrapper`(`CloseAllApplications.xaml`)
+    等で確認。"""
+    xml = (
+        f"<ui:CloseWindow {_UI_XMLNS} DisplayName=\"Close Window\" "
+        "Selector=\"&lt;wnd app='notepad.exe' /&gt;\" />"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseWindowNode)
+    assert "notepad.exe" in node.selector
+    assert node.display_name == "Close Window"
+    assert node.use_window is None
+    assert node.continue_on_error is None
+
+
+def test_close_window_selector_x_null_normalizes_to_none():
+    """実機`SuneetPatil/IRCTC-tatkal-booking`(`UseWindow`使用時に
+    `Selector="{x:Null}"`になる実例)で確認した正規化が必要なケース——
+    `_attr`はフラット属性を生取得するだけで`{x:Null}`正規化を行わない
+    ため、本パーサーで明示的に正規化する。"""
+    xml = (
+        f"<ui:CloseWindow {_UI_XMLNS} DisplayName=\"Close Window\" "
+        'Selector="{x:Null}" '
+        'UseWindow="[browser_window.Element.GetTopLevelWindow]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseWindowNode)
+    assert node.selector is None
+    assert node.use_window == VbExpr(text="browser_window.Element.GetTopLevelWindow")
 
 
 def test_log_message_properties():

@@ -69,6 +69,7 @@ from ..uipath_dsl.types import (
     ClickNode,
     CloseApplicationNode,
     CloseTabNode,
+    CloseWindowNode,
     CommentNode,
     CopyFileNode,
     DatabaseConnectNode,
@@ -478,6 +479,8 @@ def _generate_node(
         return _generate_highlight(node, indent)
     if isinstance(node, CloseApplicationNode):
         return _generate_close_application(node, indent)
+    if isinstance(node, CloseWindowNode):
+        return _generate_close_window(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
     if isinstance(node, CloseTabNode):
@@ -1553,6 +1556,44 @@ def _generate_close_application_body(node: CloseApplicationNode, indent: int) ->
     if rendered.expr == 'Desktop(backend="uia")':
         return [
             f"{prefix}# TODO: CloseApplication selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{rendered.expr}.close()")
+    return lines
+
+
+# 知見172: `ui:CloseWindow`(GitHub code searchで276件ヒット)。
+# `CloseApplication`(知見171)と同じ`close()`意味論だが、属性構成が
+# 違う——`Selector`をフラット属性として直接持つ「Classic」世代の
+# 活動で、`UseWindow`(既存ウィンドウ参照の再利用、未モデル化の
+# オブジェクト参照)が設定されている場合は`# TODO`へ倒す。
+def _generate_close_window(node: CloseWindowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_close_window_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_close_window_body(node: CloseWindowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.use_window is not None:
+        return [
+            f"{prefix}# TODO: CloseWindow with UseWindow set "
+            f"({_describe_expr_for_comment(node.use_window)}) — existing "
+            "window object reference not modeled, refusing to guess"
+        ]
+    if not node.selector:
+        return [f"{prefix}# TODO: CloseWindow with no selector captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: CloseWindow with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: CloseWindow selector had no mappable "
             f"attributes: {node.selector}"
         ]
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]

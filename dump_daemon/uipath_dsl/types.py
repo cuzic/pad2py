@@ -482,6 +482,36 @@ class CloseApplicationNode:
 
 
 @dataclass
+class CloseWindowNode:
+    """`<ui:CloseWindow>`(知見172、GitHub code searchで276件ヒット)。
+    `CloseApplication`(知見171)と同じ「閉じる」意味論だが、属性構成が
+    全く違う——`Target`ラッパー経由ではなく`Selector`を直接のフラット
+    属性として持つ「Classic」世代の活動(`UiPath/skills`公式
+    ground-truthコーパスの25.10系には存在せず、`AttachWindow`/
+    `OpenApplication`(知見154)と同じ旧世代の属性慣習)。実機3件
+    (`SuneetPatil/IRCTC-tatkal-booking`・`PacktPublishing/Robotic-
+    Process-Automation-RPA-for-Developers`・`KonduitAI/mailbox
+    detection-workflow`)で確認した属性は`Selector`+`UseWindow`
+    (既存のウィンドウ参照を再利用する、`[browser_window.Element.
+    GetTopLevelWindow]`のようなVB式——`OpenBrowser`の`UiBrowser`
+    バインディング等と同じ「未モデル化のオブジェクト参照」カテゴリ)
+    +`ContinueOnError`。`TimeoutMS`/`WaitForReady`は他のUI Automation
+    活動と同様、生成コードに影響しないため無視する。
+
+    `_attr(elem, "Selector")`はフラット属性の生取得のみで`{x:Null}`
+    正規化を行わない(`_parse_expr`を通さないため)——`AttachWindow`/
+    `OpenApplication`ではSelectorが必須属性で実機上`{x:Null}`に
+    なる例が無く潜在していたが、`CloseWindow`は`UseWindow`使用時に
+    `Selector="{x:Null}"`になる実例(実機2件)が頻出するため、
+    本ノードのパーサーで初めて明示的な正規化が必要になった。"""
+
+    selector: str | None = None
+    use_window: Expr = None
+    display_name: str | None = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1557,6 +1587,7 @@ Node = (
     | CheckNode
     | HighlightNode
     | CloseApplicationNode
+    | CloseWindowNode
     | KillProcessNode
     | CloseTabNode
     | TypeIntoNode
