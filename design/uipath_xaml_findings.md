@@ -6000,6 +6000,41 @@ message_body`)は一切変更していない。これにより`Level="Warn"`等�
 `# TODO`へ落ちる経路)、全1392件通過。残り2件
 (`InputDialog`・`New Integer() {...}`)は引き続き見送り。
 
+## 125. VB.NETの明示的配列構築構文`New Integer() {...}`を`uipath_expr`文法に追加(知見122で発見・保留した残り2件のうち1件、VM不使用)
+
+知見122・124で見送った残り2件のうちの1件、「`New Integer() {...}`
+(VB.NETの明示的配列構築構文、既存の`{a,b,c}`配列リテラルとは別の文法)」
+を解決した。これは`uipath_dsl`/`xaml_tree.py`側の課題ではなく
+`uipath_expr`(`[...]`角括弧式の中身を解析するLark文法)側の課題——
+`[New Integer() {1, 2, 3}]`のような値が、既存の`{...}`(`array_lit`
+規則、知見5)では構文解析できず`tree=None`へ倒れていた。
+
+VB.NETでは`Dim x As Integer() = New Integer() {1, 2, 3}`のように、
+配列を明示的な型付きコンストラクタ構文(`New <Type>() {...}`)で初期化
+できる——要素リスト自体(`{1, 2, 3}`)の意味論は既存の波括弧リテラルと
+全く同じで、唯一の違いは前置される型名宣言(`New Integer()`)の有無。
+既存の`ArrayLiteral`データクラスは元々要素型を保持していない
+(Pythonの動的型付けリストに対応する以上、型情報はそもそも不要)ため、
+型名を解析して捨てるだけの薄いアダプタとして`new_array_lit`規則を
+追加し、既存の`ArrayLiteral`へそのまま帰着させた——新しいノード型も
+新しいコード生成ロジックも不要(`MultipleAssign`(知見122)・
+`ForEachRow`(知見118)と同種の「既存ノードの無料の再利用」パターン)。
+
+文法上は`_NEW.2: /New\b/i`という大文字小文字不区別キーワード
+トークン(既存の`TRUE`/`FALSE`/`NOTHING`等と同じパターン)を追加し、
+`?atom`規則に`_NEW IDENT "(" ")" "{" arglist "}" -> new_array_lit`を
+追加しただけ。型名(`Integer`/`String`等)を保持しないため、この形で
+入力した式を`render_expr`で往復させると出力は`{1, 2, 3}`(波括弧形)に
+なる——値の意味論は完全に同じだが、入力テキストとの文字単位の往復は
+保証しない(既存の`render_expr`全体の既知の制約と同種)。
+
+`dump_daemon/uipath_expr/__init__.py`のみ変更(文法・`_NEW`トークン・
+`_ExprTransformer.new_array_lit`)。`uipath_codegen/render.py`は
+`ArrayLiteral`を既に汎用的にPythonリストへ変換済みのため無変更。
+`tests/test_uipath_expr.py`に2件追加、全500件通過(リポジトリ全体で
+全1396件通過)。残り1件(`InputDialog`)は、実機での正確な属性構成
+(`Title`/`Label`/`DefaultValue`等)がまだ未確認のため引き続き見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

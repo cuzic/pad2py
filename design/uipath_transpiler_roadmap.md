@@ -1492,3 +1492,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     無変更。残り2件(`InputDialog`・`New Integer() {...}`)は引き続き
     見送り。回帰テスト追加(`tests/test_uipath_dsl.py`2件)、UiPath関連
     テスト全498件通過、リポジトリ全体で全1392件通過。
+
+83. **(完了、2026-11-06)** VB.NETの明示的配列構築構文`New Integer()
+    {...}`を`uipath_expr`文法に追加(知見125——知見122で発見・見送った
+    残り2件のうち1件): `[New Integer() {1, 2, 3}]`が`uipath_expr`の
+    `{...}`(`array_lit`)では構文解析できず`tree=None`へ倒れていた。
+    要素リスト自体の意味論は既存の波括弧リテラルと完全に同じで、唯一の
+    違いは前置される型名宣言——`ArrayLiteral`自体が元々要素型を保持
+    しないため、型名を解析して捨てる薄いアダプタ(`_NEW`キーワード
+    トークン+`new_array_lit`規則)を追加し既存の`ArrayLiteral`へ帰着
+    させた(新しいノード型・コード生成ロジックは不要)。
+    `uipath_codegen/render.py`は無変更。残り1件(`InputDialog`)は実機
+    属性構成が未確認のため引き続き見送り。回帰テスト追加
+    (`tests/test_uipath_expr.py`2件)、UiPath関連テスト全500件通過、
+    リポジトリ全体で全1396件通過。

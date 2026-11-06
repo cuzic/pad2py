@@ -128,6 +128,7 @@ comp_op: EQ | NE | LE | GE | LT | GT | IS | ISNOT
      | NOTHING                -> nothing_lit
      | "(" expr ")"          -> paren
      | "{" arglist "}"       -> array_lit
+     | _NEW IDENT "(" ")" "{" arglist "}" -> new_array_lit
 
 arglist: [expr ("," expr)*]
 
@@ -159,6 +160,7 @@ _MOD.2: /Mod\b/i
 TRUE.2: /True\b/i
 FALSE.2: /False\b/i
 NOTHING.2: /Nothing\b/i
+_NEW.2: /New\b/i
 
 INTERP_STRING.3: /\$"([^"]|"")*"/
 STRING.1: /"([^"]|"")*"/
@@ -340,6 +342,16 @@ class _ExprTransformer(Transformer):
 
     def array_lit(self, children: list) -> ArrayLiteral:
         (items,) = children
+        return ArrayLiteral(items=tuple(items))
+
+    def new_array_lit(self, children: list) -> ArrayLiteral:
+        """知見125: `New Integer() {1, 2, 3}`というVB.NETの明示的配列構築
+        構文(知見122で発見・保留)。要素型名(`Integer`等)はPythonの
+        動的型付けリストに対応先が無く、既存の`{a, b, c}`(`array_lit`)
+        同様に型情報を保持しない`ArrayLiteral`へそのまま帰着させる——
+        値そのもの(要素リスト)の意味論は`{...}`形と完全に同じであり、
+        でっち上げた型変換ロジックは追加しない。"""
+        _type_name, items = children
         return ArrayLiteral(items=tuple(items))
 
     def func_call(self, children: list) -> FuncCall:

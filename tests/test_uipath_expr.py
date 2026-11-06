@@ -7,6 +7,7 @@ design/uipath_xaml_findings.md 知見2・5・14・30・32・36で実機コンパ
 from __future__ import annotations
 
 from dump_daemon.uipath_expr import (
+    ArrayLiteral,
     BinOp,
     BoolLiteral,
     ChainedAccess,
@@ -289,3 +290,22 @@ def test_chained_zero_arg_call_has_empty_args_not_none_placeholder():
         members=("ToUpper",),
         args=(),
     )
+
+
+def test_new_array_constructor_syntax_is_same_array_literal_as_brace_form():
+    """知見125: `New Integer() {1, 2, 3}`というVB.NETの明示的配列構築
+    構文(知見122で発見・保留)。要素型名(`Integer`)はPythonの動的型付け
+    リストに対応先が無いため保持せず、既存の`{1, 2, 3}`(`array_lit`)と
+    完全に同じ`ArrayLiteral`へ帰着させる——型情報が落ちるため往復した
+    テキストは元の`New Integer() {...}`形ではなく`{...}`形になる
+    (値の意味論は完全に同じ)。"""
+    node, rendered = parse_vb_expr("New Integer() {1, 2, 3}")
+    assert node == ArrayLiteral(
+        items=(NumberLiteral(value=1), NumberLiteral(value=2), NumberLiteral(value=3))
+    )
+    assert rendered == "{1, 2, 3}"
+
+
+def test_new_array_constructor_syntax_with_string_type():
+    node, _ = parse_vb_expr('New String() {"a", "b"}')
+    assert node == ArrayLiteral(items=(StringLiteral(value="a"), StringLiteral(value="b")))
