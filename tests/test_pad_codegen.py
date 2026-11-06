@@ -4361,6 +4361,68 @@ def test_generate_python_from_invoke_web_service_post_put_siblings_converts(
         assert calls[0][1]["use_credentials"] is True
 
 
+@pytest.mark.parametrize(
+    ("action_suffix", "expected_method", "use_auth"),
+    [
+        ("SaveToFile", "Get", False),
+        ("UseAuthSaveToFile", "Get", True),
+        ("SaveToFilePost", "Post", False),
+        ("SaveToFilePut", "Put", False),
+        ("UseAuthSaveToFilePost", "Post", True),
+        ("UseAuthSaveToFilePut", "Put", True),
+    ],
+)
+def test_generate_python_from_invoke_web_service_save_to_file_siblings_converts(
+    action_suffix: str, expected_method: str, use_auth: bool
+) -> None:
+    # design/dsl_format_findings.md 知見150・151: `.Arguments`監査で`SaveToFile`接尾辞
+    # セレクタ(及び`UseAuth`/`Post`/`Put`版、計6通り)は`FilePath`/`DownloadedFile`を
+    # 持ち`Response`を持たないと確定した。`invoke_web_service()`に新規追加した
+    # `save_response`/`destination_path`引数(知見144の`download_from_web()`と同じ
+    # パターン)で対応する。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    auth_dsl = " Username: $'''u''' Password: $'''p'''" if use_auth else ""
+    # base/UseAuth(Get)版のみMethodが動的パラメータとして現れる。
+    has_dynamic_method = action_suffix in ("SaveToFile", "UseAuthSaveToFile")
+    method_dsl = " Method: Web.Method.Get" if has_dynamic_method else ""
+    dsl = (
+        f"Web.InvokeWebService.InvokeWebService{action_suffix} Url: $'''http://example.test/'''{method_dsl} "
+        "Accept: $'''application/xml''' ContentType: $'''application/xml''' "
+        "CustomHeaders: $'''''' RequestBody: $'''''' ConnectionTimeout: 30 FollowRedirection: True "
+        "FailOnErrorStatus: False EncodeRequestBody: False UserAgent: $'''UA''' "
+        f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True{auth_dsl} "
+        "FilePath: $'''C:\\\\out.bin''' DownloadedFile=> F"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"method={expected_method!r}" in code
+    assert "save_response='ToFile'" in code
+
+    calls = []
+
+    def fake_invoke_web_service(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        return web_actions.InvokeWebServiceResult(response="", downloaded_file="C:\\out.bin")
+
+    original = web_actions.invoke_web_service
+    web_actions.invoke_web_service = fake_invoke_web_service
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        web_actions.invoke_web_service = original
+    assert namespace["F"] == "C:\\out.bin"
+    assert len(calls) == 1
+    _, kwargs = calls[0]
+    assert kwargs["save_response"] == "ToFile"
+    assert kwargs["destination_path"] == "C:\\out.bin"
+    if use_auth:
+        assert kwargs["use_credentials"] is True
+
+
 def test_generate_python_from_datetime_text_custom_format_round_trips() -> None:
     # design/dsl_format_findings.md 知見139・148: `ActionSelectorBase`一括列挙監査を
     # Text.Actions.dllに適用して発見した`ConvertTextToDateTime.ToDateTimeCustomFormat`/

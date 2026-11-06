@@ -480,11 +480,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `Put`(及び`UseAuth`版)は`Method`が`Arguments`に含まれず**セレクタ自体で
       固定**と確定。4件を新規結線完了——**監査手法として`.Arguments`確認を標準
       手順に追加**(プロパティ存在チェックより確定的な根拠)。
+      ✅ **決着(知見151、InvokeWebService系`SaveToFile`接尾辞6件追加)**: `.Arguments`
+      監査で`SaveToFile`/`UseAuthSaveToFile`/`SaveToFilePost`/`SaveToFilePut`/
+      `UseAuthSaveToFilePost`/`UseAuthSaveToFilePut`が`FilePath`/`DownloadedFile`
+      を持ち`Response`系を持たないと確定。`invoke_web_service()`に
+      `save_response`/`destination_path`引数を新規実装(知見144の
+      `download_from_web()`と同じパターン、`InvokeWebServiceResult.downloaded_file`
+      フィールドを初めて実際に設定)し、6件を新規結線完了。
       - [ ] 💻🖥️ **残課題**: `DownloadToFolder`系4セレクタ(`FileName=KeepOriginal`、
         レスポンスからファイル名を自動決定——決定方法が実機/decompile未確認のため
-        見送り)・`InvokeWebService`の`SaveToFile`/`SaveToFolder`/`Upload`系
-        (`invoke_web_service()`側にファイル入出力機能の新規実装が必要、組み合わせ
-        爆発、既存の知見94-96がどのセレクタに対応するか要確認)。
+        見送り)・`InvokeWebService`の`SaveToFolder`/`Upload`系(計約19セレクタ、
+        `SaveToFolder`は`DownloadToFolder`と同じファイル名自動決定の未確認事項、
+        `Upload`は`RequestBody`の代わりに`Attachments`/`UploadType`を使う別の
+        新規実装が必要)。
     監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
     所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
     再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。

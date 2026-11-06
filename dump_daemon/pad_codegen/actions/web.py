@@ -114,30 +114,49 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{extra_args})"
         ]
 
-    # 知見139・147・150(`ActionSelectorBase`一括列挙監査をWeb.InvokeWebService系29セレクタに
-    # 適用): 全て`InvokeWebServiceBase`という単一クラスで、`Method`はこのクラス自体の
-    # 列挙型(Get/Post/Connect/Head/Put/Delete/Options/Trace/Patchの9値)。知見147では
-    # 基本セレクタの実機キャプチャに`Method`が明示的なDSLパラメータとして現れることから
-    # `Post`/`Put`接尾辞セレクタとの違いを確定できなかったが、各セレクタクラスの
-    # `.Arguments`プロパティ(そのセレクタでDSLに実際に現れるパラメータ名の一覧、
-    # `ActionSelectorBase`のインスタンスから直接読み取れる)を確認した結果、
-    # `InvokeWebServicePost`/`InvokeWebServicePut`(及びそれらの`UseAuth`版)の
-    # `Arguments`には`Method`が含まれていない(=このセレクタ自体がPost/Putに固定)
-    # と確定した——`.Arguments`がプロパティ存在チェックより信頼できる根拠だと判明
-    # (知見150)。`SaveToFile`/`SaveToFolder`/`Upload`接尾辞は引き続き見送る。
+    # 知見139・147・150・151(`ActionSelectorBase`一括列挙監査をWeb.InvokeWebService系29
+    # セレクタに適用): 全て`InvokeWebServiceBase`という単一クラスで、`Method`はこの
+    # クラス自体の列挙型(Get/Post/Connect/Head/Put/Delete/Options/Trace/Patchの9値)。
+    # 各セレクタクラスの`.Arguments`プロパティ(そのセレクタでDSLに実際に現れる
+    # パラメータ名の一覧、`ActionSelectorBase`のインスタンスから直接読み取れる、
+    # 知見150で確立した監査手法)を確認した結果:
+    # - `Post`/`Put`接尾辞セレクタ(及び`UseAuth`版)は`Arguments`に`Method`が無く、
+    #   このセレクタ自体がPost/Putに固定される。
+    # - `SaveToFile`接尾辞セレクタ(及び`UseAuth`/`Post`/`Put`版、計6通り)は`Arguments`に
+    #   `FilePath`/`DownloadedFile`があり`Response`が無い——`SaveResponse=ToFile`相当。
+    #   `invoke_web_service()`の`InvokeWebServiceResult.downloaded_file`フィールド自体は
+    #   元から存在していたが設定されていなかったため、`download_from_web()`(知見144)と
+    #   同じパターンで`save_response`/`destination_path`引数を新規実装した。
+    # `SaveToFolder`(ファイル名自動決定、知見144のDownloadToFolderと同じ未確認事項)・
+    # `Upload`接尾辞(`RequestBody`が無く`Attachments`/`UploadType`を使う、別の新規実装が
+    # 必要)は引き続き見送る。
     _INVOKE_WEB_SERVICE_FIXED_METHOD = {
         "Web.InvokeWebService.InvokeWebServicePost": "Post",
         "Web.InvokeWebService.InvokeWebServicePut": "Put",
         "Web.InvokeWebService.InvokeWebServiceUseAuthPost": "Post",
         "Web.InvokeWebService.InvokeWebServiceUseAuthPut": "Put",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePost": "Post",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePut": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePost": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePut": "Put",
+    }
+    _INVOKE_WEB_SERVICE_SAVE_TO_FILE = {
+        "Web.InvokeWebService.InvokeWebServiceSaveToFile",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFile",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePost",
+        "Web.InvokeWebService.InvokeWebServiceSaveToFilePut",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePost",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthSaveToFilePut",
     }
     _INVOKE_WEB_SERVICE_ACTION_IDS = (
         "Web.InvokeWebService.InvokeWebService",
         "Web.InvokeWebService.InvokeWebServiceUseAuth",
         *_INVOKE_WEB_SERVICE_FIXED_METHOD,
+        *_INVOKE_WEB_SERVICE_SAVE_TO_FILE,
     )
     if action_id in _INVOKE_WEB_SERVICE_ACTION_IDS:
         use_auth = "UseAuth" in action_id
+        save_to_file = action_id in _INVOKE_WEB_SERVICE_SAVE_TO_FILE
         fixed_method = _INVOKE_WEB_SERVICE_FIXED_METHOD.get(action_id)
         url = safe_render(p.get("Url"))
         method = fixed_method if fixed_method is not None else enum_last(p.get("Method"))
@@ -169,11 +188,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             if username is None or password is None:
                 return None
             auth_args = f", use_credentials=True, username={username}, password={password}"
-        response_var = node.output_vars.get("Response")
-        headers_var = node.output_vars.get("ResponseHeaders")
-        status_var = node.output_vars.get("StatusCode")
-        if not (response_var or headers_var or status_var):
-            return None
+        if save_to_file:
+            file_path = safe_render(p.get("FilePath"))
+            dest_var = node.output_vars.get("DownloadedFile")
+            if file_path is None or not dest_var:
+                return None
+            save_args = f", save_response='ToFile', destination_path={file_path}"
+            response_var = headers_var = status_var = None
+        else:
+            save_args = ""
+            response_var = node.output_vars.get("Response")
+            headers_var = node.output_vars.get("ResponseHeaders")
+            status_var = node.output_vars.get("StatusCode")
+            if not (response_var or headers_var or status_var):
+                return None
         tmp = "_web_service_result"
         lines = [
             f"{prefix}{tmp} = web_actions.invoke_web_service({url}, method={method!r}, "
@@ -182,8 +210,11 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"fail_on_error_status={fail_on_error}, trim_request_body={trim_body}, "
             f"encode_request_body={encode_body}, follow_redirection={follow}, "
             f"user_agent={user_agent}, accept_untrusted_certificates={accept_untrusted}"
-            f"{auth_args})"
+            f"{auth_args}{save_args})"
         ]
+        if save_to_file:
+            lines.append(f"{prefix}{dest_var} = {tmp}.downloaded_file")
+            return lines
         if response_var:
             lines.append(f"{prefix}{response_var} = {tmp}.response")
         if headers_var:

@@ -138,6 +138,8 @@ def invoke_web_service(
     password: str = "",
     connection_timeout: float = 30,
     accept_untrusted_certificates: bool = False,
+    save_response: str = "ToVariable",
+    destination_path: str | None = None,
     *,
     client: httpx.Client | None = None,
 ) -> InvokeWebServiceResult:
@@ -167,10 +169,23 @@ def invoke_web_service(
         )
         if fail_on_error_status:
             response.raise_for_status()
+        downloaded_file = None
+        if save_response == "ToFile":
+            # design/dsl_format_findings.md 知見144・150と同じパターン(`download_from_web()`
+            # の`SaveResponse=ToFile`): `DownloadedFile`出力は呼び出し側が指定したパスを
+            # そのまま返す。
+            if destination_path is None:
+                raise InvokeWebServiceError("destination_path is required when save_response=ToFile")
+            dest = Path(destination_path)
+            if not dest.parent.is_dir():
+                raise DirectoryDoesNotExistError(str(dest.parent))
+            dest.write_bytes(response.content)
+            downloaded_file = str(dest)
         return InvokeWebServiceResult(
             response=response.text,
             response_headers=[f"{k}: {v}" for k, v in response.headers.items()],
             status_code=response.status_code,
+            downloaded_file=downloaded_file,
         )
     except httpx.HTTPError as exc:
         raise InvokeWebServiceError(str(exc)) from exc

@@ -86,6 +86,25 @@ def test_invoke_web_service_default_content_type_is_xml_not_json() -> None:
     assert "x-test: 1" in result.response_headers
 
 
+def test_invoke_web_service_save_response_to_file_writes_bytes_and_sets_downloaded_file(tmp_path: Path) -> None:
+    # design/dsl_format_findings.md 知見150: `InvokeWebServiceSaveToFileSelector`の
+    # 兄弟セレクタ向けに`save_response`/`destination_path`を新規追加した——
+    # `InvokeWebServiceResult.downloaded_file`フィールド自体は元から存在していたが
+    # 設定されていなかった(知見144の`download_from_web()`と同じパターン)。
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"binary-data")
+
+    dest = tmp_path / "out.bin"
+    result = web.invoke_web_service(
+        "http://example.test/",
+        save_response="ToFile",
+        destination_path=str(dest),
+        client=_client(handler),
+    )
+    assert result.downloaded_file == str(dest)
+    assert dest.read_bytes() == b"binary-data"
+
+
 def test_invoke_web_service_does_not_raise_on_error_status_by_default() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, text="not found")

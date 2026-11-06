@@ -2562,3 +2562,13 @@ VM上で`DateTimeConversionFormat`列挙値(`Standard`/`Custom`)を確認し、�
 **監査手法の更なる改善**: 知見135(プロパティ名で判別)→知見145(`InputArgumentAttribute.Name`で判別)→本知見(`.Arguments`/`.VisibleArguments`で判別)という順で、より確定的な根拠に到達した——`.Arguments`は「このセレクタがインスタンス化された時点でDSLシリアライズに実際に使われるプロパティ名の一覧」そのものであり、個々のプロパティの存在や属性を推測で組み合わせるより直接的で確実。今後の監査はまず`.Arguments`を確認することを標準手順とする。
 
 `InvokeWebServicePost`/`InvokeWebServicePut`/`InvokeWebServiceUseAuthPost`/`InvokeWebServiceUseAuthPut`の4件を、既存の`invoke_web_service()`の`method`引数を固定値で渡す形で新規結線した。テストは`tests/test_pad_codegen.py`に4パターンのparametrizeテストを追加し、`web_actions.invoke_web_service`を差し替えて`method`/`use_credentials`の受け渡しをexec検証した。
+
+## 151. 知見150の`.Arguments`監査手法でWeb.InvokeWebService系`SaveToFile`接尾辞6セレクタを新規結線——`InvokeWebServiceResult.downloaded_file`フィールドを初めて実際に設定
+
+知見147・150で見送っていた`SaveToFile`接尾辞セレクタ(`InvokeWebServiceSaveToFile`/`InvokeWebServiceUseAuthSaveToFile`/`InvokeWebServiceSaveToFilePost`/`InvokeWebServiceSaveToFilePut`/`InvokeWebServiceUseAuthSaveToFilePost`/`InvokeWebServiceUseAuthSaveToFilePut`、計6セレクタ)を、知見150で確立した`.Arguments`監査手法で確認した。全て`FilePath`/`DownloadedFile`を持ち`Response`/`ResponseHeaders`/`StatusCode`を持たない——`SaveResponse=ToFile`相当のモードだと確定した。`Method`は基本セレクタと`UseAuth`(Get)版のみ`Arguments`に含まれ、`Post`/`Put`接尾辞版は含まれない(知見150の`Post`/`Put`固定パターンと同じ)。
+
+`invoke_web_service()`の`InvokeWebServiceResult.downloaded_file`フィールド自体は元から定義されていたが、これまでどの呼び出し元からも設定されたことが無かった(常に`None`)。知見144の`download_from_web()`の`save_response`/`destination_path`引数と同じパターンで、`invoke_web_service()`にも`save_response: str = "ToVariable"`/`destination_path: str | None = None`引数を新規追加し、`save_response="ToFile"`時にレスポンスボディを指定パスへ書き込み、書き込んだパスをそのまま`downloaded_file`として返すようにした(`destination_path`が親ディレクトリの存在しないパスの場合は`DirectoryDoesNotExistError`、未指定の場合は`InvokeWebServiceError`)。
+
+`pad_codegen/actions/web.py`側は既存の`_INVOKE_WEB_SERVICE_FIXED_METHOD`/`_INVOKE_WEB_SERVICE_ACTION_IDS`の仕組みを拡張し、`_INVOKE_WEB_SERVICE_SAVE_TO_FILE`という新規セットでSaveToFile系6件を判別、`FilePath`パラメータを読み取って`destination_path`として渡し、出力変数は`Response`系では無く`DownloadedFile`(`node.output_vars.get("DownloadedFile")`)を`{tmp}.downloaded_file`へ束縛するよう分岐した。
+
+テストは`tests/test_pad_action_lib_web.py`に`invoke_web_service()`の単体テスト1件、`tests/test_pad_codegen.py`に6パターンのparametrizeテストを追加し、`web_actions.invoke_web_service`を差し替えて`save_response`/`destination_path`/`method`/`use_credentials`の受け渡しと出力変数への束縛をexec検証した。これでWeb.InvokeWebService系29セレクタ中、`Get`/`Post`/`Put`×`UseAuth`×`SaveToFile`の組み合わせ(計10セレクタ)が結線完了し、残るは`SaveToFolder`(ファイル名自動決定、知見144の`DownloadToFolder`と同じ未確認事項)・`Upload`(`RequestBody`の代わりに`Attachments`/`UploadType`を使う別の新規実装が必要)の計約19セレクタとなった。
