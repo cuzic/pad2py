@@ -923,6 +923,58 @@ def test_generate_python_converts_click_click_to_click_input_when_selector_resol
     assert "appmask" not in code
 
 
+def test_generate_python_from_click_click_actually_clicks_against_fake_pywinauto() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(検証基盤・シミュレータ)の第一歩:
+    # 上の`test_generate_python_converts_click_click_to_click_input_when_selector_resolves`は
+    # 生成コードを文字列として検査するだけだった——これは実際に`exec()`し、`tests/fake_pywinauto.py`
+    # のフェイクUIツリー経由で「正しいセレクタ・正しい操作で呼ばれたか」を検証する。
+    # 実Windows・実Notepad・実pywinautoバックエンドは一切不要(でっち上げ禁止の対象は
+    # 「PAD/pywinautoの実際の挙動」であり、ここで検証しているのはpad_codegen自身が組み立てる
+    # 呼び出し列の形だけなので、この原則とは無関係に安全)。
+    import os
+
+    import pywinauto
+
+    from fake_pywinauto import FakeRegistry, make_fake_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_notepad_control_selector.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+
+    registry = FakeRegistry()
+    registry.register_descendant({"title": "Untitled - Notepad"}, {"class_name": "Edit"})
+    had_desktop = hasattr(pywinauto, "Desktop")
+    original_desktop = getattr(pywinauto, "Desktop", None)
+    pywinauto.Desktop = make_fake_desktop(registry)
+    # このフィクスチャは`Scripting.RunPythonScript`でハードコードされたWindowsパス
+    # (`C:\Users\...`)へのファイル書き込みも含む(知見14等のループ検証用の副産物)。
+    # Linux上では`\`がパス区切りとして解釈されず、cwdに奇妙な名前のファイルが
+    # 作られてしまうため、一時ディレクトリへ退避してから`exec()`する。
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(tmp)
+            exec(code, {})
+        finally:
+            os.chdir(original_cwd)
+            if had_desktop:
+                pywinauto.Desktop = original_desktop
+            else:
+                del pywinauto.Desktop
+
+    # looptest系フィクスチャ(ループ本体に同じクリックが複数回出現する)なので、
+    # 「少なくとも1回、正しいセレクタ・正しい操作で呼ばれた」ことを検証する。
+    assert registry.calls
+    assert all(
+        call == ("click_input", [{"title": "Untitled - Notepad"}, {"class_name": "Edit"}], {})
+        for call in registry.calls
+    )
+
+
 def test_generate_python_keeps_click_click_as_todo_when_click_type_unverified() -> None:
     # design/dsl_format_findings.md 知見21と同じ方針: 実機確認済みなのは`ClickType:
     # LeftClick`(かつMiddleCenter・オフセット0/0)の組み合わせのみ。それ以外のクリック種別

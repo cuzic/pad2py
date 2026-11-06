@@ -13,6 +13,8 @@
 
 本文書は、「共通RPA変換フレームワーク」という理想の状態を具体的に定義し、現状とのギャップを棚卸しし、実行順序を提案するものである。**これは実装の指示ではなく計画書**——特にPhase 2以降はUiPathトラック(別セッションが並行して活発に開発中)のソースに触れるため、着手前にユーザー自身の判断・両トラックの調整が必要。
 
+**追記(2026-11-05、ユーザー方針確認後)**: 本プロジェクトはまだ外部ユーザーが存在しないOSSのため、**後方互換性を気にする必要は無い**(API・IRの形を破壊的に変更してよい)。これにより下記Phase 2・3の「移行コスト」に関する懸念は後退する。ただし**互換性の制約が無いこと**と**複数セッションが同じgit作業ツリーを共有している状態での衝突リスク**は別の軸であり、後者は引き続き有効な制約——UiPathトラックのソースに触れる変更は、互換性維持のためではなく「他セッションの作業中のコードを書き換えて衝突・破壊しないため」に調整が必要、という理由に変わる。
+
 調査根拠: `pad_dsl/types.py` ↔ `uipath_dsl/types.py`、`pad_codegen/__init__.py` ↔ `uipath_codegen/__init__.py`、各`actions/*.py`のTODO生成箇所を実際に読み比べた結果に基づく(2026-11-05時点)。
 
 ---
@@ -122,6 +124,21 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 
 **目指す形**: 「このリポジトリでは知見をどう記録し、TODOをどう維持するか」を1つのメタドキュメント(`design/KNOWLEDGE_LOG_CONVENTIONS.md`のようなもの)にまとめ、両トラックがこれに従う形にする。現状、PAD側(`dsl_format_findings.md`+`pad_todo.md`)とUiPath側(`uipath_xaml_findings.md`+`uipath_transpiler_roadmap.md`/`uipath_migration_priorities.md`)は**独立したナンバリング・独立したファイル構造**で同じパターンを再発明している——内容としては優れた運用だが、「次にもう1つツール(例: Blue Prism)を調査するとき、このパターンに従ってください」と指し示せる単一のドキュメントが無い。
 
+### 層7: 検証基盤・シミュレータ(2026-11-05追記、ユーザー提案)
+
+ここまでの6層は「正しく変換すること」の話だったが、層7は「変換結果を速く・安く検証できること」自体への投資。今回のセッションでは、実機確認の多くが共用GCP VM(`pad2py-pad-host`)への依存を前提にしており、これが開発速度のボトルネックになっていた(VMの使用待ち、Officeが入っていないという環境制約、RDP必須のUI操作等)。「シミュレータで検証できる仕組み」を作るには、**何を模擬するのか**を区別することが重要——4つの異なる需要があり、模擬できる度合いも、でっち上げ禁止の方針との整合性も全く違う。
+
+| 対象 | 何を確認したいか | シミュレータ化の可否 |
+|---|---|---|
+| (a) **PAD自身の実行時意味論**(例: 列インデックスは0始まりか、`Destination`パラメータの挙動) | 「PADは実際にどう動くか」という事実そのもの | **原理的に不可**。シミュレータ自身が推測で作られていたら「シミュレータで確認した」は実機確認の代わりにならない——でっち上げ禁止の方針に直接反する。ここに投資すべきは模擬ではなく**record/replay**(後述) |
+| (b) **生成されたPythonコード自体の実行**(pywinauto越しのUI Automation操作) | 「pad_codegenが正しい形の呼び出し列を組み立てているか」——PAD/pywinautoの実際の挙動の模倣では無い | **安全かつ高ROI**。本セッションで最初の実装を済ませた(後述) |
+| (c) **pad_action_libのOS依存コード**(`win32timezone`/`win32crypt`/`win32gui`等pywin32の薄いラッパー) | 「正しい引数でpywin32 APIを呼んでいるか」——(b)と同種、呼び出し側のロジック検証 | **安全かつ高ROI**。一般的なテストダブル手法で対応可能、未着手 |
+| (d) **模擬対象アプリ**(例: 模擬Notepad) | (b)より高い再現度(実UIAプロトコル越しの通信まで)で検証したい場合 | 価値はあるが、UIA自体がWindows OS機能のため「Windowsが丸ごと不要になる」わけではない。(b)と違う軸の投資であり優先度は低い |
+
+**(b)の実装(完了)**: `tests/fake_pywinauto.py`に、生成コードが実際に呼び出す最小限のpywinauto API表面(`Desktop(backend="uia")`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`)だけをフェイク実装した。`pywinauto.Desktop`をこのフェイクに差し替えてから生成コードを`exec()`すれば、実Windows・実アプリ無しで「正しいセレクタ・正しい操作列で呼ばれたか」をアサートできる。未知の呼び出し形は素直に`AttributeError`になる(でっち上げて成功させることはしない)。`test_generate_python_from_click_click_actually_clicks_against_fake_pywinauto`で、既存の「文字列として生成コードを検査するだけ」のテストを「実際に`exec()`して動作を検証する」テストへ格上げする実例を示した。現状Linux上でこの種のテストは0件だった(pywinautoを要する生成コードは一切`exec()`されていなかった)ので、新規にカバレッジが生まれた形。
+
+**(a)のrecord/replay化(未着手)**: 今回VMで確認した入出力ペア(例: `IListIndexService.ConvertInput()`の挙動、`CopyFolder`の`Destination`意味論)を、構造化データ(JSON等)として`design/`または専用ディレクトリに永続化し、「既に確認済みの事実」をもう一度VMに聞き直す無駄を無くす。新しい疑問には引き続きVMで答える必要があるが、過去の確認結果の再利用コストはゼロになる。
+
 ---
 
 ## 現状評価(層ごと)
@@ -134,6 +151,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。ただし(a)これはコードレビュー慣習であって仕組みでは強制されていない、(b)知見129より前に書かれた既存テストの遡及棚卸しは一度も実施していない | **部分的**。新規分は良い状態、既存分は未検証のまま残っている可能性 |
 | 5. ランタイムサービス地図 | `IListIndexService`・DPAPI・比較エンジン・`CSVUtilities`等、個別には`dsl_format_findings.md`の各知見に記録済み。1箇所に集約した地図ドキュメントは存在しない。「他にどんなサービスがあるか」の先回り探索は未実施 | **素材はあるが未集約**。地図を作る作業自体は低コスト |
 | 6. 知見ログ/TODOのメタ規約 | PAD側・UiPath側それぞれ独立に同型のドキュメントペアを運用し、どちらも機能している。しかし「このやり方自体」を説明するメタドキュメントは存在せず、両トラックの対応関係(どのファイルがどちらの役割か)も暗黙知 | **実践は成熟、ドキュメント化はゼロ** |
+| 7. 検証基盤・シミュレータ | (b)生成コード実行フェイク(`tests/fake_pywinauto.py`)は本セッションで初版実装・1件のcodegenテストを移行済み——`.wait()`/`.wait_not()`/`.child_window()`/`.set_focus()`/`.type_keys()`は実装済みだがまだcodegenテストから使われていない。(c)pywin32ラッパーのモックは未着手。(a)record/replay化は未着手(今もVM確認結果は知見ログの文章としてのみ残り、再利用可能な構造化データではない) | **(b)初版あり、拡張の余地が大きい。(a)(c)(d)は未着手** |
 
 ---
 
@@ -147,6 +165,9 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 - [ ] 知見135-137の監査スクリプトを`tools/`配下にコミットする(層3)。これ自体は即座に再利用可能な資産になる
 - [ ] `design/KNOWLEDGE_LOG_CONVENTIONS.md`を新設し、知見ログ+TODOの運用パターンを明文化する(層6)。PAD/UiPath双方のドキュメント対応表も含める
 - [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
+- [x] **層7(b)着手**: `tests/fake_pywinauto.py`を新設(`Desktop`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`のフェイク)、`UIAutomation.Click.Click`の既存codegenテストを実際に`exec()`する形へ1件移行。今後の拡張候補: Window系(`FocusWindow`/`CloseWindow`等)・`win32gui`/`win32con`呼び出し部分のフェイク化
+- [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
+- [ ] 層7(c): `win32timezone`/`win32crypt`/`win32gui`等pywin32呼び出しのモック化(呼び出し引数の検証用、Windows専用テストの一部をLinux上でも実行可能にする)
 
 ### Phase 1: 追加のみ(既存の出力形式は変えずに内部だけ型を強化)
 
