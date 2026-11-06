@@ -186,6 +186,9 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   `win32gui`/`win32con`はpywinautoと違いLinuxでは`import`自体が失敗するため、属性の
   差し替えではなく`sys.modules`へのフェイクモジュール注入方式を取った。`MoveWindow`/
   `SetWindowVisibility`の既存codegenテスト2件を実際に`exec()`する形へ移行。
+  **2026-11-05追記**: `ResizeWindow`(`MoveWindow`と同じ`win32gui.MoveWindow()`への
+  委譲だが、既存のX/Yを保持しつつ幅/高さだけ更新する点が対称)にも同じパターンの
+  exec検証テストを追加。
   残り: `win32timezone`/`win32crypt`は未着手
 
 ### Phase 1: 追加のみ(既存の出力形式は変えずに内部だけ型を強化)

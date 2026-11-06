@@ -696,6 +696,29 @@ def test_generate_python_maps_resize_window_to_win32gui_move_window() -> None:
     assert "win32gui.MoveWindow(_hwnd, _rect[0], _rect[1], 1024, 768, True)" in code
 
 
+def test_generate_python_from_resize_window_actually_resizes_against_fake_win32() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(c): 上のテストは文字列検査のみ——
+    # `test_generate_python_from_move_window_actually_moves_against_fake_win32`と対になる
+    # 形で、実際に`exec()`し`win32gui.MoveWindow()`が既存のX/Yを保持しつつ幅/高さだけ
+    # 更新する正しい引数で呼ばれることを検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    tree = build_block_tree(parse_dsl(RESIZE_WINDOW_DSL))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Power Automate | g1g2_test")
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 10, 20, 810, 620)  # 既存のX=10・Y=20を保持する想定
+
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
+
+    assert win32_registry.calls == [("MoveWindow", 0, 10, 20, 1024, 768, True)]
+
+
 def test_generate_python_leaves_move_window_as_todo_when_class_is_used() -> None:
     dsl = "UIAutomation.MoveWindow.MoveByTitleClass Title: $'''Notepad''' Class: $'''Notepad''' X: 0 Y: 0"
     tree = build_block_tree(parse_dsl(dsl))
