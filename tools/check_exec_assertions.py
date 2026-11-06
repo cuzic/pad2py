@@ -27,8 +27,17 @@ design/common_rpa_framework_roadmap.md 層4(実行結果検証)の規約:「`exe
 **既知の受容可能な検出漏れ(偽陽性)**: 無期限ポーリングループ(`while ...: time.sleep(...)`)
 が実際に即座に(ハングせず)終了することだけを確認するテストは、`namespace[...]`/`.calls`/
 `eval(`のいずれも無くても正当である(例: `test_generate_python_converts_wait_for_window_to_
-unbounded_poll_when_timeout_is_none`)——「exec()が時間内に返ってきたこと自体」が検証対象
-なので、人間のレビューで「このテストは例外として妥当」と判断すればよい。
+unbounded_poll_when_timeout_is_none`、`test_generate_python_from_wait_for_window_become_
+focused_actually_waits_against_fake_pywinauto`等)——「exec()が時間内に返ってきたこと自体」
+が検証対象なので、人間のレビューで「このテストは例外として妥当」と判断すればよい。
+
+もう1つの受容可能な偽陽性: 対象アクションに`=>`出力束縛が無い(例:
+`Word.InsertImageToWord`)場合、`exec()`後に検証すべき`namespace[...]`値自体が存在しない
+——この場合は`exec()`で生成した副作用(ファイルへの保存)を**別途ファイルを再読込して**
+検証するのが正しい形(例: `test_generate_python_from_word_insert_image_document_start_and_
+end_converts`、`docx.Document(str(dest))`で再読込して`inline_shapes`/段落テキストを検査)。
+`namespace[...]`を経由しないため本ツールの単純な行ヒューリスティックでは検出できないが、
+これも「検査の形跡が無い」という誤検出であり、追加の実装は不要。
 """
 from __future__ import annotations
 
