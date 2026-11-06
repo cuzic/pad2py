@@ -799,6 +799,45 @@ class RemoveDataRowNode:
 
 
 @dataclass
+class GetRowItemNode:
+    """`<ui:GetRowItem>`(知見183、`UiPath/skills`公式リポジトリの
+    Studio実機ground-truthコーパス(`UiPath.System.Activities/25.10/
+    GetRowItem.xaml`)+実機6件(`cameronmcnz/uipath-tutorials`・
+    `allenlooplee/CloudOcrActivitiesPack`・`ShonHarsh/RPADev-...`)で
+    確認)。既存の1行(`Row`、通常は`ForEach`のループ変数——`AddDataRow`
+    (知見181)/`RemoveDataRow`(知見182)とは違い、本活動は行の**内容を
+    読む**必要がある側)から1つの値を取り出す。列の指定方法は`Column`
+    (既存の`DataColumn`オブジェクト参照、未モデル化)/`ColumnIndex`
+    (整数)/`ColumnName`(文字列)の3種類——実機6件全てが`ColumnName`
+    を使っており、`ColumnIndex`の実例は本調査で一度も確認できなかった。
+
+    `ColumnIndex`は`DataTable`変数の実行時表現(dict行/list行)を
+    問わない安全な2経路のコードを生成できる——`isinstance(row, dict)`
+    の分岐で、dict行なら`list(row.values())[idx]`(位置で値を取る)、
+    list行なら`row[idx]`(素の添字アクセス)のいずれかを実行時に選ぶ
+    (`AddDataRow`/`RemoveDataRow`の「読まずに済ませる」安全策とは別の
+    「両方の表現に対応するコードを生成する」という新しい安全策)。
+
+    `ColumnName`は列名でのアクセスのため、dict行(`AddHeaders=True`
+    のExcel読込由来)でなければ意味を成さない——実際のUiPath
+    `DataTable`は常に列名を持つため、本トランスパイラがdict行として
+    表現した場合にのみ`row[column_name]`が正しく動作する。list行
+    表現(`BuildDataTable`/`AddHeaders=False`由来)の場合は`KeyError`
+    (dictではないため実際には`TypeError`)で実行時に大きく失敗する——
+    知見177の「でっち上げた値で静かに間違えるより、失敗する方が安全」
+    という方針と同じ理由で、`row[column_name]`という直接アクセスを
+    選んだ(でっち上げた値を返すのではなく、表現が食い違う場合は
+    即座に例外で知らせる)。"""
+
+    row: Expr = None
+    column: Expr = None
+    column_index: Expr = None
+    column_name: Expr = None
+    value: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1908,6 +1947,7 @@ Node = (
     | GetOcrTextNode
     | AddDataRowNode
     | RemoveDataRowNode
+    | GetRowItemNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

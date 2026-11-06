@@ -8666,6 +8666,50 @@ Pythonの`round()`の既定動作と一致することを確認済み)を、
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`7件)、
 UiPath関連テスト全753件通過、リポジトリ全体で全1821件通過。
 
+## 183. `ui:GetRowItem`を新規実装——`ColumnIndex`は実行時`isinstance`分岐で`DataTable`の両表現(dict行/list行)に対応、`ColumnName`は実機6件全ての実例に合わせてdict行を前提にした直接アクセス
+
+知見182の`ui:RemoveDataRow`に続き、同じ`UiPath.System.Activities`
+名前空間のDataTable操作系活動`ui:GetRowItem`(`UiPath/skills`公式
+リポジトリのStudio実機ground-truthコーパス+実機6件(`cameronmcnz/
+uipath-tutorials`・`allenlooplee/CloudOcrActivitiesPack`・
+`ShonHarsh/RPADev-...`)で確認)を調査した。既存の1行(`Row`、通常は
+`ForEach`のループ変数)から1つの値を取り出す活動で、列の指定方法は
+`Column`(既存の`DataColumn`オブジェクト参照、未モデル化)/
+`ColumnIndex`(整数)/`ColumnName`(文字列)の3種類——実機6件**全て**
+が`ColumnName`を使っており、`ColumnIndex`の実例は本調査で一度も
+確認できなかった。
+
+`AddDataRow`(知見181)/`RemoveDataRow`(知見182)が「既存の行の内容を
+読まずに済ませる」ことで`DataTable`表現の非統一を回避したのとは違い、
+`GetRowItem`は行の**内容を読む**必要がある——知見179で検討した
+読み取り系操作と同じ種類の課題に正面から向き合うことになった。ここで
+2つの異なる解決策を使い分けた:
+
+- **`ColumnIndex`**(位置によるアクセス): `isinstance(row, dict)`の
+  実行時分岐で、dict行なら`list(row.values())[idx]`(位置で値を取る)
+  ・list行なら`row[idx]`(素の添字アクセス)のいずれかを実行時に選ぶ
+  ——静的な型追跡を一切せず、生成コード自身が両方の表現に対応する、
+  `AddDataRow`/`RemoveDataRow`とは別の「両方に対応するコードを生成
+  する」という新しい安全策。
+- **`ColumnName`**(列名によるアクセス): `row[column_name]`という
+  dict行前提の直接アクセス。実際のUiPath`DataTable`は常に列名を持つ
+  ため、本トランスパイラがdict行として表現した場合にのみ正しく動作
+  する——list行表現の場合は`TypeError`で実行時に大きく失敗する。
+  これは知見177の「でっち上げた値で静かに間違えるより、失敗する方が
+  安全」という方針をそのまま適用した判断——`ColumnName`は実機6件
+  全てで使われている以上、常に`# TODO`へ倒すと活動自体が実質無意味
+  になる一方、`list(row)`から列名でマッチする値を推測するような
+  でっち上げは論外。「正しければ動く、間違っていれば即座に分かる
+  形で失敗する」という中間の解を選んだ。
+
+実機XAML3件(うち1件はC#式言語プロジェクト——知見129の既存の限界で
+`Row`が未対応の`CSharpValue`形になり安全に`# TODO`へ倒れることを
+確認)+合成テストで`generate_python()`+`compile()`を実行し、両方の
+`ColumnIndex`経路(dict行/list行)の実行結果も手動確認した。回帰
+テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`10件)、UiPath関連テスト全764件通過、
+リポジトリ全体で全1830件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

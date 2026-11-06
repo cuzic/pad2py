@@ -57,6 +57,7 @@ from .types import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -812,6 +813,19 @@ def _parse_remove_data_row(elem: etree._Element) -> RemoveDataRowNode:
         data_table=_attr_expr(elem, "DataTable"),
         row=_attr_expr(elem, "Row"),
         row_index=_attr_expr(elem, "RowIndex"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_get_row_item(elem: etree._Element) -> GetRowItemNode:
+    row = _attr_expr(elem, "Row") or _in_argument_property_expr(elem, "Row")
+    value = _attr_expr(elem, "Value") or _in_argument_property_expr(elem, "Value")
+    return GetRowItemNode(
+        row=row,
+        column=_attr_expr(elem, "Column"),
+        column_index=_attr_expr(elem, "ColumnIndex"),
+        column_name=_attr_expr(elem, "ColumnName"),
+        value=value,
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1735,6 +1749,7 @@ _DISPATCH = {
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "AddDataRow"): _parse_add_data_row,
     (UI_NS, "RemoveDataRow"): _parse_remove_data_row,
+    (UI_NS, "GetRowItem"): _parse_get_row_item,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

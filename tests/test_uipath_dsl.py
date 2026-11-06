@@ -45,6 +45,7 @@ from dump_daemon.uipath_dsl import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -1368,6 +1369,28 @@ def test_remove_data_row_with_row_properties():
     assert isinstance(node, RemoveDataRowNode)
     assert node.row_index is None
     assert "AsEnumerable" in node.row.text
+
+
+def test_get_row_item_with_column_name_properties():
+    """知見183: `ui:GetRowItem`(実機6件全てが`ColumnName`を使用)。
+    実機`cameronmcnz/uipath-tutorials`で確認した
+    `ColumnName="lastname"`の実例。"""
+    xml = (
+        f"<ui:GetRowItem {_UI_XMLNS} DisplayName=\"Get Row Item\" "
+        'Column="{x:Null}" ColumnIndex="{x:Null}" ColumnName="lastname" '
+        'Row="[row]">'
+        "<ui:GetRowItem.Value>"
+        '<OutArgument x:TypeArguments="x:String">[output]</OutArgument>'
+        "</ui:GetRowItem.Value>"
+        "</ui:GetRowItem>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetRowItemNode)
+    assert node.row == VbExpr(text="row")
+    assert node.column_name == Literal(value="lastname")
+    assert node.column_index is None
+    assert node.column is None
+    assert node.value == VbExpr(text="output")
 
 
 def test_log_message_properties():

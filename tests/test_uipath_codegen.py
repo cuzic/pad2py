@@ -70,6 +70,7 @@ from dump_daemon.uipath_dsl import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -2719,6 +2720,124 @@ def test_remove_data_row_with_both_row_and_row_index_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: RemoveDataRow with both Row and RowIndex set" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_column_name_indexes_by_name():
+    """知見183: `ui:GetRowItem`(実機6件全てが`ColumnName`を使用)。
+    `row[column_name]`という直接アクセスに対応する——dict行(`AddHeaders
+    =True`由来)であれば正しく動作し、list行の場合は`TypeError`で
+    即座に失敗する(でっち上げた値を返さない)。"""
+    wf = _wrap(
+        [
+            GetRowItemNode(
+                row=VbExpr(text="row"),
+                column_name=Literal(value="lastname"),
+                value=VbExpr(text="output"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "output = row['lastname']" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_get_row_item_with_column_index_handles_both_representations():
+    """知見183: `ColumnIndex`は`DataTable`変数の実行時表現(dict行/
+    list行)を実行時`isinstance`分岐で両方に対応する安全なコードを
+    生成する。"""
+    wf = _wrap(
+        [
+            GetRowItemNode(
+                row=VbExpr(text="row"),
+                column_index=Literal(value="1"),
+                value=VbExpr(text="val"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "isinstance(row, dict)" in code
+    assert "list(row.values())" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict = {}
+    exec(code, namespace)
+    dict_row = {"a": 10, "b": 20, "c": 30}
+    list_row = ["x", "y", "z"]
+    idx = round(namespace["_vb_cdbl"]("1"))
+    assert (list(dict_row.values())[idx] if isinstance(dict_row, dict) else dict_row[idx]) == 20
+    assert (list(list_row.values())[idx] if isinstance(list_row, dict) else list_row[idx]) == "y"
+
+
+def test_get_row_item_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            GetRowItemNode(
+                row=VbExpr(text="row"),
+                column_name=Literal(value="x"),
+                value=VbExpr(text="v"),
+                display_name="Get Row Item",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Get Row Item" in code
+    assert "row['x']" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_no_row_is_todo():
+    wf = _wrap([GetRowItemNode(row=None, column_name=Literal(value="x"), value=VbExpr(text="v"))])
+    code = generate_python(wf)
+    assert "# TODO: GetRowItem with no Row captured" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_no_value_is_todo():
+    wf = _wrap([GetRowItemNode(row=VbExpr(text="row"), column_name=Literal(value="x"), value=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetRowItem with no output Value captured" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_column_is_todo_not_guessed():
+    """知見183: `Column`(既存の`DataColumn`オブジェクト参照)は未
+    モデル化のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            GetRowItemNode(
+                row=VbExpr(text="row"),
+                column=VbExpr(text="existingColumn"),
+                value=VbExpr(text="v"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetRowItem with Column set" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_no_column_specifier_is_todo():
+    wf = _wrap([GetRowItemNode(row=VbExpr(text="row"), value=VbExpr(text="v"))])
+    code = generate_python(wf)
+    assert "# TODO: GetRowItem with no ColumnIndex/ColumnName/Column captured" in code
+    _compiles(code)
+
+
+def test_get_row_item_with_both_column_index_and_column_name_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetRowItemNode(
+                row=VbExpr(text="row"),
+                column_index=Literal(value="0"),
+                column_name=Literal(value="x"),
+                value=VbExpr(text="v"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetRowItem with both ColumnIndex and ColumnName set" in code
     _compiles(code)
 
 

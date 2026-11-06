@@ -95,6 +95,7 @@ from ..uipath_dsl.types import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -512,6 +513,8 @@ def _generate_node(
         return _generate_add_data_row(node, indent)
     if isinstance(node, RemoveDataRowNode):
         return _generate_remove_data_row(node, indent)
+    if isinstance(node, GetRowItemNode):
+        return _generate_get_row_item(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -2003,6 +2006,57 @@ def _generate_remove_data_row_body(node: RemoveDataRowNode, indent: int) -> list
             return todo
         return [f"{prefix}{data_table}.remove({row})"]
     return [f"{prefix}# TODO: RemoveDataRow with no Row/RowIndex captured"]
+
+
+# 知見183: `ui:GetRowItem`。`ColumnIndex`は`DataTable`変数の実行時表現
+# (dict行/list行)を実行時`isinstance`分岐で両方に対応する安全な
+# コードを生成できる。`ColumnName`は列名アクセスのため、実際には
+# dict行(`AddHeaders=True`由来)でなければ意味を成さないが、UiPathの
+# 実DataTableは常に列名を持つため`row[column_name]`という直接アクセス
+# を選んだ——表現が食い違う場合は`TypeError`で即座に失敗する(知見177
+# と同じ「でっち上げた値で静かに間違えるより、失敗する方が安全」)。
+def _generate_get_row_item(node: GetRowItemNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_row_item_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_row_item_body(node: GetRowItemNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.row is None:
+        return [f"{prefix}# TODO: GetRowItem with no Row captured"]
+    if node.value is None:
+        return [f"{prefix}# TODO: GetRowItem with no output Value captured"]
+    if node.column is not None:
+        return [
+            f"{prefix}# TODO: GetRowItem with Column set "
+            f"({_describe_expr_for_comment(node.column)}) — DataColumn "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.column_index is not None and node.column_name is not None:
+        return [
+            f"{prefix}# TODO: GetRowItem with both ColumnIndex and "
+            "ColumnName set — priority between the two not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    row = _render_value_or_todo(node.row, prefix, todo)
+    target = _render_value_or_todo(node.value, prefix, todo)
+    if node.column_index is not None:
+        column_index = _render_value_or_todo(node.column_index, prefix, todo)
+        if todo:
+            return todo
+        idx = f"round({VB_CDBL_HELPER_NAME}({column_index}))"
+        return [
+            f"{prefix}{target} = (list({row}.values())[{idx}] "
+            f"if isinstance({row}, dict) else {row}[{idx}])"
+        ]
+    if node.column_name is not None:
+        column_name = _render_value_or_todo(node.column_name, prefix, todo)
+        if todo:
+            return todo
+        return [f"{prefix}{target} = {row}[{column_name}]"]
+    return [f"{prefix}# TODO: GetRowItem with no ColumnIndex/ColumnName/Column captured"]
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

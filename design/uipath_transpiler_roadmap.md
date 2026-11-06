@@ -2368,3 +2368,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      未対応のため安全に`# TODO`へ倒れる。実機XAML3件で確認。回帰テスト
      追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      7件)、UiPath関連テスト全753件通過、リポジトリ全体で全1821件通過。
+
+141. **(完了、2026-11-06)** `ui:GetRowItem`を新規実装(知見183):
+     `ColumnIndex`は`isinstance(row, dict)`の実行時分岐でdict行/
+     list行の両表現に対応する安全なコードを生成。`ColumnName`(実機
+     6件全てが使用)は`row[column_name]`というdict行前提の直接
+     アクセス——表現が食い違えば`TypeError`で即座に失敗する(知見177
+     と同じ「でっち上げより失敗の方が安全」という判断)。`Column`
+     (DataColumnオブジェクト参照)は未モデル化のため`# TODO`。実機
+     XAML3件(1件はC#式言語プロジェクトの既知の限界で安全にTODO)+
+     合成テストで確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`10件)、UiPath関連テスト全764件
+     通過、リポジトリ全体で全1830件通過。
