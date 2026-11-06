@@ -1886,3 +1886,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`2件)、UiPath関連テスト全569件通過、
      リポジトリ全体で全1547件通過。
+
+108. **(完了、2026-11-06)** `TerminateWorkflow`(`Throw`・`Rethrow`と
+     対になる.NET Workflow Foundation本体の標準活動)を新規実装
+     (知見150——GitHub code searchで1100件ヒットの体系的棚卸し):
+     `TryCatch`で捕捉されない即座のワークフロー全体停止という意味論を
+     持ち、Python組込みの`SystemExit`(デフォルトで`except Exception:`
+     に捕捉されず伝播する)が最も近い対応物。実機確認した3件は全て
+     `Reason`属性を持ち、1件は`Exception`属性も同時に指定——`Reason`
+     のみの場合だけ`raise SystemExit(...)`へ変換し、`Exception`も
+     同時指定の場合は合成方法が未確認のため`# TODO`へ倒す(でっち
+     上げるよりは安全)。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全574件
+     通過、リポジトリ全体で全1567件通過。

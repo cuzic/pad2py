@@ -79,6 +79,7 @@ from dump_daemon.uipath_dsl import (
     SetToClipboardNode,
     SwitchArm,
     SwitchNode,
+    TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
     CatchArm,
@@ -3717,6 +3718,53 @@ def test_rethrow_display_name_becomes_a_comment():
     code = generate_python(wf)
     assert "# Re-raise it" in code
     assert "raise" in code
+    _compiles(code)
+
+
+def test_terminate_workflow_with_reason_only_renders_as_system_exit():
+    """知見150: `TerminateWorkflow`(`Throw`・`Rethrow`と対になる、
+    `TryCatch`で捕捉されない即座のワークフロー全体停止活動)。`Reason`
+    のみの場合は`SystemExit`(デフォルトで`except Exception:`に捕捉
+    されず伝播する)へ変換する——最も近い確認済みの対応物。"""
+    wf = _wrap([TerminateWorkflowNode(reason=Literal(value="fatal error"))])
+    code = generate_python(wf)
+    assert "raise SystemExit(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_terminate_workflow_display_name_becomes_a_comment():
+    wf = _wrap(
+        [TerminateWorkflowNode(reason=Literal(value="fatal"), display_name="Stop it")]
+    )
+    code = generate_python(wf)
+    assert "# Stop it" in code
+    assert "raise SystemExit(" in code
+    _compiles(code)
+
+
+def test_terminate_workflow_with_no_reason_is_todo_not_guessed():
+    wf = _wrap([TerminateWorkflowNode(reason=None)])
+    code = generate_python(wf)
+    assert "# TODO: TerminateWorkflow with no Reason captured" in code
+    _compiles(code)
+
+
+def test_terminate_workflow_with_reason_and_exception_is_todo_not_guessed():
+    """知見150: `Reason`と`Exception`を同時に持つ実例(`jyjang1222/
+    learning-uipath`)を実機で確認したが、両者がどう合成されるべきかは
+    未確認のため、でっち上げず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            TerminateWorkflowNode(
+                reason=Literal(value="fatal"),
+                exception=VbExpr(text="exception"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: TerminateWorkflow with both Reason and Exception set" in code
+    assert "raise SystemExit" not in code
     _compiles(code)
 
 

@@ -90,6 +90,7 @@ from ..uipath_dsl.types import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
     TypeIntoNode,
@@ -466,6 +467,8 @@ def _generate_node(
         return _generate_throw(node, indent)
     if isinstance(node, RethrowNode):
         return _generate_rethrow(node, indent)
+    if isinstance(node, TerminateWorkflowNode):
+        return _generate_terminate_workflow(node, indent)
     if isinstance(node, LogMessageNode):
         return _generate_log_message(node, indent)
     if isinstance(
@@ -2154,6 +2157,39 @@ def _generate_throw_body(node: ThrowNode, indent: int) -> list[str]:
 def _generate_rethrow(node: RethrowNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     return _with_scope_child_display_name(node, [f"{prefix}raise"], prefix)
+
+
+# 知見150: `TerminateWorkflow`(.NET Workflow Foundation本体の標準活動、
+# `Throw`(知見148)・`Rethrow`(知見149)と対になる、`TryCatch`で捕捉
+# されない即座のワークフロー全体停止活動)。Pythonの`SystemExit`(デフォ
+# ルトでは`except Exception:`に捕捉されず伝播する)が最も近い対応物。
+# `Reason`のみの場合だけ変換し、`Exception`属性も同時に指定されている
+# 場合は両者がどう合成されるべきか実機未確認のため`# TODO`へ倒す
+# (でっち上げるよりは安全)。
+def _generate_terminate_workflow(
+    node: TerminateWorkflowNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_terminate_workflow_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_terminate_workflow_body(
+    node: TerminateWorkflowNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.reason is None:
+        return [f"{prefix}# TODO: TerminateWorkflow with no Reason captured"]
+    if node.exception is not None:
+        return [
+            f"{prefix}# TODO: TerminateWorkflow with both Reason and Exception "
+            "set — combined semantics not confirmed"
+        ]
+    todo: list[str] = []
+    reason = _render_value_or_todo(node.reason, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}raise SystemExit({VB_CSTR_HELPER_NAME}({reason}))"]
 
 
 # 知見119: `ui:LogMessage`。実機確認済みの`Level`は`"Info"`/`"Error"`のみ

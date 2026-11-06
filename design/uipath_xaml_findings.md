@@ -7064,6 +7064,52 @@ child_display_name`経由で`raise`を1行生成)を追加。`tests/
 test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に2件追加、
 UiPath関連テスト全569件通過、リポジトリ全体で全1547件通過。
 
+## 150. `TerminateWorkflow`(`Throw`・`Rethrow`と対になる.NET Workflow Foundation本体の標準活動)を新規実装(知見148・149に続く体系的棚卸し)
+
+知見147(`WriteLine`)・148(`Throw`)・149(`Rethrow`)で「基本的な
+.NET Workflow Foundation本体の活動の見落とし」という系統的な欠落が
+判明したため、同じ`WF_NS`の標準活動群を棚卸しし、`TerminateWorkflow`
+(`System.Activities.Statements.TerminateWorkflow`)も未実装のまま
+残っていたことを発見した。GitHub code search(`"TerminateWorkflow"
+extension:xaml uipath`)で1100件のヒットを確認——`While`/`DoWhile`
+(知見14、`ui:InterruptibleWhile`/`ui:InterruptibleDoWhile`経由で
+既に対応済み)と同じ優先度で実機確認に進んだ。
+
+実機で3件(`Siva-PythonPirates/CS19P21-ARPA`の`TerminateWorkflow.xaml`、
+`jyjang1222/learning-uipath`の`Main.xaml`、`andumorie/
+uipath-face-recognition-framework`の`Identify.xaml`)をダウンロードし
+構造を確認: 全件で`Reason`属性(VB式文字列)を持ち、1件(`jyjang1222`)
+のみ追加で`Exception`属性(`[exception]`——`Catch`ブロック内の捕捉
+済み例外変数)も同時に指定していた。`TerminateWorkflow`は`TryCatch`
+で捕捉されない即座のワークフロー全体停止という意味論を持ち、Python
+組込みの`SystemExit`(デフォルトでは`except Exception:`に捕捉されず
+伝播する——`except:`のみが捕捉する)が最も近い確認済みの対応物。
+
+`Reason`のみの場合は`raise SystemExit(_vb_cstr(reason))`へ変換する
+(`WriteLine`の`Text`と同じ理由で`_vb_cstr`を通す——`Reason`がVB式の
+結果非文字列になりうるケースに対応)。一方、`Exception`属性も同時に
+指定されている場合は、両者がどう合成されるべきか(メッセージに例外
+情報をどう埋め込むか)が実機未確認のため、知見148・149と同じ
+「でっち上げるよりは安全」の方針で`# TODO`へ倒す——`Reason`文字列を
+単純に流用して`Exception`情報を黙って捨てることも検討したが、確認
+できていない情報の欠落を無言で許容するのは「でっち上げ」の裏返し
+(過小な変換も一種のでっち上げ)と判断し、明示的な`# TODO`で欠落を
+可視化する方を選んだ。
+
+`dump_daemon/uipath_dsl/types.py`に`TerminateWorkflowNode(reason,
+exception, display_name)`、`xaml_tree.py`に`_parse_terminate_workflow`
++`(WF_NS, "TerminateWorkflow")`の`_DISPATCH`登録、`uipath_codegen/
+__init__.py`に`_generate_terminate_workflow`/`_generate_terminate_
+workflow_body`(Reason未設定→TODO、Exception同時設定→TODO、それ
+以外→`raise SystemExit(...)`)を追加。ダウンロード済みの3件の実機
+XAMLで`generate_python()`+`compile()`を実行し、`Reason`単独の2件は
+`raise SystemExit(...)`を正しく生成(1件は内部で未確認の`New
+BusinessRuleException(...)`も検出し、知見148の方針通り別途`# TODO`
+へ倒した)、`Exception`併用の1件は意図通り`# TODO`のみで`SystemExit`
+を生成しないことを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全574件
+通過、リポジトリ全体で全1567件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

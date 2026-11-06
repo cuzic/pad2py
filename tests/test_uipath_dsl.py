@@ -53,6 +53,7 @@ from dump_daemon.uipath_dsl import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
     TypeIntoNode,
@@ -597,6 +598,23 @@ def test_rethrow_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, RethrowNode)
     assert node.display_name == "Re-raise"
+
+
+def test_terminate_workflow_properties():
+    """知見150: `TerminateWorkflow`(.NET Workflow Foundation本体の標準
+    活動、`Throw`・`Rethrow`と対になる、ワークフロー全体を即座に停止する
+    活動)。実機で確認した`Reason`属性(`Siva-PythonPirates/CS19P21-ARPA`
+    等)に加え、`Exception`属性も同時に持つ実例(`jyjang1222/
+    learning-uipath`)も確認済み——両方をパーサーで保持する。"""
+    xml = (
+        f"<TerminateWorkflow {_UI_XMLNS} DisplayName=\"Stop\" "
+        'Reason="[&quot;fatal&quot;]" Exception="[exception]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TerminateWorkflowNode)
+    assert node.reason == VbExpr(text='"fatal"')
+    assert node.exception == VbExpr(text="exception")
+    assert node.display_name == "Stop"
 
 
 def test_log_message_properties():

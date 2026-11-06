@@ -678,6 +678,27 @@ class ThrowNode:
 
 
 @dataclass
+class TerminateWorkflowNode:
+    """`<TerminateWorkflow Reason="..." Exception="..." />`(知見150、
+    `System.Activities.Statements.TerminateWorkflow`——`Throw`(知見148)
+    ・`Rethrow`(知見149)と同じ.NET Workflow Foundation本体の標準活動)。
+    `TryCatch`で捕捉できない即座のワークフロー全体停止という意味論を持ち、
+    Pythonの`SystemExit`(デフォルトでは`except Exception:`に捕捉されず
+    伝播する)が最も近い対応物。実機で確認した3件(`Siva-PythonPirates/
+    CS19P21-ARPA`・`jyjang1222/learning-uipath`・`andumorie/
+    uipath-face-recognition-framework`)は全て`Reason`属性を持っていた
+    (`Exception`属性は無いか、持っていても常に`Reason`も併用されていた)。
+    `Reason`のみの場合は`raise SystemExit(reason)`へ変換するが、
+    `Exception`属性も同時に指定されている場合は、両者がどう合成される
+    べきか(メッセージに例外情報をどう埋め込むか)が実機未確認のため
+    `# TODO`へ倒す(でっち上げるよりは安全)。"""
+
+    reason: Expr = None
+    exception: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class RethrowNode:
     """`<Rethrow />`(知見149、`System.Activities.Statements.Rethrow`
     ——`Throw`(知見148)の対になる、.NET Workflow Foundation本体の標準
@@ -1104,6 +1125,7 @@ Node = (
     | WriteLineNode
     | ThrowNode
     | RethrowNode
+    | TerminateWorkflowNode
     | LogMessageNode
     | ExcelReadCellNode
     | ExcelWriteCellNode

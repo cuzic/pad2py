@@ -66,6 +66,7 @@ from .types import (
     SetToClipboardNode,
     SwitchArm,
     SwitchNode,
+    TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
     TypeIntoNode,
@@ -794,6 +795,14 @@ def _parse_rethrow(elem: etree._Element) -> RethrowNode:
     return RethrowNode(display_name=_attr(elem, "DisplayName"))
 
 
+def _parse_terminate_workflow(elem: etree._Element) -> TerminateWorkflowNode:
+    return TerminateWorkflowNode(
+        reason=_attr_expr(elem, "Reason"),
+        exception=_attr_expr(elem, "Exception"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _LOG_LEVEL_ENUM_PREFIX = "UiPath.Core.Activities.LogLevel."
 
 
@@ -1246,6 +1255,7 @@ _DISPATCH = {
     (WF_NS, "WriteLine"): _parse_write_line,
     (WF_NS, "Throw"): _parse_throw,
     (WF_NS, "Rethrow"): _parse_rethrow,
+    (WF_NS, "TerminateWorkflow"): _parse_terminate_workflow,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
