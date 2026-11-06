@@ -240,6 +240,63 @@ def test_path_getfilenamewithoutextension_renders_as_os_path_splitext():
     _compiles(code)
 
 
+def test_string_isnullorwhitespace_renders():
+    """知見134: `String.IsNullOrWhiteSpace(value)`(`Ray-Tel/CICDtest`の
+    実機XAML`String.IsNullOrWhiteSpace(in_ConfValueExpectedResult)`で
+    発見)。null・空文字列・空白のみの文字列いずれも`True`。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="String.IsNullOrWhiteSpace(y)"))]
+    )
+    code = generate_python(wf)
+    assert "x = (not (y or '').strip())" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert eval("(not (None or '').strip())") is True
+    assert eval("(not ('   ' or '').strip())") is True
+    assert eval("(not ('a' or '').strip())") is False
+
+
+def test_path_combine_renders_as_os_path_join():
+    """知見134: `Path.Combine(path1, path2)`(`Ray-Tel/CICDtest`の実機
+    XAML`Path.Combine("Tests\\Cache\\", targetFile+"...")`で発見)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Path.Combine(y, z)"))]
+    )
+    code = generate_python(wf)
+    assert "x = os.path.join(y, z)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_directory_getfiles_with_search_pattern_renders_as_glob():
+    """知見134: `Directory.GetFiles(path, searchPattern)`(2引数形、
+    `aimannoor17/UiPath-Automation-Projects`の実機XAML`Directory.
+    GetFiles("samples/scanned-reports","*.pdf")`で発見)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='Directory.GetFiles(y, "*.pdf")'))]
+    )
+    code = generate_python(wf)
+    assert (
+        "x = [_p for _p in glob.glob(os.path.join(y, '*.pdf')) if os.path.isfile(_p)]" in code
+    )
+    assert "import glob" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_directory_exists_renders_as_os_path_isdir():
+    """知見134: `Directory.Exists(path)`(`manju1201/RPA_UiPath`の実機
+    XAML`Directory.Exists(ScreenshotFileInfo.DirectoryName)`で発見)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Directory.Exists(y)"))])
+    code = generate_python(wf)
+    assert "x = os.path.isdir(y)" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_directory_getfiles_renders_as_os_listdir_comprehension():
     """知見133: `Directory.GetFiles(path)`(`dexbob/RPA_Example`の実機
     XAML`Directory.GetFiles(Str_OutputFolder)`で発見)。"""

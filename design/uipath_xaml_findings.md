@@ -6442,6 +6442,59 @@ if os.path.isfile(os.path.join(p, n))]`)へ対応した。
 test_uipath_codegen.py`に6件追加、UiPath関連テスト全523件通過
 (リポジトリ全体は`test_pad_codegen.py`を除き全1133件通過)。
 
+## 134. `String.IsNullOrWhiteSpace`/`Path.Combine`/`Directory.Exists`を新規実装、`Directory.GetFiles`に2引数形(`searchPattern`)を追加(未使用の新規15リポジトリでの実機検証、知見132で修正したREFramework共通ファイルの再確認含む、VM不使用)
+
+知見117〜133の手法を未使用の新規15リポジトリへ適用した。知見132で
+修正したlibxml2のxmlns過剰検証問題の効果を、同じ`RetryCurrentTransaction.
+xaml`の別の2インスタンス(`ahmed-ismail999/
+RPA-UiPath--Verify-Account-Position`・`MarkRaef/UiPath`)で再確認した
+——いずれもXML解析自体は正常に通過し(修正前は即座に失敗していた)、
+`in_Config(...)`という既知の配列添字曖昧性(知見74)でのみ`# TODO`相当の
+decline(`If`条件内のため例外伝播、想定通り)に至る——REFramework系の
+実プロジェクトへの実際の効果を確認できた。
+
+**解決: `String.IsNullOrWhiteSpace(value)`**(`Ray-Tel/CICDtest`の実機
+XAML`String.IsNullOrWhiteSpace(in_ConfValueExpectedResult)`で発見)。
+既存の`String.IsNullOrEmpty`(知見96)と同じパターンで追加——`null`・
+空文字列・空白のみの文字列いずれも`True`を返す仕様を`(not (value or
+'').strip())`で再現する(`value or ''`が`None`も空文字列に正規化)。
+
+**解決: `Path.Combine(path1, path2, ...)`**(同上の実機XAML`Path.
+Combine("Tests\Cache\", targetFile+"..."+".json")`で発見)。.NETの
+2〜4個の固定オーバーロード+`params`配列版はいずれも「N個のパス片を
+順に連結する」という同じ意味論で、Pythonの`os.path.join(*paths)`も
+同じ可変長引数の連結ユーティリティ(後続引数が絶対パスの場合に
+それ以前を無視する挙動も共通、.NET公式ドキュメント確認済み)のため、
+引数個数2以上なら安全に対応できると判断した。
+
+**解決: `Directory.Exists(path)`**(`manju1201/RPA_UiPath`の実機XAML
+`Directory.Exists(ScreenshotFileInfo.DirectoryName)`で発見)。`os.path.
+isdir(path)`へ直接対応。
+
+**解決: `Directory.GetFiles`の2引数形**(`aimannoor17/
+UiPath-Automation-Projects`の実機XAML`Directory.GetFiles(
+"samples/scanned-reports","*.pdf")`で発見)。知見133で実装した1引数形
+に加え、`searchPattern`付きの2引数形を追加——.NETの`*`/`?`ワイルド
+カード構文はPythonの`glob`モジュールと同じ記法のため`glob.glob`を
+使い、結果をディレクトリも含めてしまう可能性があるため`os.path.
+isfile`で絞り込み、1引数形と同じ「ファイルのみ」という契約を保った。
+
+**新たに発見したが今回は見送ったもの**: `Path.Combine`以外の
+`.Combine(...)`以外の未知メソッド(`.GetField(...)`・`.ToSingle(...)`、
+おそらくDocument Understanding関連のカスタム型のメソッド、実機確認
+不足)・`Newtonsoft.Json.JsonConvert.DeserializeObject(Of T)(...)`
+(VB.NETのジェネリック型引数`(Of T)`構文自体が`uipath_expr`文法で
+全く未対応——新しい構文領域、関数リテラル同様に将来の拡張候補として
+記録)。
+
+`dump_daemon/uipath_codegen/render.py`に静的メソッド3分岐
+(`string.isnullorwhitespace`/`path.combine`/`directory.exists`)+
+`directory.getfiles`の2引数形拡張。`dump_daemon/uipath_codegen/
+__init__.py`の`_collect_imports`に`glob`検出を追加。`tests/
+test_uipath_codegen.py`に4件追加、UiPath関連テスト全527件通過、
+リポジトリ全体で全1445件通過(並行作業中の別セッションのPAD系問題も
+解消済み)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

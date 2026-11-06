@@ -867,6 +867,16 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
+    if key == "string.isnullorwhitespace":
+        # 知見134: `String.IsNullOrWhiteSpace(value)`(`Ray-Tel/CICDtest`
+        # の実機XAML`String.IsNullOrWhiteSpace(in_ConfValueExpectedResult)`
+        # で発見)。`null`・空文字列・空白のみの文字列いずれも`True`を
+        # 返す——`(arg or '').strip()`が`None`も空文字列に正規化した上で
+        # 前後の空白を取り除くため、結果が空になるかどうかで同じ判定が
+        # 再現できる。
+        if len(args) != 1:
+            raise NotImplementedError("String.IsNullOrWhiteSpace expects exactly 1 argument")
+        return f"(not ({args[0]} or '').strip())"
     if key == "file.readallbytes":
         # 知見130: `System.IO.File.ReadAllBytes(path)`(`Dits21/
         # Proyecto-Sistema-RPA-...`の実機XAML`file.ReadAllBytes(...)`で
@@ -894,19 +904,54 @@ def _render_func_call(node: FuncCall) -> str:
                 "Path.GetFileNameWithoutExtension expects exactly 1 argument"
             )
         return f"os.path.splitext(os.path.basename({args[0]}))[0]"
+    if key == "path.combine":
+        # 知見134: `System.IO.Path.Combine(path1, path2, ...)`
+        # (`Ray-Tel/CICDtest`の実機XAML`Path.Combine("Tests\Cache\",
+        # targetFile+"_2-2_Extraction"+".json")`で発見)。.NET版は2〜4
+        # 個の固定オーバーロード+`params`配列版を持つが、いずれも
+        # 「N個のパス片を順に連結する」という同じ意味論——Pythonの
+        # `os.path.join(*paths)`も同じ可変長引数の連結ユーティリティで、
+        # 後続の引数が絶対パスの場合にそれ以前を無視する挙動も共通して
+        # いる(.NET公式ドキュメント確認済み)ため、引数個数による
+        # 意味論の違いが無く2個以上なら安全に対応できる。
+        if len(args) < 2:
+            raise NotImplementedError("Path.Combine expects at least 2 arguments")
+        joined = ", ".join(args)
+        return f"os.path.join({joined})"
+    if key == "directory.exists":
+        # 知見134: `System.IO.Directory.Exists(path)`(`manju1201/
+        # RPA_UiPath`の実機XAML`Directory.Exists(ScreenshotFileInfo.
+        # DirectoryName)`で発見)。1引数の確認済み形のみ`os.path.isdir
+        # (path)`へ対応する。
+        if len(args) != 1:
+            raise NotImplementedError("Directory.Exists expects exactly 1 argument")
+        return f"os.path.isdir({args[0]})"
     if key == "directory.getfiles":
         # 知見133: `System.IO.Directory.GetFiles(path)`(`dexbob/
         # RPA_Example`の実機XAML`Directory.GetFiles(Str_OutputFolder)`で
-        # 発見)。1引数(検索パターン・再帰オプション省略)の確認済み形
-        # のみ、指定ディレクトリ直下のファイルのみ(サブディレクトリは
-        # 含まない、.NETの既定動作)をフルパスで列挙するリスト内包表記へ
-        # 対応する。
-        if len(args) != 1:
-            raise NotImplementedError("Directory.GetFiles expects exactly 1 argument")
-        return (
-            f"[os.path.join({args[0]}, _n) for _n in os.listdir({args[0]}) "
-            f"if os.path.isfile(os.path.join({args[0]}, _n))]"
-        )
+        # 発見)。1引数(検索パターン・再帰オプション省略)の確認済み形は
+        # 指定ディレクトリ直下のファイルのみ(サブディレクトリは含まない、
+        # .NETの既定動作)をフルパスで列挙するリスト内包表記へ対応する。
+        #
+        # 知見134: 2引数形(`searchPattern`付き、`aimannoor17/
+        # UiPath-Automation-Projects`の実機XAML`Directory.GetFiles(
+        # "samples/scanned-reports","*.pdf")`で発見)も対応——.NETの
+        # `*`/`?`ワイルドカード構文はPythonの`glob`モジュールと同じ記法
+        # のため`glob.glob`を使い、結果をディレクトリも含めてしまう
+        # 可能性があるため`os.path.isfile`で絞り込む(1引数形と同じ
+        # 「ファイルのみ」という契約を保つ)。再帰オプション(第3引数)は
+        # 未確認のため対象外。
+        if len(args) == 1:
+            return (
+                f"[os.path.join({args[0]}, _n) for _n in os.listdir({args[0]}) "
+                f"if os.path.isfile(os.path.join({args[0]}, _n))]"
+            )
+        if len(args) == 2:
+            return (
+                f"[_p for _p in glob.glob(os.path.join({args[0]}, {args[1]})) "
+                "if os.path.isfile(_p)]"
+            )
+        raise NotImplementedError("Directory.GetFiles expects 1 or 2 arguments")
     if key == "len":
         # 知見127: `Microsoft.VisualBasic.Strings.Len(Expression)`
         # (`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML`Len(sRstHttp)`で

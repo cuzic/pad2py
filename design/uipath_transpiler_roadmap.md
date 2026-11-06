@@ -1636,3 +1636,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     ため連鎖呼び出し・呼び出し無し連鎖の両経路に追加。回帰テスト追加
     (`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全523件通過
     (リポジトリ全体は`test_pad_codegen.py`を除き全1133件通過)。
+
+92. **(完了、2026-11-06)** `String.IsNullOrWhiteSpace`/`Path.Combine`/
+    `Directory.Exists`を新規実装、`Directory.GetFiles`に2引数形を追加
+    (知見134——知見132で修正したREFramework共通ファイルの効果も別
+    インスタンス2件で再確認): `String.IsNullOrWhiteSpace(value)`は
+    既存の`String.IsNullOrEmpty`と同じパターンで`(not (value or
+    '').strip())`へ対応。`Path.Combine(path1, path2, ...)`は.NET側の
+    固定オーバーロード+`params`配列版いずれも同じ連結意味論のため
+    `os.path.join(*paths)`で2引数以上を対応。`Directory.Exists(path)`
+    は`os.path.isdir(path)`。`Directory.GetFiles`の`searchPattern`付き
+    2引数形は`glob.glob`+`os.path.isfile`フィルタで対応。`Newtonsoft.
+    Json.JsonConvert.DeserializeObject(Of T)(...)`というVB.NETの
+    ジェネリック型引数`(Of T)`構文は`uipath_expr`文法が全く未対応
+    (新しい構文領域として記録、今回は見送り)。回帰テスト追加
+    (`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全527件通過、
+    リポジトリ全体で全1445件通過。
