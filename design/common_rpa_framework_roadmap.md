@@ -195,7 +195,10 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   PAD/UiPathのファイル対応表(知見ログ↔TODO↔段階計画↔式変換ドキュメント)、および
   どちらのトラックにも属さない横断ドキュメント(本roadmap・runtime_services・
   CI検証系)の位置付けも整理した。
-- [ ] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける
+- [x] 層4の規約(「exec()テストは出力値まで必ずアサートする」)を明文化し、新規テストに適用を義務付ける。
+  **2026-11-05実施**: Phase 1の`tools/check_exec_assertions.py`(下記参照)として明文化・
+  ツール化を同時に達成した——重複追跡を避けるため、本項目はそちらと同一の成果として
+  完了扱いにする。
 - [x] **層7(b)着手**: `tests/fake_pywinauto.py`を新設(`Desktop`/`.window()`/`.child_window()`/`.exists()`/`.wrapper_object()`/`.click_input()`/`.set_focus()`/`.type_keys()`/`.wait()`/`.wait_not()`のフェイク)、`UIAutomation.Click.Click`の既存codegenテストを実際に`exec()`する形へ1件移行。`set_active()`(ウィンドウごとの`is_active()`状態をレジストリ側で保持——`wrapper_object()`は呼ぶたびに新しいオブジェクトを返すため個々のオブジェクトでは状態を持てない)を追加し、`UIAutomation.IfWindow.*`4モード×ウィンドウ存在/フォーカス状態10パターンを、生成された条件式を実際に`eval()`して真偽値まで検証するテストへ拡張(実機キャプチャのTHENブロックが`pass`のみで文字列検査では分岐の実際の真偽を観測できなかった穴を塞いだ)。`.close()`も追加し`FocusWindow`/`CloseWindow`の既存codegenテスト2件も`exec()`検証へ移行。
   また、`pywinauto.Desktop`の差し替え/復元をテストごとに手書きしていた重複(4箇所)を
   `fake_pywinauto_desktop()`コンテキストマネージャに集約した(`tests/fake_win32.py`の
