@@ -3842,6 +3842,30 @@ def test_generate_python_from_execute_xpath_and_get_first_value_only_converts() 
     assert namespace["R"] == "a"
 
 
+def test_generate_python_from_cmd_read_and_split_converts() -> None:
+    # design/dsl_format_findings.md 知見139: `ActionSelectorBase`一括列挙監査を
+    # Cmd.Actions.dllに適用して発見した`Read`の兄弟セレクタ(`ReadAndSplit`)。
+    # `CmdSession`はLinux上では`cmd.exe`を起動できないため、実在のセッション変数
+    # (`Session`パラメータは単なる`VarRef`)に対して`.read()`を呼ぶ形に注入した
+    # フェイクオブジェクトで検証する。
+    dsl = "Cmd.ReadFromCmdSession.ReadAndSplit Session: MySession CmdOutput=> Out CmdError=> Err"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "Out, Err = MySession.read(split_output_and_error=True)" in code
+
+    class FakeCmdSession:
+        def read(self, split_output_and_error: bool = False):
+            assert split_output_and_error is True
+            return "stdout text", "stderr text"
+
+    namespace: dict[str, object] = {"MySession": FakeCmdSession()}
+    exec(code, namespace)
+    assert namespace["Out"] == "stdout text"
+    assert namespace["Err"] == "stderr text"
+
+
 def test_generate_python_from_write_xml_to_file_without_formatting_converts() -> None:
     # design/dsl_format_findings.md 知見139: `WriteToFileFormatted`の兄弟セレクタ
     # (`Indentation`パラメータ自体がDSL上に無い)。

@@ -2466,3 +2466,12 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 **見送った項目**: `GetElementAttribute`クラスの`AsNumeric`/`AsBoolean`/`AsDateTime`3セレクタは、`get_xml_element_attribute()`自体に`value_type`引数が無く(常に文字列を返す)、新規の型変換ロジック実装が必要なため今回は見送った——`get_xml_element_value()`の`value_type`実装をそのまま再利用できる可能性が高いが、属性用のValueType列挙値がElement用と同じ文字列("Numeric"/"Boolean"/"DateTime")かは実機未確認。
 
 テストは`tests/test_pad_codegen.py`に4件追加(`GetElementValueAsNumeric/AsBoolean/AsDateTime`の3パターンparametrize+`ExecuteXPathAndGetFirstValueOnly`+`WriteToFile`)、全て実際に`exec()`して出力値まで検証した。
+
+## 141. 知見139のCmd.Actions.dll分を結線完了——`ReadAndSplit`を新規結線、`OpenWithCodePage`は`Encoding`型の意味論未確認のため見送り
+
+知見139でCmd.Actions.dllの未結線セレクタ2件(`OpenWithCodePage`/`ReadAndSplit`)を確認済みだったが結線は未着手だった。VM上で各セレクタの所属クラスのプロパティを確認した:
+
+- `ReadFromCmdSession`クラス: `CmdOutput: String`/`CmdError: String`/`SplitOutputAndError: Boolean`——既存結線の`Read`(`SplitOutputAndError=False`)の兄弟セレクタ`ReadAndSplit`(`SplitOutputAndError=True`)は、既存の`CmdSession.read(split_output_and_error=True)`がそのまま`(stdout, stderr)`タプルを返す実装になっていたため、2つの出力変数(`CmdOutput`/`CmdError`)への展開として新規結線できた。
+- `OpenCmdSession`クラス: `ChangeCodePage: Boolean`/`Encoding: Encoding`(単純な文字列ではなく専用の`Encoding`型)——既存の`open_cmd_session(encoding: str = "utf-8")`はこの1つの文字列引数をPythonの`subprocess`テキストデコードと`chcp {encoding}`コマンド引数の両方に再利用しているが、PAD実機の`Encoding`列挙値がどう直列化されるか(コードページ番号かコーデック名か)・既存の`chcp {encoding}`という呼び出し自体がPADの実際の挙動と一致するかはいずれも実機未確認——新規結線は見送った(既存の`change_code_page`/`encoding`引数自体の設計もこの観点で再検証が必要という留保事項が新たに判明した)。
+
+テストは`tests/test_pad_codegen.py`に`ReadAndSplit`の1件を追加した(`CmdSession`はLinux上で`cmd.exe`を起動できないため、`Session`変数へ注入したフェイクオブジェクトで`.read(split_output_and_error=True)`の呼び出しを検証)。

@@ -426,9 +426,15 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       - [ ] 💻🖥️ **残課題**: `GetElementAttribute`の`AsNumeric`/`AsBoolean`/
         `AsDateTime`3兄弟は`get_xml_element_attribute()`に`value_type`引数が
         無く、新規実装(+実機でのValueType列挙値確認)が必要なため見送った。
-    - `Cmd.Actions.dll`(4セレクタ): `OpenWithCodePage`/`Open`/`Read`/`ReadAndSplit`。
-      既存の`Cmd.Open.Open`/`Cmd.Close`/`Cmd.Write`/`Cmd.WaitForText`/
-      `Cmd.ReadFromCmdSession.Read`との対応関係(`Open`二重発見?)を要確認。
+    - [x] `Cmd.Actions.dll`(4セレクタ)。
+      ✅ **決着(知見141)**: `Open`二重発見は単に`Open`/`OpenWithCodePage`が同じ
+      `OpenCmdSession`クラスの兄弟セレクタだったと判明(既存結線は前者のみ)。
+      `ReadAndSplit`(`Read`の兄弟セレクタ)を新規結線完了。
+      - [ ] 💻🖥️ **残課題**: `OpenWithCodePage`は`Encoding`型(単純な文字列では
+        ない)の意味論が実機未確認のため見送った。既存の`open_cmd_session()`が
+        `encoding`引数をPythonデコード用途と`chcp`コマンド引数用途の両方に
+        再利用している設計自体も、実機の`chcp`呼び出し形式との整合性が
+        未検証という留保事項が新たに判明した。
     - `Text.Actions.dll`(23セレクタ): `DateTimeToText`系2・`ToDateTime`系2・
       `CropText`系3(Before/After/BetweenFlags)・`GetText`/`GetSubtext`系3・
       `JoinText`系3・`Parse`系4(通常/Regex×先頭のみ/全件)・`ReplaceText`系2・

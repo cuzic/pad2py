@@ -10,6 +10,18 @@
 ではなく通常の`ActionRecord`としてシリアライズされる——`Timeout`は普通の
 パラメータであり、`[WaitAction]`カテゴリの無期限ポーリング前提
 (`actions.wait`)とは別物として扱う。
+
+知見139(`ActionSelectorBase`一括列挙監査をCmd.Actions.dllに適用): `ReadFromCmdSession`
+クラスは既存結線の`Read`(`CmdOutput`/`CmdError`を1本に合流、`SplitOutputAndError=False`)
+に加え、兄弟セレクタ`ReadAndSplit`(`SplitOutputAndError=True`、`CmdOutput`/`CmdError`を
+別々の出力に分ける)を持つ——既存の`CmdSession.read(split_output_and_error=True)`が
+そのまま対応できるため新規結線した。`OpenCmdSession`クラスの兄弟セレクタ
+`OpenWithCodePage`(`ChangeCodePage: Boolean`/`Encoding: Encoding`という型付き列挙の
+組み合わせ)は、VM上のプロパティ確認で`Encoding`が単純な文字列ではなく専用の`Encoding`
+型だと判明し、その列挙値とPythonコーデック名/Windows `chcp`番号との対応関係が実機未確認
+のため今回は見送った(既存の`open_cmd_session(encoding: str = "utf-8")`がPythonの
+テキストデコードと`chcp {encoding}`コマンド引数の両方にこの1つの文字列を再利用している
+点も、実際のPADの`chcp`呼び出し形式との整合性が未検証のまま残っている)。
 """
 from __future__ import annotations
 
@@ -45,6 +57,18 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if session is None or not node.output_var:
             return None
         return [f"{prefix}{node.output_var} = {session}.read()"]
+
+    if action_id == "Cmd.ReadFromCmdSession.ReadAndSplit":
+        # 知見139: `Read`の兄弟セレクタ(`SplitOutputAndError=True`、標準出力/標準エラーを
+        # 別々の出力変数に分ける)。
+        session = safe_render(p.get("Session"))
+        output_var = node.output_vars.get("CmdOutput")
+        error_var = node.output_vars.get("CmdError")
+        if session is None or not output_var or not error_var:
+            return None
+        return [
+            f"{prefix}{output_var}, {error_var} = {session}.read(split_output_and_error=True)"
+        ]
 
     if action_id == "Cmd.WaitForText":
         session = safe_render(p.get("Session"))
