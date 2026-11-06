@@ -252,6 +252,15 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   テストを追加し、`MoveWindow`/`ResizeWindow`/`SetWindowState`/`SetWindowVisibility`/
   `CloseWindow`/`FocusWindow`/`GetWindow`の全系統で3セレクタ構造それぞれに最低1件の
   テストが揃ったことを確認した。
+  **2026-11-05追記(`codegen_coverage.py`の自動フィクスチャ走査との食い違いを発見)**:
+  `codegen_coverage.py`はフィクスチャを自動globして`[OK]`判定するため、
+  `UIAutomation.WaitForWindow.ToBecomeFocused`/`ToLoseFocus`/`ToClose`は
+  カバレッジレポート上は常に`[OK]`だったが、実際には`test_pad_codegen.py`側に
+  リポジトリあり(実コード生成)経路のexec検証が一度も存在しなかった
+  (`ToBecomeFocused`/`ToLoseFocus`はリポジトリ無しのTODOフォールバック経路しか
+  テストされておらず、`ToClose`はテスト自体が0件だった)。3件とも新規にexec検証
+  テストを追加した——「`codegen_coverage.py`が`[OK]`と言っている」ことと
+  「`test_pad_codegen.py`に対応する検証がある」ことは別の尺度だという教訓。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

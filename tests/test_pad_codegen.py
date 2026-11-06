@@ -671,6 +671,34 @@ def test_generate_python_from_real_wait_for_window_become_focused_whole_subflow_
     assert "UIAutomation.WaitForWindow.ToBecomeFocused" in code
 
 
+def test_generate_python_from_wait_for_window_become_focused_actually_waits_against_fake_pywinauto() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: 上のテストはリポジトリ無し
+    # (TODOフォールバック)経路しか見ていなかった——`ToBecomeFocused`/`ToLoseFocus`/
+    # `ToClose`の実コード生成経路(リポジトリあり)は、`codegen_coverage.py`の自動
+    # フィクスチャ走査では[OK]と判定されるにもかかわらず、`test_pad_codegen.py`側には
+    # 一度もexec検証が無かった実在の穴だった。ウィンドウが既にフォーカス済みの状態で
+    # execし、ループが即座に(ハングせず)抜けることまで検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_become_focused.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert (
+        "while not (Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists() "
+        "and Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".wrapper_object().is_active()):" in code
+    )
+
+    registry = FakeRegistry()
+    registry.register_window(title="Untitled - Notepad")
+    registry.set_active([{"title": "Untitled - Notepad"}], True)
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})  # 既にフォーカス済みなので即座に終了するはず
+
+
 def test_generate_python_from_real_wait_for_window_lose_focus_whole_subflow_capture_compiles() -> None:
     text = (
         FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_lose_focus.txt"
@@ -679,6 +707,69 @@ def test_generate_python_from_real_wait_for_window_lose_focus_whole_subflow_capt
     code = generate_python(tree)
     compile(code, "<generated>", "exec")
     assert "UIAutomation.WaitForWindow.ToLoseFocus" in code
+
+
+def test_generate_python_from_wait_for_window_lose_focus_actually_waits_against_fake_pywinauto() -> None:
+    # 上と対になるテスト: ウィンドウが既にフォーカスを失っている(存在しない)状態でexecし、
+    # ループが即座に抜けることを検証する。
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_lose_focus.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert (
+        "while (Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists() "
+        "and Desktop(backend=\"uia\").window(title='Untitled - Notepad')"
+        ".wrapper_object().is_active()):" in code
+    )
+
+    registry = FakeRegistry()  # ウィンドウ未登録=存在しない(=フォーカスも無い)状態
+    with fake_pywinauto_desktop(registry):
+        exec(code, {})  # 既にフォーカスを失っているので即座に終了するはず
+
+
+def test_generate_python_from_real_wait_for_window_to_close_whole_subflow_capture_compiles() -> None:
+    # `UIAutomation.WaitForWindow.ToClose`は`codegen_coverage.py`の自動フィクスチャ走査
+    # では計測されていたが、test_pad_codegen.py側には一度もテストが無かった実在の穴
+    # (`tests/test_pad_dsl_parser.py`側にはパーサーレベルのテストのみ存在していた)。
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_to_close.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "UIAutomation.WaitForWindow.ToClose" in code  # リポジトリ無しなのでTODOフォールバック
+
+
+def test_generate_python_from_wait_for_window_to_close_actually_waits_against_fake_pywinauto() -> None:
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: リポジトリありの実コード生成
+    # 経路(`while ...exists(): time.sleep(...)`)を実際にexec()し、ウィンドウが既に
+    # 閉じている状態でループが即座に抜けることまで検証する。
+    import os
+
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+
+    text = (
+        FIXTURES_DIR / "looptest_whole_subflow_with_wait_for_window_to_close.txt"
+    ).read_text(encoding="utf-8")
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    assert "while Desktop(backend=\"uia\").window(title='Untitled - Notepad').exists():" in code
+
+    registry = FakeRegistry()  # ウィンドウ未登録=既に閉じている状態
+    # このフィクスチャも`Scripting.RunPythonScript`でハードコードされたWindowsパスへの
+    # 書き込みを含むため、一時ディレクトリへ退避してからexec()する。
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmp, fake_pywinauto_desktop(registry):
+        try:
+            os.chdir(tmp)
+            exec(code, {})  # 既に閉じているので即座に終了するはず
+        finally:
+            os.chdir(original_cwd)
 
 
 # 実機で「Press/release key」をControl=True(他Falseのまま)でAction to perform=Press、
