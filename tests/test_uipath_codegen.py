@@ -89,6 +89,7 @@ from dump_daemon.uipath_dsl import (
     KillProcessNode,
     Literal,
     LoadImageNode,
+    LookupDataTableNode,
     LogMessageNode,
     MessageBoxNode,
     MoveFileNode,
@@ -2329,6 +2330,136 @@ def test_get_password_with_no_result_is_todo():
     wf = _wrap([GetPasswordNode(result=None)])
     code = generate_python(wf)
     assert "# TODO: GetPassword with no output Result captured" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_finds_matching_row():
+    """知見196: `ui:LookupDataTable`(GitHub code searchで197件ヒット)。
+    `LookupColumnName`/`TargetColumnName`による名前ベースのdict行
+    アクセス(知見183の`GetRowItem`と同じ前提)で、単一セル値+行
+    インデックスを返す。"""
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_column_name=Literal(value="Name"),
+                lookup_value=Literal(value="John Gates"),
+                target_column_name=Literal(value="Name"),
+                cell_value=VbExpr(text="cellValue"),
+                row_index=VbExpr(text="rowIndex"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_lookup_row['Name'] == 'John Gates'" in code
+    assert "rowIndex = _lookup_row_index" in code
+    assert "cellValue = _lookup_cell_value" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_lookup_data_table_not_found_yields_minus_one():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_column_name=Literal(value="Name"),
+                lookup_value=Literal(value="Nobody"),
+                target_column_name=Literal(value="Name"),
+                row_index=VbExpr(text="rowIndex"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "rowIndex = _lookup_row_index" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_column_name=Literal(value="Name"),
+                lookup_value=Literal(value="x"),
+                target_column_name=Literal(value="Name"),
+                row_index=VbExpr(text="rowIndex"),
+                display_name="Lookup data table",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Lookup data table" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_with_missing_data_table_or_value_is_todo():
+    wf = _wrap([LookupDataTableNode(data_table=None, lookup_value=Literal(value="x"))])
+    code = generate_python(wf)
+    assert "# TODO: LookupDataTable with missing DataTable/LookupValue" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_with_no_outputs_is_todo():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_value=Literal(value="x"),
+                cell_value=None,
+                row_index=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: LookupDataTable with no output CellValue/RowIndex captured" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_with_data_column_reference_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_value=Literal(value="x"),
+                row_index=VbExpr(text="rowIndex"),
+                lookup_data_column=VbExpr(text="col"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: LookupDataTable with LookupDataColumn/TargetDataColumn set" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_with_column_index_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_value=Literal(value="x"),
+                row_index=VbExpr(text="rowIndex"),
+                lookup_column_index=Literal(value="0"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: LookupDataTable with LookupColumnIndex/TargetColumnIndex set" in code
+    _compiles(code)
+
+
+def test_lookup_data_table_with_missing_column_names_is_todo():
+    wf = _wrap(
+        [
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_value=Literal(value="x"),
+                row_index=VbExpr(text="rowIndex"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: LookupDataTable with missing LookupColumnName/TargetColumnName" in code
     _compiles(code)
 
 

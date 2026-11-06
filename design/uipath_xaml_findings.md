@@ -9283,6 +9283,48 @@ Activitiesパッケージバージョンで属性名・取りうる値の表記�
 実装候補として`design/uipath_feature_catalog.md`の「DataTableスキーマ
 解決パス」節に追記した。コード変更無し。
 
+## 196. `ui:LookupDataTable`を新規実装——知見195で「DataTable操作ファミリーの中で最も構造的に単純」と評価した候補を実装、単一セル値+行インデックスのみを返す構造が知見179の表現非統一性問題の影響を受けにくいことを実証
+
+知見195で「DataTable操作ファミリーの中で最も有望な次の実装候補」と
+評価した`ui:LookupDataTable`(GitHub code searchで197件ヒット)を
+実装した。`UiPath/skills`公式リポジトリのStudio実機ground-truth
+コーパス+実機(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+Developers`)で確認した構成は`DataTable`+`LookupColumnName`+
+`LookupValue`+`TargetColumnName`+`CellValue`(出力、実機では`<ui:
+LookupDataTable.CellValue><OutArgument x:TypeArguments="ui:
+GenericValue">...`というプロパティ要素形)+`RowIndex`(出力、実機では
+`[rowIndex]`というflat属性形)。`LookupColumnIndex`/`TargetColumnIndex`
+(列インデックス直接指定)・`LookupDataColumn`/`TargetDataColumn`
+(DataColumnオブジェクト参照、未モデル化)はground-truthにのみ存在し
+実機での使用例を一度も確認できなかったため、設定時は常に`# TODO`へ
+倒す。
+
+公式ドキュメント(docs.uipath.com)で`LookupValue`が見つからない場合
+`RowIndex`は`-1`を返す(ExcelのVLOOKUPに類似した挙動)ことを確認した
+——`CellValue`については見つからない場合の挙動は公式ドキュメントに
+明記が無かったため、`None`のまま(Pythonの未設定値)にする設計とした。
+
+実装自体は`row[column_name]`という名前ベースアクセス(知見183の
+`GetRowItem`の`ColumnName`分岐と同じ、dict行を前提にした素直な実装)
+で、DataTable全体を`for`文で1回走査して最初に一致した行の列値+
+インデックスを返す。知見195で予想した「単一のセル値+単一の行
+インデックスを返すだけなら、DataTable全体を読み直したり再構築
+したりしないため、知見179の表現非統一性問題(dict行/list行/空リストが
+活動ごとに混在)の影響を受けにくい」という見立てが実装を通じて
+実証できた——他のDataTable操作活動(`SortDataTable`等)と違い、列の
+並び順や全体のスキーマを一切追跡する必要が無かった。
+
+実機サンプルの属性構成(フラット属性形+プロパティ要素形の混在)で
+`parse_activity()`+`generate_python()`+`compile()`を確認し、さらに
+実際のPythonインタプリタでdict行のリストに対する検索ロジックを
+手動実行し、一致あり(行インデックス+セル値を正しく返す)・一致なし
+(`-1`+`None`を返す、公式ドキュメントの挙動と一致)の両方を確認した。
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`8件)、UiPath関連テスト全861件通過、リポジトリ
+全体で全1943件通過(28件skip、変化無し——知見196着手時点でリポジトリ
+全体は別セッションの並行作業により知見205まで進んでいたが、`design/
+uipath_xaml_findings.md`/本トランスパイラのコード自体には競合は無かった)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -76,6 +76,7 @@ from .types import (
     KillProcessNode,
     Literal,
     LoadImageNode,
+    LookupDataTableNode,
     LogMessageNode,
     MessageBoxNode,
     MoveFileNode,
@@ -739,6 +740,28 @@ def _parse_load_image(elem: etree._Element) -> LoadImageNode:
         file_name=_attr_expr(elem, "FileName"),
         image=_attr_expr(elem, "Image"),
         display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_lookup_data_table(elem: etree._Element) -> LookupDataTableNode:
+    cell_value = _attr_expr(elem, "CellValue") or _in_argument_property_expr(
+        elem, "CellValue"
+    )
+    row_index = _attr_expr(elem, "RowIndex") or _in_argument_property_expr(
+        elem, "RowIndex"
+    )
+    return LookupDataTableNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=_attr_expr(elem, "DataTable"),
+        lookup_column_name=_attr_expr(elem, "LookupColumnName"),
+        lookup_column_index=_attr_expr(elem, "LookupColumnIndex"),
+        lookup_data_column=_attr_expr(elem, "LookupDataColumn"),
+        lookup_value=_attr_expr(elem, "LookupValue"),
+        target_column_name=_attr_expr(elem, "TargetColumnName"),
+        target_column_index=_attr_expr(elem, "TargetColumnIndex"),
+        target_data_column=_attr_expr(elem, "TargetDataColumn"),
+        cell_value=cell_value,
+        row_index=row_index,
     )
 
 
@@ -2021,6 +2044,7 @@ _DISPATCH = {
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,
     (UI_NS, "LoadImage"): _parse_load_image,
+    (UI_NS, "LookupDataTable"): _parse_lookup_data_table,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

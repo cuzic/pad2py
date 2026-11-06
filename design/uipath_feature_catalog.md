@@ -239,10 +239,11 @@ resolverの新設が必要なケース。今回は見送ったが、同種のDat
 DataTable`/`AddDataColumn`/`RemoveDataColumn`/`SortDataTable`/
 `MergeDataTable`を実機サンプル+ground-truthコーパスで再調査した結果、
 一括保留ではなく活動ごとに難易度差があることが分かった。
-**次の実装候補として有望な順**: ①`LookupDataTable`(新規発見、
-`DataTable`+`LookupColumn(Index/Name)`+`LookupValue`+
+**次の実装候補として有望な順**: ①**(完了、知見196)** ~~`LookupDataTable`~~
+(新規発見、`DataTable`+`LookupColumn(Index/Name)`+`LookupValue`+
 `TargetColumn(Index/Name)`→単一セル値+行インデックスの出力のみで、
-列スキーマ全体を追跡しなくても対応できる見込み)②`GenerateDataTable`
+列スキーマ全体を追跡しなくても対応できる見込み)→実装済み、見立て通り
+表現非統一性問題の影響を受けなかった②`GenerateDataTable`
 (新規発見、テキストを区切り文字/固定幅でDataTableへ変換——既存の
 DataTableを読まず新規に構築するため出力表現を自分で選べる)
 ③`RemoveDataColumn`/`AddDataColumn`(スキーマ変更のみで行の値は読まない

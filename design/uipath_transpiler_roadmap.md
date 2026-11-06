@@ -2535,3 +2535,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`SortOrder`→`Order`、値`"Decending"`の誤字)も発見。
      `design/uipath_feature_catalog.md`のDataTableスキーマ解決パス節に
      追記。実装は見送った。
+
+154. **(完了、2026-11-06)** `ui:LookupDataTable`を新規実装(知見196):
+     知見195で最有望と評価したDataTable操作系の候補。`DataTable`+
+     `LookupColumnName`+`LookupValue`+`TargetColumnName`→`CellValue`+
+     `RowIndex`(見つからない場合`-1`、公式ドキュメントで確認)という
+     構成で、`row[column_name]`という名前ベースアクセス(知見183の
+     `GetRowItem`と同じ)で対応——単一セル値+行インデックスのみを
+     返す構造のため、知見179のDataTable表現非統一性問題の影響を
+     受けないことを実装を通じて実証した。`LookupColumnIndex`/
+     `TargetColumnIndex`/`LookupDataColumn`/`TargetDataColumn`は実機
+     未確認のため常にTODOへ倒す。実機XAML1件+合成データ+実際のPython
+     実行(一致あり/無しの両方)で確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`8件)、
+     UiPath関連テスト全861件通過、リポジトリ全体で全1943件通過。

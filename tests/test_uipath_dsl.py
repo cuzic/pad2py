@@ -64,6 +64,7 @@ from dump_daemon.uipath_dsl import (
     KillProcessNode,
     Literal,
     LoadImageNode,
+    LookupDataTableNode,
     LogMessageNode,
     MessageBoxNode,
     MoveFileNode,
@@ -1206,6 +1207,38 @@ def test_get_password_with_no_result_captured():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, GetPasswordNode)
     assert node.result is None
+
+
+def test_lookup_data_table_properties():
+    """知見196: `ui:LookupDataTable`(GitHub code searchで197件ヒット)。
+    実機`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`
+    で確認した`LookupColumnName`+`LookupValue`+`TargetColumnName`+
+    `CellValue`(プロパティ要素形の`OutArgument`)+`RowIndex`(flat属性)
+    の構成。"""
+    xml = (
+        f"<ui:LookupDataTable {_UI_XMLNS} "
+        'LookupColumnIndex="{x:Null}" LookupDataColumn="{x:Null}" '
+        'TargetColumnIndex="{x:Null}" TargetDataColumn="{x:Null}" '
+        'DataTable="[dt]" DisplayName="Lookup data table" '
+        'LookupColumnName="Name" LookupValue="John Gates" '
+        'RowIndex="[rowIndex]" TargetColumnName="Name">'
+        "<ui:LookupDataTable.CellValue>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[cellValue]</OutArgument>'
+        "</ui:LookupDataTable.CellValue>"
+        "</ui:LookupDataTable>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, LookupDataTableNode)
+    assert node.data_table == VbExpr(text="dt")
+    assert node.lookup_column_name == Literal(value="Name")
+    assert node.lookup_value == Literal(value="John Gates")
+    assert node.target_column_name == Literal(value="Name")
+    assert node.cell_value == VbExpr(text="cellValue")
+    assert node.row_index == VbExpr(text="rowIndex")
+    assert node.lookup_column_index is None
+    assert node.lookup_data_column is None
+    assert node.target_column_index is None
+    assert node.target_data_column is None
 
 
 def test_load_image_properties():

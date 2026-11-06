@@ -636,6 +636,44 @@ class LoadImageNode:
 
 
 @dataclass
+class LookupDataTableNode:
+    """`<ui:LookupDataTable>`(知見196、GitHub code searchで197件ヒット
+    ——知見195で再調査したDataTable操作ファミリーの中で最も構造的に
+    単純と判断した候補)。`UiPath/skills`公式リポジトリのStudio実機
+    ground-truthコーパス+実機(`PacktPublishing/Robotic-Process-
+    Automation-RPA-for-Developers`)で確認した構成は`DataTable`+
+    `LookupColumnName`+`LookupValue`+`TargetColumnName`+`CellValue`
+    (出力、実機では`<ui:LookupDataTable.CellValue><OutArgument
+    x:TypeArguments="ui:GenericValue">...`というプロパティ要素形)+
+    `RowIndex`(出力、実機では`[rowIndex]`というフラット属性形)。
+    `LookupColumnIndex`/`TargetColumnIndex`(列インデックス直接指定)・
+    `LookupDataColumn`/`TargetDataColumn`(DataColumnオブジェクト参照、
+    未モデル化)はground-truthにのみ存在し実機での使用例を一度も確認
+    できなかった——設定時は常に`# TODO`へ倒す。
+
+    「単一のセル値+単一の行インデックスを返すだけで、DataTable全体を
+    読み直したり再構築したりしない」という点で、知見179が指摘した
+    `DataTable`表現の非統一性問題(dict行/list行/空リストが活動ごとに
+    混在)の影響を受けにくい——`row[column_name]`という名前ベースの
+    アクセス(知見183の`GetRowItem`の`ColumnName`分岐と同じ、dict行を
+    前提にした素直な実装)で対応する。公式ドキュメントで確認済み:
+    `LookupValue`が見つからない場合`RowIndex`は`-1`を返す(Excelの
+    VLOOKUPに類似した挙動)。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    lookup_column_name: Expr = None
+    lookup_column_index: Expr = None
+    lookup_data_column: Expr = None
+    lookup_value: Expr = None
+    target_column_name: Expr = None
+    target_column_index: Expr = None
+    target_data_column: Expr = None
+    cell_value: Expr = None
+    row_index: Expr = None
+
+
+@dataclass
 class SaveImageNode:
     """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
     `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
@@ -2356,6 +2394,7 @@ Node = (
     | GetAttributeNode
     | GetPasswordNode
     | LoadImageNode
+    | LookupDataTableNode
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode

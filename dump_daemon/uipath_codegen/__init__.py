@@ -114,6 +114,7 @@ from ..uipath_dsl.types import (
     KillProcessNode,
     Literal,
     LoadImageNode,
+    LookupDataTableNode,
     LogMessageNode,
     MessageBoxNode,
     MoveFileNode,
@@ -595,6 +596,8 @@ def _generate_node(
         return _generate_get_password(node, indent)
     if isinstance(node, LoadImageNode):
         return _generate_load_image(node, indent)
+    if isinstance(node, LookupDataTableNode):
+        return _generate_lookup_data_table(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
@@ -1825,6 +1828,70 @@ def _generate_load_image_body(node: LoadImageNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{target} = PIL.Image.open({file_name})"]
+
+
+# 知見196: `ui:LookupDataTable`。単一セル値+単一行インデックスだけを
+# 返すため、知見179のDataTable表現非統一性問題の影響を受けにくい——
+# `row[column_name]`という名前ベースアクセス(知見183の`GetRowItem`の
+# `ColumnName`分岐と同じ、dict行を前提にした素直な実装)で対応する。
+# 見つからない場合`RowIndex`は`-1`(公式ドキュメントで確認済み、Excel
+# のVLOOKUPに類似)。
+def _generate_lookup_data_table(node: LookupDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_lookup_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_lookup_data_table_body(node: LookupDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None or node.lookup_value is None:
+        return [f"{prefix}# TODO: LookupDataTable with missing DataTable/LookupValue"]
+    if node.cell_value is None and node.row_index is None:
+        return [f"{prefix}# TODO: LookupDataTable with no output CellValue/RowIndex captured"]
+    if node.lookup_data_column is not None or node.target_data_column is not None:
+        return [
+            f"{prefix}# TODO: LookupDataTable with LookupDataColumn/"
+            "TargetDataColumn set — DataColumn object reference not "
+            "modeled, refusing to guess"
+        ]
+    if node.lookup_column_index is not None or node.target_column_index is not None:
+        return [
+            f"{prefix}# TODO: LookupDataTable with LookupColumnIndex/"
+            "TargetColumnIndex set — column-index-based lookup not "
+            "confirmed in real samples, refusing to guess"
+        ]
+    if node.lookup_column_name is None or node.target_column_name is None:
+        return [
+            f"{prefix}# TODO: LookupDataTable with missing LookupColumnName/"
+            "TargetColumnName"
+        ]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    lookup_column_name = _render_value_or_todo(node.lookup_column_name, prefix, todo)
+    lookup_value = _render_value_or_todo(node.lookup_value, prefix, todo)
+    target_column_name = _render_value_or_todo(node.target_column_name, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_lookup_row_index = -1",
+        f"{prefix}_lookup_cell_value = None",
+        f"{prefix}for _lookup_i, _lookup_row in enumerate({data_table}):",
+        f"{prefix}{INDENT}if _lookup_row[{lookup_column_name}] == {lookup_value}:",
+        f"{prefix}{INDENT * 2}_lookup_row_index = _lookup_i",
+        f"{prefix}{INDENT * 2}_lookup_cell_value = _lookup_row[{target_column_name}]",
+        f"{prefix}{INDENT * 2}break",
+    ]
+    if node.row_index is not None:
+        row_index = _render_value_or_todo(node.row_index, prefix, todo)
+        if todo:
+            return todo
+        lines.append(f"{prefix}{row_index} = _lookup_row_index")
+    if node.cell_value is not None:
+        cell_value = _render_value_or_todo(node.cell_value, prefix, todo)
+        if todo:
+            return todo
+        lines.append(f"{prefix}{cell_value} = _lookup_cell_value")
+    return lines
 
 
 # 知見179: `ui:SaveImage`(`LoadImage`知見178の正反対)。`Image`
