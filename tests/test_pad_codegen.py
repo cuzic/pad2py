@@ -4039,3 +4039,56 @@ def test_generate_python_from_replace_text_with_regex_converts() -> None:
     namespace: dict[str, object] = {}
     exec(code, namespace)
     assert namespace["R"] == "a#b#"
+
+
+@pytest.mark.parametrize(
+    ("use_salt", "use_iv"),
+    [(True, False), (False, True), (True, True)],
+)
+def test_generate_python_from_cryptography_encrypt_decrypt_text_with_salt_iv_round_trips(
+    use_salt: bool, use_iv: bool
+) -> None:
+    # design/dsl_format_findings.md 知見139・143: `ActionSelectorBase`一括列挙監査を
+    # Cryptography.Actions.dllに適用して発見した、`EncryptTextWithAES`/
+    # `DecryptTextWithAES`のUseSalt/UseIV兄弟セレクタ。暗号化側はSalt/
+    # InitializationVectorを生成結果として出力し(`EncryptResult.salt`/
+    # `.initialization_vector`)、復号側はそれを入力として受け取る——という非対称性
+    # (知見143)を、実際にEncrypt→Decryptの往復をexec()して検証する。
+    action_suffix = ("UseSalt" if use_salt else "") + ("UseIV" if use_iv else "")
+    if use_salt and use_iv:
+        action_suffix = "UseSaltAndIV"
+    encrypt_outputs = "EncryptedText=> Enc"
+    if use_salt:
+        encrypt_outputs += " Salt=> SaltVal"
+    if use_iv:
+        encrypt_outputs += " InitializationVector=> IVVal"
+    decrypt_inputs = ""
+    if use_salt:
+        decrypt_inputs += " Salt: SaltVal"
+    if use_iv:
+        decrypt_inputs += " InitializationVector: IVVal"
+    dsl = (
+        "SET Key TO $'''mysecret'''\n"
+        f"Cryptography.EncryptText.EncryptTextWithAES{action_suffix} "
+        "Encoding: Cryptography.EncryptionEncoding.Unicode "
+        "TextToEncrypt: $'''hello world''' EncryptionKey: Key "
+        f"PaddingMode: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+        f"{encrypt_outputs}\n"
+        f"Cryptography.DecryptText.DecryptTextWithAES{action_suffix} "
+        "Encoding: Cryptography.EncryptionEncoding.Unicode "
+        f"TextToDecrypt: Enc DecryptionKey: Key{decrypt_inputs} "
+        "Padding: Cryptography.PaddingMode.PKCS7 KeySize: Cryptography.AESKeySize.Bits256 "
+        "DecryptedText=> Dec"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["Dec"] == "hello world"
+    assert namespace["Enc"] != "hello world"
+    if use_salt:
+        assert namespace["SaltVal"]
+    if use_iv:
+        assert namespace["IVVal"]

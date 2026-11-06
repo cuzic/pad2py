@@ -448,10 +448,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
         の対応検証が必要なため見送った(`dotnet_format_to_strftime()`は既に実装済み、
         `datetime_to_text()`/`text_to_datetime()`が`custom_format`引数を受け付けるかの
         確認が次の作業)。
-    - `Cryptography.Actions.dll`(今回はAES暗号/復号の16セレクタのみ、Salt/IV組み合わせ
-      4パターン×Encrypt/Decrypt×Text/File=16件): 既存結線(知見111、鍵無しの
-      `HashText`/`HashFromFile`のみ)とは別の、`EncryptTextWithAES`等AES専用セレクタ群。
-      `pad_action_lib.cryptography_actions`のAES実装状況を要確認。
+    - [x] `Cryptography.Actions.dll`(AES暗号/復号16セレクタ)。
+      ✅ **決着(知見143)**: Salt/IV組み合わせ系12件(Encrypt/Decrypt×Text/File×
+      UseSalt/UseIV/UseSaltAndIV)を新規結線完了。既存の`encrypt_text()`/
+      `encrypt_from_file()`の`use_salt`/`use_iv`引数、`decrypt_text()`/
+      `decrypt_to_file()`の`salt`/`iv`引数がそのまま対応できた。実装中に
+      `node.output_var`の多重出力での不定動作による自己発見バグも即座に修正した
+      (`output_vars`辞書の明示キー指定に変更)。
     - `Web.Actions.dll`(46セレクタ、現存既知結線は`Download`本体1件のみ):
       `Download`系9(通常/ToFile/ToFolder×UseAuth/UsePost組み合わせ)・
       `InvokeSoapService`系2(通常/UseAuth)・`InvokeWebService`系35

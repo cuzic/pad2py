@@ -2490,3 +2490,13 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 **既存バグの発見・修正**: VM上で`SubtextStartIndex`/`SubtextLength`の実際の列挙値を確認したところ、`StartOfText`/`CharacterPosition`・`EndOfText`/`NumberOfChars`だと判明した——既存の`Text.GetSubtext.GetSubtext`結線が使っていた`"AtSpecificCharacter"`/`"SpecificLength"`という文字列はこれと**一致していなかった**(実在しない列挙値名だった)。幸い`get_subtext()`の分岐ロジックが`== "StartOfText"`/`== "EndOfText"`という等値判定のみ(どちらにも一致しなければ無条件に「カスタム」側へ進む)だったため、間違った文字列でも偶然挙動には影響していなかった——正しい列挙値名に修正した(`tests/test_pad_codegen_tier1_actions.py`の対応するアサーションも合わせて更新)。
 
 テストは`tests/test_pad_codegen.py`に13件追加し、全て実際に`exec()`して出力値まで検証した。
+
+## 143. 知見139のCryptography.Actions.dll分(AES Salt/IV系12セレクタ)を結線完了——自己発見バグ(`node.output_var`の多重出力での不定動作)も修正
+
+知見139でCryptography.Actions.dllの未結線セレクタ(AES暗号/復号16セレクタ中12件、Salt/IV組み合わせ系)を確認済みだったが結線は未着手だった。VM上で`EncryptTextAction`/`EncryptFromFileAction`/`DecryptTextAction`/`DecryptToFileAction`各クラスのプロパティを確認したところ、いずれも`UseSalt`/`UseIV`(Boolean)・`Salt`/`InitializationVector`(String)プロパティを持ち、各兄弟セレクタ(`...UseSalt`/`...UseIV`/`...UseSaltAndIV`)はこの2つのBooleanの組み合わせをセレクタ自体で固定すると確定した。既存の`encrypt_text()`/`encrypt_from_file()`の`use_salt`/`use_iv`引数、`decrypt_text()`/`decrypt_to_file()`の`salt`/`iv`引数がそのまま対応できたため、12件全て新規結線した。
+
+**暗号化/復号の非対称性**: 暗号化側(`EncryptResult.salt`/`.initialization_vector`)はSalt/IVを**ランダム生成した結果として出力**するが、復号側はSalt/IVを**入力として受け取る**(暗号化時に生成された値を再現する必要があるため)。
+
+**自己発見バグ(実装中に発見・即修正)**: 最初の実装で、Encrypt側の主出力(`EncryptedText`)を`node.output_var`から取得していたが、`node.output_var`は`pad_dsl.line_parser`のコメントの通り「複数の`=>`出力がある場合、最後に見つかったものを保持する」という後方互換用の単一値アクセサであり、Encrypt+Salt+IVのように複数の出力バインディングがある場合は**意図しない方(最後に見つかったSalt/IV)を指してしまう**。実際にexec()するテストを書いた段階で`NameError: name 'Enc' is not defined`として即座に検出でき、`node.output_vars.get("EncryptedText")`(辞書の明示的なキー指定)に修正した——`CropText`/`ParseText`等の既存の多重出力アクションが最初から`output_vars`辞書のみを使っていた理由を、自分で同じ罠を踏んで再確認した形になった。
+
+テストは`tests/test_pad_codegen.py`に、UseSalt/UseIV/UseSaltAndIVの3パターンでEncrypt→Decryptの往復を実際に`exec()`し、復号結果が元の平文に一致することまで検証するテストを追加した。
