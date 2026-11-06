@@ -459,6 +459,34 @@ def test_get_full_text_reuses_get_text_node():
     assert node.display_name == "Get Full Text 'editable text'"
 
 
+def test_get_value_reuses_get_text_node():
+    """知見167: `ui:GetValue`(`ui:GetText`の裏のCLR型名そのものがタグ名
+    として直列化される実例、GitHub code searchで1262件ヒット)。
+    `DisplayName`は常に`"Get Text '...'"`になり(`HarshadRanganathan/
+    uipath-learning`等の実機XAMLで確認)、意味論が`GetText`そのものの
+    ため`full_text=False`(既定)のまま同じ`GetTextNode`を返す——
+    `GetFullText`とは出力プロパティ名(`Value`、`Text`ではない)のみ
+    異なる。"""
+    xml = (
+        f"<ui:GetValue {_UI_XMLNS} "
+        'DisplayName="Get Text \'text  6/6/2016\'" ContinueOnError="{x:Null}">'
+        "<ui:GetValue.Target>"
+        "<ui:Target Selector=\"&lt;ctrl role='text' /&gt;\" />"
+        "</ui:GetValue.Target>"
+        "<ui:GetValue.Value>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[inv_date]</OutArgument>'
+        "</ui:GetValue.Value>"
+        "</ui:GetValue>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetTextNode)
+    assert node.full_text is False
+    assert "role='text'" in node.selector
+    assert node.text == VbExpr(text="inv_date")
+    assert node.continue_on_error is None
+    assert node.display_name == "Get Text 'text  6/6/2016'"
+
+
 def test_select_item_selector_and_alter_if_disabled():
     """知見112: `ui:SelectItem`。`UiPath/skills`公式リポジトリの実機保存済み
     XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/

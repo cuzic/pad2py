@@ -2146,3 +2146,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      生成されることを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全
      675件通過、リポジトリ全体で全1715件通過。
+
+125. **(完了、2026-11-06)** `ui:GetValue`(`ui:GetText`の裏のCLR型名
+     そのものがタグ名として直列化される実例、GitHub code searchで
+     1262件ヒット)を新規実装(知見167): `DisplayName`が常に`"Get
+     Text '...'"`になり意味論が`GetText`そのもの(出力プロパティ名
+     のみ`Text`ではなく`Value`)——`ui:ForEachRow`/`ui:TypeSecureText`/
+     `ui:WindowScope`/`ui:BrowserScope`/`ui:SetFocus`に続く4回目の
+     既存ノード型(`GetTextNode`、`full_text=False`のまま)再利用
+     パターン。`_DISPATCH`に`_parse_get_value`を1行追加するだけで
+     `types.py`・`uipath_codegen/__init__.py`は無変更。副産物として
+     `ui:OpenBrowser`(`OpenApplication`と同種の未実装活動)を発見し、
+     次の棚卸し候補として記録した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件)、UiPath関連テスト全676件通過、
+     リポジトリ全体で全1716件通過。

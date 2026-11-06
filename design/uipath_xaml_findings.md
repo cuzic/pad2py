@@ -7909,12 +7909,57 @@ automation effect to reproduce`が正しく生成されることを確認した
 test_uipath_codegen.py`3件)、UiPath関連テスト全675件通過、
 リポジトリ全体で全1715件通過。
 
+## 167. `ui:GetValue`(`ui:GetText`の裏のCLR型名そのものがタグ名として直列化される実例)を新規実装——4回目の`GetTextNode`再利用
+
+知見164で発見した`<GetValue ContinueOnError="{x:Null}" />`という
+タグ名自体が`GetValue`になる実例(GitHub code searchで1262件ヒット)
+を調査し、実装した。知見111の`GetTextNode`docstringは「公式ドキュメ
+ントは裏のCLR型を`UiPath.Core.Activities.GetValue`(プロパティ名は
+`Value`)と記載しているが、実機XAML上の属性名は常に`Text`」という
+ドキュメントの用語と実装の食い違いを記録していたが、今回の発見は
+それとは別に**タグ名自体が本当に`GetValue`になる**実例——`ui:`
+プレフィックス付きで`UI_NS`名前空間内のタグとして確認(`PakamTharunReddy/
+RPA`の初回発見時は見落としていたが、`ui:`プレフィックスは正しく
+存在していた)。
+
+実機5件(`HarshadRanganathan/uipath-learning`・`cameronmcnz/
+uipath-tutorials`・`allenlooplee/RPABook`・`PacktPublishing/
+Robotic-Process-Automation-Projects`)で構造を確認した結果、
+`DisplayName`が常に`"Get Text '...'"`になり(意味論が`GetText`
+そのもの、`GetFullText`のような「可視テキストのみ」と「フル
+テキスト」の違いは無い)、出力プロパティ名のみ`Text`ではなく
+`Value`(プロパティ要素形、知見159の`_in_argument_property_expr`で
+抽出)という違いだった。属性は`ContinueOnError`+`Target`のみ——
+`DelayBefore`/`DelayMS`は実機で一度も確認できなかった(`ui:GetText`
+の属性形とは違い常に省略されるらしい)。意味論が`GetText`そのもの
+なので`full_text=False`(既定)のまま同じ`GetTextNode`を返す——
+`ui:ForEachRow`/`ui:TypeSecureText`/`ui:WindowScope`/`ui:BrowserScope`/
+`ui:SetFocus`に続く、既存ノード型を再利用するだけで実装できた4回目の
+「同義の別タグ名」パターン。
+
+`dump_daemon/uipath_dsl/xaml_tree.py`に`_parse_get_value`
+(`_target_selector`+`_in_argument_property_expr`を再利用)+
+`(UI_NS, "GetValue")`の`_DISPATCH`登録のみ——`types.py`・
+`uipath_codegen/__init__.py`は一切変更していない(新しいフィールドも
+不要)。実機XAML3件で`generate_python()`+`compile()`を実行したが、
+いずれも`ui:AnchorBase`・`ui:OpenBrowser`という異なる未実装のコン
+テナ活動の子としてネストされており到達不能だったため(今回のスコープ
+外の既存の別課題)、成功パス自体は単体テストで直接確認した。副産物
+として`ui:OpenBrowser`(`BrowserType`/`Hidden`/`NewSession`/`Private`/
+`UiBrowser`/`Url`属性を確認、`ui:OpenApplication`(知見154)と同種の
+「実際に新しいプロセス(ブラウザ)を起動する」活動と推定)という
+未実装活動を発見し、次の棚卸し候補として記録する。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全676件通過、
+リポジトリ全体で全1716件通過。
+
 ## 今後の調査候補(未着手)
-- **(新規、知見164で発見)** `<GetValue ContinueOnError="{x:Null}" />`
-  というタグ名自体が`GetValue`になる実例(`PakamTharunReddy/RPA`の
-  `Browser_fillvalues.xaml`で発見)——属性名・`Target`構造が未確認
-  (知見111の`GetTextNode`は`ui:GetText`タグのみ対応、`Text`属性名も
-  未確認のこのタグ名では動かない)。次の調査候補として記録する
+- **(新規、知見167で発見)** `ui:OpenBrowser`(`BrowserType`/`Hidden`/
+  `NewSession`/`Private`/`UiBrowser`/`Url`属性を確認、`allenlooplee/
+  RPABook`の実機XAMLで遭遇)が未実装——`ui:OpenApplication`(知見154)
+  と同種の「実際に新しいプロセス(ブラウザ)を起動する」活動と推定
+  されるが、`subprocess.Popen`で単純にブラウザexeを起動するだけで
+  `Url`への自動ナビゲーションまで再現できるかは未確認。次の棚卸し
+  候補として記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

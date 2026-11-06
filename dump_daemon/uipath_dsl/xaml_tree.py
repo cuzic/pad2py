@@ -748,6 +748,29 @@ def _parse_get_full_text(elem: etree._Element) -> GetTextNode:
     )
 
 
+def _parse_get_value(elem: etree._Element) -> GetTextNode:
+    """知見167: `ui:GetValue`(`ui:GetText`の裏のCLR型名そのものが
+    タグ名として直列化される実例、GitHub code searchで1262件ヒット
+    ——知見111が記録していた「公式ドキュメントは裏のCLR型を`UiPath.
+    Core.Activities.GetValue`と記載しているが実機XAML上の属性名は
+    常に`Text`」という話とは別に、**タグ名自体が`GetValue`になる**
+    実例を知見164で発見した)。`DisplayName`は常に`"Get Text '...'"`
+    になり(`HarshadRanganathan/uipath-learning`等の実機XAMLで確認)、
+    `GetFullText`(知見159)とは違い意味論が`GetText`そのもの(可視
+    テキストのみ)なので`full_text=False`(既定)のまま同じ`GetTextNode`
+    を返す。出力プロパティ名は`Text`ではなく`Value`(`_in_argument_
+    property_expr`、知見159と同じプロパティ要素形)。実機確認した
+    属性は`ContinueOnError`+`Target`のみ——`DelayBefore`/`DelayMS`は
+    実機で一度も確認できなかった(`ui:GetText`の属性形とは違い、常に
+    省略されるらしい)。"""
+    return GetTextNode(
+        selector=_target_selector(elem),
+        display_name=_attr(elem, "DisplayName"),
+        text=_in_argument_property_expr(elem, "Value"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
 def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     selector = _target_selector(elem)
     return SelectItemNode(
@@ -1496,6 +1519,7 @@ _DISPATCH = {
     (UI_NS, "SendHotkey"): _parse_send_hotkey,
     (UI_NS, "GetText"): _parse_get_text,
     (UI_NS, "GetFullText"): _parse_get_full_text,
+    (UI_NS, "GetValue"): _parse_get_value,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,
