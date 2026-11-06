@@ -587,6 +587,24 @@ def test_split_with_two_args_renders_as_str_split():
     _compiles(code)
 
 
+def test_convert_todatetime_is_todo_with_clear_message_not_misleading_chain_error():
+    """知見143: `Convert.ToDateTime(value)`(`KeerthikaBaskar/
+    220701126-RPA-LAB`の実機XAML`Convert.ToDateTime(str_Date).
+    ToString`で発見)。カルチャ依存の日付書式解析のため推測せず
+    `# TODO`へ倒す——Tier1分岐を設ける前は、`_render_func_call`末尾の
+    素の変数連鎖フォールバックへ誤って落ち、`.ToDateTime`を`Convert`
+    という変数へのメソッド呼び出しと誤認した分かりにくいエラーに
+    なっていた(診断メッセージの品質のみの改善、変換ロジックは追加
+    していない)。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Convert.ToDateTime(y).ToString"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: unresolved VB expression: Convert.ToDateTime" in code
+    assert "unsupported chained method call" not in code
+    _compiles(code)
+
+
 def test_split_with_one_arg_is_todo_not_guessed():
     """知見126: `Delimiter`省略時の既定値(半角スペース)は未確認のため
     1引数形は見送る。"""

@@ -918,6 +918,25 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("File.ReadAllBytes expects exactly 1 argument")
         return f"open({args[0]}, 'rb').read()"
+    if key == "convert.todatetime":
+        # 知見143: `Convert.ToDateTime(value)`(`KeerthikaBaskar/
+        # 220701126-RPA-LAB`の実機XAML`Convert.ToDateTime(str_Date).
+        # ToString`で発見)。`Convert.ToDateTime(String)`は.NETの
+        # 現在のカルチャの日付書式規則に依存した解析(カルチャ非依存の
+        # 固定書式は無い)で、実行環境のロケール次第で解釈が変わりうる
+        # ——Pythonの`datetime.strptime`は明示的な書式文字列が必要で、
+        # 元の文字列がどの書式か(`"08/26/2021"`はMM/dd/yyyyかdd/MM/yyyy
+        # か)を実機データだけから確定できないため、推測せず明示的に
+        # `# TODO`へ倒す(このTier1分岐を設けた理由は、`_render_func_call`
+        # 末尾の素の変数連鎖フォールバックへ誤って落ちると`.ToDateTime`
+        # を`Convert`という変数へのメソッド呼び出しと誤認した分かりにく
+        # いエラーメッセージになってしまうため——診断メッセージの品質
+        # のみを改善する変更で、変換ロジックは追加しない)。
+        raise NotImplementedError(
+            "Convert.ToDateTime(value) depends on the current culture's date "
+            "format, which cannot be determined from static analysis — "
+            "refusing to guess the format string"
+        )
     if key == "file.getlastwritetime":
         # 知見142: `System.IO.File.GetLastWriteTime(path)`
         # (`CarmenTheodoraCraciun/DailyMealWithGroceryList`の実機XAML

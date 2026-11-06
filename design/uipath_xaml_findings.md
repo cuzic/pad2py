@@ -6792,6 +6792,48 @@ days`に対応するはず)——この3つが揃わないと意味のある変�
 `datetime`検出を追加。`tests/test_uipath_codegen.py`に1件追加、
 UiPath関連テスト全539件通過、リポジトリ全体で全1470件通過。
 
+## 143. `Convert.ToDateTime`の診断メッセージを改善(でっち上げず明示的な理由を表示)、`.Split(文字配列)(添字)`の多重未解決ギャップを確認(未使用の新規21リポジトリでの実機検証、知見142と同種の「複数ギャップの組み合わせ」の追加確認、VM不使用)
+
+知見117〜142の手法を未使用の新規21リポジトリへ適用した。`compile()`
+検証でも構文エラーは0件。
+
+**改善: `Convert.ToDateTime`の診断メッセージ**(`KeerthikaBaskar/
+220701126-RPA-LAB`の実機XAML`Convert.ToDateTime(str_Date).ToString`で
+発見)。`Convert.ToDateTime(String)`は.NETの現在のカルチャの日付書式
+規則に依存した解析(カルチャ非依存の固定書式は存在しない)で、実機の
+`"08/26/2021"`がMM/dd/yyyyかdd/MM/yyyyかを静的解析だけから確定でき
+ない——Pythonの`datetime.strptime`は明示的な書式文字列が必要なため、
+推測せず`# TODO`へ倒す判断自体は正しい。しかし修正前は、`convert.
+todatetime`がTier1確認済み静的メソッド一覧に無かったため知見127の
+「素の変数への連鎖呼び出し」フォールバックへ誤って落ち、「`Convert`
+という変数の`.ToDateTime`メソッド呼び出し」と誤認した分かりにくい
+エラーメッセージ(`unsupported chained method call: .ToDateTime(...)`)
+になっていた——`convert.todatetime`をTier1に明示的に追加し、カルチャ
+依存のため推測しないという理由を明確に示す専用の`# TODO`メッセージへ
+差し替えた(変換ロジックは追加していない、診断メッセージの品質のみの
+改善)。
+
+**確認(コード変更無し): `.Split(文字配列)(添字)`の多重未解決ギャップ**
+(`MU-Neha/CS19P21-ARPA`の実機XAML`StrText.Split(Environment.NewLine.
+ToCharArray)(0)`で発見)。知見142の`DateTime`演算+`.Days`と同種の、
+複数の別々の未解決ギャップが連鎖した複合ケースと判明した——(1)
+`Environment.NewLine`という静的プロパティ未対応(知見140の`Environment.
+CurrentDirectory`と同種だが別の名前)、(2)`.ToCharArray`(文字配列への
+変換、Pythonの`list(s)`に対応するはず)未対応、(3)`.Split(文字配列)`
+という、既存の確認済み`Split(文字列, 区切り文字列)`(知見126)とは
+異なるオーバーロード(配列中のいずれかの文字で分割、`str.split(sep)`
+とは意味論が違う)未対応、(4)さらにその結果への`(0)`という追加の
+呼び出し直後の添字アクセス——これは`uipath_expr`文法が全く構文解析
+できない(`tree=None`)新しい構文領域(知見74の「関数呼び出し後に
+さらに添字アクセスする」形、グラマー上`postfix`規則が二重の括弧呼び出し
+を許していない)。4つが連鎖しているため、`File.GetLastWriteTime`の
+ような単発の追加とは規模が違う——今回は見送り、将来まとめて設計する
+価値がある複合ケースとして記録する。
+
+`dump_daemon/uipath_codegen/render.py`に`convert.todatetime`分岐
+(明示的な`# TODO`decline)を追加。`tests/test_uipath_codegen.py`に
+1件追加、UiPath関連テスト全540件通過、リポジトリ全体で全1471件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
