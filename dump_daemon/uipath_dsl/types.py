@@ -173,6 +173,29 @@ class ForEachNode:
     <ui:ForEach.Body><ActivityAction>...<Sequence DisplayName="Body">...
     </Sequence></ActivityAction></ui:ForEach.Body></ui:ForEach>`(知見5)。
     `item_var`は`DelegateInArgument`の`Name`。
+
+    知見155追記: 基本WF版`System.Activities.Statements.ForEach<T>`
+    (`ui:`プレフィックス無し、`WF_NS`)もパースして同じ`ForEachNode`へ
+    変換する——UiPathプログラマがVB式ベースのループ(`Directory.
+    GetFiles(...)`/`JArray.Parse(...)`/`.AsEnumerable()`等)を書く際に
+    `ui:ForEach`ではなく基本WF版を直接使う実例を5件以上実機確認した
+    (`plaah/web-application-with-rpa-dhl`・`R1zzabh/signalforge`・
+    `rufoabrahamguyo/sow-calix`・`NihadVeliyev/Student-Placement-
+    Eligibility-Automation-using-UiPath-and-Excel`・`EnnioArnold/
+    Dispatcher-Framework`)。構造は`ui:ForEach`と全く同じ
+    `ActivityAction`+`DelegateInArgument`だが、`Body`がContent
+    Property(XAMLで省略可能な唯一のプロパティ)のため、`<ForEach.Body>`
+    での明示ラップ(`R1zzabh/signalforge`)と、`<ForEach>`直下に
+    `ActivityAction`を直接子として置く暗黙形(他4件)の両方が実在する
+    ——`_parse_for_each`が両形式に対応する。なお`AI-Dep/
+    AI-Antigravity`の実機XAML(`CurrentItem`を属性として直接持つ形、
+    `ActivityAction`無し)も発見したが、これは`ForEach<T>`の実際の
+    .NET API(`CurrentItem`プロパティ自体が存在しない)と矛盾するため
+    非標準(AIが生成した合成コードの可能性が高い)と判断し、実装の
+    根拠には採用しなかった——Microsoft公式サンプル(`dotnet/samples`)
+    とTFS標準ビルドテンプレート(`microsoft/sql-server-samples`)で
+    確認した本来の`ActivityAction`形のみを「確認済みの実機構造」として
+    採用した。
     """
 
     item_var: str

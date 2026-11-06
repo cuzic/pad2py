@@ -1959,3 +1959,25 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`9件)、UiPath関連テスト全620件通過、
      リポジトリ全体で全1648件通過。
+
+113. **(完了、2026-11-06)** 基本WF版`ForEach<T>`(`ui:ForEach`とは別の
+     `WF_NS`のForEach)を新規実装(知見155——知見151で発見した「子を
+     持つスコープ活動が軒並み未実装」パターンの最後の1件): 構造は
+     `ui:ForEach`(知見5)と完全に同じ`ActivityAction`+
+     `DelegateInArgument`だが、`Body`がContent Propertyのため明示
+     `.Body`ラップと暗黙形(直接子として`ActivityAction`を置く)の
+     両方が実機で確認できた——実UiPathプロジェクト5件で「VB式ベース
+     のループを`ui:ForEach`ではなく基本WF版で直接書く」という実在
+     パターンを確認。既存の`ForEachNode`型・`_generate_for_each`を
+     そのまま再利用し、`_parse_for_each`に`.Body`不在時のフォール
+     バックを追加して`(WF_NS, "ForEach")`を`_DISPATCH`へ追加登録
+     するだけで済んだ。調査の過程で、最初に参照した実機XAML
+     (`AI-Dep/AI-Antigravity`)の`CurrentItem`属性直接形が.NET公式API
+     と矛盾する非標準形(AI生成合成コードの疑い)と判明し、実装の
+     根拠には採用しなかった(Microsoft公式サンプル+複数の独立した
+     実プロジェクトで確認した本来の`ActivityAction`形のみを採用)。
+     副産物として`ForEach.Values`の変換失敗時の挙動が`If`/`While`/
+     `Switch`と同じ厳格な例外伝播モードになっている(ドキュメント上
+     未確定の設計判断)ことを発見し、次の調査候補として記録した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件)、UiPath関連テスト
+     全622件通過、リポジトリ全体で全1656件通過。

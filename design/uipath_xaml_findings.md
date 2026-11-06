@@ -7349,14 +7349,89 @@ TimeoutMS/ContinueOnError各declineパターン・DisplayName・子TODO
 透過を個別にテスト)、UiPath関連テスト全620件通過、リポジトリ全体で
 全1648件通過。
 
+## 155. 基本WF版`ForEach<T>`(`ui:ForEach`とは別の`WF_NS`のForEach)を新規実装——1件の実機XAMLが非標準(AI生成合成コードの疑い)だったため実装の根拠から除外した判断含む
+
+知見151で発見した「子を持つスコープ活動が軒並み未実装」というパターン
+の最後の1件、基本WF版`System.Activities.Statements.ForEach<T>`
+(`ui:`プレフィックス無し、`WF_NS`)を実装した。
+
+当初、知見151で発見した`AI-Dep/AI-Antigravity`の実機XAML
+(`FA_CS_Asset_Entry.xaml`)を構造調査の出発点にしたところ、`<ForEach
+x:TypeArguments="ui:DataRow" Values="[AssetData.Rows]"
+CurrentItem="[CurrentRow]">`という、`CurrentItem`を直接属性として
+持ち`ActivityAction`/`DelegateInArgument`を一切使わない形だった——
+しかし.NET公式の`ForEach<T>`APIには`CurrentItem`というプロパティ自体
+が存在しない(`Body: ActivityAction<T>`と`Values`のみ)ため、この
+直接属性形は本来の`ForEach<T>`の実際のシリアライズ形式と矛盾する。
+Microsoft公式サンプル(`dotnet/samples`の`GetEmployeesByPositionTypes.
+xaml`)とTFS標準ビルドテンプレート(`microsoft/sql-server-samples`の
+`DefaultTemplate.xaml`)で本来の`ActivityAction`+`DelegateInArgument`
+形を確認し、さらに実際のUiPathプロジェクト5件(`plaah/
+web-application-with-rpa-dhl`・`R1zzabh/signalforge`・
+`rufoabrahamguyo/sow-calix`・`NihadVeliyev/Student-Placement-
+Eligibility-Automation-using-UiPath-and-Excel`・`EnnioArnold/
+Dispatcher-Framework`)で「UiPathプログラマがVB式ベースのループ
+(`Directory.GetFiles(...)`/`JArray.Parse(...)`/`.AsEnumerable()`等)を
+`ui:ForEach`ではなく基本WF版`ForEach<T>`で直接書く」という実在する
+パターンを確認した。`AI-Dep/AI-Antigravity`というリポジトリ名自体が
+AI生成コードを強く示唆しており、.NET APIと矛盾する非標準の直接属性形
+は「でっち上げるよりは安全」の方針に照らして実装の根拠から除外し、
+Microsoft公式+複数の独立した実UiPathプロジェクトで確認した本来の
+`ActivityAction`形のみを採用した——「実機確認済み」の基準として、
+出典の信頼性自体を検証する必要があるという教訓になった。
+
+構造は`ui:ForEach`(知見5)と完全に同じ`ActivityAction`+
+`DelegateInArgument`だが、`Body`がContent Property(XAMLで省略可能な
+唯一のプロパティ)のため、`<ForEach.Body>`での明示ラップ
+(`R1zzabh/signalforge`)と、`<ForEach>`直下に`ActivityAction`を直接
+子として置く暗黙形(他4件、より高頻度)の両方が実在する。既存の
+`ForEachNode`型・既存の`_generate_for_each`コード生成はそのまま
+再利用できるため、新しいノード型やコード生成関数は追加せず、
+`_parse_for_each`に「`.Body`が見つからなければ`elem`自身を対象に
+`ActivityAction`を探す」フォールバックを追加し、`_DISPATCH`に
+`(WF_NS, "ForEach"): _parse_for_each`を追加登録するだけで済んだ。
+
+実機XAML(`R1zzabh/signalforge`の`Main.xaml`)で再検証し、
+`for incidentId in incidentIds:`が正しく生成されることを確認した。
+一方、`plaah/web-application-with-rpa-dhl`の`Main.xaml`は`Values`に
+未確認の関数呼び出し(`config(...)`)を含んでおり、`generate_python()`
+全体が`NotImplementedError`で停止する(`# TODO`への安全なフォール
+バックではなく例外伝播)ことを確認した——これは本実装が原因ではなく、
+`_generate_for_each`が`If.Condition`/`While.Condition`/`Switch.
+Expression`と同じ「条件式の変換失敗はコード生成自体を失敗させる」
+方針(モジュールdocstring)を`ForEach.Values`にも(ドキュメントには
+明記されていないが)既に適用していたという既存の挙動——`ui:ForEach`
+でも同じ条件で同じく例外伝播していたはずだが、これまでの実機検証で
+たまたま踏まれていなかった。`ForEach.Values`を「条件」と同じ厳格な
+失敗モードにすべきか「値」と同じ`# TODO`緩和モードにすべきかは
+ドキュメント上未確定の設計判断のため、本tickでは変更せず次の調査
+候補として記録する(今回のスコープ=`WF_NS`ディスパッチ追加、とは
+別の既存の論点)。
+
+`dump_daemon/uipath_dsl/types.py`の`ForEachNode`docstringに知見155
+を追記(新しいフィールドやノード型は追加していない)、`xaml_tree.py`
+の`_parse_for_each`に`body_elem`フォールバック追加+`(WF_NS,
+"ForEach")`の`_DISPATCH`登録。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件、暗黙形・明示`.Body`ラップ形を個別にテスト)、
+UiPath関連テスト全622件通過、リポジトリ全体で全1656件通過。
+
 ## 今後の調査候補(未着手)
-- **(部分的に解決)** 子を持つスコープ活動が軒並み未実装という
-  パターン(知見151・152で発見)のうち`ui:AttachWindow`(知見153)・
-  `ui:OpenApplication`(知見154)は実装済み。残り: 基本WF版`ForEach`
-  (`ui:ForEach`とは別の`{http://schemas.microsoft.com/netfx/2009/
-  xaml/activities}ForEach`、知見151で遭遇)。`ui:ForEach`(既に実装
-  済み)とは別の構造(`CurrentItem`ではなく`DelegateInArgument`経由
-  の変数束縛の可能性)のため個別に実機調査が必要
+- **(新規、知見155で発見)** `ForEach.Values`の変換失敗時の挙動が
+  `If.Condition`/`While.Condition`/`Switch.Expression`と同じ厳格な
+  例外伝播モードになっている(`_generate_for_each`が`render_expr`を
+  try/exceptで囲んでいない)が、これはモジュールdocstringの「条件式は
+  値とは異なる失敗モードを採用する」の列挙に`ForEach.Values`が含まれて
+  いないため、意図的な設計なのか見落としなのか未確定——`plaah/
+  web-application-with-rpa-dhl`の実機XAMLで実際に踏んだ
+  (`config(...)`という未確認関数呼び出しが`Values`に含まれ、
+  `generate_python()`全体が`NotImplementedError`で停止した)。
+  「反復対象を誤って推測すると全く違うデータで繰り返すか0回/無限
+  ループになりうる」という点では条件式と同種のリスクがあるため、
+  現状維持(厳格モード)が妥当という見方もあるが、`Assign`の値と同じ
+  ように局所的な`# TODO`+空リストへのフォールバックにする方が
+  (他の活動の生成を壊さないという意味で)実用上望ましいという見方
+  もあり、方針を決めるには既存の`If`/`While`/`Switch`の判断根拠
+  (`pad_codegen`の`IfActionRecord`処理)を再確認した上での検討が必要
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

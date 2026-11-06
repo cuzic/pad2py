@@ -348,8 +348,22 @@ def _find_activity_action(elem: etree._Element) -> etree._Element | None:
 
 
 def _parse_for_each(elem: etree._Element) -> ForEachNode:
+    """`ui:ForEach`(知見5、`.Body`配下に`ActivityAction`+
+    `DelegateInArgument`)と基本WF版`System.Activities.Statements.
+    ForEach<T>`(知見155)の両方を扱う——後者は`Body`がContent
+    Property(`.NET`のXAMLで省略可能な唯一のプロパティ)のため、
+    `<ForEach.Body>`での明示ラップと、`<ForEach>`直下に`ActivityAction`
+    を直接子として置く暗黙形の両方が実機で確認済み(`R1zzabh/
+    signalforge`は前者、`plaah/web-application-with-rpa-dhl`・
+    `rufoabrahamguyo/sow-calix`・`NihadVeliyev/Student-Placement-
+    Eligibility-Automation-using-UiPath-and-Excel`・`EnnioArnold/
+    Dispatcher-Framework`は後者)。`.Body`が見つからない場合は`elem`
+    自身の直接の子から`ActivityAction`を探すフォールバックで両形式に
+    対応する。"""
     body_elem = _find_property_element(elem, "Body")
-    action = _find_activity_action(body_elem) if body_elem is not None else None
+    if body_elem is None:
+        body_elem = elem
+    action = _find_activity_action(body_elem)
     item_var = ""
     body: list[Node] = []
     if action is not None:
@@ -1322,6 +1336,7 @@ _DISPATCH = {
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
     (UI_NS, "ForEach"): _parse_for_each,
+    (WF_NS, "ForEach"): _parse_for_each,
     (UI_NS, "ForEachRow"): _parse_for_each_row,
     (UI_NS, "InterruptibleWhile"): _parse_while,
     (UI_NS, "InterruptibleDoWhile"): _parse_do_while,

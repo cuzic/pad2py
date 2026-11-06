@@ -162,6 +162,62 @@ def test_for_each_row():
     assert len(node.body) == 1
 
 
+def test_base_wf_for_each_implicit_body_content_property():
+    """知見155: 基本WF版`System.Activities.Statements.ForEach<T>`
+    (`ui:`プレフィックス無し、`WF_NS`)——UiPathプログラマがVB式ベースの
+    ループを書く際に`ui:ForEach`ではなく直接使う実例を実機確認した
+    (`plaah/web-application-with-rpa-dhl`等5件)。`Body`はContent
+    Propertyのため、`<ForEach.Body>`ラッパー無しで`ActivityAction`が
+    直接の子として置かれる暗黙形が実機で最も多かった。"""
+    xml = (
+        f"<ForEach {_UI_XMLNS} "
+        'x:TypeArguments="x:String" DisplayName="For each file" '
+        'Values="[Directory.GetFiles(folder)]">'
+        '<ActivityAction x:TypeArguments="x:String">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:String" Name="filePath" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Body">'
+        '<WriteLine Text="[filePath]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ForEach>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ForEachNode)
+    assert node.item_var == "filePath"
+    assert node.values == VbExpr(text="Directory.GetFiles(folder)")
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], WriteLineNode)
+
+
+def test_base_wf_for_each_explicit_body_wrapper():
+    """知見155: 基本WF版`ForEach<T>`で`.Body`を明示的にラップする形
+    (`R1zzabh/signalforge`の実機XAMLで確認済み)も同じ`ForEachNode`へ
+    変換される。"""
+    xml = (
+        f"<ForEach {_UI_XMLNS} "
+        'x:TypeArguments="x:String" Values="[incidentIds]" '
+        'DisplayName="Process each incident">'
+        "<ForEach.Body>"
+        '<ActivityAction x:TypeArguments="x:String">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:String" Name="incidentId" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Body">'
+        '<WriteLine Text="[incidentId]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ForEach.Body>"
+        "</ForEach>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ForEachNode)
+    assert node.item_var == "incidentId"
+    assert node.values == VbExpr(text="incidentIds")
+    assert len(node.body) == 1
+
+
 def test_try_catch(main_wf):
     try_catch = main_wf.root.body[5]
     assert isinstance(try_catch, TryCatchNode)
