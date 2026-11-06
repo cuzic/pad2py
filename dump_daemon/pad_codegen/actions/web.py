@@ -114,20 +114,33 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             f"{extra_args})"
         ]
 
-    if action_id in ("Web.InvokeWebService.InvokeWebService", "Web.InvokeWebService.InvokeWebServiceUseAuth"):
-        # 知見139・147(`ActionSelectorBase`一括列挙監査をWeb.InvokeWebService系29セレクタに
-        # 適用): 全て`InvokeWebServiceBase`という単一クラスで、`Method`はこのクラス自体の
-        # 列挙型(Get/Post/Connect/Head/Put/Delete/Options/Trace/Patchの9値)であり、実機
-        # キャプチャ済みの基本セレクタでも既にDSL上の通常パラメータとして明示的に現れる
-        # (このため`Post`/`Put`接尾辞セレクタとの違いが`Method`の選択肢制限なのか別の
-        # UI上の提示方法の違いなのかは未確定——`SaveToFile`/`SaveToFolder`/`Upload`接尾辞
-        # (`SaveResponse`/`FileName`/`UploadType`/`UploadAttachments`列挙)は実機未確認の
-        # ままのため見送る)。`UseAuth`は`UseAuthentication`/`Username`/`Password`の
-        # 組み合わせのみが追加される兄弟セレクタで、既存の`Method`を動的に読む結線へ
-        # 安全に重ねられる。
-        use_auth = action_id.endswith("UseAuth")
+    # 知見139・147・150(`ActionSelectorBase`一括列挙監査をWeb.InvokeWebService系29セレクタに
+    # 適用): 全て`InvokeWebServiceBase`という単一クラスで、`Method`はこのクラス自体の
+    # 列挙型(Get/Post/Connect/Head/Put/Delete/Options/Trace/Patchの9値)。知見147では
+    # 基本セレクタの実機キャプチャに`Method`が明示的なDSLパラメータとして現れることから
+    # `Post`/`Put`接尾辞セレクタとの違いを確定できなかったが、各セレクタクラスの
+    # `.Arguments`プロパティ(そのセレクタでDSLに実際に現れるパラメータ名の一覧、
+    # `ActionSelectorBase`のインスタンスから直接読み取れる)を確認した結果、
+    # `InvokeWebServicePost`/`InvokeWebServicePut`(及びそれらの`UseAuth`版)の
+    # `Arguments`には`Method`が含まれていない(=このセレクタ自体がPost/Putに固定)
+    # と確定した——`.Arguments`がプロパティ存在チェックより信頼できる根拠だと判明
+    # (知見150)。`SaveToFile`/`SaveToFolder`/`Upload`接尾辞は引き続き見送る。
+    _INVOKE_WEB_SERVICE_FIXED_METHOD = {
+        "Web.InvokeWebService.InvokeWebServicePost": "Post",
+        "Web.InvokeWebService.InvokeWebServicePut": "Put",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPost": "Post",
+        "Web.InvokeWebService.InvokeWebServiceUseAuthPut": "Put",
+    }
+    _INVOKE_WEB_SERVICE_ACTION_IDS = (
+        "Web.InvokeWebService.InvokeWebService",
+        "Web.InvokeWebService.InvokeWebServiceUseAuth",
+        *_INVOKE_WEB_SERVICE_FIXED_METHOD,
+    )
+    if action_id in _INVOKE_WEB_SERVICE_ACTION_IDS:
+        use_auth = "UseAuth" in action_id
+        fixed_method = _INVOKE_WEB_SERVICE_FIXED_METHOD.get(action_id)
         url = safe_render(p.get("Url"))
-        method = enum_last(p.get("Method"))
+        method = fixed_method if fixed_method is not None else enum_last(p.get("Method"))
         accept = safe_render(p.get("Accept"))
         content_type = safe_render(p.get("ContentType"))
         custom_headers = safe_render(p.get("CustomHeaders"))

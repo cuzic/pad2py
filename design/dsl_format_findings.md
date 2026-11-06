@@ -2552,3 +2552,13 @@ VM上で`DateTimeConversionFormat`列挙値(`Standard`/`Custom`)を確認し、�
 既存の`get_xml_element_value()`の型変換ロジック(`Decimal`/`dateutil_parser`/真偽値判定)を`_convert_xml_text_value()`として共通化し、`get_xml_element_attribute()`に`value_type: str = "Text"`引数を追加して(既定値は従来の文字列そのままの挙動を保つ)両関数で再利用した。
 
 テストは`tests/test_pad_codegen.py`に3パターンのparametrizeテストを追加し、実際に`exec()`してXML属性値から型変換済みの値が出力変数に入ることまで検証した。これでXML.Actions.dllの12セレクタ全件が結線完了した。
+
+## 150. 知見147の未確定事項を解消——各セレクタの`.Arguments`プロパティが「DSLに実際に現れるパラメータ名」の確定的な根拠だと判明、`InvokeWebServicePost`/`Put`系4件を新規結線
+
+知見147で「`InvokeWebServicePost`/`Put`接尾辞セレクタが`Method`を制限しているのか、単なる別UIエントリかは確定できなかった」としていた点を、`ActionSelectorBase`サブクラス自身の`.Arguments`プロパティ(そのセレクタで実際にDSLに現れるパラメータ名の一覧、インスタンス化して直接読み取れる)を確認することで解消した。
+
+`InvokeWebServiceSelector`(基本)・`InvokeWebServiceUseAuthSelector`の`.Arguments`には`Method`が含まれるが、`InvokeWebServicePostSelector`/`InvokeWebServicePutSelector`/`InvokeWebServiceUseAuthPostSelector`/`InvokeWebServiceUseAuthPutSelector`の`.Arguments`には`Method`が**含まれない**——つまりこれらのセレクタは`Method`をDSLパラメータとして露出せず、セレクタ自体が`Post`/`Put`に固定していると確定した。
+
+**監査手法の更なる改善**: 知見135(プロパティ名で判別)→知見145(`InputArgumentAttribute.Name`で判別)→本知見(`.Arguments`/`.VisibleArguments`で判別)という順で、より確定的な根拠に到達した——`.Arguments`は「このセレクタがインスタンス化された時点でDSLシリアライズに実際に使われるプロパティ名の一覧」そのものであり、個々のプロパティの存在や属性を推測で組み合わせるより直接的で確実。今後の監査はまず`.Arguments`を確認することを標準手順とする。
+
+`InvokeWebServicePost`/`InvokeWebServicePut`/`InvokeWebServiceUseAuthPost`/`InvokeWebServiceUseAuthPut`の4件を、既存の`invoke_web_service()`の`method`引数を固定値で渡す形で新規結線した。テストは`tests/test_pad_codegen.py`に4パターンのparametrizeテストを追加し、`web_actions.invoke_web_service`を差し替えて`method`/`use_credentials`の受け渡しをexec検証した。

@@ -4308,6 +4308,59 @@ def test_generate_python_from_invoke_web_service_use_auth_converts() -> None:
     assert kwargs["password"] == "p"
 
 
+@pytest.mark.parametrize(
+    ("action_suffix", "expected_method", "use_auth"),
+    [
+        ("Post", "Post", False),
+        ("Put", "Put", False),
+        ("UseAuthPost", "Post", True),
+        ("UseAuthPut", "Put", True),
+    ],
+)
+def test_generate_python_from_invoke_web_service_post_put_siblings_converts(
+    action_suffix: str, expected_method: str, use_auth: bool
+) -> None:
+    # design/dsl_format_findings.md 知見150: 各セレクタクラスの`.Arguments`プロパティ
+    # (そのセレクタでDSLに実際に現れるパラメータ名の一覧)を確認した結果、
+    # `InvokeWebServicePost`/`Put`(及び`UseAuth`版)は`Method`がArgumentsに含まれず
+    # セレクタ自体で固定されると確定した——`.Arguments`がプロパティ存在チェックより
+    # 信頼できる根拠だと判明(知見147の未確定事項を解消)。
+    import dump_daemon.pad_action_lib.web_actions as web_actions
+
+    auth_dsl = " Username: $'''u''' Password: $'''p'''" if use_auth else ""
+    dsl = (
+        f"Web.InvokeWebService.InvokeWebService{action_suffix} Url: $'''http://example.test/''' "
+        "Accept: $'''application/xml''' ContentType: $'''application/xml''' "
+        "CustomHeaders: $'''''' RequestBody: $'''''' ConnectionTimeout: 30 FollowRedirection: True "
+        "FailOnErrorStatus: False EncodeRequestBody: False UserAgent: $'''UA''' "
+        f"Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True{auth_dsl} "
+        "Response=> R"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert f"method={expected_method!r}" in code
+
+    calls = []
+
+    def fake_invoke_web_service(url, *args, **kwargs):
+        calls.append((url, kwargs))
+        return web_actions.InvokeWebServiceResult(response="resp")
+
+    original = web_actions.invoke_web_service
+    web_actions.invoke_web_service = fake_invoke_web_service
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        web_actions.invoke_web_service = original
+    assert namespace["R"] == "resp"
+    assert len(calls) == 1
+    if use_auth:
+        assert calls[0][1]["use_credentials"] is True
+
+
 def test_generate_python_from_datetime_text_custom_format_round_trips() -> None:
     # design/dsl_format_findings.md 知見139・148: `ActionSelectorBase`一括列挙監査を
     # Text.Actions.dllに適用して発見した`ConvertTextToDateTime.ToDateTimeCustomFormat`/

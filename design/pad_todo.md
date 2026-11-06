@@ -472,13 +472,19 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       UseAuth`を新規結線完了。調査の結果、全29セレクタが単一の`InvokeWebServiceBase`
       クラスで、`Method`はこのクラス自身の列挙型(9値)であり**基本セレクタの実機
       キャプチャでも既に動的DSLパラメータとして現れている**と判明——`Post`/`Put`
-      接尾辞セレクタが`Method`を制限しているのか単なる別UIエントリかは今回の調査
-      だけでは確定できなかった(無理に推測せず見送り)。
+      接尾辞セレクタが`Method`を制限しているのか単なる別UIエントリかは当初確定
+      できなかった。
+      ✅ **決着(知見150、未確定事項を解消・4件追加)**: 各セレクタクラスの
+      `.Arguments`プロパティ(インスタンス化して直接読み取れる、そのセレクタで
+      実際にDSLに現れるパラメータ名の一覧)を確認し、`InvokeWebServicePost`/
+      `Put`(及び`UseAuth`版)は`Method`が`Arguments`に含まれず**セレクタ自体で
+      固定**と確定。4件を新規結線完了——**監査手法として`.Arguments`確認を標準
+      手順に追加**(プロパティ存在チェックより確定的な根拠)。
       - [ ] 💻🖥️ **残課題**: `DownloadToFolder`系4セレクタ(`FileName=KeepOriginal`、
         レスポンスからファイル名を自動決定——決定方法が実機/decompile未確認のため
-        見送り)・`InvokeWebService`の`Post`/`Put`接尾辞系・`SaveToFile`/`SaveToFolder`/
-        `Upload`系(`invoke_web_service()`側にファイル入出力機能の新規実装が必要、
-        組み合わせ爆発、既存の知見94-96がどのセレクタに対応するか要確認)。
+        見送り)・`InvokeWebService`の`SaveToFile`/`SaveToFolder`/`Upload`系
+        (`invoke_web_service()`側にファイル入出力機能の新規実装が必要、組み合わせ
+        爆発、既存の知見94-96がどのセレクタに対応するか要確認)。
     監査手法自体(VM上のリフレクション: `ActionSelectorBase`列挙→`ActionName`読み取り→
     所属する`[Action]`属性付きクラスのプロパティ一覧で判別子の意味を特定)は知見139で
     再確認済みで、次回以降も同じ手順で個々のモジュールの結線を進められる。
