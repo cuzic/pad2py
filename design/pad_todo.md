@@ -435,7 +435,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
         `encoding`引数をPythonデコード用途と`chcp`コマンド引数用途の両方に
         再利用している設計自体も、実機の`chcp`呼び出し形式との整合性が
         未検証という留保事項が新たに判明した。
-    - [~] `Text.Actions.dll`(23セレクタ)。
+    - [x] `Text.Actions.dll`(23セレクタ、`RecognizeEntitiesInText`を除き全件結線完了)。
       ✅ **決着(知見142)**: `GetSubtext`系3(`GetText`/`GetSubtextFromStartTo`/
       `GetSubtextFrom`)・`CropText`系2(`CropTextAfterFlag`/`CropTextBetweenFlags`)・
       `JoinText`系2・`SplitText`系2・`ParseText`系3(`Parse`/`RegexParse`/
@@ -443,11 +443,10 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       合計13件を新規結線完了。副産物として既存`GetSubtext`結線が実在しない列挙値名
       (`'AtSpecificCharacter'`/`'SpecificLength'`)を使っていた潜在的な不整合も発見・
       修正した(偶然挙動には影響していなかった)。
-      - [ ] 💻🖥️ **残課題**: `DateTimeToText`系2(`FromCustomDateTime`)・`ToDateTime`系2
-        (`ToDateTimeCustomFormat`)は`CustomFormat`文字列(.NET書式→Python strftime変換)
-        の対応検証が必要なため見送った(`dotnet_format_to_strftime()`は既に実装済み、
-        `datetime_to_text()`/`text_to_datetime()`が`custom_format`引数を受け付けるかの
-        確認が次の作業)。
+      ✅ **決着(知見148)**: `DateTimeToText`系の`FromCustomDateTime`・`ToDateTime`系の
+      `ToDateTimeCustomFormat`も新規結線完了——`dotnet_format_to_strftime()`・
+      `datetime_to_text()`/`text_to_datetime()`の`custom_format`引数は実は既に実装済み
+      だったため、見送る必要は無かった。
     - [x] `Cryptography.Actions.dll`(AES暗号/復号16セレクタ)。
       ✅ **決着(知見143)**: Salt/IV組み合わせ系12件(Encrypt/Decrypt×Text/File×
       UseSalt/UseIV/UseSaltAndIV)を新規結線完了。既存の`encrypt_text()`/

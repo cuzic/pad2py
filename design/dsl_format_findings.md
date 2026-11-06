@@ -2536,3 +2536,11 @@ Web/XML/Cmd/Text/Cryptography の5モジュールも同じ監査を実行し、�
 `SaveResponse`(ToVariable/ToFile)・`UploadType`(FilePath/Binary)・`FileName`(KeepOriginal/SpecifyFullPath)という3つの追加列挙も確認できたが、`SaveToFile`/`SaveToFolder`/`Upload`接尾辞セレクタの結線(`invoke_web_service()`側にファイル入出力機能を新規実装する必要がある)は引き続き見送る。
 
 テストは`tests/test_pad_codegen.py`に1件追加し、`web_actions.invoke_web_service`を差し替えて`use_credentials`/`username`/`password`の受け渡しをexec検証した。
+
+## 148. 知見142で見送ったText.Actions.dllの.NET書式変換系2件も結線完了——`dotnet_format_to_strftime()`は既に実装済みだった
+
+知見142で「.NET書式→Python strftime変換の検証が必要」として見送っていた`ConvertDateTimeToText.FromCustomDateTime`/`ConvertTextToDateTime.ToDateTimeCustomFormat`を再調査した。`pad_action_lib.text_actions.datetime_to_text()`/`text_to_datetime()`は**既に`format_type`/`custom_format`・`date_is_in_custom_format`/`custom_format`引数を実装済み**(内部で`dotnet_format_to_strftime()`を呼ぶ)だったため、見送る必要が無かったと判明した。
+
+VM上で`DateTimeConversionFormat`列挙値(`Standard`/`Custom`)を確認し、既存の`format_type`パラメータの文字列と完全一致することも確認した。両セレクタとも「セレクタ自体がモードを固定する」パターン(`FromCustomDateTime`→`format_type='Custom'`固定、`ToDateTimeCustomFormat`→`date_is_in_custom_format=True`固定)で安全に結線できた。
+
+テストは`tests/test_pad_codegen.py`に1件追加し、Text→DateTime→Textの往復を実際に`exec()`して(`"2026-11-05"`→`datetime(2026,11,5)`→`"2026/11/05"`)検証した。これで知見142で見送った項目は全て解消し、Text.Actions.dllの23セレクタ全件(鍵無しの`RecognizeEntitiesInText`を除く)が結線完了した。

@@ -78,6 +78,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         return [f"{prefix}{node.output_var} = text_actions.text_to_datetime({text})"]
 
+    if action_id == "Text.ConvertTextToDateTime.ToDateTimeCustomFormat":
+        # 知見139・148: `ConvertTextToDateTimeAction`の兄弟セレクタ(`DateIsInCustomFormat`
+        # =True固定)。既存の`text_to_datetime()`の`date_is_in_custom_format`/
+        # `custom_format`引数(`dotnet_format_to_strftime()`経由、実装済み)がそのまま
+        # 対応できた。
+        text = safe_render(p.get("Text"))
+        custom_format = safe_render(p.get("CustomFormat"))
+        if text is None or custom_format is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.text_to_datetime({text}, "
+            f"date_is_in_custom_format=True, custom_format={custom_format})"
+        ]
+
     if action_id == "Text.ConvertDateTimeToText.FromDateTime":
         value = safe_render(p.get("DateTime"))
         standard_format = enum_last(p.get("StandardFormat"))
@@ -89,6 +103,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}{node.output_var} = text_actions.datetime_to_text({value}, "
             f"standard_format={mapped!r})"
+        ]
+
+    if action_id == "Text.ConvertDateTimeToText.FromCustomDateTime":
+        # 知見139・148: `ConvertDateTimeToTextAction`の兄弟セレクタ(`Format=Custom`固定、
+        # `DateTimeConversionFormat`列挙値が`datetime_to_text()`の`format_type`文字列と
+        # 完全一致とVM上で確認済み)。
+        value = safe_render(p.get("DateTime"))
+        custom_format = safe_render(p.get("CustomFormat"))
+        if value is None or custom_format is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = text_actions.datetime_to_text({value}, "
+            f"format_type='Custom', custom_format={custom_format})"
         ]
 
     if action_id == "Text.GetSubtext.GetSubtext":

@@ -4269,3 +4269,24 @@ def test_generate_python_from_invoke_web_service_use_auth_converts() -> None:
     assert kwargs["use_credentials"] is True
     assert kwargs["username"] == "u"
     assert kwargs["password"] == "p"
+
+
+def test_generate_python_from_datetime_text_custom_format_round_trips() -> None:
+    # design/dsl_format_findings.md 知見139・148: `ActionSelectorBase`一括列挙監査を
+    # Text.Actions.dllに適用して発見した`ConvertTextToDateTime.ToDateTimeCustomFormat`/
+    # `ConvertDateTimeToText.FromCustomDateTime`。既存の`text_to_datetime()`/
+    # `datetime_to_text()`の`custom_format`引数(`dotnet_format_to_strftime()`経由、
+    # 実装済み)がそのまま対応できた。実際にText→DateTime→Textの往復をexec()して
+    # 検証する。
+    dsl = (
+        "SET D TO $'''2026-11-05'''\n"
+        "Text.ConvertTextToDateTime.ToDateTimeCustomFormat Text: D CustomFormat: $'''yyyy-MM-dd''' DateTime=> Dt\n"
+        "Text.ConvertDateTimeToText.FromCustomDateTime DateTime: Dt CustomFormat: $'''yyyy/MM/dd''' Result=> S"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+    assert namespace["S"] == "2026/11/05"
