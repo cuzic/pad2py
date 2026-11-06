@@ -62,6 +62,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HoverNode,
     HttpClientNode,
     IfNode,
     InputDialogNode,
@@ -1665,6 +1666,92 @@ def test_click_with_delay_ms_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: Click with DelayMS set" in code
     assert ".click_input(" not in code
+    _compiles(code)
+
+
+_HOVER_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_hover_with_default_cursor_position_generates_move_click_input():
+    """知見157: `ui:Hover`(GitHub code searchで151件ヒット)。既定の
+    `CursorPosition`(省略/`"Center"`)では`coords`引数を渡さず
+    `click_input()`自身の既定(要素の中心)に依拠する——`move_mouse_
+    input()`ラッパー自身の既定(`coords=(0, 0)`)は使わない。"""
+    wf = _wrap([HoverNode(selector=_HOVER_SELECTOR)])
+    code = generate_python(wf)
+    assert ".click_input(button='move')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_hover_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([HoverNode(selector=None, display_name="Hover 'Forgot Password?'")])
+    code = generate_python(wf)
+    assert "# Hover 'Forgot Password?'" in code
+    assert "# TODO: Hover with no selector captured" in code
+    _compiles(code)
+
+
+def test_hover_with_no_selector_is_todo():
+    wf = _wrap([HoverNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: Hover with no selector captured" in code
+    _compiles(code)
+
+
+def test_hover_with_unmappable_selector_is_todo():
+    wf = _wrap([HoverNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: Hover selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_hover_with_topleft_cursor_position_and_offsets():
+    wf = _wrap(
+        [HoverNode(selector=_HOVER_SELECTOR, cursor_position="TopLeft", cursor_offset_x="5", cursor_offset_y="8")]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert ".click_input(button='move', coords=(5, 8))" in code
+    _compiles(code)
+
+
+def test_hover_with_non_default_cursor_position_is_todo():
+    wf = _wrap([HoverNode(selector=_HOVER_SELECTOR, cursor_position="BottomRight")])
+    code = generate_python(wf)
+    assert "# TODO: Hover with non-default CursorPosition" in code
+    _compiles(code)
+
+
+def test_hover_with_delay_before_generates_time_sleep():
+    wf = _wrap([HoverNode(selector=_HOVER_SELECTOR, delay_before=Literal(value="500"))])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_hover_with_delay_ms_is_todo_not_guessed():
+    wf = _wrap([HoverNode(selector=_HOVER_SELECTOR, delay_ms=Literal(value="500"))])
+    code = generate_python(wf)
+    assert "# TODO: Hover with DelayMS set" in code
+    assert ".click_input(" not in code
+    _compiles(code)
+
+
+def test_hover_with_non_default_send_window_messages_is_todo_not_guessed():
+    wf = _wrap(
+        [HoverNode(selector=_HOVER_SELECTOR, send_window_messages=Literal(value="True"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Hover with non-default SendWindowMessages" in code
+    _compiles(code)
+
+
+def test_hover_with_non_default_simulate_hover_is_todo_not_guessed():
+    wf = _wrap([HoverNode(selector=_HOVER_SELECTOR, simulate_hover=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: Hover with non-default SimulateHover" in code
     _compiles(code)
 
 

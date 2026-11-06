@@ -48,6 +48,7 @@ from .types import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HoverNode,
     HttpClientNode,
     IfNode,
     InputDialogNode,
@@ -555,6 +556,38 @@ def _parse_click(elem: etree._Element) -> ClickNode:
         cursor_offset_y=cursor_offset_y,
         delay_before=_attr_expr(elem, "DelayBefore"),
         delay_ms=_attr_expr(elem, "DelayMS"),
+    )
+
+
+def _parse_hover(elem: etree._Element) -> HoverNode:
+    selector = None
+    target_prop = _find_property_element(elem, "Target")
+    if target_prop is not None:
+        for child in _direct_children(target_prop):
+            _, local = _split_tag(child.tag)
+            if local == "Target":
+                selector = _attr(child, "Selector")
+    cursor_position = None
+    cursor_offset_x = None
+    cursor_offset_y = None
+    cursor_position_prop = _find_property_element(elem, "CursorPosition")
+    if cursor_position_prop is not None:
+        for child in _direct_children(cursor_position_prop):
+            _, local = _split_tag(child.tag)
+            if local == "CursorPosition":
+                cursor_position = _attr(child, "Position")
+                cursor_offset_x = _cursor_offset(child, "OffsetX")
+                cursor_offset_y = _cursor_offset(child, "OffsetY")
+    return HoverNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        cursor_position=cursor_position,
+        cursor_offset_x=cursor_offset_x,
+        cursor_offset_y=cursor_offset_y,
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_ms=_attr_expr(elem, "DelayMS"),
+        send_window_messages=_attr_expr(elem, "SendWindowMessages"),
+        simulate_hover=_attr_expr(elem, "SimulateHover"),
     )
 
 
@@ -1342,6 +1375,7 @@ _DISPATCH = {
     (UI_NS, "InterruptibleDoWhile"): _parse_do_while,
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Click"): _parse_click,
+    (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "SendHotkey"): _parse_send_hotkey,
     (UI_NS, "GetText"): _parse_get_text,

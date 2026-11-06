@@ -87,6 +87,7 @@ from ..uipath_dsl.types import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HoverNode,
     HttpClientNode,
     IfNode,
     InputDialogNode,
@@ -447,6 +448,8 @@ def _generate_node(
         return _generate_set_to_clipboard(node, indent)
     if isinstance(node, ClickNode):
         return _generate_click(node, indent)
+    if isinstance(node, HoverNode):
+        return _generate_hover(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1263,6 +1266,89 @@ def _generate_click_body(node: ClickNode, indent: int) -> list[str]:
         **_MOUSE_BUTTON_KWARGS[mouse_button],
         **coords_kwargs,
     }
+    kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+    lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
+    return lines
+
+
+# 知見157: `ui:Hover`(`ClickNode`と`Target`/`CursorPosition`の構造が
+# 全く同じ、GitHub code searchで151件ヒット)。`ClickType`/`MouseButton`/
+# `KeyModifiers`が無い点のみ異なるため、`cursor_position`の既定値判定
+# ロジック(知見73・105)は`Click`と同じ`_CURSOR_POSITION_CONFIRMED_
+# DEFAULTS`を再利用する。pywinautoの`move_mouse_input()`ラッパー自身の
+# 既定(`coords=(0, 0)`・`absolute=True`)は要素の中心に移動する意味に
+# ならないため、`click_input()`自身の既定(`coords=(None, None)`・
+# `absolute=False`)を`button='move'`で呼び出す形で実装する——`Click`の
+# 既定(`CursorPosition`省略時に`coords`引数を渡さない)と同じ経路。
+def _generate_hover(node: HoverNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_hover_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_hover_body(node: HoverNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Hover with no selector captured"]
+    coords_kwargs: dict[str, object] = {}
+    if node.cursor_position == "TopLeft":
+        try:
+            x = int(node.cursor_offset_x) if node.cursor_offset_x is not None else 0
+            y = int(node.cursor_offset_y) if node.cursor_offset_y is not None else 0
+        except ValueError:
+            return [
+                f"{prefix}# TODO: Hover with non-integer CursorPosition offsets "
+                f"(OffsetX={node.cursor_offset_x!r}, OffsetY={node.cursor_offset_y!r}) "
+                "— refusing to guess"
+            ]
+        coords_kwargs = {"coords": (x, y)}
+    elif (
+        node.cursor_position not in _CURSOR_POSITION_CONFIRMED_DEFAULTS
+        or node.cursor_offset_x is not None
+        or node.cursor_offset_y is not None
+    ):
+        return [
+            f"{prefix}# TODO: Hover with non-default CursorPosition "
+            f"({node.cursor_position!r}, OffsetX={node.cursor_offset_x!r}, "
+            f"OffsetY={node.cursor_offset_y!r}) — offset mapping not confirmed via "
+            "real capture, refusing to guess"
+        ]
+    if node.delay_ms is not None:
+        return [
+            f"{prefix}# TODO: Hover with DelayMS set "
+            f"({_describe_expr_for_comment(node.delay_ms)}) — not documented by "
+            "UiPath (unlike DelayBefore), semantics not confirmed, refusing to guess"
+        ]
+    if _literal_str(node.send_window_messages) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Hover with non-default SendWindowMessages "
+            f"({node.send_window_messages!r}) — exact mapping not confirmed, "
+            "refusing to guess"
+        ]
+    if _literal_str(node.simulate_hover) not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Hover with non-default SimulateHover "
+            f"({node.simulate_hover!r}) — \"uses the target app's own "
+            "technology\" per UiPath docs convention for other Simulate* "
+            "attributes, exact mechanism not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Hover selector had no mappable attributes: {node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    kwargs = {"button": "move", **coords_kwargs}
     kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
     lines.append(f"{prefix}{rendered.expr}.click_input({kwargs_str})")
     return lines

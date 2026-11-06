@@ -1993,3 +1993,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_codegen.py`1件、`test_if_with_unparseable_
      condition_raises`と同じ形で`NotImplementedError`伝播を固定)、
      UiPath関連テスト全623件通過、リポジトリ全体で全1657件通過。
+
+115. **(完了、2026-11-06)** `ui:Hover`(GitHub code searchで151件
+     ヒットする基本UI Automation活動)を新規実装(知見157): `Click`
+     (知見9)と`Target`/`CursorPosition`の構造が全く同じで、
+     `ClickType`/`MouseButton`/`KeyModifiers`が無い点のみ異なる。
+     実装時にpywinautoの`move_mouse_input()`ラッパー自身の既定値
+     (`coords=(0, 0)`・`absolute=True`)が「要素の中心」に移動しない
+     罠を発見——`click_input()`自身の既定(`coords=(None, None)`・
+     `absolute=False`)を`button='move'`で直接呼び出す実装にして
+     `Click`の既定動作と同じ経路を再利用した。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     10件)、UiPath関連テスト全634件通過、リポジトリ全体で全1674件
+     通過。

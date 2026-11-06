@@ -7447,6 +7447,57 @@ unparseable_condition_raises`と同じ形)、この方針が将来のリファ�
 で意図せず壊れないよう固定した。UiPath関連テスト全623件通過、
 リポジトリ全体で全1657件通過。
 
+## 157. `ui:Hover`(GitHub code searchで151件ヒットする基本UI Automation活動)を新規実装——pywinautoの`move_mouse_input()`ラッパー自身の既定値が「要素の中心」にならない罠を発見
+
+`Click`/`TypeInto`/`SendHotkey`と同じ`UiPath.Core.Activities`の基本
+UI Automation活動のうち、`ui:Hover`(マウスを要素に乗せるだけで
+クリックしない活動、GitHub code searchで151件ヒット)が未実装のまま
+残っていたことを発見した。実機(`sujan5757/RPAWorks`の
+`Mouseactivity/Main.xaml`)で構造を確認したところ、`ClickNode`
+(知見9)と`Target`/`CursorPosition`の構造が全く同じで、`ClickType`/
+`MouseButton`/`KeyModifiers`(クリック自体に固有の属性)が無い点のみ
+異なっていた——確認した`DelayBefore`/`DelayMS`/`SendWindowMessages`/
+`SimulateHover`は全て`{x:Null}`(未設定)。
+
+実装時にpywinautoのAPI調査で見落としやすい罠を発見した:
+pywinautoには`move_mouse_input(coords=(0, 0), pressed="", absolute=
+True)`という便利ラッパーが存在し、素朴には「`Click`の`click_input()`
+に対応するHover用メソッド」として使いたくなるが、このラッパー自身の
+既定値`coords=(0, 0)`・`absolute=True`は**要素の中心には移動しない**
+——`click_input()`内部の座標解決ロジック(`.venv/lib/python3.12/
+site-packages/pywinauto/base_wrapper.py`)を読むと、`coords[0]`が
+`None`の場合のみ要素の幅/高さの半分(=中心)を計算し、かつ
+`absolute=False`の場合のみその相対座標を`client_to_screen()`で
+画面座標へ変換する——`move_mouse_input()`の既定`coords=(0, 0)`は
+`None`ではないため中心計算が走らず、かつ`absolute=True`のため画面
+座標変換も走らない。結果、素朴に`move_mouse_input()`を既定値のまま
+呼ぶと画面の絶対座標`(0, 0)`(画面左上付近)へ移動してしまい、
+`Click`の既定動作(要素の中心へのクリック)と整合しない。
+
+この罠を回避するため、`move_mouse_input()`ラッパーを使わず
+`click_input()`自身を`button='move'`で直接呼び出す実装にした——
+`click_input()`自身の既定(`coords=(None, None)`・`absolute=False`)
+が正しく「要素の中心を相対座標で計算し画面座標へ変換する」ため、
+`Click`が`CursorPosition`省略時に`coords`引数を渡さずに依拠している
+のと全く同じ経路を再利用できる(新たな前提を持ち込まない)。
+
+`dump_daemon/uipath_dsl/types.py`に`HoverNode`(`ClickNode`から
+`click_type`/`mouse_button`/`key_modifiers`を除き、`send_window_
+messages`/`simulate_hover`を追加した構成)、`xaml_tree.py`に
+`_parse_hover`(`_parse_click`と同じTarget/CursorPosition抽出)+
+`(UI_NS, "Hover")`の`_DISPATCH`登録、`uipath_codegen/__init__.py`に
+`_generate_hover`/`_generate_hover_body`(`_CURSOR_POSITION_CONFIRMED_
+DEFAULTS`を`Click`と共有、`SendWindowMessages`/`SimulateHover`の
+非既定値は`# TODO`へ倒す)を追加。実機XAML(`sujan5757/RPAWorks`)で
+`generate_python()`+`compile()`を実行したが、同ファイルのセレクタが
+Web系属性(`html`/`webctrl`の`id`/`aaname`)を使っており、これは
+`Click`活動でも同じ理由で`# TODO`へ倒れる既知の制約(`selector_text_
+to_pywinauto`が未対応の属性)だったため、成功パス自体は単体テスト
+(`cls`/`name`属性を使う確認済みマッピング対象のセレクタ)で直接
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`10件)、UiPath関連テスト全634件通過、
+リポジトリ全体で全1674件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

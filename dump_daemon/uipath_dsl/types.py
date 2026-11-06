@@ -334,6 +334,39 @@ class ClickNode:
 
 
 @dataclass
+class HoverNode:
+    """`<ui:Hover>`(知見157、GitHub code searchで151件ヒット)。
+    `ClickNode`(知見9)と`Target`/`CursorPosition`の構造が全く同じ
+    (`sujan5757/RPAWorks`の実機XAMLで確認)——`ClickType`/`MouseButton`/
+    `KeyModifiers`(クリック自体には存在する属性)が無い点のみ異なる。
+    `cursor_position`/`cursor_offset_x`/`cursor_offset_y`は`ClickNode`
+    と同じ意味論(知見73・105)で、`delay_before`/`delay_ms`も同じ
+    (知見106)。実機で確認した`SendWindowMessages`/`SimulateHover`は
+    全て`{x:Null}`(未設定)——両方とも`Click`の`SimulateClick`/
+    `SendWindowMessages`と同じ理由(正確な実装APIが未文書化)で、
+    非既定値が設定されている場合は`# TODO`へ倒す。
+
+    pywinautoの`move_mouse_input()`ラッパー自体の既定値(`coords=(0, 0)`
+    `absolute=True`)は要素の中心に移動する意味にならない(`(0, 0)`を
+    画面の絶対座標として解釈してしまう)ため、代わりに`click_input()`
+    自身の既定値(`coords=(None, None)`・`absolute=False`——`None`は
+    要素の中心を相対座標で計算した後に画面座標へ変換する)を
+    `button='move'`で呼び出す形で実装する——`ClickNode`の既定
+    (`CursorPosition`省略時)が依拠しているのと同じ既定値経路を再利用
+    することで、新たな前提を持ち込まない。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    cursor_position: str | None = None
+    cursor_offset_x: str | None = None
+    cursor_offset_y: str | None = None
+    delay_before: Expr = None
+    delay_ms: Expr = None
+    send_window_messages: Expr = None
+    simulate_hover: Expr = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1249,6 +1282,7 @@ Node = (
     | BreakNode
     | ParallelNode
     | ClickNode
+    | HoverNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode

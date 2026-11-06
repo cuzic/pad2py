@@ -37,6 +37,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetOutlookMailMessagesNode,
     GetTextNode,
+    HoverNode,
     HttpClientNode,
     IfNode,
     InputDialogNode,
@@ -721,6 +722,28 @@ def test_send_hotkey_with_no_target_has_none_selector():
     assert isinstance(node, SendHotkeyNode)
     assert node.selector is None
     assert node.key == Literal(value="esc")
+
+
+def test_hover_selector_and_cursor_position():
+    """知見157: `ui:Hover`(GitHub code searchで151件ヒット)。`Click`
+    (知見9)と`Target`/`CursorPosition`の構造が全く同じ(`sujan5757/
+    RPAWorks`の実機XAMLで確認)——`ClickType`/`MouseButton`/
+    `KeyModifiers`が無い点のみ異なる。"""
+    xml = (
+        f"<ui:Hover {_UI_XMLNS} DisplayName=\"Hover link\">"
+        "<ui:Hover.Target>"
+        "<ui:Target Selector=\"&lt;wnd app='notepad.exe' /&gt;\" />"
+        "</ui:Hover.Target>"
+        "<ui:Hover.CursorPosition>"
+        '<ui:CursorPosition Position="Center" />'
+        "</ui:Hover.CursorPosition>"
+        "</ui:Hover>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, HoverNode)
+    assert "notepad.exe" in node.selector
+    assert node.cursor_position == "Center"
+    assert node.display_name == "Hover link"
 
 
 def test_log_message_properties():
