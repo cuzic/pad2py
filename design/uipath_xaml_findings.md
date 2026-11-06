@@ -7814,16 +7814,64 @@ UiPath Studio側はこれを`GetText`活動として表示しているらしい)
 回帰テスト追加(`tests/test_uipath_dsl.py`1件)、UiPath関連テスト全
 660件通過、リポジトリ全体で全1700件通過。
 
+## 165. `ui:Check`(チェックボックス操作、GitHub code searchで805件ヒット)を新規実装——pywinautoのToggleパターン(`toggle()`/`get_toggle_state()`)を初めて活用、「無条件クリックは危険」という新しい判断パターン
+
+知見164の`ui:SetFocus`実機XAML調査中に遭遇した`ui:Check`
+(チェックボックス操作、GitHub code searchで805件ヒット)を実装した。
+実機5件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+Developers`・`miyaichi/UiLession`)で構造を確認した結果、`Action`
+(実機確認済みの値は`"Check"`/`"Uncheck"`の2種)+`Target`+
+`ContinueOnError`/`DelayAfter`/`DelayBefore`——`DelayBefore`は他のUI
+Automation活動と共有の「Common」属性グループで意味論確認済み
+(知見106)だが、`DelayAfter`は本調査で初めて遭遇した属性で意味論
+未確認のため`DelayMS`と同じ理由で非既定値設定時は`# TODO`へ倒す。
+
+実装上の重要な判断: `Action="Check"`/`"Uncheck"`は「指定の最終状態へ
+**設定する**」操作であり、`Click`のような単純な無条件クリックでは
+ない——既にチェック済みの状態で`Action="Check"`を無条件にクリック
+すると誤って外してしまう(逆に`Action="Uncheck"`で未チェック状態を
+クリックすると誤って入れてしまう)。これを安全に実装するため、
+pywinautoのUIA`ButtonWrapper`(`CheckBox`/`RadioButton`/`Button`の
+`control_type`に適用される)が標準サポートする`toggle()`+
+`get_toggle_state()`(`0=unchecked`/`1=checked`/`2=indeterminate`、
+`.venv/lib/python3.12/site-packages/pywinauto/controls/uia_controls.py`
+で確認)を初めて活用した——現在の状態を読んでから目的の状態と異なる
+場合のみ`toggle()`を呼ぶ専用ヘルパー`_pywinauto_set_toggle_state`を
+新規追加した。本トランスパイラがこれまでの活動(`Click`等)では
+「現在の状態を考慮せず単純に操作する」で十分だったのに対し、
+`Check`/`Uncheck`は「現在の状態を見てから条件分岐する」という初めて
+の種類の活動であり、無条件の`click_input()`を使うと**でっち上げでは
+なく実際の誤動作**(意図と逆の結果)を生む可能性がある点に注意して
+設計した。
+
+`dump_daemon/uipath_dsl/types.py`に`CheckNode(selector, display_name,
+action, delay_before, delay_after, continue_on_error)`、`xaml_tree.py`
+に`_parse_check`(`_target_selector`を再利用、知見163)+`(UI_NS,
+"Check")`の`_DISPATCH`登録、`uipath_codegen/__init__.py`に
+`_SET_TOGGLE_STATE_HELPER_SOURCE`(新規ヘルパー関数定義、使用時のみ
+注入)・`_generate_check`/`_generate_check_body`(`Action`が確認済みの
+`"Check"`/`"Uncheck"`以外、または`DelayAfter`/`ContinueOnError`が
+設定されている場合は`# TODO`へ倒す)を追加。実機XAML
+(`miyaichi/UiLession`の`Open.xaml`)で`generate_python()`+
+`compile()`を実行し、`Action="Check"`→`_pywinauto_set_toggle_
+state(..., True)`、`Action="Uncheck"`→`..., False)`の両方が正しく
+生成される(4件全て)ことを確認した——別の実機XAML
+(`PacktPublishing`)は`Check`がWebベースのセレクタを使っており、
+既知の制約(`selector_text_to_pywinauto`が`webctrl`属性に未対応)で
+`# TODO`へ倒れることも確認した(今回のスコープ外の既存の別課題)。
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`10件)、UiPath関連テスト全671件通過、
+リポジトリ全体で全1711件通過。
+
 ## 今後の調査候補(未着手)
 - **(新規、知見164で発見)** `<GetValue ContinueOnError="{x:Null}" />`
   というタグ名自体が`GetValue`になる実例(`PakamTharunReddy/RPA`の
   `Browser_fillvalues.xaml`で発見)——属性名・`Target`構造が未確認
   (知見111の`GetTextNode`は`ui:GetText`タグのみ対応、`Text`属性名も
   未確認のこのタグ名では動かない)。次の調査候補として記録する
-- **(新規、知見164で発見)** `ui:Check`(チェックボックス操作、
-  `Action="Check"`属性を確認)・`ui:Highlight`(`Color`/`HighlightTime`
-  属性を確認、要素の視覚的ハイライト)が未実装——同じ実機XAMLで遭遇。
-  次の棚卸し候補として記録する
+- **(新規、知見164で発見)** `ui:Highlight`(`Color`/`HighlightTime`
+  属性を確認、要素の視覚的ハイライト)が未実装——`ui:Check`(知見165で
+  実装済み)と同じ実機XAMLで遭遇。次の棚卸し候補として記録する
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
   (直接の子`Activity`要素、ラッパー無し、知見20)と`Switch`のcase本体の構造

@@ -400,6 +400,37 @@ class ActivateNode:
 
 
 @dataclass
+class CheckNode:
+    """`<ui:Check>`(知見165、チェックボックス操作、GitHub code searchで
+    805件ヒット——知見164の`ui:SetFocus`調査中に実機XAML(`PakamTharunReddy/
+    RPA`)で遭遇)。実機5件(`PacktPublishing/Robotic-Process-Automation-
+    RPA-for-Developers`・`miyaichi/UiLession`)で確認した属性は`Action`
+    (実機確認済みの値は`"Check"`/`"Uncheck"`の2種)+`Target`+
+    `ContinueOnError`/`DelayAfter`/`DelayBefore`(いずれも全件
+    `{x:Null}`)。`DelayBefore`は他のUI Automation活動(`Click`/
+    `TypeInto`/`Hover`/`Activate`/`SendHotkey`)と共有の「Common」属性
+    グループで意味論確認済み(知見106)のため同様に扱うが、`DelayAfter`
+    は本調査で初めて遭遇した属性で意味論未確認——`DelayMS`と同じ理由
+    (非既定値設定時は`# TODO`へ倒す)で保守的に扱う。
+
+    `Action="Check"`/`"Uncheck"`は「指定の最終状態へ**設定する**」操作
+    (単純な無条件トグルではない)——実機確認したpywinautoのUIA
+    `ButtonWrapper`(`CheckBox`/`RadioButton`/`Button`の`control_type`に
+    適用される)が`toggle()`+`get_toggle_state()`(`0=unchecked`/
+    `1=checked`/`2=indeterminate`)を標準サポートしているため、現在の
+    状態を読んでから目的の状態と異なる場合のみ`toggle()`を呼ぶ
+    (無条件に`click_input()`すると既にチェック済みの場合に誤って
+    外してしまう)専用ヘルパーで実装する。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    action: str | None = None
+    delay_before: Expr = None
+    delay_after: Expr = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -1371,6 +1402,7 @@ Node = (
     | ClickNode
     | HoverNode
     | ActivateNode
+    | CheckNode
     | TypeIntoNode
     | SendHotkeyNode
     | GetTextNode

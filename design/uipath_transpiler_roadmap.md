@@ -2115,3 +2115,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ui:Highlight`という未実装活動を発見し、次の棚卸し候補として
      記録した。回帰テスト追加(`tests/test_uipath_dsl.py`1件)、
      UiPath関連テスト全660件通過、リポジトリ全体で全1700件通過。
+
+123. **(完了、2026-11-06)** `ui:Check`(チェックボックス操作、GitHub
+     code searchで805件ヒット)を新規実装(知見165): `Action="Check"`
+     /`"Uncheck"`は「指定の最終状態へ設定する」操作であり、`Click`の
+     ような単純な無条件クリックでは誤動作しうる(既にチェック済みの
+     状態で`"Check"`をクリックすると誤って外してしまう)——pywinauto
+     のUIA`ButtonWrapper`が標準サポートする`toggle()`+`get_toggle_
+     state()`を初めて活用し、現在の状態が目的の状態と異なる場合のみ
+     `toggle()`する専用ヘルパー`_pywinauto_set_toggle_state`を新規
+     追加した。`DelayAfter`(本調査で初めて遭遇、意味論未確認)は
+     `DelayMS`と同じ理由で非既定値設定時は`# TODO`へ倒す。実機XAML
+     (`miyaichi/UiLession`)で`Check`→`True`/`Uncheck`→`False`の両方
+     が正しく生成されることを確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`10件)、
+     UiPath関連テスト全671件通過、リポジトリ全体で全1711件通過。

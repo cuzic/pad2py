@@ -65,6 +65,7 @@ from ..uipath_dsl.types import (
     AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
+    CheckNode,
     ClickNode,
     CommentNode,
     CopyFileNode,
@@ -354,6 +355,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # エスケープ先、知見110)も同様。
     if any(f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}(" in line for line in body):
         imports.append(_TYPE_KEYS_ESCAPE_HELPER_SOURCE.rstrip("\n"))
+    # `_pywinauto_set_toggle_state`(`Check`→`toggle()`の目的状態判定先、
+    # 知見165)も同様。
+    if any(f"{_SET_TOGGLE_STATE_HELPER_NAME}(" in line for line in body):
+        imports.append(_SET_TOGGLE_STATE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -453,6 +458,8 @@ def _generate_node(
         return _generate_hover(node, indent)
     if isinstance(node, ActivateNode):
         return _generate_activate(node, indent)
+    if isinstance(node, CheckNode):
+        return _generate_check(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -1402,6 +1409,74 @@ def _generate_activate_body(node: ActivateNode, indent: int) -> list[str]:
     if delay_before is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
     lines.append(f"{prefix}{rendered.expr}.set_focus()")
+    return lines
+
+
+# 知見165: `ui:Check`(GitHub code searchで805件ヒット)。`Action="Check"`
+# /`"Uncheck"`は「指定の最終状態へ**設定する**」操作(単純な無条件トグル
+# ではない)——無条件に`click_input()`すると既にチェック済みの場合に
+# 誤って外してしまうため、pywinautoのUIA`ButtonWrapper`が標準サポート
+# する`toggle()`+`get_toggle_state()`(`0=unchecked`/`1=checked`/
+# `2=indeterminate`)を使い、現在の状態が目的の状態と異なる場合のみ
+# `toggle()`するヘルパーを経由する。
+_SET_TOGGLE_STATE_HELPER_NAME = "_pywinauto_set_toggle_state"
+_SET_TOGGLE_STATE_HELPER_SOURCE = '''\
+def _pywinauto_set_toggle_state(elem, checked):
+    if (elem.get_toggle_state() == 1) != checked:
+        elem.toggle()
+'''
+_CHECK_ACTION_CHECKED = {"check": True, "uncheck": False}
+
+
+def _generate_check(node: CheckNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_check_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_check_body(node: CheckNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Check with no selector captured"]
+    action_lower = (node.action or "").lower()
+    if action_lower not in _CHECK_ACTION_CHECKED:
+        return [
+            f"{prefix}# TODO: Check with unrecognized Action "
+            f"({node.action!r}) — refusing to guess"
+        ]
+    if node.delay_after is not None:
+        return [
+            f"{prefix}# TODO: Check with DelayAfter set "
+            f"({_describe_expr_for_comment(node.delay_after)}) — not "
+            "documented by UiPath (unlike DelayBefore), semantics not "
+            "confirmed, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Check with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Check selector had no mappable attributes: {node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    checked = _CHECK_ACTION_CHECKED[action_lower]
+    lines.append(
+        f"{prefix}{_SET_TOGGLE_STATE_HELPER_NAME}({rendered.expr}, {checked!r})"
+    )
     return lines
 
 

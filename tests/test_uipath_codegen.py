@@ -41,6 +41,7 @@ from dump_daemon.uipath_dsl import (
     AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
+    CheckNode,
     ClickNode,
     CommentNode,
     CopyFileNode,
@@ -1815,6 +1816,100 @@ def test_activate_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: Activate with ContinueOnError set" in code
+    _compiles(code)
+
+
+_CHECK_SELECTOR = "<wnd cls='Notepad' /><ctrl name='x' />"
+
+
+def test_check_with_check_action_generates_set_toggle_state_true():
+    """知見165: `ui:Check`(GitHub code searchで805件ヒット)。
+    `Action="Check"`は「指定の最終状態へ設定する」操作のため、無条件の
+    `click_input()`ではなく現在の状態を見てから必要な場合のみ
+    `toggle()`する専用ヘルパーを経由する。"""
+    wf = _wrap([CheckNode(selector=_CHECK_SELECTOR, action="Check")])
+    code = generate_python(wf)
+    assert "_pywinauto_set_toggle_state(" in code
+    assert ", True)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_check_with_uncheck_action_generates_set_toggle_state_false():
+    wf = _wrap([CheckNode(selector=_CHECK_SELECTOR, action="Uncheck")])
+    code = generate_python(wf)
+    assert "_pywinauto_set_toggle_state(" in code
+    assert ", False)" in code
+    _compiles(code)
+
+
+def test_check_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([CheckNode(selector=None, action="Check", display_name="Check 'INPUT'")])
+    code = generate_python(wf)
+    assert "# Check 'INPUT'" in code
+    assert "# TODO: Check with no selector captured" in code
+    _compiles(code)
+
+
+def test_check_with_no_selector_is_todo():
+    wf = _wrap([CheckNode(selector=None, action="Check")])
+    code = generate_python(wf)
+    assert "# TODO: Check with no selector captured" in code
+    _compiles(code)
+
+
+def test_check_with_unmappable_selector_is_todo():
+    wf = _wrap([CheckNode(selector="<wnd idx='2' />", action="Check")])
+    code = generate_python(wf)
+    assert "# TODO: Check selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_check_with_unrecognized_action_is_todo_not_guessed():
+    wf = _wrap([CheckNode(selector=_CHECK_SELECTOR, action="Toggle")])
+    code = generate_python(wf)
+    assert "# TODO: Check with unrecognized Action" in code
+    assert "_pywinauto_set_toggle_state" not in code
+    _compiles(code)
+
+
+def test_check_with_no_action_is_todo_not_guessed():
+    wf = _wrap([CheckNode(selector=_CHECK_SELECTOR, action=None)])
+    code = generate_python(wf)
+    assert "# TODO: Check with unrecognized Action" in code
+    _compiles(code)
+
+
+def test_check_with_delay_before_generates_time_sleep():
+    wf = _wrap(
+        [CheckNode(selector=_CHECK_SELECTOR, action="Check", delay_before=Literal(value="500"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "time.sleep(_vb_num('500') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_check_with_delay_after_is_todo_not_guessed():
+    wf = _wrap(
+        [CheckNode(selector=_CHECK_SELECTOR, action="Check", delay_after=Literal(value="500"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Check with DelayAfter set" in code
+    assert "_pywinauto_set_toggle_state" not in code
+    _compiles(code)
+
+
+def test_check_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CheckNode(
+                selector=_CHECK_SELECTOR, action="Check", continue_on_error=Literal(value="True")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Check with ContinueOnError set" in code
     _compiles(code)
 
 

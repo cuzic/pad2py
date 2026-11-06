@@ -20,6 +20,7 @@ from dump_daemon.uipath_dsl import (
     AttachWindowNode,
     BreakNode,
     BuildDataTableNode,
+    CheckNode,
     ClickNode,
     CommentNode,
     CopyFileNode,
@@ -857,6 +858,29 @@ def test_set_focus_reuses_activate_node():
     assert isinstance(node, ActivateNode)
     assert "obs64.exe" in node.selector
     assert node.display_name == "Set Focus 'obs64.exe OBS'"
+
+
+def test_check_selector_and_action():
+    """知見165: `ui:Check`(チェックボックス操作、GitHub code searchで
+    805件ヒット)。実機(`PacktPublishing/Robotic-Process-Automation-
+    RPA-for-Developers`・`miyaichi/UiLession`)で確認した`Action`は
+    `"Check"`/`"Uncheck"`の2種、`Target`+`ContinueOnError`/
+    `DelayAfter`/`DelayBefore`。"""
+    xml = (
+        f"<ui:Check {_UI_XMLNS} Action=\"Uncheck\" DisplayName=\"Check 'INPUT'\">"
+        "<ui:Check.Target>"
+        "<ui:Target Selector=\"&lt;webctrl name='lname' tag='INPUT' type='checkbox' /&gt;\" />"
+        "</ui:Check.Target>"
+        "</ui:Check>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CheckNode)
+    assert "checkbox" in node.selector
+    assert node.action == "Uncheck"
+    assert node.display_name == "Check 'INPUT'"
+    assert node.delay_before is None
+    assert node.delay_after is None
+    assert node.continue_on_error is None
 
 
 def test_log_message_properties():
