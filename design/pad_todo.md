@@ -102,6 +102,13 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `PopulateTextMode`(Replace/Append)・`ClickType`・`OptionsNames`/`OptionsIndeces`/
       `UseRegularExpressions`の正確な挙動が実機未確認なこと——知見81の「Run実行+
       ファイル書き出し確認」で解決できる見込み(VM上での実機確認が必要、RDP不要)。
+      **知見173で試行・ブロック発見**: 空の`List "Actions"`canvasへのclipboard-paste
+      (`.set_focus()`→`.type_keys("^v")`)が、RDP未接続状態が長く続いた今回のVM状態では
+      実際のWin32キーボードフォーカス移動を起こせず(生UIAの`GetFocusedElement()`で
+      確認、フォーカスは`"Desktop 1"`に残ったまま)、ペーストが無反応だった。次回は
+      (a) RDP接続直後の状態で再試行、または(b) 知見78の検索+キーボードadd技法で
+      先に項目を1件作ってから既存項目ありの状態でペーストを試す、のいずれかを先に
+      検証すべき。
     - `GetSelectedCheckboxesInWindow`/`GetSelectedRadiobuttonInWindow`: UI要素セレクタ
       を使わず「現在のウィンドウ全体をスキャンする」操作と判明——出力される識別名の
       形式(表示テキスト/AutomationId)が実機未確認。
