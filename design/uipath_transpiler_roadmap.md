@@ -2593,3 +2593,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`8件)、UiPath関連テスト全897件通過、
      リポジトリ全体で全1979件通過。
+
+158. **(完了、2026-11-06)** `UiPath.PDF.Activities.PDF`名前空間基盤を
+     追加し`GetPDFPageCount`+`ExtractPDFPageRange`を新規実装(知見200):
+     知見193で発見した非`http://schemas.uipath.com/...`形の名前空間
+     (`PDF_NS`定数)を実際に解禁——既存の`(namespace, tag)`ディスパッチ
+     機構がそのまま使えることを実装で確認した。`GetPDFPageCount`は
+     `len(pypdf.PdfReader(...).pages)`、`ExtractPDFPageRange`は確認
+     済みの`"N-M"`ハイフン範囲形式のみ対応し`pypdf.PdfWriter`で新規
+     PDFを書き出す——PAD側`ExtractPagesToNewPDF`のカンマ区切り複数
+     範囲文法は独立確認できていないため安易に輸入しなかった。残り
+     4活動(`JoinPDF`/`ManagePDFPassword`/`ExportPDFPageAsImage`/
+     `ExtractImagesFromPDF`)は実機確認が手薄なため見送り、次候補
+     として残す。合成データ+実際に生成した10ページPDFでの実行確認
+     (ページ数取得・3-5ページ範囲抽出)。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`11件)、
+     UiPath関連テスト全908件通過。

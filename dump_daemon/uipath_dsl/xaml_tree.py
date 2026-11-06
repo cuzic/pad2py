@@ -51,6 +51,7 @@ from .types import (
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
+    ExtractPdfPageRangeNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowNode,
@@ -65,6 +66,7 @@ from .types import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetPdfPageCountNode,
     GetRowItemNode,
     GetTextNode,
     HighlightNode,
@@ -132,6 +134,15 @@ WF_NS = "http://schemas.microsoft.com/netfx/2009/xaml/activities"
 UI_NS = "http://schemas.uipath.com/workflow/activities"
 X_NS = "http://schemas.microsoft.com/winfx/2006/xaml"
 SAP_NS = "http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+# 知見193・知見200: `UiPath.PDF.Activities`パッケージのうち
+# `GetPDFPageCount`/`JoinPDF`/`ExtractPDFPageRange`等のPDFファイル
+# 操作系活動群だけが使う、本調査で初めて遭遇した非`http://schemas.
+# uipath.com/...`形の名前空間——`ReadPDFText`/`ReadPDFWithOCR`自体は
+# 通常の`UI_NS`のまま。XAMLの`xmlns:upap`はCLRネームスペース文字列
+# そのものをXML名前空間URIとして使う(lxmlは常に解決済みの完全URIを
+# `elem.tag`へ渡すため、既存の`(namespace, tag)`ディスパッチ機構は
+# この形式でも構造的にそのまま使える)。
+PDF_NS = "clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.Activities"
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -949,6 +960,29 @@ def _parse_read_pdf_text(elem: etree._Element) -> ReadPdfTextNode:
         text=text,
         range=_attr_expr(elem, "Range"),
         preserve_formatting=_attr_expr(elem, "PreserveFormatting"),
+    )
+
+
+def _parse_get_pdf_page_count(elem: etree._Element) -> GetPdfPageCountNode:
+    file_name = _attr_expr(elem, "FileName") or _in_argument_property_expr(
+        elem, "FileName"
+    )
+    page_count = _attr_expr(elem, "PageCount") or _in_argument_property_expr(
+        elem, "PageCount"
+    )
+    return GetPdfPageCountNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=file_name,
+        page_count=page_count,
+    )
+
+
+def _parse_extract_pdf_page_range(elem: etree._Element) -> ExtractPdfPageRangeNode:
+    return ExtractPdfPageRangeNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=_attr_expr(elem, "FileName"),
+        output_file_name=_attr_expr(elem, "OutputFileName"),
+        range=_attr_expr(elem, "Range"),
     )
 
 
@@ -2087,6 +2121,8 @@ _DISPATCH = {
     (UI_NS, "RemoveDataColumn"): _parse_remove_data_column,
     (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
     (UI_NS, "ReadPDFText"): _parse_read_pdf_text,
+    (PDF_NS, "GetPDFPageCount"): _parse_get_pdf_page_count,
+    (PDF_NS, "ExtractPDFPageRange"): _parse_extract_pdf_page_range,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,

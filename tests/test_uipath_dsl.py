@@ -45,6 +45,7 @@ from dump_daemon.uipath_dsl import (
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
+    ExtractPdfPageRangeNode,
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
@@ -53,6 +54,7 @@ from dump_daemon.uipath_dsl import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetPdfPageCountNode,
     GetRowItemNode,
     GetTextNode,
     HighlightNode,
@@ -1600,6 +1602,40 @@ def test_read_pdf_text_with_single_page_range():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ReadPdfTextNode)
     assert node.range == Literal(value="2")
+
+
+_PDF_XMLNS = 'xmlns:upap="clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.Activities"'
+
+
+def test_get_pdf_page_count_properties():
+    """知見200: `GetPDFPageCount`(`upap:`名前空間——知見193で発見した
+    `clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.
+    Activities`)。実機`vajrang-b/UiPathIn30Days`で確認した実例。"""
+    xml = (
+        f"<upap:GetPDFPageCount {_PDF_XMLNS} "
+        'DisplayName="Get PDF Page Count" FileName="Sample PDF file.pdf" '
+        'PageCount="[Pdf_PageCount1]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetPdfPageCountNode)
+    assert node.file_name == Literal(value="Sample PDF file.pdf")
+    assert node.page_count == VbExpr(text="Pdf_PageCount1")
+
+
+def test_extract_pdf_page_range_properties():
+    """知見200: `ExtractPDFPageRange`(`GetPDFPageCount`と同じ`upap:`
+    名前空間)。実機`vajrang-b/UiPathIn30Days`で確認した
+    `Range="8-22"`の実例。"""
+    xml = (
+        f"<upap:ExtractPDFPageRange {_PDF_XMLNS} "
+        'DisplayName="Extract PDF Page Range" FileName="Sample PDF file.pdf" '
+        'OutputFileName="Sample PDF file pages 8 to 22.pdf" Range="8-22" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExtractPdfPageRangeNode)
+    assert node.file_name == Literal(value="Sample PDF file.pdf")
+    assert node.output_file_name == Literal(value="Sample PDF file pages 8 to 22.pdf")
+    assert node.range == Literal(value="8-22")
 
 
 def test_write_csv_file_properties():

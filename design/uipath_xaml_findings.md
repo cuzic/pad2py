@@ -9465,6 +9465,56 @@ test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`8件)、
 UiPath関連テスト全897件通過、リポジトリ全体で全1979件通過(28件
 skip、変化無し)。
 
+## 200. `UiPath.PDF.Activities.PDF`名前空間基盤を追加し`GetPDFPageCount`+`ExtractPDFPageRange`を新規実装——知見193で発見した非`http://schemas.uipath.com/...`形の名前空間を実際に解禁、既存の`(namespace, tag)`ディスパッチ機構がそのまま使えることを実装で確認
+
+知見193で発見した`UiPath.PDF.Activities.PDF`名前空間
+(`clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.
+Activities`、`upap:`プレフィックス、`ReadPDFText`等が使う通常の
+`http://schemas.uipath.com/workflow/activities`とは異なる)を
+`dump_daemon/uipath_dsl/xaml_tree.py`に`PDF_NS`定数として追加し、
+この名前空間を使う6活動(`GetPDFPageCount`/`JoinPDF`/
+`ExtractPDFPageRange`/`ManagePDFPassword`/`ExportPDFPageAsImage`/
+`ExtractImagesFromPDF`)のうち、実機で非null値の確認ができていた
+`GetPDFPageCount`+`ExtractPDFPageRange`の2件を実装した(残り4件は
+実機確認が手薄なため今回は見送り、次tick以降の候補として残す)。
+
+既存の`_DISPATCH`辞書は`(namespace_uri, tag)`タプルをキーにしており、
+lxmlは常に解決済みの完全URI(今回のCLRネームスペース形式の文字列も
+含む)を`elem.tag`へ渡すため、`(PDF_NS, "GetPDFPageCount")`のような
+エントリを追加するだけで既存のディスパッチ機構がそのまま機能する
+ことを実装で確認した——知見193で予想した「アーキテクチャ上の障害
+ではない」という見立てが正しかった。
+
+`GetPDFPageCount`(実機2件`Anusha-TX/Group1001_TestAutomation`・
+`vajrang-b/UiPathIn30Days`で確認)は`FileName`+`PageCount`のみで、
+`len(pypdf.PdfReader(...).pages)`が直接対応する——本リポジトリ自身
+のPAD側`pad_action_lib/pdf_actions.py`の`extract_pages_to_new_pdf()`
+内で既に`len(reader.pages)`として使われている同じイディオム。
+
+`ExtractPDFPageRange`(実機`vajrang-b/UiPathIn30Days`で確認)は
+`FileName`+`OutputFileName`+`Range`(確認した実例は`"8-22"`という
+ハイフン区切りの単純な範囲のみ)。重要な設計判断として、PAD側の
+`ExtractPagesToNewPDF`活動が対応するカンマ区切りの複数範囲文法
+(`"1,3,5-10"`、`_parse_page_selection()`で確認済み)を安易に輸入
+しなかった——UiPath側の`ExtractPDFPageRange`でこの豊富な文法が
+実際に使えるかは独立に確認できていないため、確認済みの`N-M`形
+以外の**静的リテラル**は`# TODO`へ倒し、動的な式の場合は実行時の
+`int()`の`ValueError`で自然に失敗させる(知見199の`ReadPDFText`と
+同じ方針、別製品の確認済み文法を安易に転用しない判断)。
+
+合成データ(両活動、静的・動的Rangeの両パターン)で`generate_python()`
++`compile()`を確認し、さらに実際に`pypdf`で10ページの空白PDFを
+生成して実行し、ページ数取得+指定範囲(3-5ページ)の正しい抽出
+(抽出後3ページになる)を手動確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`11件)、
+UiPath関連テスト全908件通過。リポジトリ全体では並行作業中の別
+セッション(PAD側の`If Image Exists On Screen`機能、`dump_daemon/
+pad_dsl/`等が未コミットの状態)による無関係な1件のテスト失敗
+(`test_pad_dsl_parser.py::test_if_image_exists_on_screen_parsed_
+from_real_capture`)があったが、本トランスパイラのコードとは一切
+無関係であることを確認した(知見128以来の「共有git作業ツリー」
+注意点の実例)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -91,6 +91,7 @@ from ..uipath_dsl.types import (
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
+    ExtractPdfPageRangeNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowStepNode,
@@ -103,6 +104,7 @@ from ..uipath_dsl.types import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetPdfPageCountNode,
     GetRowItemNode,
     GetTextNode,
     HighlightNode,
@@ -583,6 +585,10 @@ def _generate_node(
         return _generate_read_csv_file(node, indent)
     if isinstance(node, ReadPdfTextNode):
         return _generate_read_pdf_text(node, indent)
+    if isinstance(node, GetPdfPageCountNode):
+        return _generate_get_pdf_page_count(node, indent)
+    if isinstance(node, ExtractPdfPageRangeNode):
+        return _generate_extract_pdf_page_range(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
     if isinstance(node, InvokePowerShellNode):
@@ -2556,6 +2562,85 @@ def _generate_read_pdf_text_body(node: ReadPdfTextNode, indent: int) -> list[str
         "for _p in _rpt_reader.pages)",
         f"{prefix}else:",
         f"{inner}{target} = _rpt_reader.pages[int({range_}) - 1].extract_text() or ''",
+    ]
+
+
+# 知見200: `GetPDFPageCount`(`upap:`名前空間、知見193で発見した
+# `clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.
+# Activities`)。`len(pypdf.PdfReader(...).pages)`——PAD側
+# `pad_action_lib/pdf_actions.py`の`extract_pages_to_new_pdf()`内で
+# 既に使われている同じイディオム——が直接対応する。
+def _generate_get_pdf_page_count(node: GetPdfPageCountNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_pdf_page_count_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_pdf_page_count_body(
+    node: GetPdfPageCountNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: GetPDFPageCount with no FileName captured"]
+    if node.page_count is None:
+        return [f"{prefix}# TODO: GetPDFPageCount with no output PageCount captured"]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.page_count, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = len(pypdf.PdfReader({file_name}).pages)"]
+
+
+# 知見200: `ExtractPDFPageRange`(`GetPDFPageCount`と同じ`upap:`
+# 名前空間)。実機で確認した`Range`はハイフン区切りの単純な範囲
+# (`"8-22"`)のみ——PAD側の`ExtractPagesToNewPDF`が対応するカンマ区切り
+# の複数範囲はUiPath側で独立に確認できていないため、`N-M`形以外の
+# **静的リテラル**は`# TODO`へ倒す(動的な式は実行時の`int()`の
+# `ValueError`で自然に失敗させる、知見199の`ReadPDFText`と同じ方針)。
+_EXTRACT_PDF_RANGE_RE = re.compile(r"^\d+-\d+$")
+
+
+def _generate_extract_pdf_page_range(
+    node: ExtractPdfPageRangeNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_extract_pdf_page_range_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_extract_pdf_page_range_body(
+    node: ExtractPdfPageRangeNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None or node.output_file_name is None or node.range is None:
+        return [
+            f"{prefix}# TODO: ExtractPDFPageRange with missing "
+            "FileName/OutputFileName/Range"
+        ]
+    if isinstance(node.range, Literal) and not _EXTRACT_PDF_RANGE_RE.match(
+        node.range.value
+    ):
+        return [
+            f"{prefix}# TODO: ExtractPDFPageRange with Range "
+            f"({node.range.value!r}) not in the confirmed 'N-M' form, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    output_file_name = _render_value_or_todo(node.output_file_name, prefix, todo)
+    range_ = _render_value_or_todo(node.range, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_eppr_start, _eppr_end = ({range_}).split('-')",
+        f"{prefix}_eppr_reader = pypdf.PdfReader({file_name})",
+        f"{prefix}_eppr_writer = pypdf.PdfWriter()",
+        f"{prefix}for _eppr_i in range(int(_eppr_start), int(_eppr_end) + 1):",
+        f"{inner}_eppr_writer.add_page(_eppr_reader.pages[_eppr_i - 1])",
+        f'{prefix}with open({output_file_name}, "wb") as _eppr_f:',
+        f"{inner}_eppr_writer.write(_eppr_f)",
     ]
 
 

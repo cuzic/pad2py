@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
     ExecuteQueryNode,
+    ExtractPdfPageRangeNode,
     FlowchartNode,
     FlowDecisionNode,
     FlowStepNode,
@@ -78,6 +79,7 @@ from dump_daemon.uipath_dsl import (
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
+    GetPdfPageCountNode,
     GetRowItemNode,
     GetTextNode,
     HighlightNode,
@@ -3632,6 +3634,136 @@ def test_read_pdf_text_with_hyphenated_range_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: ReadPDFText with hyphenated Range" in code
+    _compiles(code)
+
+
+def test_get_pdf_page_count_uses_len_pages():
+    """知見200: `GetPDFPageCount`(`upap:`名前空間)。
+    `len(pypdf.PdfReader(...).pages)`が直接対応する。"""
+    wf = _wrap(
+        [
+            GetPdfPageCountNode(
+                file_name=Literal(value="a.pdf"),
+                page_count=VbExpr(text="n"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "n = len(pypdf.PdfReader('a.pdf').pages)" in code
+    assert "import pypdf" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_get_pdf_page_count_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            GetPdfPageCountNode(
+                file_name=Literal(value="a.pdf"),
+                page_count=VbExpr(text="n"),
+                display_name="Get PDF Page Count",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Get PDF Page Count" in code
+    _compiles(code)
+
+
+def test_get_pdf_page_count_with_no_file_name_is_todo():
+    wf = _wrap([GetPdfPageCountNode(file_name=None, page_count=VbExpr(text="n"))])
+    code = generate_python(wf)
+    assert "# TODO: GetPDFPageCount with no FileName captured" in code
+    _compiles(code)
+
+
+def test_get_pdf_page_count_with_no_output_is_todo():
+    wf = _wrap([GetPdfPageCountNode(file_name=Literal(value="a.pdf"), page_count=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetPDFPageCount with no output PageCount captured" in code
+    _compiles(code)
+
+
+def test_extract_pdf_page_range_writes_new_pdf():
+    """知見200: `ExtractPDFPageRange`(`GetPDFPageCount`と同じ`upap:`
+    名前空間)。実機で確認した`"8-22"`形のRangeのみ対応する。"""
+    wf = _wrap(
+        [
+            ExtractPdfPageRangeNode(
+                file_name=Literal(value="a.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                range=Literal(value="8-22"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_eppr_start, _eppr_end = ('8-22').split('-')" in code
+    assert "_eppr_writer.add_page(_eppr_reader.pages[_eppr_i - 1])" in code
+    assert "import pypdf" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_extract_pdf_page_range_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            ExtractPdfPageRangeNode(
+                file_name=Literal(value="a.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                range=Literal(value="8-22"),
+                display_name="Extract PDF Page Range",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Extract PDF Page Range" in code
+    _compiles(code)
+
+
+def test_extract_pdf_page_range_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            ExtractPdfPageRangeNode(
+                file_name=None,
+                output_file_name=Literal(value="out.pdf"),
+                range=Literal(value="8-22"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExtractPDFPageRange with missing" in code
+    _compiles(code)
+
+
+def test_extract_pdf_page_range_with_unconfirmed_range_format_is_todo():
+    wf = _wrap(
+        [
+            ExtractPdfPageRangeNode(
+                file_name=Literal(value="a.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                range=Literal(value="1,3,5-10"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExtractPDFPageRange with Range" in code
+    assert "not in the confirmed 'N-M' form" in code
+    _compiles(code)
+
+
+def test_extract_pdf_page_range_with_dynamic_range_generates_runtime_split():
+    wf = _wrap(
+        [
+            ExtractPdfPageRangeNode(
+                file_name=VbExpr(text="path"),
+                output_file_name=VbExpr(text="outPath"),
+                range=VbExpr(text="rangeVar"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_eppr_start, _eppr_end = (rangeVar).split('-')" in code
+    assert "# TODO" not in code
     _compiles(code)
 
 

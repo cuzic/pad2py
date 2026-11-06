@@ -1084,6 +1084,47 @@ class ReadPdfTextNode:
 
 
 @dataclass
+class GetPdfPageCountNode:
+    """`<GetPDFPageCount>`(知見200、`upap:`名前空間——知見193で発見した
+    `clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.
+    Activities`、`ReadPDFText`等とは違い`http://schemas.uipath.com/...`
+    形のURNではない)。実機2件(`Anusha-TX/Group1001_TestAutomation`・
+    `vajrang-b/UiPathIn30Days`)で確認した構成は`FileName`+`PageCount`
+    (出力)のみ。`FileName`のC#式言語実例(`CSharpValue`プロパティ要素形)
+    は既存の`uipath_expr`VB.NET専用文法が正しく未対応として素通りする
+    (知見129の既存の限界、本活動固有の問題ではない)。
+
+    `len(pypdf.PdfReader(FileName).pages)`(`pyproject.toml`で既に確認
+    済みの依存、PAD側`pad_action_lib/pdf_actions.py`の
+    `extract_pages_to_new_pdf()`内で`len(reader.pages)`として既に
+    使われている同じイディオム)が直接対応する。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    page_count: Expr = None
+
+
+@dataclass
+class ExtractPdfPageRangeNode:
+    """`<ExtractPDFPageRange>`(知見200、`GetPDFPageCount`と同じ
+    `upap:`名前空間)。実機`vajrang-b/UiPathIn30Days`で確認した構成は
+    `FileName`+`OutputFileName`+`Range`(確認した実例は`"8-22"`という
+    ハイフン区切りの単純な範囲のみ——PAD側の`ExtractPagesToNewPDF`
+    活動が対応するカンマ区切りの複数範囲(`"1,3,5-10"`)はUiPath側の
+    `ExtractPDFPageRange`で独立に確認できていないため、`N-M`形以外は
+    `# TODO`へ倒す、別製品の文法を安易に輸入しない判断)。
+
+    `pypdf.PdfReader`+`pypdf.PdfWriter`(`pad_action_lib/pdf_actions.py`
+    の`extract_pages_to_new_pdf()`と同じ1始まりページ番号の変換)で
+    該当ページを新しいPDFへ書き出す。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    output_file_name: Expr = None
+    range: Expr = None
+
+
+@dataclass
 class WriteCsvFileNode:
     """`<ui:WriteCsvFile>`(知見185、`ReadCsvFile`の正反対)。`UiPath/
     skills`公式リポジトリのStudio実機ground-truthコーパス
@@ -2544,6 +2585,8 @@ Node = (
     | RemoveDataColumnNode
     | ReadCsvFileNode
     | ReadPdfTextNode
+    | GetPdfPageCountNode
+    | ExtractPdfPageRangeNode
     | WriteCsvFileNode
     | InvokePowerShellNode
     | RetryScopeNode
