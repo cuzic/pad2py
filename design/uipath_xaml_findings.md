@@ -9105,6 +9105,184 @@ TODOへ倒れる活動でもノード型を適切にモデル化しておく価�
 `tests/test_uipath_codegen.py`3件)、UiPath関連テスト全852件通過、
 リポジトリ全体で全1928件通過(28件skip、変化無し)。
 
+## 193. PDF活動ファミリーの調査(実装は見送り)——`ui:ReadPDFText`はコード変更無しでも既に安全にTODO化、`UiPath.PDF.Activities.PDF`という本調査で初めて遭遇した非`http://schemas.uipath.com/...`形の名前空間を発見
+
+ユーザー指示によりユーザーから提示された3件の調査候補のうち、
+`ui:ReadPDFText`(GitHub code searchで539件ヒット)を中心にPDF活動
+ファミリーを調査した(実装は行わず調査のみ)。知見128で発見した
+`marcelocruzrpa/uipath-ai-skills`のground-truthコーパス
+(`UiPath.PDF.Activities/3.25`、12件、当時「未検証」として記録)を
+この調査で実際に確認した。
+
+`ui:ReadPDFText`(`http://schemas.uipath.com/workflow/activities`
+名前空間、`ui:`)自体の構成は`FileName`+`PreserveFormatting`
+(実機4件全て`{x:Null}`)+`Text`(出力)+`Range`。`Range`は
+ground-truthの既定値`"All"`に加え、実機で`"2"`(単一ページ番号、
+`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`)の
+実例を確認し、同じ`UiPath.PDF.Activities`パッケージの兄弟活動
+`ExtractPDFPageRange`(後述)では`"8-22"`(ハイフン区切りの範囲)の
+実例も確認した——`Range`は`"All"` / 単一ページ番号 / ハイフン範囲の
+少なくとも3種の文字列形式を取りうる。`Password`属性は`ui:ReadPDFText`
+のground-truth・実機のどちらにも存在しなかった(暗号化PDF対応は
+`ReadPDFText`自体には無く、別の`ManagePDFPassword`活動が担う設計)。
+
+**最大の発見**: 同じ`UiPath.PDF.Activities`パッケージ内の
+`GetPDFPageCount`/`JoinPDF`/`ExtractPDFPageRange`/`ManagePDFPassword`/
+`ExportPDFPageAsImage`/`ExtractImagesFromPDF`は`ui:`(`http://schemas.
+uipath.com/workflow/activities`)**ではなく**、`upap:`という別の
+プレフィックスで、XML名前空間URIそのものが`clr-namespace:UiPath.PDF.
+Activities.PDF;assembly=UiPath.PDF.Activities`という**CLRネームスペース
+形式の文字列**になっている——本調査で初めて遭遇した、`http://schemas.
+uipath.com/...`形のURN以外の活動名前空間。実機サンプル(`Anusha-TX/
+Group1001_TestAutomation`のVB.NET版、`vajrang-b/UiPathIn30Days`の
+flat属性版)で両方の直列化形(プロパティ要素形・flat属性形)を確認した。
+`xaml_tree.py`の`_DISPATCH`は`(namespace_uri, tag)`タプルをキーにして
+おり、lxmlは常に解決済みの完全URIを`elem.tag`へ渡すため、この新しい
+namespace定数(例: `PDF_NS = "clr-namespace:UiPath.PDF.Activities.PDF;
+assembly=UiPath.PDF.Activities"`)を追加して`_DISPATCH`に登録するだけで
+既存のディスパッチ機構はそのまま使える——アーキテクチャ上の障害では
+ない、という点は確認できた。
+
+`vajrang-b/UiPathIn30Days`の実機サンプルでは`GetPDFPageCount`
+(`FileName`+`PageCount`出力)/`JoinPDF`(`FileList`+`OutputFileName`、
+`FileList`の値は`[{"a.pdf","b.pdf"}]`というVB配列リテラル構文——
+現状の`uipath_expr`パーサーがこれを解釈できるか未検証)/
+`ExtractPDFPageRange`(`FileName`+`OutputFileName`+`Range="8-22"`)/
+`ManagePDFPassword`(`FileName`+`NewUserPassword`(平文VBリテラル)+
+`OutputFileName`、暗号化されていない通常の文字列のため`GetPassword`
+の DPAPI問題とは無関係)という具体的な実例を確認した。別のサンプル
+(`burakyucel0/Project55`)で見つかった`apac:ReadPDFText`
+(`Password`属性あり、`Filename`小文字n)は`ArenaRobotics.PDF.
+Activities`という**サードパーティ製の別ベンダー活動パッケージ**だと
+判明——同名の活動タグでも名前空間が異なれば完全に別物であるという、
+本調査にとって新しい注意点(タグ名だけでの判定は危険、`(namespace,
+tag)`の組で初めて活動が一意に決まるという既存の設計方針の重要性を
+裏付ける実例)。
+
+実装は見送った(ユーザー指示は調査のみ)。`ui:ReadPDFText`自体は
+既存の未知活動フォールバック(`UnknownActivityNode`)で安全に素通り
+するため緊急性は無い。実装するなら`FileName`+`Range`(3種の形式を
+確認済み)+`Text`は`pypdf`/`pdfplumber`等の確認済みPythonライブラリで
+対応できる見込みが高いが、`UiPath.PDF.Activities.PDF`名前空間の
+新規追加という前例の無い作業が前提になる。コード変更無し。
+
+## 194. `ui:AnchorBase`の調査(実装は見送り)——制御フロー構造は確認できたが、本質的な機構(アンカー相対のUI要素探索)にセレクタ上の表現が無く、headless実行で代替する安全な方法が無いという構造的な壁を発見
+
+GitHub code searchで`"<ui:AnchorBase "`が309件ヒット。公式
+ground-truthコーパス(`UiPath.UIAutomation.Activities/25.10`、76件)
+には`AnchorBase`は含まれていなかった(ディレクトリ一覧で確認済み、
+`Anchor`を含むファイル名は0件)ため、実機サンプルのみで調査した
+(`cameronmcnz/uipath-tutorials`の`PDFExtract/Main.xaml`等)。
+
+構造自体は明確に確認できた: `AnchorPosition`(例`"Top"`)属性+
+`AnchorBase.AnchorProvider`(**単一の**子活動、実機では`ui:
+WaitUiElementAppear`でアンカー点となるUI要素を探す)+
+`AnchorBase.Action`(`ActivityAction<ui:Anchor>`という**1変数**の
+デリゲート、`DelegateInArgument`の名前は実機で`"ContextAnchor"`、
+本体に`ui:GetValue`等の通常の活動を1つ以上含む)。知見190の
+`ForEachFileX`/`ForEachFolderX`で確立した単変数`ActivityAction`の
+解析ロジックがそのまま使える構造で、新しいパーサーヘルパーは不要
+——構文的な解析自体は難しくない。
+
+**壁になったのは機構そのもの**: `AnchorBase`の目的は「アンカー要素を
+起点に、画面上の相対位置関係でそれに近い別の要素を探す」という
+UiPath実行エンジンの画面上の視覚的探索機能であり、これは`Selector`
+文字列(XMLに直接現れる、確認可能な情報)では一切表現されない
+——実機サンプルの`Action`内の`ui:GetValue`の`Selector`は`<ctrl
+role='text' />`という、単独では複数の要素にマッチしうる極めて汎用的な
+値で、実際にどの要素が選ばれるかは「アンカーに最も近い」という
+XAMLに書かれていない実行時の画面幾何情報に依存する。`Click`/
+`TypeInto`の`SimulateClick`(機構未確認のため常に見送り)と同種の
+「確認できない入力方式」問題よりも一段深い——この活動は構造上、
+実行時の画面状態を見ずに静的な`generate_python()`で安全に模倣
+できる情報がXAML側に原理的に存在しない。
+
+したがって`AnchorBase`を実装するとしても、`Body`(`Action`内の
+子活動群)の`Selector`自体がアンカー文脈に依存した相対指定である
+限り、常に`# TODO`へ倒すしかない——知見176の`GetPassword`・
+知見174の`GetAttribute`・知見192の`SelectFile`と同じ「常にTODOへ
+倒れる活動」の4例目になるが、これらと違い**モデル化する動機が弱い**
+(3例はいずれも「属性値自体」の変換不可が理由で、ノード型を作れば
+decline文に`DisplayName`等の文脈を残せる価値があったが、`AnchorBase`
+は構造が制御フロー系で複雑(`body`+2つの子活動スロット)な割に、
+得られる価値はdeclineコメント1行のみ)。実装は見送った。コード変更
+無し。
+
+## 195. DataTable操作活動ファミリーの再調査(実装は見送り)——知見179の一括保留判断を見直し、活動ごとの難易度に大きな差があることを発見、ground-truthコーパスから未知の新規活動3件(`JoinDataTables`/`LookupDataTable`/`GenerateDataTable`)を発見、`SortDataTable`で実機の属性名バージョン差異(`SortOrder`→`Order`、値`"Decending"`という誤字)を発見
+
+知見179で「`FilterDataTable`/`AddDataColumn`/`RemoveDataColumn`/
+`SortDataTable`/`MergeDataTable`は`DataTable`表現の非統一性という
+アーキテクチャ上の前提作業が必要」として一括保留した判断を、知見128の
+ground-truthコーパス(`UiPath.System.Activities/25.10`)+実機サンプルで
+再調査した。
+
+ground-truthコーパスに実在が確認できた同系活動一覧(括弧内は属性):
+`FilterDataTable`(`DataTable`+`Filters`+`OutputDataTable`+
+`SelectColumns`+`SelectColumnsMode`)、`RemoveDataColumn`(`Column`/
+`ColumnIndex`/`ColumnName`+`DataTable`)、`SortDataTable`(`ColumnIndex`/
+`ColumnName`/`DataColumn`+`DataTable`+`OutputDataTable`+`SortOrder`)、
+`MergeDataTable`(`Destination`+`Source`+`MissingSchemaAction`)、
+**および知見179では未発見だった3件の新規活動**:
+`JoinDataTables`(`Arguments`+`DataTable1`+`DataTable2`+
+`OutputDataTable`+`JoinType`、2つのDataTableのリレーショナルjoin)、
+`LookupDataTable`(`DataTable`+`LookupColumnIndex`/`LookupColumnName`/
+`LookupDataColumn`+`LookupValue`+`TargetColumnIndex`/`TargetColumnName`/
+`TargetDataColumn`+`CellValue`出力+`RowIndex`出力、単一値の検索)、
+`GenerateDataTable`(`Input`+`ColumnSeparators`/`ColumnSizes`/
+`Positions`+`NewLineSeparator`+`DataTable`出力、テキストを区切り文字/
+固定幅でDataTableへ変換)。`AddDataColumn`はこのコーパスには存在せず
+(別パッケージ版の可能性、実機のみで構成確認——後述)。
+
+実機サンプルで構成を検証した結果、**知見179の一括保留判断には見直す
+余地がある**ことが分かった——5活動の実際の難易度は一様ではない:
+- `RemoveDataColumn`/`AddDataColumn`(実機`HarshadRanganathan/
+  uipath-learning`で確認、`AllowDBNull`/`AutoIncrement`/`MaxLength`/
+  `Unique`が実機で`{x:Null}`ではなく`"True"`/`"False"`/`"100"`という
+  **明示的な値を持つ実例を確認**——ground-truthの「既定`{x:Null}`」
+  という前提は実機の実態と異なっていた)はスキーマ変更のみ(列の追加/
+  削除)で行の**値**を読む必要が無いため、知見183で確立した
+  `isinstance(row, dict)`判定と組み合わせれば「dict行表現の場合のみ
+  対応・それ以外は`# TODO`」という部分対応が可能かもしれない——ただし
+  `MaxLength`/`Unique`等の.NET DataColumn制約はPython側に強制する仕組みが
+  無く、それらが設定された場合にどう振る舞うべきかは未確定。
+- `MergeDataTable`はスキーマが同一であれば単純な行リストの結合
+  (`Destination.extend(Source)`相当)で済む可能性があるが、
+  `MissingSchemaAction`(既定`"Add"`)が示す「スキーマが異なる場合に
+  列を追加する」挙動を実現するには、結局列名解決が必要になる。
+- `LookupDataTable`は出力が単一のセル値+単一の行インデックスに
+  限定されるため、他の4活動より**構造的に単純**——
+  `LookupColumnIndex`/`TargetColumnIndex`のような列インデックス直接
+  指定の実例があれば、dict行表現への依存すら避けられる可能性がある。
+  今回確認した5活動の中で最も有望な次の実装候補と判断する。
+- `GenerateDataTable`は既存のDataTableを読むのではなく**新しく
+  構築する**活動のため、出力の表現形式(dict行か否か)を自分で選べる
+  ——既存の非統一性問題を回避できる構造的な利点がある。区切り文字/
+  固定幅という2種のテキスト分割方式の意味論を確認できれば、
+  実装候補として有望。
+- `SortDataTable`/`FilterDataTable`/`JoinDataTables`は依然、任意の
+  行表現に対する列名ベースの値アクセスが必要で、知見179の指摘した
+  「変数の生成元を跨いだ列スキーマ追跡」というアーキテクチャ課題が
+  そのまま当てはまる——この3件は保留を継続する。
+
+**独立した実機バージョン差異の発見**: `SortDataTable`はground-truth
+(`UiPath.System.Activities/25.10`)では`SortOrder`(値`"Ascending"`/
+`"Descending"`)という属性名だが、実機`PacktPublishing/Robotic-
+Process-Automation-RPA-for-Developers`のサンプルでは属性名が
+**`Order`**(`SortOrder`ではない)で、値も**`"Decending"`**
+(正しい`"Descending"`の誤字)になっていた——ground-truthコーパスは
+特定バージョン(25.10)のみを収録しているため、より古い/新しい
+Activitiesパッケージバージョンで属性名・取りうる値の表記が変わる
+(あるいは単純にUiPath側の既知の誤字が長期間修正されずに残っている)
+可能性を示す実例。将来`SortDataTable`を実装する際は、`SortOrder`
+だけでなく`Order`という別名の実在もパーサーで吸収する必要がある
+(例: `_attr_expr(elem, "SortOrder") or _attr_expr(elem, "Order")`)。
+
+実装は見送った(ユーザー指示は調査のみ)。知見179の一括保留判断は
+`FilterDataTable`/`SortDataTable`/`JoinDataTables`には今も妥当だが、
+`LookupDataTable`/`GenerateDataTable`/`RemoveDataColumn`は次の
+実装候補として`design/uipath_feature_catalog.md`の「DataTableスキーマ
+解決パス」節に追記した。コード変更無し。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

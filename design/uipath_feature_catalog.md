@@ -235,6 +235,25 @@ resolverの新設が必要なケース。今回は見送ったが、同種のDat
 ことを見据えると、一度「DataTableスキーマ解決パス」を設計する価値は
 ある。
 
+**追記(知見195、2026-11-06、調査のみ・コード変更無し)**: `Filter
+DataTable`/`AddDataColumn`/`RemoveDataColumn`/`SortDataTable`/
+`MergeDataTable`を実機サンプル+ground-truthコーパスで再調査した結果、
+一括保留ではなく活動ごとに難易度差があることが分かった。
+**次の実装候補として有望な順**: ①`LookupDataTable`(新規発見、
+`DataTable`+`LookupColumn(Index/Name)`+`LookupValue`+
+`TargetColumn(Index/Name)`→単一セル値+行インデックスの出力のみで、
+列スキーマ全体を追跡しなくても対応できる見込み)②`GenerateDataTable`
+(新規発見、テキストを区切り文字/固定幅でDataTableへ変換——既存の
+DataTableを読まず新規に構築するため出力表現を自分で選べる)
+③`RemoveDataColumn`/`AddDataColumn`(スキーマ変更のみで行の値は読まない
+——知見183の`isinstance(row, dict)`判定と組み合わせればdict行限定で
+部分対応できる可能性)。**依然保留**: `SortDataTable`/
+`FilterDataTable`/`JoinDataTables`(新規発見の3件目)は列名ベースの
+値アクセスが本質的に必要で、このスキーマ解決パスの設計を待つ。
+`SortDataTable`は実機で属性名`Order`(ground-truthの`SortOrder`とは
+別名)+値`"Decending"`(誤字)という version skew も確認済み——将来
+実装時はどちらの属性名も吸収する必要がある。詳細は知見195参照。
+
 **`row(...)`添字の変数スコープ追跡(知見74で見送り、知見126で実需要を
 確認・将来のアーキテクチャ候補)**: VB.NETの`識別子(引数)`構文は関数
 呼び出し・配列添字・DataTable行の列アクセス(`row("列名")`)のいずれも
@@ -252,11 +271,15 @@ studio-ground-truth/`配下に、UiPathパッケージ名・バージョンご�
 整理された504件の単体活動`.xaml`参照フィクスチャがある
 (`UiPath.Database.Activities/2.0`(10件)・`UiPath.Excel.
 Activities/3.4`(117件、未検証)・`UiPath.Mail.Activities/2.8`
-(45件、未検証)・`UiPath.PDF.Activities/3.25`(12件)・`UiPath.
+(45件、未検証)・`UiPath.PDF.Activities/3.25`(12件、知見193で
+`ReadPDFText`/`ReadPDFWithOCR`+`upap:`名前空間系6件を検証済み、
+残り`ExportPDFPageAsImage`以外は概ね確認)・`UiPath.
 Persistence.Activities/1.4`(10件)・`UiPath.System.
-Activities/25.10・26.2`(199件、未検証)・`UiPath.Testing.
-Activities/25.10`(23件)・`UiPath.UIAutomation.Activities/25.10`
-(76件、未検証)・`UiPath.WebAPI.Activities/2.4`(12件))。各ファイルは
+Activities/25.10・26.2`(199件、うちDataTable系9件を知見195で検証済み・
+残り大半は未検証)・`UiPath.Testing.Activities/25.10`(23件)・
+`UiPath.UIAutomation.Activities/25.10`(76件、知見194で`AnchorBase`が
+このコーパスに含まれないことのみ確認済み・残りは未検証)・
+`UiPath.WebAPI.Activities/2.4`(12件))。各ファイルは
 `<Activity x:Class="...">`直下に活動1つだけの最小形
 (`parse_workflow_file`が要求する`Sequence`/`Flowchart`ラッパー無し
 ——`parse_activity()`+`_generate_node()`を直接呼ぶ必要がある)。

@@ -2498,3 +2498,40 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`1件・
      `tests/test_uipath_codegen.py`3件)、UiPath関連テスト全852件
      通過、リポジトリ全体で全1928件通過。
+
+151. **(完了・調査のみ、コード変更無し、2026-11-06)** PDF活動ファミリー
+     を調査(知見193): `ui:ReadPDFText`(`FileName`+`Range`(`"All"`/
+     単一ページ番号/ハイフン範囲の3形式)+`Text`+`PreserveFormatting`)
+     自体は`ui:`名前空間だが、同パッケージの`GetPDFPageCount`/
+     `JoinPDF`/`ExtractPDFPageRange`/`ManagePDFPassword`等は
+     `clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.
+     Activities`という、本調査で初めて遭遇した非`http://schemas.
+     uipath.com/...`形の名前空間を使うことを発見——既存の
+     `(namespace, tag)`ディスパッチ機構はこの形式でも構造的には
+     そのまま使える(アーキテクチャ上の障害ではない)ことを確認した。
+     サードパーティ製の同名タグ`apac:ReadPDFText`
+     (`ArenaRobotics.PDF.Activities`)との混同回避も確認。実装は
+     見送った。
+
+152. **(完了・調査のみ、コード変更無し、2026-11-06)** `ui:AnchorBase`
+     を調査(知見194): `AnchorPosition`+単一子活動の`AnchorProvider`+
+     1変数`ActivityAction<ui:Anchor>`の`Action`という構造自体は確認
+     できたが、アンカー相対のUI要素探索という本質的な機構がXAMLの
+     `Selector`文字列に一切表現されておらず、静的な`generate_python()`
+     で安全に模倣できる情報が原理的に存在しないという構造的な壁を
+     発見。`GetPassword`/`GetAttribute`/`SelectFile`と同じ「常に
+     TODOへ倒れる」活動だが、モデル化する動機(decline文の文脈情報)が
+     構造の複雑さに対して薄いと判断し、実装は見送った。
+
+153. **(完了・調査のみ、コード変更無し、2026-11-06)** DataTable操作
+     活動ファミリーを再調査(知見195): 知見179の一括保留判断を見直し、
+     ground-truthコーパスから新規3活動(`JoinDataTables`/
+     `LookupDataTable`/`GenerateDataTable`)を発見。難易度を再評価し、
+     `LookupDataTable`(単一セル値+行インデックスの出力のみ)・
+     `GenerateDataTable`(新規構築のため出力表現を自分で選べる)・
+     `RemoveDataColumn`/`AddDataColumn`(スキーマ変更のみ)を次の
+     実装候補、`SortDataTable`/`FilterDataTable`/`JoinDataTables`を
+     依然保留と整理した。`SortDataTable`で実機の属性名version skew
+     (`SortOrder`→`Order`、値`"Decending"`の誤字)も発見。
+     `design/uipath_feature_catalog.md`のDataTableスキーマ解決パス節に
+     追記。実装は見送った。
