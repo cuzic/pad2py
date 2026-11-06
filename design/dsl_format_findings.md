@@ -2604,3 +2604,21 @@ VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系�
 `pad_codegen/actions/cmd.py`に`Cmd.Open.OpenWithCodePage`のディスパッチを新規追加し、`Encoding`パラメータを`enum_last()`で読み取った列挙名の文字列をそのまま`encoding=`引数へ渡すだけで済んだ(コードページ変換自体は`pad_action_lib`側の責務)。
 
 テストは`tests/test_pad_action_lib_cmd.py`に`_ENCODING_CODEPAGES`のサンプル値確認・`change_code_page=True`時に`chcp <コードページ番号>`が送信されることの確認(`CmdSession.write`をフェイクに差し替えて検証)・未知の列挙名で`OpenCmdError`になることの確認の3件、`tests/test_pad_codegen.py`に`OpenWithCodePage`のexec検証1件を追加した。これでCmd.Actions.dllの4セレクタ全件が結線完了した。
+
+## 154. File.Actions.dllをdecompileし`RenameAddDateOrTime`/`RenameAddCustomDateTime`/`RenameAddSequentialSuffix`/`OverwriteWithSequentialSuffix`を結線——`rename_add_datetime()`/`rename_make_sequential()`の既存の未確認実装に2件の潜在バグを発見・修正
+
+知見136で見送っていた`File.RenameFiles`の残り4セレクタ(`RenameAddDateOrTime`/`RenameAddCustomDateTime`/`RenameAddSequentialSuffix`/`OverwriteWithSequentialSuffix`)を、`pad2py-fetch-file-dll`(新規clipwire target)で取得した`Microsoft.Flow.RPA.Desktop.Modules.File.Actions.dll`(171,824バイト)のdecompileで解消した。全て単一の`RenameFilesAction`クラスの兄弟セレクタで、`RenameFilesAction.GetNewFileNameResolver()`(`RenameScheme`ごとの`Func<FileObject, string>`を返すswitch式)に全スキームの正確なアルゴリズムが書かれていた。
+
+**`AddDateTime`スキーム**(`RenameAddDateOrTime`=`UseCustomDateTime:False`・`RenameAddCustomDateTime`=`UseCustomDateTime:True`の兄弟セレクタ): `DateTimeToAdd`列挙(`Current`/`CreationTime`/`LastAccessed`/`LastModified`)で使うタイムスタンプを選び、`DateTimeFormat`(.NET書式文字列)で`.ToString()`、`DateTimePosition`(`AddTextPosition`、知見136と同じ`BeforeName`/`AfterName`)の位置に`DateTimeSeparator`(`Separator`列挙、`Nothing`/`Space`/`Dash`/`Period`/`Underscore`——`GetSeparator()`で実際の文字へ変換、既定`Space`)を挟んで結合する。
+
+**`MakeSequential`スキーム**(`RenameAddSequentialSuffix`=`SequenceUseExistingName:True`・`OverwriteWithSequentialSuffix`=`SequenceUseExistingName:False`の兄弟セレクタ): 連番(`StartNumberingAt`から`IncrementBy`ずつ加算、バッチ内で状態共有)を`UsePadding`時は`Padding`桁まで`0`埋めし、`SequencePosition`の位置に`SequenceSeparator`を挟んで、`SequenceUseExistingName`なら既存のファイル名(拡張子抜き)、そうでなければ`SequenceNewName`と結合する。
+
+**既存実装の潜在バグ発見・修正**: `pad_action_lib.file_actions`の`rename_add_datetime()`/`rename_make_sequential()`はいずれも知見136より前に実機未確認のまま書かれた推測実装で、codegenに結線されていなかった(`pad_todo.md`に「未検証」として記録済み)——出荷前に以下2件を発見・修正できた:
+1. `rename_add_datetime()`は`position`に存在しない`"Prefix"`/`"Suffix"`を仮定していた(実機は`rename_add_text()`と同じ`BeforeName`/`AfterName`、知見136の`RenameAddText`修正と全く同じ種類の誤り)。
+2. `rename_make_sequential()`/`rename_add_datetime()`はいずれも`Separator`を一切挟まない直接連結を仮定していたが、実機は`GetSeparator()`で変換した区切り文字を常に挟む(既定`Space`)——`rename_make_sequential()`の既存テストは区切り文字無しの連結(`"file001.txt"`)を仮定しており、decompileで反証された。
+
+`rename_add_datetime()`は`dotnet_format`引数を直接受け取り`text_actions.dotnet_format_to_strftime()`(知見148と同じ再利用)で変換するよう修正、`rename_make_sequential()`は`base_text: str | None = None`(Noneなら既存のファイル名、値を渡すと`SequenceNewName`相当)・`position`・`separator`引数を新規追加した。新規`file_actions.file_timestamp(path, which)`で`CreationTime`/`LastAccessed`/`LastModified`のファイルタイムスタンプを取得する。
+
+`pad_codegen/actions/file.py`の`_RENAME_SCHEME_TRANSFORMS`ディスパッチを拡張し、各変換関数が`(ループ前に1回だけ出すセットアップ行のリスト, _rename_new_baseを計算する式)`のタプルを返す設計に変更した——`MakeSequential`系はバッチ内で状態共有する`SequentialNumberer`をループ前に1回だけ生成する必要があるため(既存の4つの単純な文字列変換セレクタは空リストを返すだけで済む)。`Separator`列挙→実際の文字への変換は`_support.RENAME_SEPARATOR_TO_CHAR`に切り出し、`CSV_PREDEFINED_SEPARATOR_TO_DELIMITER`と同じパターンで管理する。
+
+テストは`tests/test_pad_action_lib_file.py`に`rename_add_datetime()`/`rename_make_sequential()`/`file_timestamp()`の新規テスト5件(既存の区切り文字無し仮定テストも知見154を踏まえて`separator=""`明示に修正)、`tests/test_pad_codegen.py`に4セレクタ分のexec検証テストを追加した。これで`File.Actions.dll`の`RenameFiles`系(`RenameScheme`列挙の全6パターン)が結線完了した。

@@ -395,9 +395,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     新規結線。副産物として、`rename_add_text()`が実在しない列挙値名(`Prefix`/`Suffix`、
     実機は`BeforeName`/`AfterName`)を仮定していた潜在バグも発見・修正した(幸いまだ
     codegenに結線されていなかったため出荷前に発見できた)。
-    - [ ] 💻🖥️ **残課題(次の調査対象)**: `RenameAddDateOrTime`/`RenameAddCustomDateTime`/
-      `RenameAddSequentialSuffix`(日時書式・連番のパラメータが多く個々の仕様が未検証)、
-      `OverwriteWithSequentialSuffix`(未調査)は見送ったまま。
+    ✅ **決着(知見154、decompileで解消)**: `pad2py-fetch-file-dll`でDLL本体を取得し
+    decompile、`RenameFilesAction.GetNewFileNameResolver()`から`AddDateTime`/
+    `MakeSequential`スキームの正確なアルゴリズムを特定。`RenameAddDateOrTime`/
+    `RenameAddCustomDateTime`/`RenameAddSequentialSuffix`/`OverwriteWithSequentialSuffix`
+    の4件を新規結線完了。副産物として`rename_add_datetime()`/`rename_make_sequential()`
+    (いずれも未結線だった推測実装)の潜在バグ2件(存在しない`Prefix`/`Suffix`、区切り文字
+    無し仮定)も発見・修正した。これで`RenameFiles`系(`RenameScheme`列挙の全6パターン)が
+    結線完了。
   - [x] 💻🖥️ `Folder.Actions.dll`/`Compression.Actions.dll`にも同じ監査手法を適用。
     ✅ **決着(知見137)**: `Folder.IfFolderExists.DoesNotExist`を発見・結線した
     (`FolderExistsSelector`という名前自体に`"IfFolder"`を含まないため、型名部分一致の

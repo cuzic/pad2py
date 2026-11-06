@@ -1,11 +1,17 @@
 """`File.Actions`(単一ファイル操作)のロジック層。
 
 `RenameFiles`の各`RenameScheme`(`AddText`/`RemoveText`/`ReplaceText`/
-`ChangeExtension`/`AddDateTime`)が実際にどのパラメータ名を使うかはデコンパイル
-結果からも未確認("各スキーム専用パラメータ多数"としか分からない)ため、この層では
-変換内容(「何をするか」)だけを素直な関数として実装し、パラメータ名はこのモジュール
-独自の名前を使う——実機でDSLのプロパティ名が確認できた後、codegen側でその名前から
-この関数の引数へマッピングする結線作業が別途必要。
+`ChangeExtension`/`AddDateTime`/`MakeSequential`)は知見136・154で
+`RenameFilesAction`(`File.Actions.dll`)をdecompileして全スキームの正確な
+アルゴリズムを確認済み(`GetNewFileNameResolver()`)。
+
+知見154(decompile確認済み): `AddDateTime`/`MakeSequential`はいずれも共通の
+`Separator`列挙型(`Nothing`/`Space`/`Dash`/`Period`/`Underscore`)で日時/連番と
+元のファイル名の間に挿入する区切り文字を指定する(`GetSeparator()`、既定は
+`Space`)——文字そのものへの変換はcodegen側の`_support.RENAME_SEPARATOR_TO_CHAR`
+が担い、この層の関数は既に解決済みの文字列を受け取る。`position`
+(`AddTextPosition`列挙型、`BeforeName`/`AfterName`)は`rename_add_text()`と同じ
+(知見136)。
 """
 from __future__ import annotations
 
@@ -13,10 +19,12 @@ import base64
 import glob
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 from .datatable import DataTable
 from .errors import PadActionError
+from .text_actions import dotnet_format_to_strftime
 
 # ビルトインの`FileNotFoundError`と、PADの`[Throws("FileNotFoundError")]`タグに対応する
 # 例外クラスの名前が衝突するため、実OSエラーの捕捉用に先に退避しておく。
@@ -184,22 +192,59 @@ def rename_change_extension(original_name: str, new_extension: str) -> str:
     return stem + new_extension
 
 
+def file_timestamp(path: str, which: str) -> datetime:
+    """`which`は`CreationTime`/`LastAccessed`/`LastModified`(知見154で
+    `RenameFilesAction.GetNewFileNameResolver()`をdecompileして確認済み、
+    `FileSystemObjectBasicInfo`のプロパティ名そのもの)。
+    """
+    stat_result = os.stat(path)
+    if which == "CreationTime":
+        return datetime.fromtimestamp(stat_result.st_ctime)
+    if which == "LastAccessed":
+        return datetime.fromtimestamp(stat_result.st_atime)
+    if which == "LastModified":
+        return datetime.fromtimestamp(stat_result.st_mtime)
+    raise ValueError(f"Unknown timestamp kind: {which!r}")
+
+
 def rename_add_datetime(
     original_name: str,
-    timestamp,
-    strftime_format: str = "%Y%m%d%H%M%S",
-    position: str = "Suffix",
+    timestamp: datetime,
+    dotnet_format: str = "yyyyMMdd",
+    position: str = "AfterName",
+    separator: str = " ",
 ) -> str:
+    """知見154(decompile確認済み): `DateTimeFormat`は`DateTime.ToString()`に渡される
+    .NET書式文字列のため、`dotnet_format_to_strftime()`で変換する(知見148の
+    `datetime_to_text()`と同じパターン)。`position`の既定値`AfterName`は実機の
+    `[DefaultValue(AddTextPosition.AfterName)]`と一致する。
+    """
     stem, ext = os.path.splitext(original_name)
-    stamp = timestamp.strftime(strftime_format)
-    return f"{stamp}{stem}{ext}" if position == "Prefix" else f"{stem}{stamp}{ext}"
+    stamp = timestamp.strftime(dotnet_format_to_strftime(dotnet_format))
+    return f"{stamp}{separator}{stem}{ext}" if position == "BeforeName" else f"{stem}{separator}{stamp}{ext}"
 
 
-def rename_make_sequential(original_name: str, numberer: SequentialNumberer, digits: int = 0) -> str:
+def rename_make_sequential(
+    original_name: str,
+    numberer: SequentialNumberer,
+    base_text: str | None = None,
+    position: str = "AfterName",
+    separator: str = " ",
+    digits: int = 0,
+) -> str:
+    """知見154(decompile確認済み): `base_text=None`は`SequenceUseExistingName=True`
+    (既存のファイル名を使う、`RenameAddSequentialSuffix`)、`base_text`に値を渡すと
+    `SequenceUseExistingName=False`+`SequenceNewName`相当(`OverwriteWithSequentialSuffix`)。
+    """
     stem, ext = os.path.splitext(original_name)
+    text = stem if base_text is None else base_text
     number = numberer.next()
     number_text = str(number).zfill(digits) if digits else str(number)
-    return f"{stem}{number_text}{ext}"
+    return (
+        f"{number_text}{separator}{text}{ext}"
+        if position == "BeforeName"
+        else f"{text}{separator}{number_text}{ext}"
+    )
 
 
 def apply_rename(directory: str, original_name: str, new_name: str, if_file_exists: str = "DoNothing") -> Path:

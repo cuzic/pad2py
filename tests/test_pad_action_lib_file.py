@@ -60,9 +60,48 @@ def test_sequential_numberer_increments_across_calls() -> None:
 
 
 def test_rename_make_sequential_uses_shared_numberer_state() -> None:
+    # design/dsl_format_findings.md 知見154(decompile確認済み): `RenameFilesAction`の
+    # `MakeSequential`は番号と元のファイル名の間に`SequenceSeparator`(既定`Space`)を
+    # 挿入する——以前のテストは区切り文字無しの連結を仮定していた(実機未確認の潜在バグ)。
     numberer = fa.SequentialNumberer(start=1, increment=1)
-    assert fa.rename_make_sequential("file.txt", numberer, digits=3) == "file001.txt"
-    assert fa.rename_make_sequential("file.txt", numberer, digits=3) == "file002.txt"
+    assert fa.rename_make_sequential("file.txt", numberer, digits=3, separator="") == "file001.txt"
+    assert fa.rename_make_sequential("file.txt", numberer, digits=3, separator="") == "file002.txt"
+
+
+def test_rename_make_sequential_default_separator_is_space() -> None:
+    numberer = fa.SequentialNumberer(start=1, increment=1)
+    assert fa.rename_make_sequential("file.txt", numberer, digits=2) == "file 01.txt"
+
+
+def test_rename_make_sequential_before_name_with_new_base_text() -> None:
+    # `base_text`指定時は`OverwriteWithSequentialSuffix`(`SequenceUseExistingName=False`)
+    # 相当——既存のファイル名ではなく`SequenceNewName`を使う。
+    numberer = fa.SequentialNumberer(start=5, increment=1)
+    result = fa.rename_make_sequential(
+        "ignored.txt", numberer, base_text="report", position="BeforeName", separator="_"
+    )
+    assert result == "5_report.txt"
+
+
+def test_rename_add_datetime_converts_dotnet_format_and_inserts_separator() -> None:
+    # design/dsl_format_findings.md 知見154: `DateTimeFormat`は.NET書式文字列
+    # (`dotnet_format_to_strftime()`経由、知見148と同じパターン)。
+    timestamp = datetime(2026, 11, 6, 9, 30, 0)
+    assert fa.rename_add_datetime("file.txt", timestamp, "yyyyMMdd") == "file 20261106.txt"
+    assert (
+        fa.rename_add_datetime("file.txt", timestamp, "yyyyMMdd", position="BeforeName", separator="-")
+        == "20261106-file.txt"
+    )
+
+
+def test_file_timestamp_reads_creation_last_modified_last_accessed(tmp_path: Path) -> None:
+    f = tmp_path / "a.txt"
+    f.write_text("a")
+    for which in ("CreationTime", "LastAccessed", "LastModified"):
+        value = fa.file_timestamp(str(f), which)
+        assert isinstance(value, datetime)
+    with pytest.raises(ValueError):
+        fa.file_timestamp(str(f), "Bogus")
 
 
 def test_rename_schemes() -> None:

@@ -3697,6 +3697,118 @@ def test_generate_python_from_rename_files_change_extension_converts() -> None:
         assert renamed.is_file()
 
 
+def test_generate_python_from_rename_files_add_date_or_time_converts() -> None:
+    # design/dsl_format_findings.md 知見154(decompileソース直読み): `RenameAddDateOrTime`
+    # (`DateTimeToAdd=LastModified`、`RenameFilesAction.GetNewFileNameResolver()`の
+    # `AddDateTime`分岐)。`DateTimeFormat`は.NET書式文字列、`DateTimeSeparator`は
+    # 文字へ変換される(`_support.RENAME_SEPARATOR_TO_CHAR`)。
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "report.txt"
+        src.write_text("x", encoding="utf-8")
+        import os as _os
+        import time as _time
+
+        mtime = _time.mktime((2026, 11, 6, 9, 0, 0, 0, 0, -1))
+        _os.utime(src, (mtime, mtime))
+        dsl = (
+            f"File.RenameFiles.RenameAddDateOrTime Files: $'''{src}''' "
+            "DateTimeToAdd: File.DateTimeToAdd.LastModified "
+            "DateTimePosition: File.AddTextPosition.AfterName "
+            "DateTimeSeparator: File.Separator.Underscore "
+            "DateTimeFormat: $'''yyyyMMdd''' "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "report_20261106.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
+def test_generate_python_from_rename_files_add_custom_date_time_converts() -> None:
+    # 知見154: `RenameAddCustomDateTime`(`UseCustomDateTime=True`固定)。`CustomDateTime`は
+    # 実行時に解決される変数参照(`VarRef`)としてそのまま渡る。
+    from datetime import datetime
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "report.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.RenameAddCustomDateTime Files: $'''{src}''' "
+            "CustomDateTime: D "
+            "DateTimePosition: File.AddTextPosition.BeforeName "
+            "DateTimeSeparator: File.Separator.Dash "
+            "DateTimeFormat: $'''yyyy-MM-dd''' "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {"D": datetime(2025, 3, 4)}
+        exec(code, namespace)
+        renamed = Path(tmp) / "2025-03-04-report.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
+def test_generate_python_from_rename_add_sequential_suffix_converts() -> None:
+    # 知見154: `RenameAddSequentialSuffix`(`SequenceUseExistingName=True`固定)——
+    # バッチ内の複数ファイルで`SequentialNumberer`の状態が共有されることまで検証する。
+    with tempfile.TemporaryDirectory() as tmp:
+        src1 = Path(tmp) / "a.txt"
+        src2 = Path(tmp) / "b.txt"
+        src1.write_text("x", encoding="utf-8")
+        src2.write_text("x", encoding="utf-8")
+        dsl = (
+            "File.RenameFiles.RenameAddSequentialSuffix Files: FileList "
+            "SequencePosition: File.AddTextPosition.AfterName "
+            "SequenceSeparator: File.Separator.Underscore "
+            "StartNumberingAt: 1 IncrementBy: 1 UsePadding: True Padding: 2 "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {"FileList": [str(src1), str(src2)]}
+        exec(code, namespace)
+        renamed1 = Path(tmp) / "a_01.txt"
+        renamed2 = Path(tmp) / "b_02.txt"
+        assert namespace["R"] == [str(renamed1), str(renamed2)]
+        assert renamed1.is_file()
+        assert renamed2.is_file()
+
+
+def test_generate_python_from_overwrite_with_sequential_suffix_converts() -> None:
+    # 知見154: `OverwriteWithSequentialSuffix`(`SequenceUseExistingName=False`固定)——
+    # 既存のファイル名ではなく`SequenceNewName`を使う。
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "a.txt"
+        src.write_text("x", encoding="utf-8")
+        dsl = (
+            f"File.RenameFiles.OverwriteWithSequentialSuffix Files: $'''{src}''' "
+            "SequenceNewName: $'''report''' "
+            "SequencePosition: File.AddTextPosition.BeforeName "
+            "SequenceSeparator: File.Separator.Nothing "
+            "StartNumberingAt: 5 IncrementBy: 1 UsePadding: False Padding: 0 "
+            "IfFileExists: File.IfExists.DoNothing RenamedFiles=> R"
+        )
+        tree = build_block_tree(parse_dsl(dsl))
+        code = generate_python(tree)
+        compile(code, "<generated>", "exec")
+        assert "# TODO" not in code
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+        renamed = Path(tmp) / "5report.txt"
+        assert namespace["R"] == [str(renamed)]
+        assert renamed.is_file()
+
+
 def test_generate_python_from_get_current_datetime_custom_offset_converts() -> None:
     # design/dsl_format_findings.md 知見138: `GetCurrentDateTime`の兄弟セレクタ
     # `CustomOffset`(`Local`以外、`ActionSelectorBase`一括列挙の監査で発見・VM上の

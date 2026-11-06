@@ -31,51 +31,163 @@ from __future__ import annotations
 from ...pad_dsl import ActionRecord
 from ..context import CodegenContext
 from ..render import INDENT
-from ._support import CSV_PREDEFINED_SEPARATOR_TO_DELIMITER, enum_last, safe_render
+from ._support import (
+    CSV_PREDEFINED_SEPARATOR_TO_DELIMITER,
+    RENAME_SEPARATOR_TO_CHAR,
+    enum_last,
+    safe_render,
+)
 
 
 def _as_list_expr(rendered: str) -> str:
     return f"({rendered} if isinstance({rendered}, list) else [{rendered}])"
 
 
-def _rename_add_text_transform(p: dict) -> str | None:
+def _rename_add_text_transform(p: dict) -> tuple[list[str], str] | None:
     text = safe_render(p.get("TextToAdd"))
     position = enum_last(p.get("TextPosition"))
     if text is None or position is None:
         return None
-    return f"file_actions.rename_add_text(_rename_base, {text}, position={position!r})"
+    return [], f"file_actions.rename_add_text(_rename_base, {text}, position={position!r})"
 
 
-def _rename_remove_text_transform(p: dict) -> str | None:
+def _rename_remove_text_transform(p: dict) -> tuple[list[str], str] | None:
     text = safe_render(p.get("TextToRemove"))
     if text is None:
         return None
-    return f"file_actions.rename_remove_text(_rename_base, {text})"
+    return [], f"file_actions.rename_remove_text(_rename_base, {text})"
 
 
-def _rename_replace_text_transform(p: dict) -> str | None:
+def _rename_replace_text_transform(p: dict) -> tuple[list[str], str] | None:
     find = safe_render(p.get("TextToReplace"))
     replace = safe_render(p.get("ReplaceWith"))
     if find is None or replace is None:
         return None
-    return f"file_actions.rename_replace_text(_rename_base, {find}, {replace})"
+    return [], f"file_actions.rename_replace_text(_rename_base, {find}, {replace})"
 
 
-def _rename_change_extension_transform(p: dict) -> str | None:
+def _rename_change_extension_transform(p: dict) -> tuple[list[str], str] | None:
     new_extension = safe_render(p.get("NewExtension"))
     if new_extension is None:
         return None
-    return f"file_actions.rename_change_extension(_rename_base, {new_extension})"
+    return [], f"file_actions.rename_change_extension(_rename_base, {new_extension})"
 
 
-# design/dsl_format_findings.md 知見136: `RenameFilesAction`のVM上のリフレクションで
-# 確認済みの`RenameScheme`列挙値(`AddText`/`RemoveText`/`ReplaceText`/`ChangeExtension`)
-# それぞれに対応するaction_idセレクタ名(`ActionSelectorBase.ActionName`で確認済み)。
+def _rename_date_time_args(p: dict) -> tuple[str, str, str] | None:
+    """`DateTimePosition`/`DateTimeSeparator`/`DateTimeFormat`の共通読み取り
+    (`RenameAddDateOrTime`/`RenameAddCustomDateTime`で共有、知見154)。"""
+    position = enum_last(p.get("DateTimePosition"))
+    separator_name = enum_last(p.get("DateTimeSeparator"))
+    dotnet_format = safe_render(p.get("DateTimeFormat"))
+    if position is None or separator_name is None or dotnet_format is None:
+        return None
+    separator = RENAME_SEPARATOR_TO_CHAR.get(separator_name)
+    if separator is None:
+        return None
+    return position, separator, dotnet_format
+
+
+def _rename_add_date_or_time_transform(p: dict) -> tuple[list[str], str] | None:
+    # 知見154(decompile確認済み): `DateTimeToAdd`(`Current`/`CreationTime`/
+    # `LastAccessed`/`LastModified`)は`RenameFilesAction.GetNewFileNameResolver()`の
+    # switch式そのもの。`Current`は`datetime_actions.get_current_datetime()`
+    # (既定で`datetime.now()`相当)、他はファイルのタイムスタンプ
+    # (`file_actions.file_timestamp()`)を使う。
+    date_time_to_add = enum_last(p.get("DateTimeToAdd"))
+    args = _rename_date_time_args(p)
+    if date_time_to_add is None or args is None:
+        return None
+    position, separator, dotnet_format = args
+    if date_time_to_add == "Current":
+        timestamp_expr = "datetime_actions.get_current_datetime()"
+    elif date_time_to_add in ("CreationTime", "LastAccessed", "LastModified"):
+        timestamp_expr = f"file_actions.file_timestamp(_rename_src, {date_time_to_add!r})"
+    else:
+        return None
+    expr = (
+        f"file_actions.rename_add_datetime(_rename_base, {timestamp_expr}, {dotnet_format}, "
+        f"position={position!r}, separator={separator!r})"
+    )
+    return [], expr
+
+
+def _rename_add_custom_date_time_transform(p: dict) -> tuple[list[str], str] | None:
+    custom_datetime = safe_render(p.get("CustomDateTime"))
+    args = _rename_date_time_args(p)
+    if custom_datetime is None or args is None:
+        return None
+    position, separator, dotnet_format = args
+    expr = (
+        f"file_actions.rename_add_datetime(_rename_base, {custom_datetime}, {dotnet_format}, "
+        f"position={position!r}, separator={separator!r})"
+    )
+    return [], expr
+
+
+def _rename_sequential_args(p: dict) -> tuple[str, str, str, str, str] | None:
+    """`SequencePosition`/`SequenceSeparator`/`StartNumberingAt`/`IncrementBy`/
+    パディングの共通読み取り(`RenameAddSequentialSuffix`/`OverwriteWithSequentialSuffix`
+    で共有、知見154)。戻り値の`digits_expr`は`UsePadding`が`False`の場合`0`になる
+    条件式。"""
+    position = enum_last(p.get("SequencePosition"))
+    separator_name = enum_last(p.get("SequenceSeparator"))
+    start = safe_render(p.get("StartNumberingAt"))
+    increment = safe_render(p.get("IncrementBy"))
+    use_padding = safe_render(p.get("UsePadding"))
+    padding = safe_render(p.get("Padding"))
+    if None in (position, separator_name, start, increment, use_padding, padding):
+        return None
+    separator = RENAME_SEPARATOR_TO_CHAR.get(separator_name)
+    if separator is None:
+        return None
+    digits_expr = f"({padding} if {use_padding} else 0)"
+    return position, separator, start, increment, digits_expr
+
+
+def _rename_add_sequential_suffix_transform(p: dict) -> tuple[list[str], str] | None:
+    # 知見154(decompile確認済み): `SequenceUseExistingName=True`固定——`base_text`は
+    # 既存のファイル名(`rename_make_sequential()`の既定`None`)のまま。
+    args = _rename_sequential_args(p)
+    if args is None:
+        return None
+    position, separator, start, increment, digits_expr = args
+    setup = [f"_rename_numberer = file_actions.SequentialNumberer(start={start}, increment={increment})"]
+    expr = (
+        f"file_actions.rename_make_sequential(_rename_base, _rename_numberer, "
+        f"position={position!r}, separator={separator!r}, digits={digits_expr})"
+    )
+    return setup, expr
+
+
+def _rename_overwrite_with_sequential_suffix_transform(p: dict) -> tuple[list[str], str] | None:
+    # 知見154(decompile確認済み): `SequenceUseExistingName=False`固定——`SequenceNewName`
+    # を`base_text`として渡す。
+    base_text = safe_render(p.get("SequenceNewName"))
+    args = _rename_sequential_args(p)
+    if base_text is None or args is None:
+        return None
+    position, separator, start, increment, digits_expr = args
+    setup = [f"_rename_numberer = file_actions.SequentialNumberer(start={start}, increment={increment})"]
+    expr = (
+        f"file_actions.rename_make_sequential(_rename_base, _rename_numberer, base_text={base_text}, "
+        f"position={position!r}, separator={separator!r}, digits={digits_expr})"
+    )
+    return setup, expr
+
+
+# design/dsl_format_findings.md 知見136・154: `RenameFilesAction`のVM上のリフレクション/
+# decompileで確認済みの`RenameScheme`列挙値(`AddText`/`RemoveText`/`ReplaceText`/
+# `ChangeExtension`/`AddDateTime`/`MakeSequential`)それぞれに対応するaction_idセレクタ名
+# (`ActionSelectorBase.ActionName`で確認済み)。
 _RENAME_SCHEME_TRANSFORMS = {
     "File.RenameFiles.RenameAddText": _rename_add_text_transform,
     "File.RenameFiles.RenameRemoveText": _rename_remove_text_transform,
     "File.RenameFiles.RenameReplaceText": _rename_replace_text_transform,
     "File.RenameFiles.RenameChangeExtension": _rename_change_extension_transform,
+    "File.RenameFiles.RenameAddDateOrTime": _rename_add_date_or_time_transform,
+    "File.RenameFiles.RenameAddCustomDateTime": _rename_add_custom_date_time_transform,
+    "File.RenameFiles.RenameAddSequentialSuffix": _rename_add_sequential_suffix_transform,
+    "File.RenameFiles.OverwriteWithSequentialSuffix": _rename_overwrite_with_sequential_suffix_transform,
 }
 
 
@@ -137,15 +249,17 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
 
     _rename_transform = _RENAME_SCHEME_TRANSFORMS.get(action_id)
     if _rename_transform is not None:
-        # design/dsl_format_findings.md 知見136: `RenameFiles`の兄弟セレクタ群
+        # design/dsl_format_findings.md 知見136・154: `RenameFiles`の兄弟セレクタ群
         # (`ActionSelectorBase`一括列挙の監査で発見、実機の`RenameScheme`列挙値は
         # `AddText`/`RemoveText`/`ReplaceText`/`ChangeExtension`/`AddDateTime`/
-        # `MakeSequential`——`SetNewName`が上記の`File.RenameFiles.Rename`)。
-        # `AddDateTime`/`MakeSequential`(日時・連番の書式オプションが多く未検証)は
-        # 今回は見送り、単純な文字列操作の4件のみ結線した。
-        transform_expr = _rename_transform(p)
-        if transform_expr is None:
+        # `MakeSequential`——`SetNewName`が上記の`File.RenameFiles.Rename`)。各変換
+        # 関数は`(ループ前に1回だけ出すセットアップ行, _rename_new_baseを計算する式)`
+        # のタプルを返す——`MakeSequential`系はバッチ内で状態共有する
+        # `SequentialNumberer`をループ前に1回だけ生成する必要があるため。
+        result = _rename_transform(p)
+        if result is None:
             return None
+        setup_lines, transform_expr = result
         files = safe_render(p.get("Files"))
         if_exists = enum_last(p.get("IfFileExists"))
         if files is None or if_exists is None or not node.output_var:
@@ -154,6 +268,7 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         return [
             f"{prefix}_rename_targets = {_as_list_expr(files)}",
             f"{prefix}{node.output_var} = []",
+            *(f"{prefix}{line}" for line in setup_lines),
             f"{prefix}for _rename_src in _rename_targets:",
             f"{inner}_rename_dir, _rename_base = os.path.split(_rename_src)",
             f"{inner}_rename_new_base = {transform_expr}",

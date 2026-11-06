@@ -51,3 +51,14 @@ CSV_PREDEFINED_SEPARATOR_TO_DELIMITER = {
     "Semicolon": ";",
     "Tab": "\t",
 }
+
+#: `Separator`列挙型(`File.Actions.dll`の`RenameFilesAction`、`DateTimeSeparator`/
+#: `SequenceSeparator`で使う)の各選択肢が実際にどの文字になるかを、decompileした
+#: `RenameFilesAction.GetSeparator()`の実装から確認した結果(知見154)。
+RENAME_SEPARATOR_TO_CHAR = {
+    "Nothing": "",
+    "Space": " ",
+    "Dash": "-",
+    "Period": ".",
+    "Underscore": "_",
+}
