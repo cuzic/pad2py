@@ -19,6 +19,13 @@ DataTableスキーマ未確認・外部NLPライブラリ未導入等、design/p
 `generate_python()`に渡し、出力に`# TODO`行が含まれるか・例外が飛ぶかを見て分類する。
 本体を空にするのは、入れ子になった子ノード自身のカバレッジ(別の分岐点として個別に
 再帰で測定済み)が、親の分岐点自身の分類に混ざらないようにするため。
+
+**既知の限界(2026-11-05確認)**: `action`バケットの一部(`Variables.IncreaseVariable`/
+`DecreaseVariable`/`Compression.UnzipFiles`)は、実機キャプチャフィクスチャがたまたま
+`Value`にプレースホルダーの文字列リテラル(`VarRef`ではない)を使っていたり出力変数の
+`=>`束縛を欠いていたりするため`TODO`に分類される——codegen自体は`tests/test_pad_codegen.py`
+の専用テストで正しく実コードを生成することを確認済み。この測定方法(個々のフィクスチャの
+実際のパラメータ値で測る)自体の意図的なトレードオフであり、design/pad_todo.md A節参照。
 """
 from __future__ import annotations
 

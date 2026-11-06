@@ -11,6 +11,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
 
 ## A. codegenの既知TODO(14/202分岐点、理由は特定済み——`uv run python3 -m dump_daemon.codegen_coverage`で随時再計測)
 
+**2026-11-05確認済みの注記**: 14件のうち3件(`Variables.IncreaseVariable`/`DecreaseVariable`/
+`Compression.UnzipFiles`)は、実機コードが本当に未結線なのではなく、カバレッジ測定に使っている
+実機キャプチャフィクスチャがたまたまゲートを満たさない形(`Value`がプレースホルダーの文字列
+リテラルで`VarRef`ではない、出力変数の`=>`束縛が無い等)になっているだけ——`tests/test_pad_codegen.py`
+の専用テスト(`SET Counter TO 10\nVariables.IncreaseVariable...`等)では正しく実コードを生成することを
+別途確認済み。フィクスチャ自体は実機キャプチャの忠実な記録を保つため書き換えない(でっち上げ
+防止)——この3件は実質的には解決済みとみなしてよい。残り11件(`Text.RecognizeEntitiesInText`の
+外部NLP未導入による恒久的フォールバック、`ON ERROR`named/multiple arms、他の🖥️系)が実質的な
+残課題。
+
 - [x] 💻🖥️ CSVヘッダー無しケース(`FirstLineContainsColumnNames: False`)の実機確認→`pad_action_lib.datatable`の
   ヘッダー無しモード対応。`File.ReadFromCSVFile`/`WriteToCSVFile`/`Variables.ConvertDataTableToCSV`/
   `GenerateDataTableFromCSV`が対象。実機で列名の既定規則(`Column1`等?)を確認するまでコードは書かない。
