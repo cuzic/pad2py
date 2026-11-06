@@ -2393,3 +2393,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      9件)、UiPath関連テスト全775件通過、リポジトリ全体で全1839件
      通過。
+
+143. **(完了、2026-11-06)** `ui:ReadCsvFile`+`ui:WriteCsvFile`を新規
+     実装(知見185、`UiPath.Excel.Activities`名前空間): `ReadCsvFile`
+     は`AddHeaders`相当の属性が無く常に1行目をヘッダー扱いするため
+     `csv.DictReader`が直接対応(`ExcelReadRange`のAddHeaders=True
+     時・知見115と同じdict行表現)。`WriteCsvFile`は`OutputDataTable`
+     (知見184)で確立した`isinstance(data_table[0], dict)`の実行時
+     分岐パターンを再利用——`GetRowItem`・`OutputDataTable`・本件の
+     3活動で同じ判断パターンを再利用した、本調査で最も再利用性の
+     高い実装パターンとなった。実機XAML5件で確認、書込→読込の
+     ラウンドトリップも手動確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`16件)、
+     UiPath関連テスト全793件通過、リポジトリ全体で全1853件通過。

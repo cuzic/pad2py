@@ -71,6 +71,7 @@ from .types import (
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
@@ -98,6 +99,7 @@ from .types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteCsvFileNode,
     WriteLineNode,
 )
 from .xaml_tree import parse_activity, parse_workflow_file
@@ -163,6 +165,7 @@ __all__ = [
     "OpenBrowserNode",
     "OutputDataTableNode",
     "ParallelNode",
+    "ReadCsvFileNode",
     "ReadTextFileNode",
     "RefreshBrowserNode",
     "RemoveDataRowNode",
@@ -190,6 +193,7 @@ __all__ = [
     "WordApplicationScopeNode",
     "WordReplaceTextNode",
     "WorkflowFile",
+    "WriteCsvFileNode",
     "WriteLineNode",
     "parse_activity",
     "parse_workflow_file",

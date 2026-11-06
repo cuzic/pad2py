@@ -90,6 +90,7 @@ from dump_daemon.uipath_dsl import (
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
@@ -118,6 +119,7 @@ from dump_daemon.uipath_dsl import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteCsvFileNode,
     WriteLineNode,
     parse_workflow_file,
 )
@@ -2917,6 +2919,163 @@ def test_output_data_table_with_no_text_is_todo():
     wf = _wrap([OutputDataTableNode(data_table=VbExpr(text="dt"), text=None)])
     code = generate_python(wf)
     assert "# TODO: OutputDataTable with no output Text captured" in code
+    _compiles(code)
+
+
+def test_read_csv_file_uses_dict_reader():
+    """知見185: `ui:ReadCsvFile`(GitHub code searchで657件ヒット)。
+    `csv.DictReader`が、CSVの1行目をヘッダーとして常に扱うという
+    `ReadCsvFile`の意味論に直接対応する。"""
+    wf = _wrap(
+        [
+            ReadCsvFileNode(
+                file_path=Literal(value="in.csv"), data_table=VbExpr(text="dt")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "dt = [dict(_row) for _row in csv.DictReader(_f)]" in code
+    assert "import csv" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_read_csv_file_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            ReadCsvFileNode(
+                file_path=Literal(value="in.csv"),
+                data_table=VbExpr(text="dt"),
+                display_name="Read CSV",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Read CSV" in code
+    assert "csv.DictReader(" in code
+    _compiles(code)
+
+
+def test_read_csv_file_with_no_file_path_is_todo():
+    wf = _wrap([ReadCsvFileNode(file_path=None, data_table=VbExpr(text="dt"))])
+    code = generate_python(wf)
+    assert "# TODO: ReadCsvFile with no FilePath captured" in code
+    _compiles(code)
+
+
+def test_read_csv_file_with_no_data_table_is_todo():
+    wf = _wrap([ReadCsvFileNode(file_path=Literal(value="in.csv"), data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: ReadCsvFile with no output DataTable captured" in code
+    _compiles(code)
+
+
+def test_read_csv_file_with_path_resource_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadCsvFileNode(
+                file_path=Literal(value="in.csv"),
+                data_table=VbExpr(text="dt"),
+                path_resource=VbExpr(text="res"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadCsvFile with PathResource set" in code
+    _compiles(code)
+
+
+def test_read_csv_file_with_non_comma_delimitator_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadCsvFileNode(
+                file_path=Literal(value="in.csv"),
+                data_table=VbExpr(text="dt"),
+                delimitator="Semicolon",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadCsvFile with non-default Delimitator" in code
+    _compiles(code)
+
+
+def test_write_csv_file_handles_both_representations():
+    """知見185: `ui:WriteCsvFile`(`ReadCsvFile`の正反対)。
+    `OutputDataTable`(知見184)と同じ`isinstance`分岐でdict行/list行
+    両方に対応する。"""
+    wf = _wrap(
+        [
+            WriteCsvFileNode(
+                file_path=Literal(value="out.csv"), data_table=VbExpr(text="dt")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "isinstance(dt[0], dict)" in code
+    assert "csv.writer(_f)" in code
+    assert "WARNING" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_write_csv_file_with_add_headers_false_omits_header_row():
+    wf = _wrap(
+        [
+            WriteCsvFileNode(
+                file_path=Literal(value="out.csv"),
+                data_table=VbExpr(text="dt"),
+                add_headers="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_writer.writerow(dt[0].keys())" not in code
+    _compiles(code)
+
+
+def test_write_csv_file_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            WriteCsvFileNode(
+                file_path=Literal(value="out.csv"),
+                data_table=VbExpr(text="dt"),
+                display_name="Write CSV",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Write CSV" in code
+    assert "csv.writer(" in code
+    _compiles(code)
+
+
+def test_write_csv_file_with_no_file_path_is_todo():
+    wf = _wrap([WriteCsvFileNode(file_path=None, data_table=VbExpr(text="dt"))])
+    code = generate_python(wf)
+    assert "# TODO: WriteCsvFile with no FilePath captured" in code
+    _compiles(code)
+
+
+def test_write_csv_file_with_no_data_table_is_todo():
+    wf = _wrap([WriteCsvFileNode(file_path=Literal(value="out.csv"), data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: WriteCsvFile with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_write_csv_file_with_non_true_should_quote_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WriteCsvFileNode(
+                file_path=Literal(value="out.csv"),
+                data_table=VbExpr(text="dt"),
+                should_quote="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: WriteCsvFile with non-default ShouldQuote" in code
     _compiles(code)
 
 

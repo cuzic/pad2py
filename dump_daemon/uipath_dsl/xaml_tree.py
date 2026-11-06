@@ -78,6 +78,7 @@ from .types import (
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
@@ -105,6 +106,7 @@ from .types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteCsvFileNode,
     WriteLineNode,
 )
 
@@ -844,6 +846,29 @@ def _parse_output_data_table(elem: etree._Element) -> OutputDataTableNode:
     return OutputDataTableNode(
         data_table=_attr_expr(elem, "DataTable"),
         text=text,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_read_csv_file(elem: etree._Element) -> ReadCsvFileNode:
+    return ReadCsvFileNode(
+        file_path=_attr_expr(elem, "FilePath"),
+        data_table=_attr_expr(elem, "DataTable"),
+        path_resource=_attr_expr(elem, "PathResource"),
+        delimitator=_attr_or_none(elem, "Delimitator"),
+        encoding=_attr_expr(elem, "Encoding"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_write_csv_file(elem: etree._Element) -> WriteCsvFileNode:
+    return WriteCsvFileNode(
+        file_path=_attr_expr(elem, "FilePath"),
+        data_table=_attr_expr(elem, "DataTable"),
+        add_headers=_attr_or_none(elem, "AddHeaders"),
+        delimitator=_attr_or_none(elem, "Delimitator"),
+        should_quote=_attr_or_none(elem, "ShouldQuote"),
+        encoding=_attr_expr(elem, "Encoding"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -1770,6 +1795,8 @@ _DISPATCH = {
     (UI_NS, "GetRowItem"): _parse_get_row_item,
     (UI_NS, "ClearDataTable"): _parse_clear_data_table,
     (UI_NS, "OutputDataTable"): _parse_output_data_table,
+    (UI_NS, "ReadCsvFile"): _parse_read_csv_file,
+    (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,

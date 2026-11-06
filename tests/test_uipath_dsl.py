@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
@@ -89,6 +90,7 @@ from dump_daemon.uipath_dsl import (
     WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WriteCsvFileNode,
     WriteLineNode,
     parse_activity,
     parse_workflow_file,
@@ -1422,6 +1424,40 @@ def test_output_data_table_properties():
     assert isinstance(node, OutputDataTableNode)
     assert node.data_table == VbExpr(text="Out_DT")
     assert node.text == VbExpr(text="Out_Str")
+
+
+def test_read_csv_file_properties():
+    """知見185: `ui:ReadCsvFile`(`UiPath.Excel.Activities`名前空間、
+    GitHub code searchで657件ヒット)。実機`HarshadRanganathan/
+    uipath-learning`で確認した`FilePath="[csvpath]"`の実例。"""
+    xml = (
+        f"<ui:ReadCsvFile {_UI_XMLNS} DisplayName=\"Read CSV\" "
+        'Encoding="{x:Null}" FilePath="[csvpath]" DataTable="[dataTable]" '
+        'Delimitator="Comma" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadCsvFileNode)
+    assert node.file_path == VbExpr(text="csvpath")
+    assert node.data_table == VbExpr(text="dataTable")
+    assert node.delimitator == "Comma"
+    assert node.encoding is None
+    assert node.path_resource is None
+
+
+def test_write_csv_file_properties():
+    """知見185: `ui:WriteCsvFile`(`ReadCsvFile`の正反対)。実機
+    `allenlooplee/RPABook`で確認した実例。"""
+    xml = (
+        f"<ui:WriteCsvFile {_UI_XMLNS} DisplayName=\"Write CSV\" "
+        'Encoding="{x:Null}" AddHeaders="True" DataTable="[TestData]" '
+        'Delimitator="Comma" FilePath="out.csv" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteCsvFileNode)
+    assert node.file_path == Literal(value="out.csv")
+    assert node.data_table == VbExpr(text="TestData")
+    assert node.add_headers == "True"
+    assert node.delimitator == "Comma"
 
 
 def test_log_message_properties():

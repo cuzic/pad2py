@@ -116,6 +116,7 @@ from ..uipath_dsl.types import (
     OpenBrowserNode,
     OutputDataTableNode,
     ParallelNode,
+    ReadCsvFileNode,
     ReadTextFileNode,
     RefreshBrowserNode,
     RemoveDataRowNode,
@@ -142,6 +143,7 @@ from ..uipath_dsl.types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteCsvFileNode,
     WriteLineNode,
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
@@ -293,8 +295,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     if any("pytesseract.image_to_string(" in line for line in body):
         imports.append("import pytesseract")
     # `csv`/`io`(`OutputDataTable`→`csv.writer(io.StringIO())`変換先、
-    # 知見184)も同様。標準ライブラリ。
-    if any("csv.writer(" in line for line in body):
+    # 知見184。`ReadCsvFile`/`WriteCsvFile`→`csv.DictReader`/
+    # `csv.writer`変換先、知見185)も同様。標準ライブラリ。
+    if any("csv.writer(" in line or "csv.DictReader(" in line for line in body):
         imports.append("import csv")
     if any("io.StringIO(" in line for line in body):
         imports.append("import io")
@@ -527,6 +530,10 @@ def _generate_node(
         return _generate_clear_data_table(node, indent)
     if isinstance(node, OutputDataTableNode):
         return _generate_output_data_table(node, indent)
+    if isinstance(node, ReadCsvFileNode):
+        return _generate_read_csv_file(node, indent)
+    if isinstance(node, WriteCsvFileNode):
+        return _generate_write_csv_file(node, indent)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
@@ -2131,6 +2138,124 @@ def _generate_output_data_table_body(node: OutputDataTableNode, indent: int) -> 
         f"{INDENT * (indent + 2)}_writer.writerow(_row)",
         f"{prefix}{target} = _buf.getvalue()",
     ]
+
+
+# 知見185: `ui:ReadCsvFile`(`UiPath.Excel.Activities`名前空間)。
+# `AddHeaders`相当の属性が無く、CSVの1行目を常にヘッダーとして扱う
+# ——`csv.DictReader`(Python標準の`csv`モジュール)が直接対応し、
+# `ExcelReadRange`の`AddHeaders=True`時(知見115)と同じdict行表現に
+# 揃える。`Delimitator="Comma"`以外・`Encoding`設定時・`PathResource`
+# 設定時は未確認のため`# TODO`へ倒す。
+def _generate_read_csv_file(node: ReadCsvFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_csv_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_csv_file_body(node: ReadCsvFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_path is None:
+        return [f"{prefix}# TODO: ReadCsvFile with no FilePath captured"]
+    if node.data_table is None:
+        return [f"{prefix}# TODO: ReadCsvFile with no output DataTable captured"]
+    if node.path_resource is not None:
+        return [
+            f"{prefix}# TODO: ReadCsvFile with PathResource set "
+            f"({_describe_expr_for_comment(node.path_resource)}) — "
+            "Integration Service resource handling not confirmed, "
+            "refusing to guess"
+        ]
+    if node.encoding is not None:
+        return [
+            f"{prefix}# TODO: ReadCsvFile with Encoding set "
+            f"({_describe_expr_for_comment(node.encoding)}) — codec "
+            "mapping not confirmed, refusing to guess"
+        ]
+    if node.delimitator not in (None, "Comma"):
+        return [
+            f"{prefix}# TODO: ReadCsvFile with non-default Delimitator "
+            f"({node.delimitator!r}) — only Comma is confirmed, refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    target = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f'{prefix}with open({file_path}, newline="") as _f:',
+        f"{inner}{target} = [dict(_row) for _row in csv.DictReader(_f)]",
+    ]
+
+
+# 知見185: `ui:WriteCsvFile`(`ReadCsvFile`の正反対)。`OutputDataTable`
+# (知見184)と同じ`isinstance(data_table[0], dict)`の実行時分岐で
+# `DataTable`の両表現に対応する——dict行の場合のみ`AddHeaders`に従って
+# ヘッダー行を出力し、list行の場合は列名を持たないためヘッダー無しで
+# 値のみを出力する(でっち上げた列名を書かない安全な縮退)。
+def _generate_write_csv_file(node: WriteCsvFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_write_csv_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_write_csv_file_body(node: WriteCsvFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_path is None:
+        return [f"{prefix}# TODO: WriteCsvFile with no FilePath captured"]
+    if node.data_table is None:
+        return [f"{prefix}# TODO: WriteCsvFile with no DataTable captured"]
+    if node.encoding is not None:
+        return [
+            f"{prefix}# TODO: WriteCsvFile with Encoding set "
+            f"({_describe_expr_for_comment(node.encoding)}) — codec "
+            "mapping not confirmed, refusing to guess"
+        ]
+    if node.delimitator not in (None, "Comma"):
+        return [
+            f"{prefix}# TODO: WriteCsvFile with non-default Delimitator "
+            f"({node.delimitator!r}) — only Comma is confirmed, refusing "
+            "to guess"
+        ]
+    if node.should_quote not in (None, "True"):
+        return [
+            f"{prefix}# TODO: WriteCsvFile with non-default ShouldQuote "
+            f"({node.should_quote!r}) — only the True default is "
+            "confirmed, refusing to guess"
+        ]
+    if node.add_headers not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: WriteCsvFile with unrecognized AddHeaders "
+            f"({node.add_headers!r}) — refusing to guess"
+        ]
+    add_headers = node.add_headers if node.add_headers is not None else "True"
+    todo: list[str] = []
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    lines = [
+        f"{prefix}# WARNING: AddHeaders is only honored for dict-shaped "
+        "rows (column names known) — list-shaped rows are written "
+        "without a header line regardless of AddHeaders",
+        f'{prefix}with open({file_path}, "w", newline="") as _f:',
+        f"{inner}_writer = csv.writer(_f)",
+        f"{inner}if {data_table} and isinstance({data_table}[0], dict):",
+    ]
+    if add_headers == "True":
+        lines.append(f"{INDENT * (indent + 2)}_writer.writerow({data_table}[0].keys())")
+    lines.extend(
+        [
+            f"{INDENT * (indent + 2)}for _row in {data_table}:",
+            f"{INDENT * (indent + 3)}_writer.writerow(_row.values())",
+            f"{inner}else:",
+            f"{INDENT * (indent + 2)}for _row in {data_table}:",
+            f"{INDENT * (indent + 3)}_writer.writerow(_row)",
+        ]
+    )
+    return lines
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

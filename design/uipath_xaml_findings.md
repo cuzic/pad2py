@@ -8747,6 +8747,46 @@ PDF-Invoices-with-RPA`・`jeffdnganga/DSRIncentivesPostingPerformer`・
 `tests/test_uipath_codegen.py`9件)、UiPath関連テスト全775件通過、
 リポジトリ全体で全1839件通過。
 
+## 185. `ui:ReadCsvFile`+`ui:WriteCsvFile`を新規実装(`UiPath.Excel.Activities`名前空間)——`csv.DictReader`/`csv.writer`で直接対応、`OutputDataTable`(知見184)の`isinstance`分岐パターンを`WriteCsvFile`で再利用
+
+知見184の`ui:OutputDataTable`で確立したPython標準`csv`モジュールに
+よるCSV対応を踏まえ、同じファミリーの`ui:ReadCsvFile`/`ui:
+WriteCsvFile`(`UiPath.Excel.Activities`名前空間)を調査した。
+`UiPath/skills`公式リポジトリのStudio実機ground-truthコーパス
+(`UiPath.Excel.Activities/3.4/ReadCsvFile.xaml`/`WriteCsvFile.xaml`)
++実機4件(`cameronmcnz/uipath-tutorials`・`allenlooplee/RPABook`・
+`HarshadRanganathan/uipath-learning`)で確認した。
+
+`ui:ReadCsvFile`は`FilePath`+`DataTable`(出力)+`PathResource`
+(Integration Service連携用リソース、未モデル化)+`Delimitator`
+(UiPathの実際のAPI表記そのまま——`Delimiter`ではなく`Delimitator`、
+実機確認した値は全件`"Comma"`)+`Encoding`(実機で一度も非
+`{x:Null}`の値を確認できず意味論未確認)。`AddHeaders`相当の属性が
+存在しない——CSVの1行目を常にヘッダーとして扱うという意味論だと
+判断し、`csv.DictReader`(Python標準の`csv`モジュール)が直接対応
+する。これは`ExcelReadRange`の`AddHeaders=True`時(知見115)と同じ
+dict行表現に揃える判断。
+
+`ui:WriteCsvFile`は`ReadCsvFile`の正反対で、`FilePath`+`DataTable`+
+`AddHeaders`(実機全件`"True"`)+`Delimitator`(実機全件`"Comma"`)+
+`ShouldQuote`(ground-truthの既定値`"True"`、実機では一度も明示的に
+シリアライズされているのを見なかった)+`Encoding`。`OutputDataTable`
+(知見184)で確立した`isinstance(data_table[0], dict)`の実行時分岐
+パターンをそのまま再利用し、dict行の場合のみ`AddHeaders`に従って
+ヘッダー行を出力し、list行の場合は列名を持たないためヘッダー無しで
+値のみを出力する(`AddHeaders`の値に関わらず——でっち上げた列名を
+書かない保守的な縮退、`# WARNING`で明記)。1つの判断パターン
+(`isinstance`分岐)が複数の活動(`GetRowItem`知見183・
+`OutputDataTable`知見184・`WriteCsvFile`本件)で再利用された、本調査
+全体を通じて最も再利用性の高い実装パターンになった。
+
+実機XAML5件(`ReadCsvFile`3件+`WriteCsvFile`2件)で`generate_
+python()`+`compile()`を確認し、合成データで書込→読込のラウンド
+トリップ(`{'name': 'alice', 'age': '30'}`等)が正しく動作することも
+手動確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`16件)、UiPath関連テスト全793件通過、
+リポジトリ全体で全1853件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

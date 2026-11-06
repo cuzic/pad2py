@@ -881,6 +881,61 @@ class OutputDataTableNode:
 
 
 @dataclass
+class ReadCsvFileNode:
+    """`<ui:ReadCsvFile>`(知見185、`UiPath.Excel.Activities`名前空間、
+    GitHub code searchで657件ヒット)。`UiPath/skills`公式リポジトリの
+    Studio実機ground-truthコーパス(`UiPath.Excel.Activities/3.4/
+    ReadCsvFile.xaml`)+実機4件(`cameronmcnz/uipath-tutorials`・
+    `allenlooplee/RPABook`・`HarshadRanganathan/uipath-learning`)で
+    確認した構成は`FilePath`+`DataTable`(出力)+`PathResource`
+    (Integration Service連携用リソース、未モデル化)+`Delimitator`
+    (UiPathの実際のAPI表記そのまま——`Delimiter`ではなく`Delimitator`、
+    実機確認した値は全件`"Comma"`)+`Encoding`(実機で一度も非
+    `{x:Null}`の値を確認できず意味論未確認)。`AddHeaders`相当の属性は
+    存在しない——`ReadCsvFile`は常に1行目をヘッダーとして扱うと判断
+    (CSV読込の標準的な挙動、`ExcelReadRange`の`AddHeaders=True`時
+    (知見115)と同じdict行表現に揃える)。
+
+    `csv.DictReader`(Python標準の`csv`モジュール)がこの意味論に
+    直接対応する——`OutputDataTable`(知見184)と同じ、確認済みの
+    標準ライブラリによる近似。`Delimitator="Comma"`以外・`Encoding`
+    設定時・`PathResource`設定時は`# TODO`へ倒す。"""
+
+    file_path: Expr = None
+    data_table: Expr = None
+    path_resource: Expr = None
+    delimitator: str | None = None
+    encoding: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class WriteCsvFileNode:
+    """`<ui:WriteCsvFile>`(知見185、`ReadCsvFile`の正反対)。`UiPath/
+    skills`公式リポジトリのStudio実機ground-truthコーパス
+    (`UiPath.Excel.Activities/3.4/WriteCsvFile.xaml`)+実機3件で確認
+    した構成は`FilePath`+`DataTable`+`AddHeaders`(実機全件`"True"`)+
+    `Delimitator`(実機全件`"Comma"`)+`ShouldQuote`(ground-truthの
+    既定値`"True"`、実機では一度もシリアライズされているのを見な
+    かった——既定値のため省略されている)+`Encoding`。
+
+    `OutputDataTable`(知見184)と同じ`isinstance(data_table[0], dict)`
+    の実行時分岐でDataTable変数の両表現に対応する——dict行の場合のみ
+    `AddHeaders`の値に従ってヘッダー行を出力し(列名が分かるため)、
+    list行の場合はヘッダー無しで値のみを出力する(列名を持たない
+    表現のため、`AddHeaders`の値に関わらずヘッダーは書けない——実害の
+    無い保守的な縮退であり、でっち上げた列名を書くことはしない)。"""
+
+    file_path: Expr = None
+    data_table: Expr = None
+    add_headers: str | None = None
+    delimitator: str | None = None
+    should_quote: str | None = None
+    encoding: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1993,6 +2048,8 @@ Node = (
     | GetRowItemNode
     | ClearDataTableNode
     | OutputDataTableNode
+    | ReadCsvFileNode
+    | WriteCsvFileNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode
