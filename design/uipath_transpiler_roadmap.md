@@ -2313,3 +2313,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`4件)、UiPath関連テスト全740件通過、
      リポジトリ全体で全1784件通過。
+
+137. **(完了、2026-11-06)** `ui:SaveImage`+`ui:TakeScreenshot`を新規
+     実装(知見179): `UiPath/Community.Activities`公式REFramework
+     テンプレート(`TakeScreenshot.xaml`)自身で使われていることを確認
+     した高確証の活動。`SaveImage`は`Image.save()`(`LoadImage`の
+     `PIL.Image.open()`と対になる標準API)で直接対応。`TakeScreenshot`
+     は`Target`省略時(画面全体)は`PIL.ImageGrab.grab()`、セレクタ
+     指定時はpywinautoの`capture_as_image()`で対応。`WaitBefore`
+     (`DelayBefore`とは別名の未確認属性)は非`{x:Null}`時`# TODO`へ
+     倒す。実機XAML3件(公式テンプレート本体を含む)で`generate_
+     python()`+`compile()`を確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`8件)、
+     UiPath関連テスト全750件通過、リポジトリ全体で全1795件通過。
+     DataTable操作系活動群(`FilterDataTable`等)は`DataTable`表現の
+     非統一というアーキテクチャ上の前提作業が必要なため見送り、
+     調査候補として記録。

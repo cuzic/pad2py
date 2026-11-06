@@ -8458,6 +8458,62 @@ PIL Imageを返す)で、本プロジェクトが既にPillowを確認済みの�
 (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`4件)、
 UiPath関連テスト全740件通過、リポジトリ全体で全1784件通過。
 
+## 179. `ui:SaveImage`+`ui:TakeScreenshot`を新規実装——REFramework公式テンプレートの例外時スクリーンショット保存フローを実機確認、`LoadImage`(知見178)の対になるPillow APIで対応
+
+知見178の`ui:LoadImage`の対になる活動として、`ui:SaveImage`+`ui:
+TakeScreenshot`を調査した。GitHub code searchでの素朴なヒット数
+(それぞれ1060件/1096件)は`ui:SaveImageFile`等の長いタグ名への部分
+一致を含むため正確ではないが、**`UiPath/Community.Activities`公式
+リポジトリのREFrameworkテンプレート自身**(`Templates/ReFrameWork/
+Framework/TakeScreenshot.xaml`——知見169の`KillAllProcesses.xaml`と
+同じ「REFramework標準サブワークフロー」カテゴリ、例外発生時に
+スクリーンショットを撮って保存する標準エラーハンドリングフロー)で
+使われている、という最高水準の確証を得た。実機3件(`mihhdu/
+Enhanced-REFramework`・`PacktPublishing/Robotic-Process-Automation-
+Projects`・`spritlesoftware/Uipath-RPA-AutomationProjects`)+
+`UiPath/skills`公式ground-truthコーパス(`SaveImage.xaml`)でも同じ
+構成を確認した。
+
+`ui:SaveImage`は`FileName`+`Image`+`DisplayName`のみ(`LoadImage`と
+完全に同一の属性構成)。`Image`(既存のPIL Imageオブジェクト変数)を
+`FileName`で指定したパスへ保存する意味論は、Pillowの`Image.save()`
+(`LoadImage`の`PIL.Image.open()`と対になる標準API)が直接対応する。
+
+`ui:TakeScreenshot`は`Target`(セレクタ、実機の大半は`{x:Null}`)+
+`WaitBefore`(`DelayBefore`とは別名の未確認属性、実機で非`{x:Null}`
+の値を一度も確認できず)+`Screenshot`(出力)+`DisplayName`。`Target`
+が`{x:Null}`の場合は「画面全体」を意味し、Pillowの`ImageGrab.grab()`
+(引数無しで仮想スクリーン全体をキャプチャする標準API)が直接対応
+する。セレクタが設定されている場合はpywinautoの`capture_as_image()`
+(`base_wrapper.py`で確認済み、`LoadImage`のdocstringで言及した
+`pad_codegen`側の既存利用と同じ確認済み依存)が対応する。`WaitBefore`
+は名前が`DelayBefore`と違う以上、同一視は安全な仮定ではないため
+意味論未確認として非`{x:Null}`時は`# TODO`へ倒す。
+
+実機XAML3件(公式REFrameworkテンプレート本体を含む)で
+`generate_python()`+`compile()`を実行し、`screenshot = PIL.
+ImageGrab.grab()`+`screenshot.save(io_FilePath)`(Target省略時)、
+`Desktop(...).window(...).capture_as_image()`+`.save(...)`(セレクタ
+指定時)の両方が正しく生成されることを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`8件)、
+UiPath関連テスト全750件通過、リポジトリ全体で全1795件通過。
+
+**本tickで調査し実装を見送ったもの(今後の調査候補へ記録)**:
+`FilterDataTable`(GitHub code searchで1554件ヒット)・
+`AddDataColumn`(856件)・`RemoveDataColumn`(271件)・
+`SortDataTable`(285件)・`MergeDataTable`(318件)というDataTable
+操作系の活動群を検討したが、本トランスパイラの`DataTable`表現が
+活動ごとに非統一(`BuildDataTableNode`は常に空の`[]`、`ExcelReadRange`
+は`AddHeaders=True`なら`[dict(zip(header, row)) for row in rows]`・
+`False`なら`[list(row) for row in rows]`——知見115)で、かつ変数の
+生成元を跨いだ型追跡(フロー解析)を本トランスパイラは行わないため、
+「このDataTable変数が実際にどちらの表現か」を活動単体の情報からは
+判断できない。列名でのフィルタ・列の追加/削除といった操作は実行時
+表現(dict行か素のlist行か)を前提にせざるを得ず、確認なしに前提を
+置くことは本調査全体の「でっち上げない」方針に反するため見送った。
+着手するには`DataTable`表現の統一(または変数ごとの表現追跡)という
+より大きなアーキテクチャ上の前提作業が必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -8525,3 +8581,12 @@ UiPath関連テスト全740件通過、リポジトリ全体で全1784件通過�
   (条件式コンテキストでは、でっち上げた真偽値で制御フローを誤らせる
   よりコード生成全体を失敗させる方が安全という判断)。バグではない
   ため追加の修正は不要——詳細は知見177参照
+- 知見179で検討し見送った、`FilterDataTable`/`AddDataColumn`/
+  `RemoveDataColumn`/`SortDataTable`/`MergeDataTable`というDataTable
+  操作系の活動群(GitHub code searchでそれぞれ285〜1554件ヒット、
+  合計すると本調査で遭遇した中でも最大級の頻度)。本トランスパイラの
+  `DataTable`表現が活動ごとに非統一(空の`[]`/dict行/素のlist行)で、
+  変数の生成元を跨いだ型追跡を行わないため活動単体の情報からは実行時
+  表現を判断できない、というアーキテクチャ上の前提作業(`DataTable`
+  表現の統一、または変数ごとの表現追跡の導入)が必要——着手するなら
+  まずそちらを先に設計する必要がある、相対的に大きな調査候補

@@ -88,6 +88,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RethrowNode,
+    SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -96,6 +97,7 @@ from dump_daemon.uipath_dsl import (
     SetToClipboardNode,
     SwitchArm,
     SwitchNode,
+    TakeScreenshotNode,
     TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
@@ -2351,6 +2353,96 @@ def test_load_image_with_no_image_is_todo():
     wf = _wrap([LoadImageNode(file_name=Literal(value="img.png"), image=None)])
     code = generate_python(wf)
     assert "# TODO: LoadImage with no output Image captured" in code
+    _compiles(code)
+
+
+def test_save_image_calls_pil_save():
+    """知見179: `ui:SaveImage`(`LoadImage`知見178の正反対)。Pillowの
+    `Image.save()`が直接対応する。"""
+    wf = _wrap(
+        [SaveImageNode(file_name=Literal(value="out.png"), image=VbExpr(text="img"))]
+    )
+    code = generate_python(wf)
+    assert "img.save(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_save_image_with_no_file_name_is_todo():
+    wf = _wrap([SaveImageNode(file_name=None, image=VbExpr(text="img"))])
+    code = generate_python(wf)
+    assert "# TODO: SaveImage with no FileName captured" in code
+    _compiles(code)
+
+
+def test_save_image_with_no_image_is_todo():
+    wf = _wrap([SaveImageNode(file_name=Literal(value="out.png"), image=None)])
+    code = generate_python(wf)
+    assert "# TODO: SaveImage with no Image captured" in code
+    _compiles(code)
+
+
+_TAKE_SCREENSHOT_SELECTOR = "<wnd cls='Notepad' />"
+
+
+def test_take_screenshot_with_no_selector_grabs_whole_screen():
+    """知見179: `ui:TakeScreenshot`(`UiPath/Community.Activities`公式
+    REFrameworkテンプレート)。`Target`省略時はPillowの`ImageGrab.
+    grab()`(仮想スクリーン全体)が直接対応する。"""
+    wf = _wrap([TakeScreenshotNode(selector=None, screenshot=VbExpr(text="shot"))])
+    code = generate_python(wf)
+    assert "shot = PIL.ImageGrab.grab()" in code
+    assert "import PIL.ImageGrab" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_take_screenshot_with_known_selector_uses_capture_as_image():
+    wf = _wrap(
+        [
+            TakeScreenshotNode(
+                selector=_TAKE_SCREENSHOT_SELECTOR, screenshot=VbExpr(text="shot")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "shot = " in code
+    assert ".capture_as_image()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_take_screenshot_with_no_output_screenshot_is_todo():
+    wf = _wrap([TakeScreenshotNode(selector=None, screenshot=None)])
+    code = generate_python(wf)
+    assert "# TODO: TakeScreenshot with no output Screenshot captured" in code
+    _compiles(code)
+
+
+def test_take_screenshot_with_wait_before_is_todo_not_guessed():
+    """知見179: `WaitBefore`は`DelayBefore`とは別名の未確認属性のため、
+    同一視せず`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            TakeScreenshotNode(
+                selector=None,
+                screenshot=VbExpr(text="shot"),
+                wait_before=Literal(value="500"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: TakeScreenshot with WaitBefore set" in code
+    assert "ImageGrab" not in code
+    _compiles(code)
+
+
+def test_take_screenshot_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [TakeScreenshotNode(selector="<wnd idx='2' />", screenshot=VbExpr(text="shot"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: TakeScreenshot selector had no mappable attributes" in code
     _compiles(code)
 
 

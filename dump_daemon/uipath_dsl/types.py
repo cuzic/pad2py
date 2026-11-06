@@ -636,6 +636,59 @@ class LoadImageNode:
 
 
 @dataclass
+class SaveImageNode:
+    """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
+    `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
+    リポジトリのStudio実機ground-truthコーパス(`UiPath.UIAutomation.
+    Activities/25.10/SaveImage.xaml`)+実機確認(`UiPath/Community.
+    Activities`公式リポジトリのREFramework標準テンプレート
+    `Templates/ReFrameWork/Framework/TakeScreenshot.xaml`で
+    `ui:TakeScreenshot`(知見179で対)と組になって使われる、例外発生時
+    のスクリーンショット保存フロー)で確認した構成は`FileName`+
+    `Image`+`DisplayName`のみ——`ContinueOnError`はどちらでも一度も
+    確認できなかった(`LoadImage`と全く同じ属性構成)。
+
+    `Image`(既存の`PIL.Image`オブジェクト変数)を`FileName`で指定した
+    パスへ保存するという意味論は、Pillowの`Image.save()`
+    (`LoadImage`の`PIL.Image.open()`と対になる標準API)が直接対応する。"""
+
+    file_name: Expr = None
+    image: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class TakeScreenshotNode:
+    """`<ui:TakeScreenshot>`(知見179、`UiPath/Community.Activities`
+    公式リポジトリのREFramework標準テンプレート`Templates/ReFrameWork/
+    Framework/TakeScreenshot.xaml`——例外発生時にスクリーンショットを
+    撮って保存する、REFrameworkの標準エラーハンドリングフローの一部、
+    知見169の`KillAllProcesses.xaml`と同じ「REFramework標準サブ
+    ワークフロー」カテゴリ)で確認。実機3件(`mihhdu/Enhanced-
+    REFramework`・`PacktPublishing/Robotic-Process-Automation-
+    Projects`・`spritlesoftware/Uipath-RPA-AutomationProjects`)でも
+    同じ構成を確認した——`Target`(セレクタ、実機の大半は`{x:Null}`で
+    「画面全体」を意味する)+`WaitBefore`(`DelayBefore`とは別名の
+    未確認属性、実機で非`{x:Null}`の値を一度も確認できず意味論未確認)
+    +`Screenshot`(出力、`ui:Image`型変数)+`DisplayName`。
+
+    `Target`が`{x:Null}`の場合は「画面全体のスクリーンショット」を
+    意味し、Pillowの`ImageGrab.grab()`(引数無しで仮想スクリーン全体を
+    キャプチャする標準API)が直接対応する。`Target`にセレクタが設定
+    されている場合は、pywinautoの`capture_as_image()`(`base_wrapper.
+    py`で確認済み、`rectangle()`で取得した矩形をPILでキャプチャして
+    返す標準API——`pad_codegen`側で既に確認済みの依存)が対応する。
+    `WaitBefore`は意味論未確認のため、非`{x:Null}`の場合は`# TODO`へ
+    倒す(`DelayBefore`と同一視するのは、名前が違う以上は安全な
+    仮定ではないため)。"""
+
+    selector: str | None = None
+    wait_before: Expr = None
+    screenshot: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1740,6 +1793,8 @@ Node = (
     | GetAttributeNode
     | GetPasswordNode
     | LoadImageNode
+    | SaveImageNode
+    | TakeScreenshotNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

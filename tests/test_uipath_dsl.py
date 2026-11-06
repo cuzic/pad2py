@@ -63,6 +63,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RethrowNode,
+    SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -70,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    TakeScreenshotNode,
     TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
@@ -1182,6 +1184,58 @@ def test_load_image_properties():
     assert node.file_name == VbExpr(text="file.ToString")
     assert node.image == VbExpr(text="memeImage")
     assert node.display_name == "Load Image"
+
+
+def test_save_image_properties():
+    """知見179: `ui:SaveImage`(`LoadImage`知見178の正反対)。実機
+    `UiPath/Community.Activities`公式REFrameworkテンプレートで確認した
+    `FileName="[io_FilePath]"`+`Image="[screenshot]"`の実例。"""
+    xml = (
+        f"<ui:SaveImage {_UI_XMLNS} DisplayName=\"Save screenshot\" "
+        'FileName="[io_FilePath]" Image="[screenshot]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SaveImageNode)
+    assert node.file_name == VbExpr(text="io_FilePath")
+    assert node.image == VbExpr(text="screenshot")
+    assert node.display_name == "Save screenshot"
+
+
+def test_take_screenshot_with_no_selector_properties():
+    """知見179: `ui:TakeScreenshot`(`UiPath/Community.Activities`公式
+    REFrameworkテンプレート)。実機で`Target`が`{x:Null}`(画面全体)の
+    実例。"""
+    xml = (
+        f"<ui:TakeScreenshot {_UI_XMLNS} DisplayName=\"Take screenshot\" "
+        'WaitBefore="{x:Null}" Screenshot="[screenshot]">'
+        "<ui:TakeScreenshot.Target>"
+        '<ui:Target Selector="{x:Null}" />'
+        "</ui:TakeScreenshot.Target>"
+        "</ui:TakeScreenshot>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TakeScreenshotNode)
+    assert node.selector is None
+    assert node.wait_before is None
+    assert node.screenshot == VbExpr(text="screenshot")
+    assert node.display_name == "Take screenshot"
+
+
+def test_take_screenshot_with_selector_properties():
+    """実機`spritlesoftware/Uipath-RPA-AutomationProjects`で確認した、
+    セレクタ指定の実例。"""
+    xml = (
+        f"<ui:TakeScreenshot {_UI_XMLNS} DisplayName=\"Take Screenshot 'Desktop'\" "
+        'Screenshot="[screenShot]">'
+        "<ui:TakeScreenshot.Target>"
+        "<ui:Target Selector=\"&lt;wnd app='explorer.exe' cls='WorkerW' /&gt;\" />"
+        "</ui:TakeScreenshot.Target>"
+        "</ui:TakeScreenshot>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TakeScreenshotNode)
+    assert "WorkerW" in node.selector
+    assert node.screenshot == VbExpr(text="screenShot")
 
 
 def test_log_message_properties():

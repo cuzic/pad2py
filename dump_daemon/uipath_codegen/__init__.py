@@ -114,6 +114,7 @@ from ..uipath_dsl.types import (
     ReadTextFileNode,
     RefreshBrowserNode,
     RethrowNode,
+    SaveImageNode,
     SelectItemNode,
     SendHotkeyNode,
     SendMailNode,
@@ -121,6 +122,7 @@ from ..uipath_dsl.types import (
     SequenceNode,
     SetToClipboardNode,
     SwitchNode,
+    TakeScreenshotNode,
     TerminateWorkflowNode,
     ThrowNode,
     TryCatchNode,
@@ -275,6 +277,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 同様。Pillowは`pad_codegen`で既に確認済みの依存。
     if any("PIL.Image.open(" in line for line in body):
         imports.append("import PIL.Image")
+    # `PIL.ImageGrab`(`TakeScreenshot`のTarget省略時→`PIL.ImageGrab.
+    # grab()`変換先、知見179)も同様。
+    if any("PIL.ImageGrab.grab(" in line for line in body):
+        imports.append("import PIL.ImageGrab")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -494,6 +500,10 @@ def _generate_node(
         return _generate_window_state(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
+    if isinstance(node, SaveImageNode):
+        return _generate_save_image(node, indent)
+    if isinstance(node, TakeScreenshotNode):
+        return _generate_take_screenshot(node, indent)
     if isinstance(node, CloseTabNode):
         return _generate_close_tab(node, indent)
     if isinstance(node, RefreshBrowserNode):
@@ -1730,6 +1740,73 @@ def _generate_load_image_body(node: LoadImageNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{target} = PIL.Image.open({file_name})"]
+
+
+# 知見179: `ui:SaveImage`(`LoadImage`知見178の正反対)。`Image`
+# (既存のPIL Imageオブジェクト変数)を`FileName`で指定したパスへ保存
+# する——Pillowの`Image.save()`(`PIL.Image.open()`と対になる標準API)
+# が直接対応する。
+def _generate_save_image(node: SaveImageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_save_image_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_save_image_body(node: SaveImageNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: SaveImage with no FileName captured"]
+    if node.image is None:
+        return [f"{prefix}# TODO: SaveImage with no Image captured"]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    image = _render_value_or_todo(node.image, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{image}.save({file_name})"]
+
+
+# 知見179: `ui:TakeScreenshot`(`UiPath/Community.Activities`公式
+# リポジトリのREFramework標準テンプレート`TakeScreenshot.xaml`——知見
+# 169の`KillAllProcesses.xaml`と同じ「REFramework標準サブワークフロー」
+# カテゴリ)。`Target`が`{x:Null}`(画面全体)の場合はPillowの
+# `ImageGrab.grab()`(引数無しで仮想スクリーン全体をキャプチャする
+# 標準API)、セレクタが設定されている場合はpywinautoの
+# `capture_as_image()`(`base_wrapper.py`で確認済み、`pad_codegen`側で
+# 既に確認済みの依存)が対応する。`WaitBefore`(`DelayBefore`とは別名の
+# 未確認属性)は意味論未確認のため非`{x:Null}`時は`# TODO`へ倒す。
+def _generate_take_screenshot(node: TakeScreenshotNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_take_screenshot_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_take_screenshot_body(node: TakeScreenshotNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.screenshot is None:
+        return [f"{prefix}# TODO: TakeScreenshot with no output Screenshot captured"]
+    if node.wait_before is not None:
+        return [
+            f"{prefix}# TODO: TakeScreenshot with WaitBefore set "
+            f"({_describe_expr_for_comment(node.wait_before)}) — semantics "
+            "not confirmed (distinct attribute name from DelayBefore), "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.screenshot, prefix, todo)
+    if todo:
+        return todo
+    if not node.selector:
+        return [f"{prefix}{target} = PIL.ImageGrab.grab()"]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: TakeScreenshot selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{target} = {rendered.expr}.capture_as_image()")
+    return lines
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
