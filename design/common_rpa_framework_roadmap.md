@@ -187,7 +187,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 ### Phase 2: 共通IRの抽出(UiPathトラックと調整必須)
 
 - [x] `rpa_ir`パッケージを新設し、`Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)を移行する(両トラックで構造が一致しており最もリスクが低い統合対象)。**2026-11-05実施**: `dump_daemon/rpa_ir/values.py`に`Literal`/`VarRef`/`RawExpr`/`EnumRef`(+`Value`union)を定義し、`pad_dsl.types`は同一クラスを再公開する形に移行済み(`isinstance`の対象が同一クラスオブジェクトになるよう再定義ではなく再公開)。既存の`pad_dsl`利用側・テストは無変更で動作(`uv run pytest -q`: 1009 passed, 28 skipped、移行前と同数+新規4件)。`uipath_dsl.types`側の移行(`VbExpr`→`RawExpr`統合含む)は、UiPathトラックを並行開発中の別セッションとの衝突を避けるため意図的に見送り中——次のステップは`SwitchNode`の共通化検討
-+- [ ] 上記に続き`SwitchNode`を`rpa_ir`へ移行する(両トラックで構造が一致しており次にリスクが低い統合対象)
++- [ ] `SwitchNode`の`rpa_ir`移行は**当初の想定より難しい**(2026-11-05、`uipath_dsl.types.SwitchNode`を読み取り調査して判明): PAD側`arms: list[tuple[SwitchArmHeader, list[Node]]]`の`SwitchArmHeader`(`SwitchCaseRecord | SwitchDefaultRecord`)は比較演算子付きの`CASE <op> <value>`(知見33)を表せるが、UiPath側`SwitchArm`は`key: str | None`という等価比較専用のディスパッチ(辞書キー相当)で、演算子という概念自体が無い——**見た目が同じ「アーム列」でも意味論が違う**ため、単純な型統合ではなく「PAD拡張用のオプショナル演算子フィールドを持つ共通型にするか、ツールごとに別のArm型のまま`Node`だけ共有するか」という設計判断が先に必要。`ConditionalNode`(N-ary)と同種の決定事項であり、着手前にユーザーに相談する
 - [ ] UiPath側の活動ごと専用dataclass(`MessageBoxNode`等)を、汎用`ActionCallNode`へ段階的に置き換える。**この変更はUiPath側の`uipath_codegen`のdispatchロジック(現在は型ごとのisinstanceチェーン)にも影響するため、UiPathトラックの作業と正面から衝突する**——着手前に両トラックの作業状況を確認し、ユーザーに実施タイミングを確認する
 - [ ] `ConditionalNode`(N-ary)と`IfNode`(binary)の統合方針を決める(binaryをN-aryの特殊形として扱うのは技術的には容易だが、UiPath側の既存コードをすべて書き換える必要がある)
 - [ ] `ErrorHandlingNode`の`attachment`フィールドで`GuardedNode`/`TryCatchNode`の構築方向差を吸収する設計を確定する
