@@ -5944,6 +5944,34 @@ P3で既に低優先と判断済み)。
 `_generate_multiple_assign`を追加。`tests/test_uipath_dsl.py`に2件・
 `tests/test_uipath_codegen.py`に2件追加、全1381件通過。
 
+## 123. `_condition_expr`フォールバックを`If.Condition`/`Switch.Expression`へも適用(知見122で保留した範囲を拡張、VM不使用)
+
+知見122で「`If`/`Switch`等の他の条件式プロパティも理論上同じ機構のはず
+だが、実機確認はまだ`While`/`DoWhile`のみ」と明示的に保留した項目を
+今回拡張した。`_condition_expr(elem, attr_name)`自体は属性名を
+引数化した汎用ヘルパーとして既に実装済みであり(`While`/`DoWhile`固有の
+ロジックは一切含まない)、`If._parse_if`の`condition=_attr_expr(elem,
+"Condition")`と`_parse_switch`の`expression=_attr_expr(elem,
+"Expression")`を、それぞれ同じ`_condition_expr(elem, "Condition")`/
+`_condition_expr(elem, "Expression")`に差し替えるだけで済んだ——新しい
+解析ロジックの追加はゼロ。
+
+`If`/`Switch`固有の実機XAML(`<If.Condition><mva:VisualBasicValue
+.../></If.Condition>`形)はまだ直接観測していないが、`[...]`角括弧
+省略記法と`mva:VisualBasicValue`プロパティ要素形がどちらも.NET
+Workflow Foundationの`InArgument`直列化規約(知見14)に基づく同一の
+機構である以上、Studioがどちらの形で直列化するかは活動の種類に
+依存しない——`Condition`/`Expression`という属性名の違いだけで、
+それを包むプロパティ要素の構造自体は`While`/`DoWhile`と変わらない
+ため、確認済みの機構を同じ属性名パターンを持つ別の活動へ水平展開する
+ことは「確認済みの値のみを安全網として適用する」方針からも妥当と
+判断した(新しい値表現をでっち上げているわけではなく、既に確認済みの
+`VisualBasicValue`パース経路を再利用しているだけ)。
+
+`dump_daemon/uipath_dsl/xaml_tree.py`の`_parse_if`/`_parse_switch`の
+2箇所のみ変更。`tests/test_uipath_dsl.py`に`If`/`Switch`それぞれの
+プロパティ要素形を合成XMLで再現する回帰テストを2件追加、全1385件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

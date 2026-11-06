@@ -685,6 +685,54 @@ def test_do_while_condition_as_visual_basic_value_property_element():
     assert node.condition == VbExpr(text="guess <> secretNumber")
 
 
+def test_if_condition_as_visual_basic_value_property_element():
+    """知見123: While/DoWhile(知見122)と同じ`<X.Condition><mva:
+    VisualBasicValue ExpressionText="..." /></X.Condition>`形は`If`
+    でも同じ仕組み(`_condition_expr`)で起こりうるため、`If.Condition`
+    にもフォールバックを適用する(`If`固有の実機確認はまだ無いが、
+    `Condition`は`If`/`While`/`DoWhile`いずれも共通の`[...]`省略記法が
+    `VisualBasicValue`の糖衣であるという同一の仕組みに基づくため、
+    合成XMLで構造を確認する)。"""
+    xml = (
+        '<If xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'DisplayName="If">'
+        "<If.Condition>"
+        '<mva:VisualBasicValue x:TypeArguments="x:Boolean" '
+        'ExpressionText="count &gt; 0" />'
+        "</If.Condition>"
+        "<If.Then>"
+        '<Sequence DisplayName="Then" />'
+        "</If.Then>"
+        "</If>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, IfNode)
+    assert node.condition == VbExpr(text="count > 0")
+
+
+def test_switch_expression_as_visual_basic_value_property_element():
+    """知見123: `Switch.Expression`も`Condition`系と同じ`_condition_expr`
+    経由でパースされるため、`<Switch.Expression><mva:VisualBasicValue
+    ExpressionText="..." /></Switch.Expression>`形も同様にフォールバック
+    される(合成XMLで構造を確認)。"""
+    xml = (
+        '<Switch xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'x:TypeArguments="x:String" DisplayName="Switch">'
+        "<Switch.Expression>"
+        '<mva:VisualBasicValue x:TypeArguments="x:String" '
+        'ExpressionText="choice" />'
+        "</Switch.Expression>"
+        "</Switch>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SwitchNode)
+    assert node.expression == VbExpr(text="choice")
+
+
 def test_append_line_and_read_text_file(main_wf):
     append = main_wf.root.body[12]
     assert isinstance(append, AppendLineNode)

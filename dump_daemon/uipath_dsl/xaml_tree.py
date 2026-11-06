@@ -298,7 +298,7 @@ def _parse_if(elem: etree._Element) -> IfNode:
     then_elem = _find_property_element(elem, "Then")
     else_elem = _find_property_element(elem, "Else")
     return IfNode(
-        condition=_attr_expr(elem, "Condition"),
+        condition=_condition_expr(elem, "Condition"),
         then_body=_single_body(then_elem),
         else_body=_single_body(else_elem),
     )
@@ -411,7 +411,7 @@ def _parse_switch(elem: etree._Element) -> SwitchNode:
         key = _attr(child, "Key", X_NS) or _attr(child, "Key")
         arms.append(SwitchArm(key=key, body=[parse_activity(child)]))
     return SwitchNode(
-        expression=_attr_expr(elem, "Expression"),
+        expression=_condition_expr(elem, "Expression"),
         type_arguments=_attr(elem, "TypeArguments", X_NS) or _attr(elem, "TypeArguments") or "",
         arms=arms,
     )

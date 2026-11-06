@@ -1467,3 +1467,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     `Level`が列挙参照形になる実例は次回へ見送り。回帰テスト追加
     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
     2件)、UiPath関連テスト全494件通過、リポジトリ全体で全1381件通過。
+
+81. **(完了、2026-11-06)** `_condition_expr`フォールバックを
+    `If.Condition`/`Switch.Expression`へも拡張(知見123——知見122で
+    「`While`/`DoWhile`のみ確認済み、`If`/`Switch`は理論上同じ機構だが
+    未確認」と明示的に保留していた範囲): `_condition_expr`自体は属性名
+    引数化済みの汎用ヘルパーだったため、`_parse_if`/`_parse_switch`の
+    `_attr_expr`呼び出しを`_condition_expr`に差し替えるだけで済み、新しい
+    解析ロジックの追加はゼロ。`If`/`Switch`固有の実機XAMLでの直接観測は
+    まだ無いが、`[...]`省略記法と`mva:VisualBasicValue`要素形がどちらも
+    同一のInArgument直列化規約(知見14)に基づく以上、活動の種類に依存
+    しない水平展開と判断。回帰テスト追加(`tests/test_uipath_dsl.py`
+    2件)、UiPath関連テスト全496件通過、リポジトリ全体で全1385件通過。
