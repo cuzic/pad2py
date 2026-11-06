@@ -42,6 +42,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetAttributeNode,
     GetOutlookMailMessagesNode,
+    GetPasswordNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -1128,6 +1129,42 @@ def test_get_attribute_selector_and_properties():
     assert node.attribute == "innerText"
     assert node.result == VbExpr(text="out_Rating")
     assert node.continue_on_error is None
+
+
+def test_get_password_with_flat_result_attribute():
+    """知見176: `ui:GetPassword`(GitHub code searchで540件ヒット)。
+    実機`Parmeetkour/RPA`・`akritimangal/AssignmentsBOT`で確認した
+    フラット属性形`Result="[pw]"`。`ProtectedPassword`(DPAPI暗号化
+    バイナリ)自体は本トランスパイラが扱う必要が無いため、ノードには
+    保持しない。"""
+    xml = (
+        f"<ui:GetPassword {_UI_XMLNS} DisplayName=\"Get Password\" "
+        'ProtectedPassword="AQAAANCMnd8BFdERjHoAwE/Cl" Result="[pw]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetPasswordNode)
+    assert node.display_name == "Get Password"
+    assert node.result == VbExpr(text="pw")
+
+
+def test_get_password_with_no_result_captured():
+    """実機`vajrang-b/UiPathIn30Days`で確認した、`Result`プロパティ
+    要素が`VisualBasicReference`(通常のOutArgument直書きとは別の
+    特殊な参照形)でラップされているため値を抽出できないケース——
+    でっち上げず`result=None`になることを確認する。"""
+    xml = (
+        f"<ui:GetPassword {_UI_XMLNS} DisplayName=\"Get Password\" "
+        'ProtectedPassword="AQAAANCMnd8BFdERjHoAwE/Cl">'
+        "<ui:GetPassword.Result>"
+        '<OutArgument x:TypeArguments="x:String">'
+        '<VisualBasicReference x:TypeArguments="x:String" ExpressionText="Password" />'
+        "</OutArgument>"
+        "</ui:GetPassword.Result>"
+        "</ui:GetPassword>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetPasswordNode)
+    assert node.result is None
 
 
 def test_log_message_properties():

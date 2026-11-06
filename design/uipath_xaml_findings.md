@@ -8324,6 +8324,61 @@ keyboard import send_keys`の`import`追加条件(知見170)もそのまま
 test_uipath_codegen.py`3件)、UiPath関連テスト全730件通過、
 リポジトリ全体で全1774件通過。
 
+## 176. `ui:GetPassword`(GitHub code searchで540件ヒット)を新規実装——`ProtectedPassword`(Windows DPAPI暗号化バイナリ)は常にTODOへ倒し、かつ生成コードへ値そのものを一切出力しない安全設計
+
+知見175の`ui:RefreshBrowser`に続き、`ui:GetPassword`(GitHub code
+searchで540件ヒット——うち大半が1つの学習用リポジトリ
+(`vajrang-b/UiPathIn30Days`)の類似演習(`Task31`/`Task33`)の重複
+だったが、それを除外した検索(`NOT repo:vajrang-b/UiPathIn30Days`)
+でも独立した実機10件以上(`Parmeetkour/RPA`・`akritimangal/
+AssignmentsBOT`・`leticiassilva/Exercicio.Dev.Redesign`等)で確認
+できた、実在する一般的な活動)を調査した。
+
+確認した構成は`ProtectedPassword`(Windows DPAPIで暗号化された
+Base64バイナリ——実機確認した全件が`AQAAANCMnd8BFdERjHoAwE/Cl+sB...`
+というDPAPIの固定ヘッダ`01 00 00 00 D0 8C 9D DF 01 15 D1 11 8C 7A 00
+C0 4F C2 97 EB`で始まる)+`Result`(出力、実機で2つの直列化形を確認
+——フラット属性`Result="[pw]"`(`akritimangal/...`・`Parmeetkour/...`)
+と、プロパティ要素形で`VisualBasicReference ExpressionText=
+"Password"`という通常の`OutArgument`直書きとは異なる特殊な参照構造
+(`vajrang-b/...`)の両方)。`ContinueOnError`は実機のどの例でも一度も
+確認できなかった。
+
+`ProtectedPassword`はWindows DPAPI(`CryptProtectData`)で暗号化されて
+おり、暗号化を行ったWindowsユーザー・マシンの組み合わせでなければ
+復号できない——UiPath Studioが設計時にローカルマシン上で暗号化した
+値をXAMLへ直接埋め込むため、別マシン・別ユーザーで実行する生成
+Pythonコードへこれを移植可能な形で復号する安全な方法が無い。さらに
+資格情報を扱う機微な操作であるため、本活動は`ProtectedPassword`の
+値自体をそもそもノード型に保持せず(パース時点で読み取らない)、
+生成コードのコメントへも一切出力しない安全設計にした——知見174の
+`ui:GetAttribute`(VM未検証のためTODOへ倒す)とは異なる理由
+(「原理的に移植不可能」+「資格情報の機微性」の2つ)でTODOへ倒れる、
+常にTODOへ倒れる活動の2例目。
+
+二つの`Result`直列化形のうち、`VisualBasicReference`でラップされた
+特殊な参照構造は`_in_argument_property_expr`(知見115)の既存の
+「`Value`属性を持つ単純なネスト要素」という前提に一致せず、安全に
+`None`を返す(でっち上げない)ことをテストで確認した——`_attr_expr`
+(フラット属性形)と`_in_argument_property_expr`(プロパティ要素形)
+を`or`で連結する、本調査で初めて使った「出力変数の直列化形が複数ある
+場合に両方を順に試す」という新しいパーサー合成パターン。
+
+実機XAML3件のうち2件(`Parmeetkour/RPA`・`akritimangal/
+AssignmentsBOT`)で`parse_activity()`+`_generate_node()`を実行し、
+`ProtectedPassword`の値が生成コードへ一切現れないことを確認した
+(3件目`vajrang-b/...`はワークフロー全体の`compile()`時に無関係な
+既存の`NotImplementedError`(`.Subject`のような未対応チェイン
+メンバーアクセスが`render_expr`で捕捉されずクラッシュする、
+`_render_func_call`のバグ)に遭遇したため、本活動単体の
+`parse_activity()`/`_generate_node()`呼び出しでの検証に限定した——
+`generate_python()`全体がこの種の未対応例外で丸ごとクラッシュする
+のは本調査と無関係な別の既存バグで、安全側に`# TODO`へ倒すべき
+箇所が例外の握り潰し漏れでクラッシュに変わっている可能性があり、
+別の調査候補として記録)。回帰テスト追加(`tests/test_uipath_dsl.py`
+2件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全735件
+通過、リポジトリ全体で全1779件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
@@ -8383,3 +8438,18 @@ test_uipath_codegen.py`3件)、UiPath関連テスト全730件通過、
   調査してから、`_WND_ATTR_MAP`相当の`_HTML_ATTR_MAP`を追加するか
   `<html>`を`<wnd>`と同じ扱いにするかを判断する——`Click`/`TypeInto`
   等、Webページを対象にするあらゆる活動に影響する横断的な改善候補
+- 知見176で遭遇した、`render_expr`(`dump_daemon/uipath_codegen/
+  render.py`の`_apply_chained_property`)が未対応のチェインメンバー
+  アクセス(実機`vajrang-b/UiPathIn30Days`の`SendMail`ワークフロー内で
+  `.Subject`——他にも同種の未対応メンバーがある可能性)に遭遇すると
+  `NotImplementedError`を投げたまま呼び出し元が捕捉せず、
+  `generate_python()`全体がクラッシュする——本調査全体を貫く「安全に
+  `# TODO`へ倒す、でっち上げない」という方針からすると、未対応の式は
+  本来クラッシュではなく該当行を`# TODO`へ倒すべきところ、例外の
+  握り潰し漏れがクラッシュに変わってしまっている可能性がある。
+  `_render_node`/`render_expr`の呼び出し元(`_generate_if`等、式を
+  評価する全ての箇所)が`NotImplementedError`を捕捉して`# TODO`へ
+  変換する仕組みがあるかどうかを確認し、無ければ追加する価値がある
+  ——1箇所の修正で「未対応の式に遭遇した活動は何であれクラッシュせず
+  安全にTODOへ倒れる」という保証を全活動に広げられる可能性がある
+  横断的な改善候補

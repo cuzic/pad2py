@@ -92,6 +92,7 @@ from ..uipath_dsl.types import (
     ForEachNode,
     GetAttributeNode,
     GetOutlookMailMessagesNode,
+    GetPasswordNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -500,6 +501,8 @@ def _generate_node(
         return _generate_get_text(node, indent)
     if isinstance(node, GetAttributeNode):
         return _generate_get_attribute(node, indent)
+    if isinstance(node, GetPasswordNode):
+        return _generate_get_password(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
@@ -1671,6 +1674,29 @@ def _generate_get_attribute_body(node: GetAttributeNode, indent: int) -> list[st
         f"{prefix}# TODO: GetAttribute ({attribute_desc}) — no pywinauto/UIA "
         "equivalent confirmed for arbitrary DOM/accessibility attribute "
         "retrieval, refusing to guess"
+    ]
+
+
+# 知見176: `ui:GetPassword`。`ProtectedPassword`はWindows DPAPI
+# (`CryptProtectData`)で暗号化されており、暗号化したWindowsユーザー・
+# マシンの組み合わせでなければ復号できない——移植可能な形で安全に復号
+# する方法が無いため常に`# TODO`へ倒す。資格情報を扱う機微な操作である
+# ため、`ProtectedPassword`の値自体は生成コードのコメントへ一切出力
+# しない。
+def _generate_get_password(node: GetPasswordNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_password_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_password_body(node: GetPasswordNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.result is None:
+        return [f"{prefix}# TODO: GetPassword with no output Result captured"]
+    return [
+        f"{prefix}# TODO: GetPassword — ProtectedPassword is a Windows "
+        "DPAPI-encrypted blob tied to the original Windows user/machine "
+        "(CryptProtectData), cannot be decrypted portably, refusing to guess"
     ]
 
 

@@ -2271,3 +2271,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      祖先ノードの時点でスキップ)。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
      UiPath関連テスト全730件通過、リポジトリ全体で全1774件通過。
+
+134. **(完了、2026-11-06)** `ui:GetPassword`(GitHub code searchで
+     540件ヒット)を新規実装(知見176): `ProtectedPassword`はWindows
+     DPAPI(`CryptProtectData`)で暗号化されたバイナリで、暗号化した
+     Windowsユーザー・マシンの組み合わせでなければ復号できず、移植
+     可能な安全な復号方法が存在しない。資格情報を扱う機微な操作でも
+     あるため、`ProtectedPassword`の値自体をノード型に保持せず生成
+     コードへも一切出力しない設計で、常に`# TODO`へ倒す(知見174の
+     `ui:GetAttribute`とは別の理由で常にTODOへ倒れる2例目)。`Result`
+     の2つの直列化形(フラット属性/`VisualBasicReference`でラップ
+     されたプロパティ要素)を`_attr_expr`/`_in_argument_property_expr`
+     の`or`連結という新しいパーサー合成パターンで両対応。実機XAML2件
+     で`parse_activity()`+`_generate_node()`を実行し値の非漏洩を確認
+     (3件目は無関係な既存バグ`NotImplementedError`に遭遇したため
+     ワークフロー全体の`compile()`は見送り、別調査候補として記録)。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`3件)、UiPath関連テスト全735件通過、
+     リポジトリ全体で全1779件通過。

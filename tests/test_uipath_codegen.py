@@ -67,6 +67,7 @@ from dump_daemon.uipath_dsl import (
     ForEachNode,
     GetAttributeNode,
     GetOutlookMailMessagesNode,
+    GetPasswordNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -2276,6 +2277,35 @@ def test_get_attribute_display_name_becomes_a_comment():
     code = generate_python(wf)
     assert "# Get Attribute" in code
     assert "# TODO: GetAttribute (Attribute='checked')" in code
+    _compiles(code)
+
+
+def test_get_password_always_declines_without_leaking_protected_password():
+    """知見176: `ui:GetPassword`。`ProtectedPassword`はWindows DPAPI
+    暗号化バイナリで移植可能な復号方法が無いため常に`# TODO`へ倒す
+    ——資格情報を扱う機微な操作であるため、生成コードへ暗号化済みの
+    値そのものを一切出力しないことも確認する(本ノードは
+    `ProtectedPassword`自体をそもそも保持しない設計)。"""
+    wf = _wrap([GetPasswordNode(result=VbExpr(text="pw"))])
+    code = generate_python(wf)
+    assert "# TODO: GetPassword" in code
+    assert "DPAPI" in code
+    assert "AQAAA" not in code
+    _compiles(code)
+
+
+def test_get_password_display_name_becomes_a_comment():
+    wf = _wrap([GetPasswordNode(display_name="Get Password", result=VbExpr(text="pw"))])
+    code = generate_python(wf)
+    assert "# Get Password" in code
+    assert "# TODO: GetPassword" in code
+    _compiles(code)
+
+
+def test_get_password_with_no_result_is_todo():
+    wf = _wrap([GetPasswordNode(result=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetPassword with no output Result captured" in code
     _compiles(code)
 
 

@@ -54,6 +54,7 @@ from .types import (
     ForEachNode,
     GetAttributeNode,
     GetOutlookMailMessagesNode,
+    GetPasswordNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -699,6 +700,14 @@ def _parse_get_attribute(elem: etree._Element) -> GetAttributeNode:
         attribute=_attr(elem, "Attribute"),
         result=_in_argument_property_expr(elem, "Result"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
+def _parse_get_password(elem: etree._Element) -> GetPasswordNode:
+    result = _attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result")
+    return GetPasswordNode(
+        display_name=_attr(elem, "DisplayName"),
+        result=result,
     )
 
 
@@ -1629,6 +1638,7 @@ _DISPATCH = {
     (UI_NS, "GetFullText"): _parse_get_full_text,
     (UI_NS, "GetValue"): _parse_get_value,
     (UI_NS, "GetAttribute"): _parse_get_attribute,
+    (UI_NS, "GetPassword"): _parse_get_password,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,

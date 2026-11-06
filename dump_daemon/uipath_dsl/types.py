@@ -578,6 +578,38 @@ class GetAttributeNode:
 
 
 @dataclass
+class GetPasswordNode:
+    """`<ui:GetPassword>`(知見176、GitHub code searchで540件ヒット
+    ——うち大半が1つの学習用リポジトリの類似演習の重複だが、それを
+    除いても独立した実機10件以上で確認できた、実在する一般的な活動)。
+    `ProtectedPassword`(Windows DPAPIで暗号化されたバイナリ、Base64
+    表記——実機確認した全件が`AQAAANCMnd8BFdERjHoAwE/Cl+sB...`という
+    DPAPIの固定ヘッダ`01 00 00 00 D0 8C 9D DF 01 15 D1 11 8C 7A 00 C0
+    4F C2 97 EB`で始まる)+`Result`(出力、実機で2つの直列化形を確認
+    ——フラット属性`Result="[pw]"`と、プロパティ要素形`<ui:
+    GetPassword.Result><OutArgument>...<VisualBasicReference
+    ExpressionText="Password">...`の両方)という構成。`ContinueOnError`
+    は実機のどの例でも一度も確認できなかった(本活動自体に存在しない
+    可能性もある)。
+
+    `ProtectedPassword`はWindows DPAPI(`CryptProtectData`)で暗号化
+    されており、暗号化を行ったWindowsユーザー・マシンの組み合わせ
+    でなければ復号できない——UiPath Studioが設計時にローカルマシン
+    上で暗号化したものを埋め込むため、この値を生成Pythonコードへ
+    移植可能な形で復号する安全な方法は無い(別マシン・別ユーザーで
+    実行すれば`CryptUnprotectData`はエラーになる)。さらに資格情報を
+    扱う機微な操作であるため、`ProtectedPassword`の値自体を
+    生成コードのコメントへ一切出力しない(暗号化済みとはいえ資格情報
+    関連のブロブをソースへ残さない、安全側の判断)。`Result`の有無を
+    問わず常に`# TODO`へ倒す——知見174の`ui:GetAttribute`と同じ
+    「常にTODOへ倒れる活動でも、ノード型を適切にモデル化する価値が
+    ある」という判断の2例目。"""
+
+    display_name: str | None = None
+    result: Expr = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1680,6 +1712,7 @@ Node = (
     | CloseWindowNode
     | WindowStateNode
     | GetAttributeNode
+    | GetPasswordNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode
