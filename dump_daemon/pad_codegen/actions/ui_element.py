@@ -204,4 +204,19 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
             return None
         method = "click_input" if simulate else "invoke"
         return [f"{prefix}{selector_expr}.{method}()"]
+    if node.action_id == "UIAutomation.HoverOnElement":
+        # design/dsl_format_findings.md 知見168(decompile確認済み): `HoverOnElementInWindow`
+        # (`[Action(Name = "HoverOnElement")]`、知見162の`Name`=`Id`)は`Element`パラメータが
+        # `Click.Click`の`Element`と同じ`UiElementRef`機構のみで、動作は`r.HoverOnElementInWindow(e)`
+        # ——クリックせずマウスを要素の中心へ移動するだけ。pywinautoの`click_input(button='move')`
+        # (公式docstring上「クリックせず中心へ移動」の標準パターン、`move_mouse_input()`の内部実装
+        # そのもの)が1:1対応する単一の曖昧さ無しライブラリ呼び出しのため、実機未確認でも
+        # 安全に結線できる。
+        element = node.params.get("Element")
+        if not isinstance(element, UiElementRef):
+            return None
+        selector_expr = _build_pywinauto_selector_expr(element.path, ctx)
+        if selector_expr is None:
+            return None
+        return [f"{prefix}{selector_expr}.click_input(button='move')"]
     return None

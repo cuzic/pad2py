@@ -2789,3 +2789,13 @@ VM上で`[Action]`/`[ConditionAction]`/`[WaitAction]`属性を持つ全クラス
 `tests/fake_pywinauto.py`の`FakeControl`に`.invoke()`(呼び出しログに`"invoke"`を記録するだけの最小フェイク)を追加——ドキュメント先頭の「対応しているAPI表面」リストも更新した。
 
 実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.PressButton`の分岐を追加(`Simulate`の真偽で`method = "click_input" if simulate else "invoke"`)。テストは`tests/test_pad_codegen.py`に`Simulate=False`/`Simulate=True`両方のexec検証テストを追加した。
+
+## 168. 知見164の残課題`HoverOnElementInWindow`(→`UIAutomation.HoverOnElement`)を新規結線——`click_input(button='move')`で実装
+
+知見164の残課題リストにあった`HoverOnElementInWindow`/`SelectTabInWindow`/`SelectMenuOptionInWindow`/`SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/`ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`の7系統をdecompile精査する中で、最も単純だった`HoverOnElementInWindow`を先行実装した(残り6系統は個々の動作のpywinauto対応がまだ不明瞭なため、知見164の記載通り未精査のまま継続する——でっち上げず1件ずつ精査する方針)。`pad2py-pad-host`VMが他セッションでbusyのため、今回も既存decompile結果の再利用のみで新規VM操作は行っていない。
+
+`HoverOnElementInWindow`クラス(`[Action(Name = "HoverOnElement")]`、知見162の`Name`=`Id`——`tools/selector_dumps/UIAutomation_flat_actions.txt`で`EffectiveId=HoverOnElement`確認——action_idは`UIAutomation.HoverOnElement`)の`Execute()`は`PerformAutomation(... (r, e) => r.HoverOnElementInWindow(e) ...)`のみで、`Element`パラメータ(`UIControl`、`Click.Click`の`Element`と同じ`UiElementRef`機構)以外に意味論を左右する分岐が一切無い——ネイティブ側の「クリックせず要素へマウスを移動する」という単純な意味。
+
+pywinautoの`base_wrapper.BaseWrapper.click_input()`を調べ(`.venv/lib/python3.12/site-packages/pywinauto/base_wrapper.py`)、`button='move'`(docstring: "`button` 引数は'left'/'right'/'middle'/'x'、'move'は特殊ケース")を指定した場合は`button_down`/`button_up`を一切送らずマウスを要素中心(既定の`coords=(None, None)`)へ移動するだけだと確認した——これは`move_mouse_input()`の内部実装そのもの(`move_mouse_input`は`click_input(button='move', ...)`を呼ぶだけの薄いラッパー)でもあり、pywinauto公式の「クリックせず移動する」唯一の標準手段。単一の曖昧さ無しライブラリ呼び出しなので、知見161/164/166/167の低リスク基準を満たすと判断し、実機未確認のまま安全に結線した。`tests/fake_pywinauto.py`への追加は不要(既存の`.click_input(**kwargs)`フェイクがそのまま`button='move'`も記録できる)。
+
+実装: `dump_daemon/pad_codegen/actions/ui_element.py`に`UIAutomation.HoverOnElement`の分岐を追加。テストは`tests/test_pad_codegen.py`にexec検証テストを1件追加した。

@@ -121,8 +121,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     再精査・新規結線完了。`Button`(`UiElementRef`)+`Simulate`(bool)で`.invoke()`/
     `.click_input()`を切り替えるだけ。`tests/fake_pywinauto.py`に`.invoke()`フェイクを
     追加して検証した。
-  - [ ] 💻🖥️ **残課題(知見164で精査・分類)**:
-    - `HoverOnElementInWindow`/`SelectTabInWindow`/`SelectMenuOptionInWindow`/
+  - [x] 💻 `HoverOnElementInWindow`(→`UIAutomation.HoverOnElement`) — 知見168で
+    decompile精査・新規結線完了。`Element`(`UiElementRef`)のみ、動作はpywinautoの
+    `click_input(button='move')`(クリックせず要素中心へ移動)に1:1対応。
+  - [ ] 💻🖥️ **残課題(知見164で精査・分類、知見168時点でなお未精査)**:
+    - `SelectTabInWindow`/`SelectMenuOptionInWindow`/
       `SelectRadioButtonInWindow`/`SetCheckboxStateInWindow`/
       `ExpandCollapseTreeNodeInWindow`/`DragAndDropElementInWindow`: 未精査
       (`UiElementRef`機構の可能性が高いが個々の動作のpywinauto対応が未確認)。
