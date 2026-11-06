@@ -1937,6 +1937,40 @@ def test_generate_python_from_move_window_control_based_converts() -> None:
     assert win32_registry.calls == [("MoveWindow", 0, 10, 20, 800, 600, True)]
 
 
+def test_generate_python_from_resize_window_control_based_converts() -> None:
+    # design/dsl_format_findings.md 知見119: `Control`ベースの兄弟セレクタ(`.Resize`)。
+    # 層7(b)(c)でまだexec検証していなかった実在のギャップ(`ResizeByTitleClass`/
+    # `ResizeByInstanceOrHandle`は既にテスト済みだったが、この`Control`ベース変種には
+    # compileテストすら存在していなかった)。
+    text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
+        encoding="utf-8"
+    )
+    text = text.replace(
+        "UIAutomation.GetWindow.GetUseTimeout Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "BringWindowToFront: False Timeout: 5 WindowInstance=> AutomationWindow2",
+        "UIAutomation.ResizeWindow.Resize Control: appmask['Window \\'Untitled - Notepad\\''] "
+        "Width: 1024 Height: 768",
+    )
+    tree = build_block_tree(parse_dsl(text))
+    repository = parse_control_repository(text)
+    code = generate_python(tree, repository=repository)
+    compile(code, "<generated>", "exec")
+    assert "_hwnd = Desktop(backend=\"uia\").window(title='Untitled - Notepad').wrapper_object().handle" in code
+    assert "win32gui.MoveWindow(_hwnd, _rect[0], _rect[1], 1024, 768, True)" in code
+    assert "# TODO: map PAD action: UIAutomation.ResizeWindow.Resize" not in code
+
+    from fake_pywinauto import FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 100, 200, 900, 800)  # 既存のX=100・Y=200を保持する想定
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {})
+    assert win32_registry.calls == [("MoveWindow", 0, 100, 200, 1024, 768, True)]
+
+
 def test_generate_python_from_set_window_state_control_based_converts() -> None:
     text = (FIXTURES_DIR / "looptest_whole_subflow_with_get_window.txt").read_text(
         encoding="utf-8"
