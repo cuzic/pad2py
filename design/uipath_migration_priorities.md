@@ -4,6 +4,12 @@ PADで使った手法(実機キャプチャ+pytest検証+知見ドキュメン�
 UiPath→Python化に向けた調査項目の一覧。実データによる検証状況は
 [design/uipath_xaml_findings.md](uipath_xaml_findings.md)の知見1〜11を参照。
 
+**関連**: UiPathの機能全体(エンタープライズ製品スイート+Activities/Studio層)の
+体系的なカタログと、個々の活動の移行価値の優先順位付けは
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)に整理した
+(本ファイルは「調査手法の優先順位」、feature_catalog.mdは「何を作るべきかの
+優先順位」という役割分担)。
+
 **重要な前提**(知見1で確認済み): PADと違い、UiPathのXAML/WF自体はMicrosoftの
 公開技術で、アクティビティのパラメータも大半が公式ドキュメント
 (activities.uipath.com)にある。つまり多くの項目は「リバースエンジニアリング」

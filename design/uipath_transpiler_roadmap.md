@@ -5,7 +5,9 @@
 [design/uipath_migration_priorities.md](uipath_migration_priorities.md)・
 [design/uipath_vb_expression_mapping.md](uipath_vb_expression_mapping.md)が
 「何がどう直列化されるか」の実機検証ログであるのに対し、本ドキュメントは
-「それを踏まえてどういう順序で何を作るか」を記す。
+「それを踏まえてどういう順序で何を作るか」を記す。v1完成後の次の一手は
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)(UiPath機能全体の
+カタログと移行価値の優先順位付け)も参照。
 
 ## 現状整理(2026-11-05時点、実装フェーズ完了後に再俯瞰)
 
