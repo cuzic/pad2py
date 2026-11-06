@@ -184,6 +184,13 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   層7(b)でまだexec検証していないcodegenテストの残りは、Click/IfWindow以外の
   `UIAutomation.*`アクション(`GetWindow`の戻り値、多要素内部セレクタのチェーン等)の
   棚卸しが次の拡張候補
+  **2026-11-05追記(instance/handleベースの兄弟セレクタ4件)**: `WindowInstance`が
+  PAD側では不透明な参照でもPython側では通常の変数参照に過ぎない(知見79/80)という
+  性質を利用し、`FakeControl`を直接名前空間へ注入する手法で
+  `SetWindowState.SetStateByInstanceOrHandle`/`MoveWindow.MoveByInstanceOrHandle`/
+  `ResizeWindow.ResizeByInstanceOrHandle`/`SetWindowVisibility.SetVisibilityByInstanceOrHandle`
+  の4件もexec検証へ拡張した(`Title`/`Class`ベースの兄弟セレクタとは別の変数解決経路を
+  通る分岐のため、独立した検証価値がある)。
 - [ ] 層7(a): VM確認結果を構造化データ(JSON等)として永続化するrecord/replay形式を設計する
 - [x] **層7(c)着手**: `tests/fake_win32.py`を新設(`win32gui`/`win32con`、`GetWindowRect`/
   `MoveWindow`/`ShowWindow`/`GetForegroundWindow`/`SW_SHOW`/`SW_HIDE`のフェイク)。

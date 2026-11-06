@@ -1613,6 +1613,20 @@ def test_generate_python_from_move_window_by_instance_or_handle_converts() -> No
     assert "win32gui.MoveWindow(_hwnd, 10, 20, _rect[2] - _rect[0], _rect[3] - _rect[1], True)" in code
     assert "# TODO" not in code
 
+    # design/common_rpa_framework_roadmap.md 層7(b)(c)の拡張: `WindowInstance`変数を
+    # `FakeControl`として注入し、`win32gui.MoveWindow()`が正しい引数で呼ばれることまで検証する。
+    from fake_pywinauto import FakeControl, FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    fake_window = FakeControl(ui_registry, {"title": "Untitled - Notepad"})
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 100, 200, 900, 800)  # 既存の幅800・高さ600を保持する想定
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {"AutomationWindow2": fake_window})
+    assert win32_registry.calls == [("MoveWindow", 0, 10, 20, 800, 600, True)]
+
 
 def test_generate_python_from_resize_window_by_instance_or_handle_converts() -> None:
     dsl = "UIAutomation.ResizeWindow.ResizeByInstanceOrHandle WindowInstance: AutomationWindow2 Width: 640 Height: 480"
@@ -1621,6 +1635,18 @@ def test_generate_python_from_resize_window_by_instance_or_handle_converts() -> 
     compile(code, "<generated>", "exec")
     assert "win32gui.MoveWindow(_hwnd, _rect[0], _rect[1], 640, 480, True)" in code
     assert "# TODO" not in code
+
+    from fake_pywinauto import FakeControl, FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    fake_window = FakeControl(ui_registry, {"title": "Untitled - Notepad"})
+    win32_registry = FakeWin32Registry()
+    win32_registry.set_rect(0, 100, 200, 900, 800)  # 既存のX=100・Y=200を保持する想定
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {"AutomationWindow2": fake_window})
+    assert win32_registry.calls == [("MoveWindow", 0, 100, 200, 640, 480, True)]
 
 
 def test_generate_python_from_set_window_state_by_instance_or_handle_converts() -> None:
@@ -1633,6 +1659,18 @@ def test_generate_python_from_set_window_state_by_instance_or_handle_converts() 
     compile(code, "<generated>", "exec")
     assert "AutomationWindow2.maximize()" in code
     assert "# TODO" not in code
+
+    # design/common_rpa_framework_roadmap.md 層7(b)の拡張: `WindowInstance`はPAD側では
+    # 不透明な参照だがPython側では通常の変数参照に過ぎない(知見79/80)ため、事前に
+    # `GetWindow`で取得済みのつもりの変数として`FakeControl`を直接名前空間へ注入し、
+    # `.maximize()`が実際に正しいパスで呼ばれることまで検証する。
+    from fake_pywinauto import FakeControl, FakeRegistry, fake_pywinauto_desktop
+
+    registry = FakeRegistry()
+    fake_window = FakeControl(registry, {"title": "Untitled - Notepad"})
+    with fake_pywinauto_desktop(registry):
+        exec(code, {"AutomationWindow2": fake_window})
+    assert registry.calls == [("maximize", [{"title": "Untitled - Notepad"}], {})]
 
 
 def test_generate_python_from_set_window_visibility_by_instance_or_handle_converts() -> None:
@@ -1650,6 +1688,17 @@ def test_generate_python_from_set_window_visibility_by_instance_or_handle_conver
     assert "win32gui.ShowWindow(AutomationWindow2.wrapper_object().handle, win32con.SW_HIDE)" in code
     assert "import win32con" in code
     assert "# TODO" not in code
+
+    from fake_pywinauto import FakeControl, FakeRegistry, fake_pywinauto_desktop
+    from fake_win32 import FakeWin32Registry, fake_win32_modules
+
+    ui_registry = FakeRegistry()
+    ui_registry.register_window(title="Untitled - Notepad")
+    fake_window = FakeControl(ui_registry, {"title": "Untitled - Notepad"})
+    win32_registry = FakeWin32Registry()
+    with fake_pywinauto_desktop(ui_registry), fake_win32_modules(win32_registry):
+        exec(code, {"AutomationWindow2": fake_window})
+    assert win32_registry.calls == [("ShowWindow", 0, 0)]
 
 
 def test_generate_python_from_set_window_visibility_by_title_class_converts() -> None:
