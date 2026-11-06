@@ -26,6 +26,12 @@ from .types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    FlowchartNode,
+    FlowDecisionNode,
+    FlowNode,
+    FlowStepNode,
+    FlowSwitchArm,
+    FlowSwitchNode,
     ForEachNode,
     HttpClientNode,
     IfNode,
@@ -511,6 +517,174 @@ def _parse_http_client(elem: etree._Element) -> HttpClientNode:
     )
 
 
+_FLOW_NODE_LOCAL_NAMES = {"FlowStep", "FlowDecision", "FlowSwitch"}
+
+
+def _flow_attr_reference(elem: etree._Element, attr_name: str) -> str | None:
+    """`PropName="{x:Reference Name}"`(マークアップ拡張の属性値形、知見100
+    で実機確認済み、例: `True="{x:Reference __ReferenceID0}"`)から`Name`を
+    取り出す。該当しなければ`None`。"""
+    raw = _attr(elem, attr_name)
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not (raw.startswith("{") and raw.endswith("}")):
+        return None
+    inner = raw[1:-1].strip()
+    if not inner.startswith("x:Reference"):
+        return None
+    return inner[len("x:Reference"):].strip()
+
+
+def _flow_make_placeholder(local_name: str) -> FlowStepNode | FlowDecisionNode | FlowSwitchNode:
+    if local_name == "FlowDecision":
+        return FlowDecisionNode(condition=None)
+    if local_name == "FlowSwitch":
+        return FlowSwitchNode(expression=None, type_arguments="")
+    return FlowStepNode()
+
+
+def _flow_prescan_names(root: etree._Element, name_to_node: dict[str, FlowNode]) -> None:
+    """知見100: Flowchartのグラフは名前付きノード(`x:Name`)への`x:Reference`
+    参照で循環・合流しうる——知見30がState Machine用に見込んでいた「名前→
+    ノードのマップを先に構築してからx:Referenceを解決する2パス方式」を
+    Flowchartでも採用する。1パス目は全体をブランケットに`iter()`で
+    一度だけ走査し、`x:Name`を持つ`FlowStep`/`FlowDecision`/`FlowSwitch`
+    要素それぞれに対し型だけ確定した空のプレースホルダを登録する——これに
+    より2パス目で「まだ見ていない名前への前方参照」でも型を知らずに
+    プレースホルダを作ってしまう(中身を誤った型で埋めることになる)
+    心配が無くなる。"""
+    for elem in root.iter():
+        _, local = _split_tag(elem.tag)
+        if local not in _FLOW_NODE_LOCAL_NAMES:
+            continue
+        name = _attr(elem, "Name", X_NS) or _attr(elem, "Name")
+        if name and name not in name_to_node:
+            name_to_node[name] = _flow_make_placeholder(local)
+
+
+def _resolve_flow_target(
+    elem: etree._Element, prop_name: str, name_to_node: dict[str, FlowNode]
+) -> FlowNode:
+    """`elem`の`prop_name`プロパティ(`Next`/`True`/`False`)が指す先の
+    `FlowNode`を解決する——知見100で確認した3つの直列化形(属性値形
+    `{x:Reference Name}`、プロパティ要素+`<x:Reference>Name</x:Reference>`
+    子要素形、プロパティ要素+ネストした本体定義形)のいずれにも対応する。
+    本体定義形の場合、中身は(`_flow_prescan_names`で登録済みの)
+    プレースホルダを返すだけで、実際の内容埋めは`_parse_flowchart`の
+    ブランケット2パス目(`iter()`)がその要素を独立に処理する時に行う
+    ——ここで再帰的にパースすると同じノードを2回処理してしまう。"""
+    ref_name = _flow_attr_reference(elem, prop_name)
+    if ref_name is not None:
+        return name_to_node.get(ref_name)
+    prop_elem = _find_property_element(elem, prop_name)
+    if prop_elem is None:
+        return None
+    children = _direct_children(prop_elem)
+    if not children:
+        return None
+    child = children[0]
+    c_ns, c_local = _split_tag(child.tag)
+    if (c_ns, c_local) == (X_NS, "Reference"):
+        return name_to_node.get((child.text or "").strip())
+    name = _attr(child, "Name", X_NS) or _attr(child, "Name")
+    return name_to_node.get(name) if name else None
+
+
+def _parse_flow_switch_arms(
+    elem: etree._Element, name_to_node: dict[str, FlowNode]
+) -> list[FlowSwitchArm]:
+    """`FlowSwitch`の各ケース(`FlowSwitch`の直接の子、`x:Key`は知見21の
+    UiPath本体`Switch`と同じ属性形、知見100で実機確認済み)と`Default`
+    (`FlowSwitch.Default`プロパティ要素、知見40の`Switch.Default`と同じ
+    規約)。ケースの対象が既に他所で本体定義済みのノードへの合流の場合、
+    `<x:Reference x:Key="...">Name</x:Reference>`という形(実機未確認だが、
+    他のプロパティでx:Keyを持つ要素への付与がXAML上可能なことから類推した
+    防御的な対応——確実にクラッシュするよりは広く対応する)も扱う。"""
+    arms: list[FlowSwitchArm] = []
+    default_elem = _find_property_element(elem, "Default")
+    if default_elem is not None:
+        default_children = _direct_children(default_elem)
+        if default_children:
+            arms.append(FlowSwitchArm(key=None, node=_flow_node_from_element(
+                default_children[0], name_to_node
+            )))
+    for child in _activity_children(elem):
+        key = _attr(child, "Key", X_NS) or _attr(child, "Key")
+        arms.append(FlowSwitchArm(key=key, node=_flow_node_from_element(child, name_to_node)))
+    return arms
+
+
+def _flow_node_from_element(elem: etree._Element, name_to_node: dict[str, FlowNode]) -> FlowNode:
+    """直接の子要素から`FlowNode`を得る——`<x:Reference>Name</x:Reference>`
+    (既に他所で本体定義済みのノードを指す)か、本体定義そのもの
+    (`x:Name`で登録済みのプレースホルダを返す、中身の埋め込みは
+    `_parse_flowchart`のブランケット2パス目が行う)かのいずれか。"""
+    ns, local = _split_tag(elem.tag)
+    if (ns, local) == (X_NS, "Reference"):
+        return name_to_node.get((elem.text or "").strip())
+    name = _attr(elem, "Name", X_NS) or _attr(elem, "Name")
+    return name_to_node.get(name) if name else None
+
+
+def _parse_flowchart(elem: etree._Element) -> FlowchartNode:
+    """`<Flowchart>`(知見100、VM不使用——実際にStudioが保存した公開済み
+    実機XAMLをGitHub上から直接確認して確定した直列化形)。
+
+    `x:Name`付きの`FlowStep`/`FlowDecision`/`FlowSwitch`要素は文書中の
+    どこに出現してもよい(`Flowchart.StartNode`の中、他ノードの`Next`/
+    `True`/`False`/ケースの中、または`Flowchart`自身の直接の子として)
+    ——2パス構成(`_flow_prescan_names`→本体埋め込み)でこれを扱う。
+    本体埋め込みパスは`elem.iter()`でFlowchart全体を1回だけブランケット
+    走査し、`FlowStep`/`FlowDecision`/`FlowSwitch`要素に出会うたびその
+    プレースホルダへ中身を埋める——ネストの深さに関わらず各ノードが
+    ちょうど1回だけ処理される(循環があっても`iter()`は単純な文書順
+    走査なので無限ループしない)。
+    """
+    name_to_node: dict[str, FlowNode] = {}
+    _flow_prescan_names(elem, name_to_node)
+
+    for node_elem in elem.iter():
+        _, local = _split_tag(node_elem.tag)
+        if local not in _FLOW_NODE_LOCAL_NAMES:
+            continue
+        name = _attr(node_elem, "Name", X_NS) or _attr(node_elem, "Name")
+        if not name:
+            continue
+        target = name_to_node[name]
+        if local == "FlowStep":
+            assert isinstance(target, FlowStepNode)
+            target.body = _parse_body(node_elem)
+            target.next = _resolve_flow_target(node_elem, "Next", name_to_node)
+        elif local == "FlowDecision":
+            assert isinstance(target, FlowDecisionNode)
+            target.condition = _attr_expr(node_elem, "Condition")
+            target.true_branch = _resolve_flow_target(node_elem, "True", name_to_node)
+            target.false_branch = _resolve_flow_target(node_elem, "False", name_to_node)
+        else:  # FlowSwitch
+            assert isinstance(target, FlowSwitchNode)
+            target.expression = _attr_expr(node_elem, "Expression")
+            target.type_arguments = (
+                _attr(node_elem, "TypeArguments", X_NS) or _attr(node_elem, "TypeArguments") or ""
+            )
+            target.arms = _parse_flow_switch_arms(node_elem, name_to_node)
+
+    start = _flow_start_node(elem, name_to_node)
+    return FlowchartNode(variables=_parse_variables(elem), start=start)
+
+
+def _flow_start_node(elem: etree._Element, name_to_node: dict[str, FlowNode]) -> FlowNode:
+    """`Flowchart.StartNode`——中身がネストした本体定義か`<x:Reference>`か
+    (知見100、両方の実例を確認済み)のいずれか。"""
+    start_elem = _find_property_element(elem, "StartNode")
+    if start_elem is None:
+        return None
+    children = _direct_children(start_elem)
+    if not children:
+        return None
+    return _flow_node_from_element(children[0], name_to_node)
+
+
 # (namespace_uri, local_name) -> パース関数。知見1〜36で実機確認済みの
 # Tier1アクティビティ(design/uipath_transpiler_roadmap.md Phase 1決定)のみ
 # 登録する。それ以外は`UnknownActivityNode`へフォールバックする。
@@ -584,10 +758,11 @@ def _find_members(root: etree._Element) -> dict[str, str]:
 def parse_workflow_file(path: str | Path) -> WorkflowFile:
     """`.xaml`ファイル1つをパースして`WorkflowFile`を返す公開エントリポイント。
 
-    対象はProcessプロジェクトの通常ワークフロー(`x:Class`付き、`Sequence`が
-    ルート)のみ——Libraryの`ActivityBuilder`形(知見26)・Flowchart・
-    State Machineは design/uipath_transpiler_roadmap.md Phase 1の決定により
-    v1スコープ外で、このパーサーも未対応(遭遇すると`ValueError`)。
+    対象はProcessプロジェクトの通常ワークフロー(`x:Class`付き、ルートが
+    `Sequence`または`Flowchart`のいずれか——Phase 1の決定「対象ワークフロー
+    種別: Sequence/Flowchartのみ」、知見100でFlowchartの実装に着手)のみ。
+    Libraryの`ActivityBuilder`形(知見26)・State Machineはv1スコープ外で、
+    このパーサーも未対応(遭遇すると`ValueError`)。
     """
     tree = etree.parse(str(path))
     root = tree.getroot()
@@ -600,20 +775,25 @@ def parse_workflow_file(path: str | Path) -> WorkflowFile:
     variables = _parse_variables(root)
 
     seq_elem = None
+    flowchart_elem = None
     for child in _activity_children(root):
         c_ns, c_local = _split_tag(child.tag)
         if (c_ns, c_local) == (WF_NS, "Sequence"):
             seq_elem = child
             break
-    if seq_elem is None:
+        if (c_ns, c_local) == (WF_NS, "Flowchart"):
+            flowchart_elem = child
+            break
+    if seq_elem is None and flowchart_elem is None:
         raise ValueError(
-            "no top-level <Sequence> found — Flowchart/State Machine roots are "
-            "out of v1 scope (design/uipath_transpiler_roadmap.md Phase 1)"
+            "no top-level <Sequence>/<Flowchart> found — State Machine roots "
+            "are out of v1 scope (design/uipath_transpiler_roadmap.md Phase 1)"
         )
 
+    root_node = _parse_sequence(seq_elem) if seq_elem is not None else _parse_flowchart(flowchart_elem)
     return WorkflowFile(
         class_name=class_name,
-        root=_parse_sequence(seq_elem),
+        root=root_node,
         arguments=arguments,
         variables=variables,
     )

@@ -356,6 +356,78 @@ class HttpClientNode:
 
 
 @dataclass
+class FlowStepNode:
+    """`<FlowStep>`(知見100、実際のUiPath/.NET保存済みXAMLで確認済み)。
+    直接の子として実行する活動を0〜1個持つ(複数ステップなら`Sequence`で
+    ラップされる——`If.Then`/`If.Else`と同じ可変長パターン、知見5。
+    `ForEach.Body`等の「常にラップされる」パターンとは違い、`xaml_tree`
+    側でラップを解かない——呼び出し側が`SequenceNode`かどうかで複数
+    ステップかを判断できる、`_single_body`と同じ方針)。`next`は
+    `FlowStep.Next`——無ければ(フローチャート終端)`None`。
+
+    `next`は循環しうる(知見100で確認済みの実例が実際にループしていた)
+    ——フィールドの型`FlowNode`は`None`も許容する自己参照的な再帰型。
+    """
+
+    body: list["Node"] = field(default_factory=list)
+    next: "FlowNode" = None
+
+
+@dataclass
+class FlowDecisionNode:
+    """`<FlowDecision Condition="...">`(知見100)。`Condition`は`If`/
+    `While`と全く同じVB式属性形(知見5・14)。`true_branch`/`false_branch`
+    は`FlowDecision.True`/`.False`——いずれも省略可能(VBの意味論上、
+    分岐先が無ければそのままフローチャート終端になる、でっち上げた
+    既定遷移は作らない)。"""
+
+    condition: Expr
+    true_branch: "FlowNode" = None
+    false_branch: "FlowNode" = None
+
+
+@dataclass
+class FlowSwitchArm:
+    """`FlowSwitch`配下の1ケース。`key=None`はdefaultアーム
+    (`FlowSwitch.Default`プロパティ要素、知見40の`Switch.Default`と
+    同じ規約)。"""
+
+    key: str | None
+    node: "FlowNode" = None
+
+
+@dataclass
+class FlowSwitchNode:
+    """`<FlowSwitch x:TypeArguments="..." Expression="...">`(知見100)。
+    各ケースは`FlowSwitch`の直接の子`<FlowStep x:Key="...">`(知見21の
+    UiPath本体`Switch`と同じ属性形、知見100で実機確認済み)。"""
+
+    expression: Expr
+    type_arguments: str
+    arms: list[FlowSwitchArm] = field(default_factory=list)
+
+
+FlowNode = FlowStepNode | FlowDecisionNode | FlowSwitchNode | None
+"""Flowchartのグラフを構成する1ノード。`None`はそこでフローが終端する
+ことを表す——`Node`(通常の子アクティビティ列)とは別の再帰型。"""
+
+
+@dataclass
+class FlowchartNode:
+    """`<Flowchart>`(知見100)。`variables`は`Flowchart.Variables`
+    (`Sequence.Variables`と同じ規約、知見8)。`start`は`Flowchart.
+    StartNode`——`FlowNode`のグラフの入口。
+
+    ワークフローのルート型としてのみ対応する(Phase 1の決定「Sequence/
+    Flowchartのみ」)——他の通常アクティビティ(`Node`)の子として
+    ネストした`Flowchart`は本パーサーの対象外(実機で未確認)。
+    """
+
+    variables: list[VariableDecl] = field(default_factory=list)
+    start: FlowNode = None
+
+
+@dataclass
 class UnknownActivityNode:
     """v1スコープ(design/uipath_transpiler_roadmap.md Phase 1)に含まれない、
     または本パーサーがまだ対応していないアクティビティ。架空のコードを
@@ -414,7 +486,7 @@ class WorkflowFile:
     """
 
     class_name: str
-    root: SequenceNode
+    root: SequenceNode | FlowchartNode
     arguments: dict[str, str] = field(default_factory=dict)
     variables: list[VariableDecl] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)

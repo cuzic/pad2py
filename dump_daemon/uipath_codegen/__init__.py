@@ -49,6 +49,10 @@ from ..uipath_dsl.types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    FlowchartNode,
+    FlowDecisionNode,
+    FlowStepNode,
+    FlowSwitchNode,
     ForEachNode,
     HttpClientNode,
     IfNode,
@@ -291,6 +295,8 @@ def _generate_node(
     out_arg_resolver: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
     prefix = INDENT * indent
+    if isinstance(node, FlowchartNode):
+        return _generate_flowchart(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SequenceNode):
         return [
             *_generate_variable_inits(node.variables, indent),
@@ -565,6 +571,110 @@ def _generate_variable_inits(variables: list[VariableDecl], indent: int) -> list
     既定値」節参照)。"""
     prefix = INDENT * indent
     return [f"{prefix}{_render_variable_init(v)}" for v in variables]
+
+
+def _generate_flowchart(
+    node: FlowchartNode, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見100: Flowchartのグラフ(循環・合流を含む一般の有向グラフ——知見100
+    で確認した実機XAML例が実際にループを含んでいた)をPythonへ変換する。
+    Pythonには`goto`/ラベルが無いため、ディスパッチループ(状態機械)
+    パターン(`while _flow is not None: if _flow == 0: ... elif _flow == 1:
+    ...`)へ落とす——任意のCFGを構造化言語で表現する標準的な手法で、
+    でっち上げた簡略化ではない。各到達可能な`FlowNode`に(文書中の出現順を
+    辿るDFS順で)0始まりの整数ラベルを振り、`_flow`という一時変数で
+    「今どのノードを実行中か」を追跡する——ラベルはPythonオブジェクトの
+    `id()`をキーにした辞書で割り当てるため、同じノードオブジェクトが
+    複数箇所から参照されていても(合流・循環)同じラベルになる。
+
+    `FlowDecision`(`If`/`While`と同じBoolean変換規則、知見61の
+    `_vb_bool()`)・`FlowSwitch`(`Switch`と同じ`_vb_cmp()`比較規則、知見77
+    ——公式ドキュメントが`FlowSwitch<T>`を「`Switch<T>`と同様」と明記して
+    いることに基づく類推、FlowSwitch自体の比較規則は実機未確認のため
+    knowledge記録に残す)はそれぞれ既存の`If`/`Switch`と同じ変換規則を流用。
+    `FlowSwitch`で該当するケースも`Default`も無い場合、既存の`Switch`
+    (値が一致するcaseが無ければ何もしない)と同じ意味論だが、ここでは
+    `_flow`を明示的に`None`へ倒す必要がある——`_flow`を更新し忘れると
+    外側の`while`が同じ状態を永遠に再実行し無限ループになるため(`If`/
+    `FlowDecision`は常に`True`/`False`いずれかの分岐へ入るため同じ問題は
+    起きない)。`Condition`/`Expression`が未設定(`DoWhile`の「Condition
+    未設定」ケース、知見38相当)の場合も同様に、でっち上げた既定分岐を
+    選ばず`# TODO`+安全な`_flow = None`終端に倒す。
+    """
+    prefix = INDENT * indent
+    lines = _generate_variable_inits(node.variables, indent)
+    if node.start is None:
+        return lines
+
+    labels: dict[int, int] = {}
+    order: list[FlowStepNode | FlowDecisionNode | FlowSwitchNode] = []
+
+    def _walk(n) -> None:
+        if n is None or id(n) in labels:
+            return
+        labels[id(n)] = len(order)
+        order.append(n)
+        if isinstance(n, FlowStepNode):
+            _walk(n.next)
+        elif isinstance(n, FlowDecisionNode):
+            _walk(n.true_branch)
+            _walk(n.false_branch)
+        elif isinstance(n, FlowSwitchNode):
+            for arm in n.arms:
+                _walk(arm.node)
+
+    _walk(node.start)
+
+    def _label_of(n) -> str:
+        return "None" if n is None else str(labels[id(n)])
+
+    lines.append(f"{prefix}_flow = {labels[id(node.start)]}")
+    lines.append(f"{prefix}while _flow is not None:")
+    body_indent = indent + 1
+    body_prefix = INDENT * body_indent
+    for i, n in enumerate(order):
+        keyword = "if" if i == 0 else "elif"
+        lines.append(f"{body_prefix}{keyword} _flow == {i}:")
+        inner_indent = body_indent + 1
+        inner_prefix = INDENT * inner_indent
+        if isinstance(n, FlowStepNode):
+            lines.extend(_generate_body(n.body, inner_indent, invoke_resolver, out_arg_resolver))
+            lines.append(f"{inner_prefix}_flow = {_label_of(n.next)}")
+        elif isinstance(n, FlowDecisionNode):
+            if n.condition is None:
+                lines.append(f"{inner_prefix}# TODO: FlowDecision with no Condition set — intent unclear")
+                lines.append(f"{inner_prefix}_flow = None")
+                continue
+            cond = render_expr(n.condition)
+            lines.append(f"{inner_prefix}if {VB_BOOL_HELPER_NAME}({cond}):")
+            lines.append(f"{INDENT * (inner_indent + 1)}_flow = {_label_of(n.true_branch)}")
+            lines.append(f"{inner_prefix}else:")
+            lines.append(f"{INDENT * (inner_indent + 1)}_flow = {_label_of(n.false_branch)}")
+        else:
+            if n.expression is None:
+                lines.append(f"{inner_prefix}# TODO: FlowSwitch with no Expression set — intent unclear")
+                lines.append(f"{inner_prefix}_flow = None")
+                continue
+            expr = render_expr(n.expression)
+            default_arm = next((a for a in n.arms if a.key is None), None)
+            value_arms = [a for a in n.arms if a.key is not None]
+            for j, arm in enumerate(value_arms):
+                arm_keyword = "if" if j == 0 else "elif"
+                key_literal = _render_switch_key(arm.key, n.type_arguments)
+                lines.append(
+                    f"{inner_prefix}{arm_keyword} (lambda _t: _t[0] == _t[1])"
+                    f"({VB_CMP_HELPER_NAME}({expr}, {key_literal})):"
+                )
+                lines.append(f"{INDENT * (inner_indent + 1)}_flow = {_label_of(arm.node)}")
+            if value_arms or default_arm is not None:
+                header = "else" if value_arms else "if True"
+                lines.append(f"{inner_prefix}{header}:")
+                target = default_arm.node if default_arm is not None else None
+                lines.append(f"{INDENT * (inner_indent + 1)}_flow = {_label_of(target)}")
+            else:
+                lines.append(f"{inner_prefix}_flow = None")
+    return lines
 
 
 def _generate_switch(
@@ -1121,6 +1231,33 @@ def _iter_invoke_nodes(nodes: list[Node]):
             yield from _iter_invoke_nodes(child_list)
 
 
+def _iter_invoke_nodes_in_flow(flow_node, visited: set[int]):
+    """知見100: `_iter_invoke_nodes`のFlowchart版——`FlowNode`のグラフ
+    (循環しうる、`id()`ベースの`visited`集合で1回しか処理しない)を辿り、
+    各`FlowStepNode.body`内の`InvokeWorkflowFileNode`を列挙する。"""
+    if flow_node is None or id(flow_node) in visited:
+        return
+    visited.add(id(flow_node))
+    if isinstance(flow_node, FlowStepNode):
+        yield from _iter_invoke_nodes(flow_node.body)
+        yield from _iter_invoke_nodes_in_flow(flow_node.next, visited)
+    elif isinstance(flow_node, FlowDecisionNode):
+        yield from _iter_invoke_nodes_in_flow(flow_node.true_branch, visited)
+        yield from _iter_invoke_nodes_in_flow(flow_node.false_branch, visited)
+    elif isinstance(flow_node, FlowSwitchNode):
+        for arm in flow_node.arms:
+            yield from _iter_invoke_nodes_in_flow(arm.node, visited)
+
+
+def _iter_invoke_nodes_for_root(root):
+    """`WorkflowFile.root`(`SequenceNode`または`FlowchartNode`、知見100)
+    いずれでも`InvokeWorkflowFileNode`を列挙できるようにする入口。"""
+    if isinstance(root, FlowchartNode):
+        yield from _iter_invoke_nodes_in_flow(root.start, set())
+    else:
+        yield from _iter_invoke_nodes(root.body)
+
+
 def _discover_workflow_files(
     path: Path, cache: dict[Path, WorkflowFile], order: list[Path]
 ) -> None:
@@ -1134,7 +1271,7 @@ def _discover_workflow_files(
     wf = parse_workflow_file(path)
     cache[path] = wf
     order.append(path)
-    for inv in _iter_invoke_nodes(wf.root.body):
+    for inv in _iter_invoke_nodes_for_root(wf.root):
         target = (path.parent / inv.workflow_file).resolve()
         if target.is_file():
             _discover_workflow_files(target, cache, order)
@@ -1161,7 +1298,7 @@ def _build_invoke_resolver(
     func_names: dict[Path, str],
 ) -> dict[str, str]:
     resolver: dict[str, str] = {}
-    for inv in _iter_invoke_nodes(wf.root.body):
+    for inv in _iter_invoke_nodes_for_root(wf.root):
         target = (path.parent / inv.workflow_file).resolve()
         if target in func_names:
             resolver[inv.workflow_file] = func_names[target]
@@ -1180,7 +1317,7 @@ def _build_out_arg_resolver(
     workflow_file`が呼び出し元の呼び出し文自体にも警告を出せるようにする。
     """
     resolver: dict[str, frozenset[str]] = {}
-    for inv in _iter_invoke_nodes(wf.root.body):
+    for inv in _iter_invoke_nodes_for_root(wf.root):
         target = (path.parent / inv.workflow_file).resolve()
         if target in func_names:
             resolver[inv.workflow_file] = _collect_out_arg_names(cache[target].arguments)
@@ -1225,8 +1362,8 @@ def generate_project_from_json(project_dir: str | Path) -> str:
     プロジェクトのみのため、`designOptions.outputType`が`"Process"`以外
     (例: `"Library"`、知見26の`ActivityBuilder`形は`uipath_dsl`が未対応)
     の場合は`ValueError`で明示的に拒否する——`parse_workflow_file`が
-    Flowchart/State Machineを拒否するのと同じ、スコープ外を黙って
-    誤変換しない方針。
+    State Machineルート(知見100以降、Flowchartは対応済み)を拒否するのと
+    同じ、スコープ外を黙って誤変換しない方針。
     """
     project_dir = Path(project_dir)
     project_json_path = project_dir / "project.json"

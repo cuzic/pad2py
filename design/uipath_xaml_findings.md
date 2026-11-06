@@ -4741,6 +4741,88 @@ Studioで保存された、GitHub上に公開済みの実物の`.xaml`ファイ�
 で任意のグラフ形を構造的に表現する——でっち上げではなく、任意CFGを
 構造化言語へ変換する標準的な手法)。
 
+## 101. Flowchartの実コード生成を実装——ディスパッチループ(状態機械)パターンで循環・合流を含む一般のグラフに対応(VM不使用、知見100の直列化形確定を受けて実装完了)
+
+知見100で確定したXAML直列化形(`x:Name`/`x:Reference`/`Flowchart.
+StartNode`/`FlowStep.Next`/`FlowDecision.True`・`.False`/`FlowSwitch.
+Default`)に基づき、`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`dump_daemon/uipath_codegen/__init__.py`にFlowchartの実装を追加した。
+これでPhase 1の決定文「対象ワークフロー種別: Sequence/Flowchartのみ」と
+実装の食い違い(残タスクA、俯瞰レビューで発見)が解消した。
+
+**IR(`types.py`)**: `FlowStepNode`(`body: list[Node]`+`next: FlowNode`)・
+`FlowDecisionNode`(`condition: Expr`+`true_branch`/`false_branch:
+FlowNode`)・`FlowSwitchArm`+`FlowSwitchNode`(`expression`/`type_arguments`
++`arms: list[FlowSwitchArm]`)・`FlowNode = FlowStepNode | FlowDecisionNode
+| FlowSwitchNode | None`(再帰的な自己参照型)・`FlowchartNode`
+(`variables`+`start: FlowNode`)を新設。`WorkflowFile.root`の型を
+`SequenceNode | FlowchartNode`に拡張。`FlowNode`ファミリーは意図的に
+既存の`Node`ユニオンへ含めない(Flowchartのグラフ構造と通常の子活動列は
+別の関心事であり、`_generate_node`の通常ディスパッチには乗せない)。
+
+**パース(`xaml_tree.py`)**: 知見30がState Machine用に見込んでいた
+「名前→ノードのマップを先に構築してからx:Referenceを解決する2パス方式」
+を初めて実装した——1パス目(`_flow_prescan_names`)は`elem.iter()`で
+Flowchart全体をブランケット走査し、`x:Name`付きの`FlowStep`/
+`FlowDecision`/`FlowSwitch`要素それぞれに型だけ確定した空のプレース
+ホルダを登録する(前方参照でも型を知らずに誤った型のプレースホルダを
+作ってしまう心配を無くす)。2パス目(`_parse_flowchart`本体)も同じ
+`elem.iter()`ブランケット走査で、各ノード要素に出会うたびその
+プレースホルダへ中身を埋める——ネストの深さに関わらず各ノードがちょうど
+1回処理され、循環があっても`iter()`は単純な文書順走査なので無限ループ
+しない。3つの参照形(属性値`{x:Reference Name}`、プロパティ要素+
+`<x:Reference>Name</x:Reference>`子要素、プロパティ要素+ネストした
+本体定義)はいずれも`_resolve_flow_target`/`_flow_node_from_element`が
+統一的に解決する。
+
+**コード生成(`uipath_codegen/__init__.py`)**: Pythonには`goto`/ラベルが
+無いため、`_generate_flowchart`はディスパッチループ(状態機械)パターン
+(`_flow`という一時変数+`while _flow is not None: if _flow == 0: ...
+elif _flow == 1: ...`)へ変換する——任意のCFG(循環・合流含む)を構造化
+言語で表現する標準的な手法で、でっち上げた簡略化ではない。各到達可能な
+`FlowNode`に(オブジェクトの`id()`をキーにした辞書で)0始まりの整数
+ラベルを振るため、同じノードオブジェクトが複数箇所から参照されていても
+(合流・循環)同じラベルになり、正しく収束する。`FlowDecision`は`If`/
+`While`と同じBoolean変換規則(知見61の`_vb_bool()`)、`FlowSwitch`は
+`Switch`と同じ`_vb_cmp()`比較規則(知見77——公式ドキュメントが
+`FlowSwitch<T>`を「`Switch<T>`と同様」と明記していることに基づく類推、
+FlowSwitch自体の比較規則そのものは実機未確認のため、既知の前提として
+記録する)を流用する。
+
+**無限ループ回避の設計判断**: `FlowSwitch`で該当するcaseも`Default`も
+無い場合(`Switch`では単に何もしないだけの意味論)、ディスパッチループ
+では`_flow`を明示的に`None`へ倒す処理が必要——`_flow`を更新し忘れると
+外側の`while`が同じ状態を永遠に再実行し無限ループになる(`FlowDecision`
+は常に`True`/`False`いずれかの分岐へ入るため同じ問題は起きない)。
+`Condition`/`Expression`が未設定の場合も同様に、でっち上げた既定分岐を
+選ばず`# TODO`+安全な`_flow = None`終端に倒す(`DoWhile`の「Condition
+未設定」ケース、知見38相当、と同じ方針)。
+
+**複数ファイルBFS発見の対応**: `_discover_workflow_files`等が使う
+`_iter_invoke_nodes`(知見88)はFlowchartのグラフを辿れないため、
+`id()`ベースの`visited`集合で循環を安全に扱う`_iter_invoke_nodes_in_
+flow`を新設し、`_iter_invoke_nodes_for_root`で`SequenceNode`/
+`FlowchartNode`どちらのルートでも機能するようにした。
+
+**テスト**: IRレベル(`_wrap_flowchart`ヘルパー、同じPythonオブジェクトを
+複数箇所から参照させることで合流・循環を直接表現)・XAMLパースレベル
+(知見100で確認した実機構造を模した合成XAML、実際に`parse_workflow_file`
+→`generate_python`→`exec()`まで通した統合テスト)の両方で検証。
+特に「caseもdefaultも無いFlowSwitch」「Condition未設定のFlowDecision」
+という無限ループのリスクがある2経路は、実際に`exec()`してハングしない
+(正しく終了する)ことまで確認した。UiPath関連テスト全297件通過、
+リポジトリ全体で全1066件通過。
+
+**今後の既知の限界**(でっち上げを避けて未対応のまま残したもの):
+- `FlowSwitch`のケース`x:Key`が子要素形(`<x:Key><x:String>...</x:String>
+  </x:Key>`、知見100の古いMicrosoft公式サンプルで確認)の場合は未対応
+  (UiPath自身が実際にこの形を使うかは未確認のため、属性形のみ実装)
+- `Flowchart`自体が通常アクティビティ(`Node`)の子としてネストする
+  ケースは未対応(実機で未確認、Phase 1の決定は「ワークフロー種別」
+  としてのFlowchartのみを指すと解釈)
+- `FlowSwitch`の比較規則が`_vb_cmp()`と完全に一致するかは実機未確認
+  (`Switch<T>`との類推のみ、上記参照)
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

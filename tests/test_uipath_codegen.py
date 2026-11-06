@@ -38,6 +38,11 @@ from dump_daemon.uipath_dsl import (
     ClickNode,
     ExcelApplicationScopeNode,
     ExcelWriteCellNode,
+    FlowchartNode,
+    FlowDecisionNode,
+    FlowStepNode,
+    FlowSwitchArm,
+    FlowSwitchNode,
     ForEachNode,
     HttpClientNode,
     IfNode,
@@ -67,6 +72,10 @@ FIXTURE_LIB_DIR = Path(__file__).parent.parent / "design" / "evidence" / "uipath
 
 def _wrap(body) -> WorkflowFile:
     return WorkflowFile(class_name="Test", root=SequenceNode(body=body))
+
+
+def _wrap_flowchart(start, variables=None) -> WorkflowFile:
+    return WorkflowFile(class_name="Test", root=FlowchartNode(variables=variables or [], start=start))
 
 
 def _compiles(code: str) -> None:
@@ -2446,3 +2455,225 @@ def test_generate_project_from_json_requires_main_field(tmp_path):
     (tmp_path / "project.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="main"):
         generate_project_from_json(tmp_path)
+
+
+# --- Flowchart(知見100) ------------------------------------------------
+
+
+def test_flowchart_simple_linear_chain_executes_in_order():
+    """知見100: 分岐・合流の無い単純な`FlowStep`の連鎖(`Next`で繋ぐだけ)が
+    ディスパッチループへ正しく変換され、実際に順番通り実行されることを
+    確認する。"""
+    step_c = FlowStepNode(body=[MessageBoxNode(text=Literal(value="c"))], next=None)
+    step_b = FlowStepNode(body=[MessageBoxNode(text=Literal(value="b"))], next=step_c)
+    step_a = FlowStepNode(body=[MessageBoxNode(text=Literal(value="a"))], next=step_b)
+    wf = _wrap_flowchart(start=step_a)
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().splitlines() == ["a", "b", "c"]
+
+
+def test_flowchart_decision_with_loop_and_convergence_executes_correctly():
+    """知見100: 実際のUiPath保存済みXAML(GitHub上の実例)で確認した
+    「分岐の片方がループで先頭に戻り、もう一方が終端へ向かう」という
+    一般的なパターンを、IRレベルで直接(同じPythonオブジェクトを複数箇所
+    から参照させることで合流・循環を表現して)検証する——`_flow`の
+    ディスパッチループが同じノードに複数回正しく到達し、最終的に正しく
+    終端することを確認する。"""
+    end_step = FlowStepNode(body=[MessageBoxNode(text=Literal(value="done"))], next=None)
+    start_step = FlowStepNode(body=[], next=None)  # next はdecision作成後に設定
+    decision = FlowDecisionNode(
+        condition=VbExpr(text="count < 3"), true_branch=start_step, false_branch=end_step
+    )
+    start_step.next = decision
+    start_step.body = [
+        AssignNode(target=VbExpr(text="count"), value=VbExpr(text="count + 1")),
+    ]
+    wf = _wrap_flowchart(
+        start=start_step,
+        variables=[VariableDecl(name="count", type_arguments="x:Int32", default="0")],
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "done"
+
+
+def test_flowchart_switch_with_default_executes_matching_case():
+    """知見100: `FlowSwitch`は`Switch`と同じ`_vb_cmp()`比較規則(公式
+    ドキュメントが`FlowSwitch<T>`を`Switch<T>`と同様と明記していることに
+    基づく類推、知見77)で変換される——一致するケースが実行され、
+    `Default`は実行されないことを確認する。"""
+    case1 = FlowStepNode(body=[MessageBoxNode(text=Literal(value="one"))])
+    case2 = FlowStepNode(body=[MessageBoxNode(text=Literal(value="two"))])
+    default = FlowStepNode(body=[MessageBoxNode(text=Literal(value="other"))])
+    switch = FlowSwitchNode(
+        expression=Literal(value="2"),
+        type_arguments="x:Int32",
+        arms=[
+            FlowSwitchArm(key="1", node=case1),
+            FlowSwitchArm(key="2", node=case2),
+            FlowSwitchArm(key=None, node=default),
+        ],
+    )
+    wf = _wrap_flowchart(start=switch)
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "two"
+
+
+def test_flowchart_switch_with_no_matching_case_and_no_default_terminates():
+    """知見100: `Switch`(値が一致するcaseが無ければ何もしない)と同じ意味論
+    だが、ディスパッチループでは`_flow`を明示的に`None`へ倒さないと外側の
+    `while`が無限ループになる——これが正しく`_flow = None`へ倒れ、
+    ワークフローが正常終了することを確認する(ハングしないこと自体が
+    このテストの主張)。"""
+    unreached = FlowStepNode(body=[MessageBoxNode(text=Literal(value="unreached"))])
+    switch = FlowSwitchNode(
+        expression=Literal(value="99"),
+        type_arguments="x:Int32",
+        arms=[FlowSwitchArm(key="1", node=unreached)],
+    )
+    wf = _wrap_flowchart(start=switch)
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == ""
+
+
+def test_flowchart_decision_with_no_condition_falls_back_to_todo():
+    """`DoWhile`の「Condition未設定」ケース(知見38相当)と同じ方針——
+    でっち上げた既定分岐を選ばず`# TODO`に倒した上で、安全に`_flow = None`
+    へ倒れてハングしないことを確認する。"""
+    unreached = FlowStepNode(body=[MessageBoxNode(text=Literal(value="unreached"))])
+    decision = FlowDecisionNode(condition=None, true_branch=unreached, false_branch=unreached)
+    wf = _wrap_flowchart(start=decision)
+    code = generate_python(wf)
+    assert "# TODO: FlowDecision with no Condition set" in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == ""
+
+
+def test_flowchart_empty_variables_only_still_compiles():
+    """`start=None`(空のFlowchart、変数宣言のみ)でも構文的に正しいコードを
+    生成することの回帰テスト。"""
+    wf = _wrap_flowchart(
+        start=None, variables=[VariableDecl(name="x", type_arguments="x:Int32")]
+    )
+    code = generate_python(wf)
+    assert "x = 0" in code
+    _compiles(code)
+
+
+_FLOWCHART_LOOP_XAML = """\
+<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:ui="http://schemas.uipath.com/workflow/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          x:Class="FlowchartTest">
+  <Flowchart>
+    <Flowchart.Variables>
+      <Variable x:TypeArguments="x:Int32" Name="count" Default="0" />
+    </Flowchart.Variables>
+    <Flowchart.StartNode>
+      <FlowStep x:Name="__ReferenceID0">
+        <Assign>
+          <Assign.To><OutArgument x:TypeArguments="x:Int32">[count]</OutArgument></Assign.To>
+          <Assign.Value><InArgument x:TypeArguments="x:Int32">[count + 1]</InArgument></Assign.Value>
+        </Assign>
+        <FlowStep.Next>
+          <FlowDecision x:Name="__ReferenceID1" Condition="[count &lt; 3]">
+            <FlowDecision.True>
+              <x:Reference>__ReferenceID0</x:Reference>
+            </FlowDecision.True>
+            <FlowDecision.False>
+              <FlowStep x:Name="__ReferenceID2">
+                <ui:MessageBox Text="[&quot;done&quot;]" />
+              </FlowStep>
+            </FlowDecision.False>
+          </FlowDecision>
+        </FlowStep.Next>
+      </FlowStep>
+    </Flowchart.StartNode>
+    <x:Reference>__ReferenceID0</x:Reference>
+    <x:Reference>__ReferenceID1</x:Reference>
+    <x:Reference>__ReferenceID2</x:Reference>
+  </Flowchart>
+</Activity>
+"""
+
+
+def test_parse_workflow_file_accepts_real_shaped_flowchart_xaml_with_loop(tmp_path):
+    """知見100: VM不使用——実際にUiPath Studioが保存した公開済みXAML
+    (GitHub上の実例、PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developersの`FlowchartDemo.xaml`)で確認した直列化形(`x:Name`/
+    `Flowchart.StartNode`/`FlowStep.Next`/`FlowDecision.True`・`.False`/
+    `<x:Reference>Name</x:Reference>`要素形/文末の平坦な`Nodes`参照リスト)
+    を模した合成XAMLを、実際に`parse_workflow_file`→`generate_python`→
+    `exec()`まで通して確認する——`Flowchart`ルートがもはや`ValueError`に
+    ならないこと、ループが正しく変換されることの統合テスト。"""
+    path = tmp_path / "FlowchartTest.xaml"
+    path.write_text(_FLOWCHART_LOOP_XAML, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assert isinstance(wf.root, FlowchartNode)
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["FlowchartTest"]()
+    assert stdout.getvalue().strip() == "done"
+
+
+def test_generate_project_python_discovers_invoke_workflow_file_nested_in_flowchart(tmp_path):
+    """知見100: 複数ファイルのBFS発見(`_discover_workflow_files`、知見88と
+    同種の懸念)が、Flowchartルート配下にネストした`Invoke Workflow File`
+    も正しく発見できることを確認する——`_iter_invoke_nodes_for_root`が
+    `SequenceNode`/`FlowchartNode`どちらのルートでも機能することの回帰
+    テスト。"""
+    (tmp_path / "Sub1.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Sub1">'
+        "<Sequence><ui:MessageBox "
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" Text="&quot;hi&quot;" />'
+        "</Sequence></Activity>",
+        encoding="utf-8",
+    )
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Main">'
+        "<Flowchart>"
+        '<Flowchart.StartNode><FlowStep x:Name="s0">'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Sub1.xaml" />'
+        "</FlowStep></Flowchart.StartNode>"
+        "</Flowchart></Activity>",
+        encoding="utf-8",
+    )
+    code = generate_project_python(tmp_path / "Main.xaml")
+    _compiles(code)
+    assert "# TODO: unresolved Invoke Workflow File" not in code
+    assert "Sub1()" in code
