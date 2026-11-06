@@ -730,6 +730,34 @@ class SendOutlookMailNode:
 
 
 @dataclass
+class GetOutlookMailMessagesNode:
+    """`<ui:GetOutlookMailMessages>`(知見120、`SendOutlookMailNode`
+    (知見24・98・102)と対になる受信側、`UiPath.Mail.Activities`。
+    `cameronmcnz/uipath-tutorials`の複数の実機XAMLで属性を確認した。
+
+    `filter`の実機確認済みの値はOutlookのDASL/Jetフィルタ構文そのもの
+    (`"[importance]='normal'"`)——UiPathが変換を一切せずOutlookの
+    `Items.Restrict()`へそのまま渡していると見受けられる生の文字列
+    (VB式の`[...]`角括弧記法ではない、`_parse_expr`が`]`で終わらない
+    ため自然に`Literal`として捕捉される)。`account`/`get_attachments`/
+    `mark_as_read`/`only_unread_messages`/`mail_folder`は確認済みの
+    既定値構成(いずれも`"False"`/`"Inbox"`/未設定)のみ対応し、それ以外は
+    `# TODO`へ倒す——`SendOutlookMail`と同じ「確認済みの既定値のみ対応」
+    方針。"""
+
+    messages: Expr = None
+    account: Expr = None
+    filter: Expr = None
+    mail_folder: str | None = None
+    get_attachments: str | None = None
+    mark_as_read: str | None = None
+    only_unread_messages: str | None = None
+    top: Expr = None
+    timeout_ms: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendMailNode:
     """`<ui:SendMail>`(知見116、DisplayNameは「Send SMTP Mail Message」
     (1.24未満)/「Send SMTP Email」(1.24以降)——`SendOutlookMail`同様、
@@ -937,6 +965,7 @@ Node = (
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
     | SendOutlookMailNode
+    | GetOutlookMailMessagesNode
     | SendMailNode
     | HttpClientNode
     | UnknownActivityNode

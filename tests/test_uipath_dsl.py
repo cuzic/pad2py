@@ -33,6 +33,7 @@ from dump_daemon.uipath_dsl import (
     ExecuteNonQueryNode,
     ExecuteQueryNode,
     ForEachNode,
+    GetOutlookMailMessagesNode,
     GetTextNode,
     HttpClientNode,
     IfNode,
@@ -561,6 +562,31 @@ def test_log_message_properties():
     assert node.message == VbExpr(text='"done"')
     assert node.level == "Info"
     assert node.display_name == "Log Message"
+
+
+def test_get_outlook_mail_messages_properties():
+    """知見120: `ui:GetOutlookMailMessages`(`SendOutlookMailNode`と対になる
+    受信側)。`cameronmcnz/uipath-tutorials`の実機XAMLの属性構成を合成XML
+    で再現する——`Filter`はOutlookのDASL/Jetフィルタ構文そのもの
+    (`]`で終わらないため`_parse_expr`がVB式の`[...]`角括弧記法と誤認
+    しない)。"""
+    xml = (
+        f"<ui:GetOutlookMailMessages {_UI_XMLNS} "
+        "Account=\"{x:Null}\" Filter=\"[importance]='normal'\" "
+        'TimeoutMS="{x:Null}" DisplayName="Get Outlook Mail Messages" '
+        'GetAttachements="False" MailFolder="Inbox" MarkAsRead="False" '
+        'Messages="[MessageBox]" OnlyUnreadMessages="False" Top="30" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetOutlookMailMessagesNode)
+    assert node.messages == VbExpr(text="MessageBox")
+    assert node.account is None
+    assert node.filter == Literal(value="[importance]='normal'")
+    assert node.mail_folder == "Inbox"
+    assert node.get_attachments == "False"
+    assert node.mark_as_read == "False"
+    assert node.only_unread_messages == "False"
+    assert node.top == Literal(value="30")
 
 
 def test_invoke_workflow_file(main_wf):

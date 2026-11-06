@@ -44,6 +44,7 @@ from .types import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetOutlookMailMessagesNode,
     GetTextNode,
     HttpClientNode,
     IfNode,
@@ -805,6 +806,22 @@ def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
     )
 
 
+def _parse_get_outlook_mail_messages(elem: etree._Element) -> GetOutlookMailMessagesNode:
+    """知見120: `ui:GetOutlookMailMessages`。"""
+    return GetOutlookMailMessagesNode(
+        messages=_attr_expr(elem, "Messages"),
+        account=_attr_expr(elem, "Account"),
+        filter=_attr_expr(elem, "Filter"),
+        mail_folder=_attr(elem, "MailFolder"),
+        get_attachments=_attr(elem, "GetAttachements"),
+        mark_as_read=_attr(elem, "MarkAsRead"),
+        only_unread_messages=_attr(elem, "OnlyUnreadMessages"),
+        top=_attr_expr(elem, "Top"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_send_mail(elem: etree._Element) -> SendMailNode:
     """知見116: `ui:SendMail`(DisplayName「Send SMTP Mail Message」/
     「Send SMTP Email」)。`Files`のpopulated判定は`_parse_send_outlook_mail`
@@ -1113,6 +1130,7 @@ _DISPATCH = {
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
+    (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "SendMail"): _parse_send_mail,
     (UI_NS, "HttpClient"): _parse_http_client,
 }

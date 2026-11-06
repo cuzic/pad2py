@@ -1408,3 +1408,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     回帰テスト追加(`tests/test_uipath_dsl.py`4件・
     `tests/test_uipath_codegen.py`13件、既存2件の修正含む)、UiPath
     関連テスト全473件通過、リポジトリ全体で全1341件通過。
+78. **(完了、2026-11-06)** `ui:GetOutlookMailMessages`(`SendOutlookMail`
+    の受信側)を新規実装、2件が`# TODO`0件で完全にクリーンに変換できた
+    (VM不使用、知見120——知見117〜119の手法を継続): 5件中4件に実務需要の
+    強い信号を確認。`Filter`属性が実機で`"[importance]='normal'"`という
+    実例を持つが、これはVB式の`[...]`角括弧記法ではなくOutlookのDASL/
+    Jetフィルタ構文そのものだと判明(`]`で終わらないため`_parse_expr`が
+    自然に`Literal`として捕捉)——`Items.Restrict()`へそのまま委譲する
+    (独自の変換はでっち上げない)。`GetNamespace("MAPI").
+    GetDefaultFolder(6)`(`olFolderInbox`、`SendOutlookMail`の
+    `CreateItem(0)`と同じ確認手法)経由で受信箱を取得、`Top`があれば
+    スライス。実在の実プロジェクト1件で、元のXAML自体に出力変数束縛先と
+    `ForEach`反復先の食い違い(作成者のコピペミスと推定)があったが、
+    変換元の忠実な再現として正直に同じ挙動を再現した。`Account`(別
+    メールボックス)・`MailFolder`が`"Inbox"`以外・`GetAttachements`/
+    `MarkAsRead`/`OnlyUnreadMessages`の`"True"`はいずれも未確認のため
+    `# TODO`。`WordApplicationScope`+`ReplaceTextInDocument`
+    (`python-docx`が既に依存に含まれているため実装コストは低いと見込ま
+    れる)は次回へ見送り。回帰テスト追加(`tests/test_uipath_dsl.py`
+    1件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全484件
+    通過、リポジトリ全体で全1354件通過。

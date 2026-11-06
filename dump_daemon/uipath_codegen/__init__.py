@@ -69,6 +69,7 @@ from ..uipath_dsl.types import (
     FlowStepNode,
     FlowSwitchNode,
     ForEachNode,
+    GetOutlookMailMessagesNode,
     GetTextNode,
     HttpClientNode,
     IfNode,
@@ -408,6 +409,8 @@ def _generate_node(
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
         return _generate_send_outlook_mail(node, indent)
+    if isinstance(node, GetOutlookMailMessagesNode):
+        return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, CommentNode):
         return _generate_comment(node, indent)
     if isinstance(node, LogMessageNode):
@@ -2260,6 +2263,90 @@ def _generate_send_outlook_mail(node: SendOutlookMailNode, indent: int) -> list[
     lines.append(f"{prefix}_mail.Sensitivity = {_OUTLOOK_SENSITIVITY_VALUES[sensitivity]}")
     send_method = "Save" if _OUTLOOK_BOOL_VALUES[is_draft] else "Send"
     lines.append(f"{prefix}_mail.{send_method}()")
+    return lines
+
+
+# 知見120: `ui:GetOutlookMailMessages`(`SendOutlookMailNode`と対になる
+# 受信側)。`MailFolder="Inbox"`は`GetNamespace("MAPI").GetDefaultFolder
+# (6)`(`olFolderInbox`、Microsoft Learn`OlDefaultFolders`列挙で確認済み、
+# `SendOutlookMail`の`CreateItem(0)`と同じ確認手法)へマッピング。
+# `Filter`はOutlookのDASL/Jetフィルタ構文そのものをUiPathが変換無しで
+# そのまま渡していると見受けられるため、`Items.Restrict()`へそのまま
+# 渡す(でっち上げた変換は行わない、生の文字列をそのまま委譲)。
+# `GetAttachements`/`MarkAsRead`/`OnlyUnreadMessages`は実機確認済みの
+# 既定値(`"False"`)以外、`Account`(別メールボックス)・`MailFolder`が
+# `"Inbox"`以外は未確認のため`# TODO`へ倒す——`SendOutlookMail`と同じ
+# 「確認済みの既定値のみ対応」方針。
+_OUTLOOK_FALSE_ONLY_VALUES = (None, "False")
+
+
+def _generate_get_outlook_mail_messages(
+    node: GetOutlookMailMessagesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_outlook_mail_messages_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_get_outlook_mail_messages_body(
+    node: GetOutlookMailMessagesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.messages is None:
+        return [f"{prefix}# TODO: Get Outlook Mail Messages with no output Messages captured"]
+    if node.account is not None:
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with Account set "
+            f"({_describe_expr_for_comment(node.account)}) — accessing a "
+            "non-default mailbox is not confirmed, refusing to guess"
+        ]
+    if node.mail_folder not in (None, "Inbox"):
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with MailFolder "
+            f"{node.mail_folder!r} — only 'Inbox' is confirmed, refusing "
+            "to guess"
+        ]
+    if node.get_attachments not in _OUTLOOK_FALSE_ONLY_VALUES:
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with GetAttachements set "
+            f"({node.get_attachments!r}) — attachment handling not confirmed, "
+            "refusing to guess"
+        ]
+    if node.mark_as_read not in _OUTLOOK_FALSE_ONLY_VALUES:
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with MarkAsRead set "
+            f"({node.mark_as_read!r}) — refusing to guess"
+        ]
+    if node.only_unread_messages not in _OUTLOOK_FALSE_ONLY_VALUES:
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with OnlyUnreadMessages "
+            f"set ({node.only_unread_messages!r}) — refusing to guess"
+        ]
+    if node.timeout_ms is not None:
+        return [
+            f"{prefix}# TODO: Get Outlook Mail Messages with TimeoutMS set "
+            f"({_describe_expr_for_comment(node.timeout_ms)}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.messages, prefix, todo)
+    filter_expr = (
+        _render_value_or_todo(node.filter, prefix, todo) if node.filter is not None else None
+    )
+    top = _render_value_or_todo(node.top, prefix, todo) if node.top is not None else None
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_outlook = win32com.client.Dispatch('Outlook.Application')",
+        f"{prefix}_items = _outlook.GetNamespace('MAPI').GetDefaultFolder(6).Items",
+    ]
+    if filter_expr is not None:
+        lines.append(f"{prefix}_items = _items.Restrict({VB_CSTR_HELPER_NAME}({filter_expr}))")
+    if top is not None:
+        lines.append(f"{prefix}{target} = list(_items)[:int({VB_NUM_HELPER_NAME}({top}))]")
+    else:
+        lines.append(f"{prefix}{target} = list(_items)")
     return lines
 
 

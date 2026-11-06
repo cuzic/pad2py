@@ -58,6 +58,7 @@ from dump_daemon.uipath_dsl import (
     FlowSwitchArm,
     FlowSwitchNode,
     ForEachNode,
+    GetOutlookMailMessagesNode,
     GetTextNode,
     HttpClientNode,
     IfNode,
@@ -1947,6 +1948,97 @@ def test_send_outlook_mail_real_fixture_now_generates_real_code():
     code = generate_python(wf)
     assert "win32com.client.Dispatch('Outlook.Application')" in code
     assert "# TODO: unsupported in v1 codegen: SendOutlookMailNode" not in code
+
+
+def _get_outlook_mail_messages_node(**overrides) -> GetOutlookMailMessagesNode:
+    defaults = dict(
+        messages=VbExpr(text="EmailMessages"),
+        mail_folder="Inbox",
+        get_attachments="False",
+        mark_as_read="False",
+        only_unread_messages="False",
+        top=Literal(value="30"),
+    )
+    defaults.update(overrides)
+    return GetOutlookMailMessagesNode(**defaults)
+
+
+def test_get_outlook_mail_messages_with_confirmed_defaults_generates_real_code():
+    """知見120: `SendOutlookMailNode`と対になる受信側。
+    `cameronmcnz/uipath-tutorials`の複数の実機XAMLの属性構成(確認済みの
+    既定値)で実際に動くコードを生成する。"""
+    wf = _wrap([_get_outlook_mail_messages_node()])
+    code = generate_python(wf)
+    assert "_outlook = win32com.client.Dispatch('Outlook.Application')" in code
+    assert "_items = _outlook.GetNamespace('MAPI').GetDefaultFolder(6).Items" in code
+    assert "EmailMessages = list(_items)[:int(_vb_num('30'))]" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_with_filter_generates_restrict_call():
+    """知見120: `Filter`はOutlookのDASL/Jetフィルタ構文そのものを
+    `Items.Restrict()`へそのまま渡す(でっち上げた変換はしない)。"""
+    wf = _wrap(
+        [_get_outlook_mail_messages_node(filter=Literal(value="[importance]='normal'"))]
+    )
+    code = generate_python(wf)
+    assert "_items = _items.Restrict(_vb_cstr(\"[importance]='normal'\"))" in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_without_top_returns_all_items():
+    wf = _wrap([_get_outlook_mail_messages_node(top=None)])
+    code = generate_python(wf)
+    assert "EmailMessages = list(_items)" in code
+    assert "[:int(" not in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap(
+        [GetOutlookMailMessagesNode(messages=None, display_name="Get Outlook Mail Messages")]
+    )
+    code = generate_python(wf)
+    assert "# Get Outlook Mail Messages" in code
+    assert "# TODO: Get Outlook Mail Messages with no output Messages captured" in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_with_account_is_todo_not_guessed():
+    wf = _wrap([_get_outlook_mail_messages_node(account=VbExpr(text="sharedMailbox"))])
+    code = generate_python(wf)
+    assert "# TODO: Get Outlook Mail Messages with Account set" in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_with_non_inbox_folder_is_todo_not_guessed():
+    wf = _wrap([_get_outlook_mail_messages_node(mail_folder="SentItems")])
+    code = generate_python(wf)
+    assert "# TODO: Get Outlook Mail Messages with MailFolder" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"get_attachments": "True"},
+        {"mark_as_read": "True"},
+        {"only_unread_messages": "True"},
+    ],
+)
+def test_get_outlook_mail_messages_with_unconfirmed_bool_is_todo_not_guessed(overrides):
+    wf = _wrap([_get_outlook_mail_messages_node(**overrides)])
+    code = generate_python(wf)
+    assert "# TODO: Get Outlook Mail Messages with" in code
+    _compiles(code)
+
+
+def test_get_outlook_mail_messages_with_timeout_ms_is_todo_not_guessed():
+    wf = _wrap([_get_outlook_mail_messages_node(timeout_ms=Literal(value="5000"))])
+    code = generate_python(wf)
+    assert "# TODO: Get Outlook Mail Messages with TimeoutMS set" in code
+    _compiles(code)
 
 
 def _send_mail_node(**overrides) -> SendMailNode:

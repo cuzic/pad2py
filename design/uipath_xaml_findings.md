@@ -5793,6 +5793,58 @@ cell`も更新)。`uipath_codegen/__init__.py`に`_generate_comment`/
 4件・`tests/test_uipath_codegen.py`に13件追加(既存2件の修正含む)、
 全1341件通過。
 
+## 120. `ui:GetOutlookMailMessages`(`SendOutlookMailNode`と対になる受信側)を新規実装、2件が`# TODO`0件で完全にクリーンに変換できた(知見117〜119の手法を継続、VM不使用)
+
+知見117〜119の「実機XAMLに対する実際のコード生成の検証」を、Word
+Application Scope・Outlookメール受信系の実プロジェクト(`UiPath/skills`
+の`uipath-troubleshoot`テストタスク・`cameronmcnz/uipath-tutorials`の
+複数ファイル)へ継続適用した。5件中4件に`GetOutlookMailMessages`が
+出現する強い実務需要の信号を確認——`SendOutlookMail`(知見24・98・102)
+の受信側として自然な実装対象だった。
+
+**確定した構造**: `Messages`(出力)・`Account`(別メールボックス指定、
+未確認)・`Filter`・`MailFolder`(確認済みの既定`"Inbox"`)・
+`GetAttachements`(UiPath自身の属性名の表記ゆれ、確認済みの既定
+`"False"`)・`MarkAsRead`/`OnlyUnreadMessages`(確認済みの既定
+`"False"`)・`Top`(件数上限、確認済みの実例`"30"`)・`TimeoutMS`。
+
+**`Filter`の直列化形の発見**: 実機で`Filter="[importance]='normal'"`
+という実例を確認したが、これはVB式の`[...]`角括弧記法ではなく、
+**OutlookのDASL/Jetフィルタ構文そのもの**(`Items.Restrict()`に渡す
+ネイティブのクエリ文字列、角括弧はOutlook側のプロパティ名を示す記法)
+だと判明した——`]`で終わらない(末尾が`'normal'`のクォート)ため
+`_parse_expr`の`[...]`判定が自然に不一致となり、意図せず正しく
+`Literal`として捕捉されていた(VB式と誤認するコーナーケースを偶然
+回避できていた、という発見自体も記録に値する)。コード生成側はこの
+文字列をそのまま`Items.Restrict()`へ委譲する(UiPath自身が変換して
+いないと見受けられるため、独自の変換はでっち上げない)。
+
+**実装**: `GetNamespace("MAPI").GetDefaultFolder(6)`(`olFolderInbox`、
+Microsoft Learn`OlDefaultFolders`列挙で確認済み、`SendOutlookMail`の
+`CreateItem(0)`と同じ確認手法)経由で受信箱の`Items`コレクションを取得、
+`Filter`があれば`.Restrict()`、`Top`があれば`list(...)[:N]`でスライス。
+実際に2件の実プロジェクト(`ConnectToOutlook`・`FilterOutlookEmail`)を
+変換したところ、いずれも`# TODO`0件で完全にクリーンな実行可能コードに
+なった——`FilterOutlookEmail`では元のXAML自体に`Messages`の束縛先
+(`MessageBox`)と`ForEach`の反復先(`EmailMessages`)が食い違うという
+実在のバグ(チュートリアル作成者のコピペミスと推定)があったが、これは
+変換元の忠実な再現であり本トランスパイラの問題ではない——正直に同じ
+挙動を再現した。
+
+**新たに発見したが今回は見送ったもの**: `WordApplicationScope`+
+`ReplaceTextInDocument`(`UiPath.Word.Activities`、`UiPath/skills`の
+`uipath-troubleshoot`テストタスクで発見。`ExcelApplicationScope`と同じ
+`ActivityAction`+`DelegateInArgument`構造——`python-docx`は既にプロジェクト
+依存に含まれているため実装コストは低いと見込まれるが、今回はスコープを
+絞るため次回へ見送った)。
+
+`dump_daemon/uipath_dsl/types.py`に`GetOutlookMailMessagesNode`、
+`xaml_tree.py`に`_parse_get_outlook_mail_messages`(`(UI_NS,
+"GetOutlookMailMessages")`へディスパッチ登録)、`uipath_codegen/
+__init__.py`に`_generate_get_outlook_mail_messages`を追加。
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に10件
+追加、全1354件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
