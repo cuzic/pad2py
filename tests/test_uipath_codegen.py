@@ -61,6 +61,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
+    SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -1796,6 +1797,142 @@ def test_send_outlook_mail_real_fixture_now_generates_real_code():
     code = generate_python(wf)
     assert "win32com.client.Dispatch('Outlook.Application')" in code
     assert "# TODO: unsupported in v1 codegen: SendOutlookMailNode" not in code
+
+
+def _send_mail_node(**overrides) -> SendMailNode:
+    defaults = dict(
+        to=Literal(value="cameronmcnz@outlook.com"),
+        subject=Literal(value="Look at this attachment!"),
+        body=Literal(value="Catch me outside, will you."),
+        is_body_html="False",
+        email=Literal(value="arpeeyeah@gmail.com"),
+        password=Literal(value="100thMeridian"),
+        server=Literal(value="smtp.gmail.com"),
+        port=Literal(value="465"),
+        enable_ssl="True",
+        secure_connection="Auto",
+    )
+    defaults.update(overrides)
+    return SendMailNode(**defaults)
+
+
+def test_send_mail_with_confirmed_ssl_combination_generates_real_smtplib_call():
+    """知見116: 実機確認済みの唯一のpopulated実例(Gmail SMTP送信)の構成
+    ——`EnableSSL=True`・`SecureConnection=Auto`・暗黙SSL。"""
+    wf = _wrap([_send_mail_node()])
+    code = generate_python(wf)
+    assert "import smtplib" in code
+    assert "import email.mime.text" in code
+    assert "_msg = email.mime.text.MIMEText(_vb_cstr('Catch me outside, will you.'), 'plain')" in code
+    assert '_msg["Subject"] = _vb_cstr(\'Look at this attachment!\')' in code
+    assert '_msg["From"] = _vb_cstr(\'arpeeyeah@gmail.com\')' in code
+    assert '_msg["To"] = _vb_cstr(\'cameronmcnz@outlook.com\')' in code
+    assert "_smtp = smtplib.SMTP_SSL(_vb_cstr('smtp.gmail.com'), int(_vb_num('465')))" in code
+    assert "_smtp.login(_vb_cstr('arpeeyeah@gmail.com'), _vb_cstr('100thMeridian'))" in code
+    assert "_smtp.send_message(_msg)" in code
+    assert "_smtp.quit()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_send_mail_with_html_body_passes_html_subtype():
+    wf = _wrap([_send_mail_node(is_body_html="True")])
+    code = generate_python(wf)
+    assert "'html')" in code
+    _compiles(code)
+
+
+def test_send_mail_with_cc_bcc_reply_to_generates_extra_headers():
+    wf = _wrap(
+        [
+            _send_mail_node(
+                cc=Literal(value="cc@example.com"),
+                bcc=Literal(value="bcc@example.com"),
+                reply_to=Literal(value="reply@example.com"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert '_msg["Cc"] = _vb_cstr(\'cc@example.com\')' in code
+    assert '_msg["Bcc"] = _vb_cstr(\'bcc@example.com\')' in code
+    assert '_msg["Reply-To"] = _vb_cstr(\'reply@example.com\')' in code
+    _compiles(code)
+
+
+def test_send_mail_with_timeout_ms_generates_timeout_kwarg():
+    wf = _wrap([_send_mail_node(timeout_ms=Literal(value="30000"))])
+    code = generate_python(wf)
+    assert "timeout=(_vb_num('30000') / 1000.0)" in code
+    _compiles(code)
+
+
+def test_send_mail_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([SendMailNode(display_name="Send SMTP Mail Message")])
+    code = generate_python(wf)
+    assert "# Send SMTP Mail Message" in code
+    assert "# TODO: Send Mail with missing To/Subject/Body" in code
+    _compiles(code)
+
+
+def test_send_mail_with_missing_fields_is_todo():
+    wf = _wrap([SendMailNode()])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with missing To/Subject/Body" in code
+    _compiles(code)
+
+
+def test_send_mail_with_populated_files_is_todo_not_guessed():
+    wf = _wrap([_send_mail_node(has_populated_files=True)])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with populated Files" in code
+    _compiles(code)
+
+
+def test_send_mail_with_mail_message_set_is_todo_not_guessed():
+    wf = _wrap([_send_mail_node(mail_message=VbExpr(text="sourceMail"))])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with MailMessage set" in code
+    _compiles(code)
+
+
+def test_send_mail_with_use_oauth_true_is_todo_not_guessed():
+    wf = _wrap([_send_mail_node(use_oauth="True")])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with UseOAuth set" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize("enable_ssl", [None, "False", "SomethingElse"])
+def test_send_mail_with_non_confirmed_enable_ssl_is_todo_not_guessed(enable_ssl):
+    wf = _wrap([_send_mail_node(enable_ssl=enable_ssl)])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with EnableSSL" in code
+    _compiles(code)
+
+
+def test_send_mail_with_non_confirmed_secure_connection_is_todo_not_guessed():
+    wf = _wrap([_send_mail_node(secure_connection="Explicit")])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with SecureConnection" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"from_": Literal(value="other@example.com")}, {"name": Literal(value="Display Name")}],
+)
+def test_send_mail_with_from_or_name_set_is_todo_not_guessed(overrides):
+    wf = _wrap([_send_mail_node(**overrides)])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with From/Name set" in code
+    _compiles(code)
+
+
+def test_send_mail_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap([_send_mail_node(continue_on_error=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: Send Mail with ContinueOnError set" in code
+    _compiles(code)
 
 
 def test_unknown_activity_todo_includes_captured_attrs():

@@ -630,6 +630,53 @@ class SendOutlookMailNode:
 
 
 @dataclass
+class SendMailNode:
+    """`<ui:SendMail>`(知見116、DisplayNameは「Send SMTP Mail Message」
+    (1.24未満)/「Send SMTP Email」(1.24以降)——`SendOutlookMail`同様、
+    DisplayNameと裏のCLR型名`ui:SendMail`が食い違う。`UiPath.Mail.
+    Activities`の汎用SMTP送信活動、`SendOutlookMailNode`(Outlook COM
+    経由)とは独立したもう一つのメール送信経路)。
+
+    `marcelocruzrpa/uipath-ai-skills`の`studio-ground-truth/`(知見114)で
+    属性の完全な語彙を確認したところ、新しい(2.8)パッケージバージョンは
+    Integration Service連携(`UseISConnection`)・OAuth・添付用の
+    `BackupSlot`パターン等、非常に複雑な構造だと判明したが、
+    `cameronmcnz/uipath-tutorials`の実機保存済みXAML(Gmail SMTP送信、
+    実際に動作したと記載)で確認できたpopulated時の実例は、昔からの
+    単純なSMTP直結属性(`Server`/`Port`/`Email`/`Password`/`EnableSSL`/
+    `SecureConnection`)のみで構成されていた——`UseISConnection`等の
+    新機能に触れない限りシンプルな経路のまま使えると判断し、この確認
+    済みの単純な経路のみ対応する。
+
+    `enable_ssl="True"`(確認済みの実例、`smtplib.SMTP_SSL`に対応)以外は
+    `# TODO`——`SecureConnection`の列挙値を公式ドキュメントが明記して
+    いない(「SSL/TLSの暗号化方式を指定する」という説明のみ)ため、
+    `EnableSSL`無しでの動作(平文/STARTTLS)は未確認のまま見送る。"""
+
+    to: Expr = None
+    cc: Expr = None
+    bcc: Expr = None
+    subject: Expr = None
+    body: Expr = None
+    is_body_html: str | None = None
+    email: Expr = None
+    password: Expr = None
+    server: Expr = None
+    port: Expr = None
+    enable_ssl: str | None = None
+    secure_connection: str | None = None
+    from_: Expr = None
+    name: Expr = None
+    reply_to: Expr = None
+    use_oauth: str | None = None
+    mail_message: Expr = None
+    continue_on_error: Expr = None
+    timeout_ms: Expr = None
+    has_populated_files: bool = False
+    display_name: str | None = None
+
+
+@dataclass
 class HttpClientNode:
     """`<ui:HttpClient EndPoint="..." Method="..." />`(知見29、
     DisplayName「HTTP Request」の裏のCLR型名)。`extra_attrs`に主要属性以外の
@@ -784,6 +831,7 @@ Node = (
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | SendOutlookMailNode
+    | SendMailNode
     | HttpClientNode
     | UnknownActivityNode
 )

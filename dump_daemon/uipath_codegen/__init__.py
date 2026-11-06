@@ -71,6 +71,7 @@ from ..uipath_dsl.types import (
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
+    SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -234,6 +235,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 他のヘルパー同様、使用時のみ注入する。
     if any("sqlite3.connect(" in line for line in body):
         imports.append("import sqlite3")
+    # `smtplib`/`email.mime.text`(`SendMail`→`smtplib.SMTP_SSL(...)`
+    # 変換先、知見116)も同様。標準ライブラリ。
+    if any("smtplib.SMTP_SSL(" in line for line in body):
+        imports.append("import smtplib")
+    if any("email.mime.text.MIMEText(" in line for line in body):
+        imports.append("import email.mime.text")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -374,6 +381,8 @@ def _generate_node(
         return _generate_http_client(node, indent)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, SendMailNode):
+        return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
         return _generate_send_outlook_mail(node, indent)
     if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode, ExcelReadRangeNode, ExcelWriteRangeNode)):
@@ -1829,6 +1838,119 @@ def _generate_excel_write_range_in_scope(
 _OUTLOOK_IMPORTANCE_VALUES = {"Low": 0, "Normal": 1, "High": 2}
 _OUTLOOK_SENSITIVITY_VALUES = {"Normal": 0, "Personal": 1, "Private": 2, "Confidential": 3}
 _OUTLOOK_BOOL_VALUES = {"True": True, "False": False}
+
+
+# 知見116: `ui:SendMail`(DisplayName「Send SMTP Mail Message」/「Send
+# SMTP Email」)。実機確認できた唯一のpopulated実例(`cameronmcnz/
+# uipath-tutorials`のGmail SMTP送信)は`EnableSSL="True"`・
+# `SecureConnection="Auto"`・`Port="465"`という「暗黙SSL」の組み合わせ
+# のみで、`smtplib.SMTP_SSL`に正確に対応する。この組み合わせ以外
+# (平文/STARTTLS、`UseISConnection`、OAuth、Forward/Reply、`From`/
+# `Name`での送信者表示名カスタマイズ)は実機確認が無いため`# TODO`へ倒す。
+def _generate_send_mail(node: SendMailNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_send_mail_body(node, indent)
+    if node.display_name:
+        return [f"{prefix}# {node.display_name}", *lines]
+    return lines
+
+
+def _generate_send_mail_body(node: SendMailNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.to is None or node.subject is None or node.body is None:
+        return [f"{prefix}# TODO: Send Mail with missing To/Subject/Body"]
+    if node.has_populated_files:
+        return [
+            f"{prefix}# TODO: Send Mail with populated Files — attachment "
+            "handling not confirmed via real capture, refusing to guess"
+        ]
+    if node.mail_message is not None:
+        return [
+            f"{prefix}# TODO: Send Mail with MailMessage set (Forward/Reply "
+            "mode) — not confirmed via real capture, refusing to guess"
+        ]
+    if node.use_oauth not in (None, "False"):
+        return [
+            f"{prefix}# TODO: Send Mail with UseOAuth set — OAuth2 flow not "
+            "confirmed via real capture, refusing to guess"
+        ]
+    if node.enable_ssl != "True":
+        return [
+            f"{prefix}# TODO: Send Mail with EnableSSL "
+            f"{node.enable_ssl!r} — only EnableSSL=True (implicit SSL, "
+            "smtplib.SMTP_SSL) is confirmed via real capture, refusing to "
+            "guess plain/STARTTLS connections"
+        ]
+    if node.secure_connection not in (None, "Auto"):
+        return [
+            f"{prefix}# TODO: Send Mail with SecureConnection "
+            f"{node.secure_connection!r} — UiPath docs don't enumerate this "
+            "property's values, only 'Auto' is confirmed via real capture, "
+            "refusing to guess"
+        ]
+    if node.from_ is not None or node.name is not None:
+        return [
+            f"{prefix}# TODO: Send Mail with From/Name set — sender header "
+            "customization not confirmed via real capture, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Send Mail with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.is_body_html not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: Send Mail with unrecognized IsBodyHtml "
+            f"({node.is_body_html!r}) — refusing to guess"
+        ]
+    if node.server is None or node.email is None or node.password is None or node.port is None:
+        return [f"{prefix}# TODO: Send Mail with missing Server/Email/Password/Port"]
+    todo: list[str] = []
+    to = _render_value_or_todo(node.to, prefix, todo)
+    subject = _render_value_or_todo(node.subject, prefix, todo)
+    body = _render_value_or_todo(node.body, prefix, todo)
+    email = _render_value_or_todo(node.email, prefix, todo)
+    password = _render_value_or_todo(node.password, prefix, todo)
+    server = _render_value_or_todo(node.server, prefix, todo)
+    port = _render_value_or_todo(node.port, prefix, todo)
+    cc = _render_value_or_todo(node.cc, prefix, todo) if node.cc is not None else None
+    bcc = _render_value_or_todo(node.bcc, prefix, todo) if node.bcc is not None else None
+    reply_to = (
+        _render_value_or_todo(node.reply_to, prefix, todo) if node.reply_to is not None else None
+    )
+    timeout_ms = (
+        _render_value_or_todo(node.timeout_ms, prefix, todo)
+        if node.timeout_ms is not None
+        else None
+    )
+    if todo:
+        return todo
+    is_html = node.is_body_html == "True"
+    lines = [
+        f'{prefix}_msg = email.mime.text.MIMEText({VB_CSTR_HELPER_NAME}({body}), '
+        f'{"html" if is_html else "plain"!r})',
+        f"{prefix}_msg[\"Subject\"] = {VB_CSTR_HELPER_NAME}({subject})",
+        f"{prefix}_msg[\"From\"] = {VB_CSTR_HELPER_NAME}({email})",
+        f"{prefix}_msg[\"To\"] = {VB_CSTR_HELPER_NAME}({to})",
+    ]
+    if cc is not None:
+        lines.append(f"{prefix}_msg[\"Cc\"] = {VB_CSTR_HELPER_NAME}({cc})")
+    if bcc is not None:
+        lines.append(f"{prefix}_msg[\"Bcc\"] = {VB_CSTR_HELPER_NAME}({bcc})")
+    if reply_to is not None:
+        lines.append(f"{prefix}_msg[\"Reply-To\"] = {VB_CSTR_HELPER_NAME}({reply_to})")
+    timeout_kwarg = (
+        f", timeout=({VB_NUM_HELPER_NAME}({timeout_ms}) / 1000.0)" if timeout_ms is not None else ""
+    )
+    lines.append(
+        f"{prefix}_smtp = smtplib.SMTP_SSL({VB_CSTR_HELPER_NAME}({server}), "
+        f"int({VB_NUM_HELPER_NAME}({port})){timeout_kwarg})"
+    )
+    lines.append(f"{prefix}_smtp.login({VB_CSTR_HELPER_NAME}({email}), {VB_CSTR_HELPER_NAME}({password}))")
+    lines.append(f"{prefix}_smtp.send_message(_msg)")
+    lines.append(f"{prefix}_smtp.quit()")
+    return lines
 
 
 def _generate_send_outlook_mail(node: SendOutlookMailNode, indent: int) -> list[str]:

@@ -1329,3 +1329,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
     発想を汎用化)。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
     `tests/test_uipath_codegen.py`9件)、UiPath関連テスト全405件通過、
     リポジトリ全体で全1266件通過。
+74. **(完了、2026-11-06)** `ui:SendMail`(汎用SMTP送信)の実コード生成に
+    新規対応(VM不使用、知見116——Tier A項目3「汎用Mail」への着手第1件):
+    `studio-ground-truth/UiPath.Mail.Activities/2.8/`では
+    `UseISConnection`等を含む複雑な構造だったが、`cameronmcnz/
+    uipath-tutorials`の実機XAML(実際にGmail宛へ送信したチュートリアル)
+    では`Server`/`Port`/`Email`/`Password`/`EnableSSL`/`SecureConnection`
+    という昔からの単純なSMTP直結属性のみで構成されていると確認。
+    確認できた唯一の組み合わせ(`EnableSSL="True"`・
+    `SecureConnection="Auto"`、Gmailの暗黙SSL)のみ標準ライブラリ
+    `smtplib.SMTP_SSL`+`email.mime.text.MIMEText`へマッピング(新規依存
+    無し、`SendOutlookMail`のwin32comとは対照的にクロスプラットフォーム)。
+    平文/STARTTLS・`UseOAuth`・`UseISConnection`・`Files`添付・
+    `MailMessage`(Forward/Reply)・`From`/`Name`での送信者表示名
+    カスタマイズはいずれも`# TODO`。`GetIMAPMailMessages`/
+    `GetPOP3MailMessages`(受信系)は今回スコープ外として見送り。
+    回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+    `tests/test_uipath_codegen.py`16件)、UiPath関連テスト全422件通過、
+    リポジトリ全体で全1283件通過。

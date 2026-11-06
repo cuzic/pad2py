@@ -153,9 +153,12 @@ XAML表現の有無(第一軸)→実務頻度(第二軸)→実装コスト(第�
 3. **(着手済み、2026-11-06)** **Excel Classicの残り**(Read Range/Write
    Range)・**汎用Mail(SMTP/POP3/IMAP)**: 知見115でRead Range/Write
    Rangeを実装(`openpyxl`、`list[dict]`表現、既存パターンの拡張)。
+   知見116で`SendMail`(汎用SMTP送信)を実装(`smtplib`+
+   `email.mime.text`、確認済みの唯一の構成=暗黙SSLのみ)。
    残課題: 特定範囲指定(`Range`が空以外)・`StartingCell`が`"A1"`以外・
-   Read Cell/Read Column/Read Row等の他のRead系活動・汎用Mail
-   (SMTP/POP3/IMAP、まだ未着手)。
+   Read Cell/Read Column/Read Row等の他のRead系活動・`GetIMAPMailMessages`/
+   `GetPOP3MailMessages`(受信系、まだ未着手)・`SendMail`の平文/STARTTLS/
+   OAuth/添付。
 4. **HTTP Requestのlegacy/current区別・SOAP Request**: HttpClientの基盤が
    あるので差分実装で済む。
 

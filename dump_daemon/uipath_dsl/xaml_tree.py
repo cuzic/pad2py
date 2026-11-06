@@ -50,6 +50,7 @@ from .types import (
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
+    SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -699,6 +700,41 @@ def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
     )
 
 
+def _parse_send_mail(elem: etree._Element) -> SendMailNode:
+    """知見116: `ui:SendMail`(DisplayName「Send SMTP Mail Message」/
+    「Send SMTP Email」)。`Files`のpopulated判定は`_parse_send_outlook_mail`
+    と同じロジック(知見75・92〜95)。"""
+    has_populated_files = False
+    files_elem = _find_property_element(elem, "Files")
+    if files_elem is not None:
+        for list_elem in _direct_children(files_elem):
+            if _direct_children(list_elem):
+                has_populated_files = True
+    return SendMailNode(
+        to=_attr_expr(elem, "To"),
+        cc=_attr_expr(elem, "Cc"),
+        bcc=_attr_expr(elem, "Bcc"),
+        subject=_attr_expr(elem, "Subject"),
+        body=_attr_expr(elem, "Body"),
+        is_body_html=_attr(elem, "IsBodyHtml"),
+        email=_attr_expr(elem, "Email"),
+        password=_attr_expr(elem, "Password"),
+        server=_attr_expr(elem, "Server"),
+        port=_attr_expr(elem, "Port"),
+        enable_ssl=_attr(elem, "EnableSSL"),
+        secure_connection=_attr(elem, "SecureConnection"),
+        from_=_attr_expr(elem, "From"),
+        name=_attr_expr(elem, "Name"),
+        reply_to=_attr_expr(elem, "ReplyTo"),
+        use_oauth=_attr(elem, "UseOAuth"),
+        mail_message=_attr_expr(elem, "MailMessage"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        has_populated_files=has_populated_files,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _HTTP_CLIENT_FALLBACK_COLLECTION_PROPS = ("Cookies", "Parameters", "UrlSegments", "Attachments")
 
 
@@ -965,6 +1001,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
+    (UI_NS, "SendMail"): _parse_send_mail,
     (UI_NS, "HttpClient"): _parse_http_client,
 }
 

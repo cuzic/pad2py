@@ -5507,6 +5507,56 @@ Python表現を統一する判断)。`openpyxl`の`Worksheet.iter_rows
 子ディスパッチ拡張+2つの生成関数を追加。`tests/test_uipath_dsl.py`に
 1件・`tests/test_uipath_codegen.py`に9件追加、全1266件通過。
 
+## 116. `ui:SendMail`(汎用SMTP送信、DisplayName「Send SMTP Mail Message」/「Send SMTP Email」)を実機XAML(ground-truthリポジトリ+実プロジェクト)で確認し、確認済みの唯一の接続構成(暗黙SSL)のみ実コード生成に対応——Tier A項目3「汎用Mail」への着手第1件(VM不使用)
+
+[design/uipath_feature_catalog.md](uipath_feature_catalog.md)のTier A
+項目3(「汎用Mail(SMTP/POP3/IMAP)」)の最初の着手。知見114の
+`studio-ground-truth/UiPath.Mail.Activities/2.8/`で属性の完全な語彙を
+確認したところ、現行(2.8)パッケージバージョンは`UseISConnection`
+(Integration Service連携)・`UseOAuth`・添付用の`BackupSlot`パターン等、
+`SendOutlookMail`(知見24・98・102)より遥かに複雑な構造だと判明した。
+
+**実機のpopulated実例は意外に単純だった**: `cameronmcnz/uipath-tutorials`
+の`SendGmailEmail/Main.xaml`(DisplayName「Send SMTP Mail Message」、
+実際にGmail宛へ送信したと記載されたチュートリアル)で確認した実属性は、
+`Server`/`Port`/`Email`/`Password`/`EnableSSL`/`SecureConnection`という
+昔からの単純なSMTP直結属性のみ——`UseISConnection`等の新機能に触れない
+限り、2.8パッケージでも昔からの単純な経路がそのまま使えると判明した。
+確認できた具体的な組み合わせは`EnableSSL="True"`・
+`SecureConnection="Auto"`・`Port="465"`(Gmailの暗黙SSL、SMTPS)。
+
+**公式ドキュメントの限界**: `docs.uipath.com/activities/other/latest/
+productivity/send-mail`で確認したが、`SecureConnection`の列挙値
+(`Auto`以外に何があるか)・`EnableSSL`プロパティ自体(ドキュメントには
+記載が無い、Windows-Legacy版のXAML属性名だが古いドキュメントの版には
+載っていない可能性)を明記していない——このため「暗黙SSL(`EnableSSL=
+True`+実機確認済みの`Port`)」という確認済みの唯一の組み合わせのみ実
+コード生成し、平文接続・STARTTLS(`SecureConnection`の他の値)・
+`UseOAuth`・`UseISConnection`・`Files`添付・`MailMessage`
+(Forward/Reply)・`From`/`Name`での送信者表示名カスタマイズは
+いずれも`# TODO`へ倒した——`HttpClient`(知見96)以来の「確認済みの
+構成のみ対応」方針を踏襲。
+
+**実装**: Pythonの標準ライブラリ`smtplib.SMTP_SSL`+`email.mime.text.
+MIMEText`へマッピング(新規依存無し、クロスプラットフォーム——
+`SendOutlookMail`の`win32com`がWindows専用だったのとは対照的)。
+`_msg.as_string()`相当の構築(`email.mime.text.MIMEText`インスタンスへ
+`Subject`/`From`/`To`/`Cc`/`Bcc`/`Reply-To`ヘッダーを設定)を実際に
+Python標準ライブラリで構築し、RFC 2822準拠のメッセージ文字列が正しく
+生成されることを確認済み(実際のSMTP送信は本セッションでは未検証
+——認証情報・ネットワークアクセスが必要なため)。`DisplayName`と
+裏のCLR型名`ui:SendMail`の食い違いは知見29(`HttpClient`)・知見111
+(`UiElementExists`)と同種のパターン。
+
+`dump_daemon/uipath_dsl/types.py`に`SendMailNode`、`xaml_tree.py`に
+`_parse_send_mail`(`(UI_NS, "SendMail")`へディスパッチ登録、`Files`の
+populated判定は`_parse_send_outlook_mail`と同じロジックを再利用)、
+`uipath_codegen/__init__.py`に`_generate_send_mail`を追加。
+`tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に16件
+追加、全1283件通過。`GetIMAPMailMessages`/`GetPOP3MailMessages`
+(受信系、`Messages`出力の構造等が別途調査必要)は今回スコープ外として
+見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

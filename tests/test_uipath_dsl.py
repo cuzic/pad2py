@@ -37,6 +37,7 @@ from dump_daemon.uipath_dsl import (
     ParallelNode,
     ReadTextFileNode,
     SelectItemNode,
+    SendMailNode,
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
@@ -520,6 +521,37 @@ def test_send_outlook_mail_and_set_to_clipboard(main_wf):
     clip = main_wf.root.body[19]
     assert isinstance(clip, SetToClipboardNode)
     assert clip.text == Literal(value="cliptext")
+
+
+def test_send_mail_smtp_properties():
+    """知見116: `ui:SendMail`(DisplayName「Send SMTP Mail Message」)。
+    `cameronmcnz/uipath-tutorials`の実機保存済みXAML(Gmail SMTP送信)の
+    属性構成をそのまま合成XMLで再現する。"""
+    xml = (
+        f"<ui:SendMail {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=System" '
+        'Bcc="{x:Null}" Cc="{x:Null}" From="{x:Null}" MailMessage="{x:Null}" '
+        'Name="{x:Null}" TimeoutMS="{x:Null}" '
+        'Body="Catch me outside, will you." DisplayName="Send SMTP Mail Message" '
+        'Email="arpeeyeah@gmail.com" EnableSSL="True" IsBodyHtml="False" '
+        'Password="100thMeridian" Port="465" SecureConnection="Auto" '
+        'Server="smtp.gmail.com" Subject="Look at this attachment!" '
+        'To="cameronmcnz@outlook.com">'
+        "<ui:SendMail.Files>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />'
+        "</ui:SendMail.Files>"
+        "</ui:SendMail>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SendMailNode)
+    assert node.to == Literal(value="cameronmcnz@outlook.com")
+    assert node.server == Literal(value="smtp.gmail.com")
+    assert node.port == Literal(value="465")
+    assert node.enable_ssl == "True"
+    assert node.secure_connection == "Auto"
+    assert node.has_populated_files is False
+    assert node.from_ is None
+    assert node.mail_message is None
 
 
 def test_library_call_is_unknown_activity(main_wf):
