@@ -215,11 +215,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `CopyExcelWorksheet`(`openpyxl`の`Workbook.copy_worksheet()`が候補)・
       `GetEmptyCellFromExcel`——いずれも「値の読み書き・基本ワークシート操作」スコープ内に
       収まりそうだが、時間の都合で今回は見送った。
-    - `UIAutomation.WaitForWindow`/`WaitForWindowContent`の`ByInstanceOrHandle`/
-      `ByTitleClass`兄弟セレクタ(計12件、`conditions.py`の`IfWindow`側は既にサフィックス
-      解析で対応済みだが`wait.py`の`_WAIT_ACTION_TARGETS`は`Control`ベースの素のセレクタ
-      しか持たない)——`conditions.py`の既存ロジックを`wait.py`へ移植するだけで対応できる
-      見込み(VM不要)。
+    ✅ **`UIAutomation.WaitForWindow`の8件を結線完了(知見191)**: `ToOpen`/`ToClose`/
+      `ToBecomeFocused`/`ToLoseFocus` × `ByInstanceOrHandle`/`ByTitleClass`。
+      `conditions.py`の`IfWindow`側ロジックを`selectors.py`の
+      `_window_expr_by_instance_or_title_class()`へ抽出し`wait.py`と共有する形で実装した。
+      **残り4件は別種のギャップ(未解決)**: `WaitForWindowContent`の
+      `WindowToContainElementInState`/`WindowToContainText`/`WindowToNotContainElement`/
+      `WindowToNotContainText`は単純なByリネームではなく判定条件自体が異なる
+      (テキストマッチ・要素状態・否定系)ため今回は見送り。
   - [x] 💻 **`Services`は知見165の監査対象リストに含まれていなかったと判明・新規4アクション
     結線完了(知見187)**: `Microsoft.Flow.RPA.Desktop.Modules.Services.Actions.dll`を
     新規取得・decompileし、`Services.Start`/`Stop`/`Pause`/`Resume`(フラットなaction、

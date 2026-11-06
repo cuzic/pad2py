@@ -5,10 +5,9 @@
 """
 from __future__ import annotations
 
-from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef, VarRef
+from ...pad_dsl import ElseIfActionRecord, IfActionRecord, UiElementRef
 from ..context import CodegenContext
-from ..render import render_value
-from ..selectors import _build_pywinauto_selector_expr
+from ..selectors import _build_pywinauto_selector_expr, _window_expr_by_instance_or_title_class
 from ._support import safe_render
 
 # design/dsl_format_findings.md 知見68/69(実機確認済み): `File.IfFile.Exists`/
@@ -90,17 +89,10 @@ def render_if_window_condition(header: IfActionRecord | ElseIfActionRecord, ctx:
     # 違うだけで、以降の真偽値ロジックは完全に同一。
     if mode_suffix.endswith("ByInstanceOrHandle"):
         mode = mode_suffix[: -len("ByInstanceOrHandle")]
-        window_instance = header.params.get("WindowInstance")
-        window_expr = render_value(window_instance) if isinstance(window_instance, VarRef) else None
+        window_expr = _window_expr_by_instance_or_title_class(header.params, "ByInstanceOrHandle")
     elif mode_suffix.endswith("ByTitleClass"):
         mode = mode_suffix[: -len("ByTitleClass")]
-        title = header.params.get("Title")
-        window_class = header.params.get("Class")
-        window_expr = (
-            f"Desktop(backend='uia').window(title={render_value(title)})"
-            if isinstance(title, str) and window_class == ""
-            else None
-        )
+        window_expr = _window_expr_by_instance_or_title_class(header.params, "ByTitleClass")
     else:
         mode = mode_suffix
         window = header.params.get("Window")

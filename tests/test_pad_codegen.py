@@ -5881,3 +5881,72 @@ def test_generate_python_renders_wait_for_service_as_polling_loop(action_id: str
     assert "# TODO" not in code
     assert f"while services_actions.get_service_status('Spooler') != {expected_code}:" in code
     assert "time.sleep(0.05)" in code
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_condition"),
+    [
+        ("ToOpenByInstanceOrHandle", "not AutomationWindow2.exists()"),
+        ("ToCloseByInstanceOrHandle", "AutomationWindow2.exists()"),
+        (
+            "ToBecomeFocusedByInstanceOrHandle",
+            "not (AutomationWindow2.exists() and AutomationWindow2.wrapper_object().is_active())",
+        ),
+        (
+            "ToLoseFocusByInstanceOrHandle",
+            "(AutomationWindow2.exists() and AutomationWindow2.wrapper_object().is_active())",
+        ),
+    ],
+)
+def test_generate_python_converts_wait_for_window_by_instance_or_handle_modes(
+    mode: str, expected_condition: str
+) -> None:
+    # design/dsl_format_findings.md 知見190・191: `conditions.py`の`IfWindow`側は
+    # `ByInstanceOrHandle`/`ByTitleClass`に既に対応済みだったが、`wait.py`側の
+    # `WaitForWindow`は`Control`ベースの素のセレクタしか持たない未結線のギャップだった。
+    dsl = f"WAIT (UIAutomation.WaitForWindow.{mode} WindowInstance: AutomationWindow2)"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO" not in code
+    assert f"while {expected_condition}:" in code
+    assert "time.sleep(0.05)" in code
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_condition"),
+    [
+        ("ToOpenByTitleClass", "not Desktop(backend='uia').window(title='Notepad').exists()"),
+        ("ToCloseByTitleClass", "Desktop(backend='uia').window(title='Notepad').exists()"),
+    ],
+)
+def test_generate_python_converts_wait_for_window_by_title_class_modes(mode: str, expected_condition: str) -> None:
+    dsl = f"WAIT (UIAutomation.WaitForWindow.{mode} Title: $'''Notepad''' Class: $'''''')"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO" not in code
+    assert f"while {expected_condition}:" in code
+
+
+def test_generate_python_wait_for_window_by_instance_or_handle_stops_immediately_when_already_satisfied() -> None:
+    # ウィンドウが既に開いている状態からスタートすれば、生成した`while`ループは
+    # 一度も反復せずに抜ける(無限ループにならないことを実際に実行して確認する)。
+    from fake_pywinauto import FakeControl, FakeRegistry
+
+    dsl = "WAIT (UIAutomation.WaitForWindow.ToOpenByInstanceOrHandle WindowInstance: AutomationWindow2)"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+
+    registry = FakeRegistry()
+    criteria = {"title": "Untitled - Notepad"}
+    registry.register_window(**criteria)
+    fake_window = FakeControl(registry, criteria)
+    namespace: dict[str, object] = {"AutomationWindow2": fake_window}
+    exec(code, namespace)
+
+
+def test_generate_python_wait_for_window_by_title_class_with_class_set_falls_back_to_todo() -> None:
+    dsl = "WAIT (UIAutomation.WaitForWindow.ToOpenByTitleClass Title: $'''Notepad''' Class: $'''Notepad''')"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpenByTitleClass" in code

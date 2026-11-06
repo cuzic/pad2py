@@ -6,13 +6,35 @@
 """
 from __future__ import annotations
 
-from ..pad_dsl import ActionRecord, UiElementRef, WaitActionRecord
+from ..pad_dsl import ActionRecord, UiElementRef, VarRef, WaitActionRecord
 from .context import CodegenContext
+from .render import render_value
 
 _REPOSITORY_ATTR_TO_PYWINAUTO_KWARG = {
     "Class": "class_name",
     "Name": "title",
 }
+
+
+def _window_expr_by_instance_or_title_class(params: dict, by: str) -> str | None:
+    """design/dsl_format_findings.md 知見121(decompile確認済み): `GetWindow`/`IfWindow`/
+    `WaitForWindow`等が共有する3セレクタ構造(`Control`/`WindowInstance`/`Title`+`Class`)
+    のうち、`Control`ベース以外の2つ(`WindowInstance`=裸の変数参照・`Title`+`Class`=
+    `Class`が空の場合のみ対応)のウィンドウ参照を解決する。`conditions.py`の`IfWindow`・
+    `wait.py`の`WaitForWindow`/`WaitForWindowContent`で共有する(知見190で発見した
+    `wait.py`側の未結線を解消するため、知見121で`conditions.py`に実装済みのロジックを
+    こちらへ抽出した)。
+    """
+    if by == "ByInstanceOrHandle":
+        window_instance = params.get("WindowInstance")
+        return render_value(window_instance) if isinstance(window_instance, VarRef) else None
+    if by == "ByTitleClass":
+        title = params.get("Title")
+        window_class = params.get("Class")
+        if isinstance(title, str) and window_class == "":
+            return f"Desktop(backend='uia').window(title={render_value(title)})"
+        return None
+    return None
 
 
 def _is_start_button_element(path: tuple[str, ...], ctx: CodegenContext) -> bool:

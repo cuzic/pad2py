@@ -4,7 +4,7 @@ from __future__ import annotations
 from ...pad_dsl import UiElementRef, WaitActionRecord
 from ..context import CodegenContext
 from ..render import INDENT, render_value
-from ..selectors import _build_pywinauto_selector_expr, _ui_element_hint
+from ..selectors import _build_pywinauto_selector_expr, _ui_element_hint, _window_expr_by_instance_or_title_class
 
 _WAIT_ACTION_TARGETS: dict[str, tuple[str, str, str]] = {
     "UIAutomation.WaitForWindow.ToOpen": ("Window", "wait", "exists"),
@@ -12,6 +12,24 @@ _WAIT_ACTION_TARGETS: dict[str, tuple[str, str, str]] = {
     "UIAutomation.WaitForWindow.ToBecomeFocused": ("Window", "wait", "active"),
     "UIAutomation.WaitForWindow.ToLoseFocus": ("Window", "wait_not", "active"),
     "UIAutomation.WaitForWindowContent.WindowToContainElement": ("Element", "wait", "exists"),
+}
+
+# design/dsl_format_findings.md 知見190・191(decompile確認済み): `conditions.py`の
+# `IfWindow`側は`ByInstanceOrHandle`/`ByTitleClass`兄弟セレクタ(知見121)に既に対応済み
+# だったが、`wait.py`側は`Control`ベースの素のセレクタしか持っていなかった未結線の
+# ギャップ——`WaitForWindowAction`は`IfWindowAction`と全く同じ3セレクタ構造
+# (`Control`/`WindowInstance`/`Title`+`Class`)を共有するため、`conditions.py`から
+# 抽出した`_window_expr_by_instance_or_title_class()`で同じロジックを再利用する。
+# `(method, wait_for, by)` — `by`は`_window_expr_by_instance_or_title_class()`の第2引数。
+_WAIT_FOR_WINDOW_BY_INSTANCE_OR_TITLE_CLASS: dict[str, tuple[str, str, str]] = {
+    "UIAutomation.WaitForWindow.ToOpenByInstanceOrHandle": ("wait", "exists", "ByInstanceOrHandle"),
+    "UIAutomation.WaitForWindow.ToOpenByTitleClass": ("wait", "exists", "ByTitleClass"),
+    "UIAutomation.WaitForWindow.ToCloseByInstanceOrHandle": ("wait_not", "exists", "ByInstanceOrHandle"),
+    "UIAutomation.WaitForWindow.ToCloseByTitleClass": ("wait_not", "exists", "ByTitleClass"),
+    "UIAutomation.WaitForWindow.ToBecomeFocusedByInstanceOrHandle": ("wait", "active", "ByInstanceOrHandle"),
+    "UIAutomation.WaitForWindow.ToBecomeFocusedByTitleClass": ("wait", "active", "ByTitleClass"),
+    "UIAutomation.WaitForWindow.ToLoseFocusByInstanceOrHandle": ("wait_not", "active", "ByInstanceOrHandle"),
+    "UIAutomation.WaitForWindow.ToLoseFocusByTitleClass": ("wait_not", "active", "ByTitleClass"),
 }
 
 # wait_for文字列 → セレクタ式を埋め込んだ真偽値式。IfWindowの"active"判定と同じ
@@ -74,6 +92,20 @@ def generate(node: WaitActionRecord, indent: int, ctx: CodegenContext) -> list[s
         if isinstance(service, str):
             return [
                 f"{prefix}while services_actions.get_service_status({render_value(service)}) != {status_target}:",
+                f"{prefix}{INDENT}time.sleep(0.05)",
+            ]
+    by_instance_or_title_class = _WAIT_FOR_WINDOW_BY_INSTANCE_OR_TITLE_CLASS.get(node.action_id)
+    if by_instance_or_title_class is not None:
+        method, wait_for, by = by_instance_or_title_class
+        selector_expr = _window_expr_by_instance_or_title_class(node.params, by)
+        if selector_expr is not None:
+            if node.timeout_seconds is not None:
+                timeout = render_value(node.timeout_seconds)
+                return [f"{prefix}{selector_expr}.{method}({wait_for!r}, timeout={timeout})"]
+            condition_expr = _WAIT_CRITERIA_EXPR[wait_for].format(sel=selector_expr)
+            loop_condition = condition_expr if method == "wait_not" else f"not {condition_expr}"
+            return [
+                f"{prefix}while {loop_condition}:",
                 f"{prefix}{INDENT}time.sleep(0.05)",
             ]
     target = _WAIT_ACTION_TARGETS.get(node.action_id)
