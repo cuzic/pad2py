@@ -2232,3 +2232,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`6件)、UiPath関連テスト全710件通過、
      リポジトリ全体で全1754件通過。
+
+131. **(完了、2026-11-06)** `ui:MaximizeWindow`/`ui:MinimizeWindow`/
+     `ui:RestoreWindow`を新規実装(知見173): 3タグとも属性構成が完全に
+     同一(`Window`+`DisplayName`/`ContinueOnError`)なため、`method`
+     フィールドで区別する`WindowStateNode`1つに統合した。`Window`が
+     `{x:Null}`(省略)の場合は「現在アクティブなウィンドウ」——
+     pywinautoの`active_only=True`(`GetGUIThreadInfo()`でOS全体の
+     アクティブウィンドウを取得、確認済み標準API)で初めて対応した。
+     `Window`が`Saved.Values(Of Window)(...)`のような変数参照の場合は
+     未モデル化のため`# TODO`へ倒す。実機5件・実機XAML3件で
+     `generate_python()`+`compile()`を確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、
+     UiPath関連テスト全719件通過、リポジトリ全体で全1763件通過。

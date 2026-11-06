@@ -89,6 +89,7 @@ from .types import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
@@ -666,6 +667,27 @@ def _parse_close_window(elem: etree._Element) -> CloseWindowNode:
         display_name=_attr(elem, "DisplayName"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
     )
+
+
+def _parse_window_state(elem: etree._Element, method: str) -> WindowStateNode:
+    return WindowStateNode(
+        method=method,
+        window=_attr_expr(elem, "Window"),
+        display_name=_attr(elem, "DisplayName"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+    )
+
+
+def _parse_maximize_window(elem: etree._Element) -> WindowStateNode:
+    return _parse_window_state(elem, "maximize")
+
+
+def _parse_minimize_window(elem: etree._Element) -> WindowStateNode:
+    return _parse_window_state(elem, "minimize")
+
+
+def _parse_restore_window(elem: etree._Element) -> WindowStateNode:
+    return _parse_window_state(elem, "restore")
 
 
 def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
@@ -1574,6 +1596,9 @@ _DISPATCH = {
     (UI_NS, "Highlight"): _parse_highlight,
     (UI_NS, "CloseApplication"): _parse_close_application,
     (UI_NS, "CloseWindow"): _parse_close_window,
+    (UI_NS, "MaximizeWindow"): _parse_maximize_window,
+    (UI_NS, "MinimizeWindow"): _parse_minimize_window,
+    (UI_NS, "RestoreWindow"): _parse_restore_window,
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "SetFocus"): _parse_activate,

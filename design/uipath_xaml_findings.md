@@ -8191,6 +8191,57 @@ use_window, display_name, continue_on_error)`、`xaml_tree.py`に
 test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、UiPath
 関連テスト全710件通過、リポジトリ全体で全1754件通過。
 
+## 173. `ui:MaximizeWindow`/`ui:MinimizeWindow`/`ui:RestoreWindow`(GitHub code searchでそれぞれ検索語の部分一致含む1632件/44件/13件ヒット)を新規実装——`WindowStateNode.method`で1つの生成関数に統合、pywinautoの`active_only=True`で「現在アクティブなウィンドウ」の意味論に初めて対応
+
+知見172の`ui:CloseWindow`に続き、ウィンドウ状態操作系の活動を調査した
+結果、`ui:MaximizeWindow`/`ui:MinimizeWindow`/`ui:RestoreWindow`という
+3つの完全に同義な兄弟活動を発見した。実機5件(`allenlooplee/RPABook`・
+`PacktPublishing/Robotic-Process-Automation-Projects`・
+`piyushagarwal08/JU-Notes`・`Apress/Robotic-Process-Automation-Using-
+UiPath-StudioX`・`LowyShin/lwrpa-uip-giipxls2kvs`)で確認した属性構成
+は3タグとも完全に同一——`Window`+`DisplayName`/`ContinueOnError`のみ。
+違いはpywinautoで呼ぶメソッド名(`maximize()`/`minimize()`/`restore()`、
+`.venv`のソースで両バックエンド(`hwndwrapper.py`・`uiawrapper.py`)
+共通に実装されている確認済み標準API)だけなので、属性構成そのものを
+抽象化した`WindowStateNode(method, window, display_name,
+continue_on_error)`という1つのノード型に統合し、`method`フィールドで
+3つのタグを区別する——`_parse_window_state(elem, method)`という共通
+パーサーに3つの薄いラッパー関数(`_parse_maximize_window`/
+`_parse_minimize_window`/`_parse_restore_window`)から呼ぶ形にした。
+
+実機確認した`Window`の値は`{x:Null}`(ほとんどの実例)と
+`[Saved.Values(Of Window)("ActiveWindow")]`(StudioXの保存済み
+`Window`型変数参照、`Apress/Robotic-Process-Automation-Using-UiPath-
+StudioX`の実機XAMLで確認)の2種。`Window`が変数参照の場合は
+(`Window`型オブジェクト自体が未モデル化のため、知見154・161・168・
+170・172で繰り返し確認済みの既知の限界)`# TODO`へ倒す。
+
+`Window`が`{x:Null}`(省略)の場合の意味論は「現在アクティブな
+(フォーカス中の)ウィンドウ」——これまでの活動では`CloseTab`
+(知見170)の`send_keys('^w')`のような「対象省略時はグローバルな
+操作で対応する」という回避策しか無かったが、今回初めてpywinauto
+`findwindows.find_elements()`の`active_only=True`パラメータ
+(`.venv`のソースで`win32functions.GetGUIThreadInfo()`経由でOS全体の
+アクティブウィンドウハンドルを取得する実装を確認済み、両バックエンド
+共通でサポートされる標準API)を使い、`Desktop(backend="uia").
+window(active_only=True)`という形で「現在アクティブなウィンドウ」
+自体を検索条件として直接表現できた——これは今まで発見していなかった
+pywinautoの標準機能で、将来「対象省略=現在アクティブなウィンドウ」
+という同じ意味論を持つ活動(例えば知見152が残した`ui:SendHotkey`の
+対象省略ケースでも、`send_keys()`より`active_only=True`で取得した
+要素への`.type_keys()`の方が意図が明確になる可能性がある)に再利用
+できる発見。
+
+実機XAML(`PacktPublishing/...`の`ZOHOAutomation.xaml`・
+`piyushagarwal08/JU-Notes`の`SHA1_Open.xaml`・`LowyShin/lwrpa-uip-
+giipxls2kvs`の`XLS2KVS.xaml`)で`generate_python()`+`compile()`を
+実行し、`Desktop(backend="uia").window(active_only=True).maximize()`/
+`.minimize()`が正しく生成されることを確認した(`allenlooplee/RPABook`
+・`Apress/...`の2件はState Machineルートのためv1スコープ外で
+スキップ——既知の制約、本調査と無関係)。回帰テスト追加(`tests/
+test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、UiPath
+関連テスト全719件通過、リポジトリ全体で全1763件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

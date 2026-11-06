@@ -74,6 +74,7 @@ from dump_daemon.uipath_dsl import (
     UnknownActivityNode,
     VbExpr,
     WhileNode,
+    WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WriteLineNode,
@@ -1047,6 +1048,40 @@ def test_close_window_selector_x_null_normalizes_to_none():
     assert isinstance(node, CloseWindowNode)
     assert node.selector is None
     assert node.use_window == VbExpr(text="browser_window.Element.GetTopLevelWindow")
+
+
+def test_maximize_window_properties():
+    """知見173: `ui:MaximizeWindow`/`ui:MinimizeWindow`/`ui:RestoreWindow`。
+    `Window`+`DisplayName`/`ContinueOnError`のみという同一属性構成——
+    実機`PacktPublishing/Robotic-Process-Automation-Projects`等で確認。"""
+    xml = f'<ui:MaximizeWindow {_UI_XMLNS} Window="{{x:Null}}" DisplayName="Maximize Window" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WindowStateNode)
+    assert node.method == "maximize"
+    assert node.window is None
+    assert node.display_name == "Maximize Window"
+    assert node.continue_on_error is None
+
+
+def test_minimize_window_with_saved_window_variable_reference():
+    """実機`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`で
+    確認した、StudioXの保存済み`Window`型変数参照を`Window`に指定する
+    実例。"""
+    xml = (
+        f"<ui:MinimizeWindow {_UI_XMLNS} DisplayName=\"Minimize Window\" "
+        'Window="[Saved.Values(Of Window)(&quot;ActiveWindow&quot;)]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WindowStateNode)
+    assert node.method == "minimize"
+    assert node.window == VbExpr(text='Saved.Values(Of Window)("ActiveWindow")')
+
+
+def test_restore_window_properties():
+    xml = f'<ui:RestoreWindow {_UI_XMLNS} DisplayName="Restore Window" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WindowStateNode)
+    assert node.method == "restore"
 
 
 def test_log_message_properties():

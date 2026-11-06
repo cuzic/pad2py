@@ -512,6 +512,40 @@ class CloseWindowNode:
 
 
 @dataclass
+class WindowStateNode:
+    """`<ui:MaximizeWindow>`(知見173、GitHub code searchで1632件
+    ヒット——実際のタグ名は検索語の部分一致で発見、1632件は`ui:Maximize`
+    を含む全文字列のヒット数であり真の件数ではない点に注意)/
+    `<ui:MinimizeWindow>`(44件)/`<ui:RestoreWindow>`(13件)という
+    3つの同義の兄弟活動——いずれも`Window`+`DisplayName`/
+    `ContinueOnError`のみの同一属性構成で、唯一違うのはpywinautoで
+    呼ぶメソッド名(`maximize()`/`minimize()`/`restore()`、いずれも
+    `.venv`のソースで両バックエンド共通の確認済み標準API)。実機4件
+    (`allenlooplee/RPABook`・`PacktPublishing/Robotic-Process-
+    Automation-Projects`・`piyushagarwal08/JU-Notes`・`Apress/Robotic-
+    Process-Automation-Using-UiPath-StudioX`・`LowyShin/lwrpa-uip-
+    giipxls2kvs`)で確認した`Window`の値は`{x:Null}`(ほとんどの実例)
+    と`[Saved.Values(Of Window)("ActiveWindow")]`(StudioXの保存済み
+    `Window`型変数参照、`Apress`の実機XAMLで確認)の2種。
+
+    `Window`が`{x:Null}`の場合の意味論は「現在アクティブな(フォーカス
+    中の)ウィンドウ」——pywinautoの`findwindows.find_elements()`が
+    標準サポートする`active_only=True`(`win32functions.
+    GetGUIThreadInfo()`でOS全体のアクティブウィンドウハンドルを取得、
+    実装を確認済みの標準API)を`Desktop(backend="uia").
+    window(active_only=True)`経由で使うことで対応する——`CloseTab`
+    (知見170)の`send_keys('^w')`と同じ「対象省略時は現在フォーカス中
+    のものを指す」という確認済みの意味論パターン。`Window`が変数参照
+    の場合は(`Window`型オブジェクト自体が未モデル化のため、知見154・
+    161・168・170・172で繰り返し確認済みの既知の限界)`# TODO`へ倒す。"""
+
+    method: str = "maximize"
+    window: Expr = None
+    display_name: str | None = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1588,6 +1622,7 @@ Node = (
     | HighlightNode
     | CloseApplicationNode
     | CloseWindowNode
+    | WindowStateNode
     | KillProcessNode
     | CloseTabNode
     | TypeIntoNode

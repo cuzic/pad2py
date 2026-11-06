@@ -126,6 +126,7 @@ from ..uipath_dsl.types import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
@@ -481,6 +482,8 @@ def _generate_node(
         return _generate_close_application(node, indent)
     if isinstance(node, CloseWindowNode):
         return _generate_close_window(node, indent)
+    if isinstance(node, WindowStateNode):
+        return _generate_window_state(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
     if isinstance(node, CloseTabNode):
@@ -1599,6 +1602,37 @@ def _generate_close_window_body(node: CloseWindowNode, indent: int) -> list[str]
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
     lines.append(f"{prefix}{rendered.expr}.close()")
     return lines
+
+
+# 知見173: `ui:MaximizeWindow`/`ui:MinimizeWindow`/`ui:RestoreWindow`。
+# 属性構成が完全に同一(`Window`+`DisplayName`/`ContinueOnError`)な
+# 3つの同義の兄弟活動——pywinautoで呼ぶメソッド名(`maximize()`/
+# `minimize()`/`restore()`)だけが違うため、`WindowStateNode.method`
+# で1つの生成関数に統合する。`Window`が`{x:Null}`の場合は「現在
+# アクティブなウィンドウ」を指す——pywinautoの`active_only=True`
+# (`GetGUIThreadInfo()`でOS全体のアクティブウィンドウを取得、確認済み
+# 標準API)で対応する。
+def _generate_window_state(node: WindowStateNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_window_state_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_window_state_body(node: WindowStateNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.window is not None:
+        return [
+            f"{prefix}# TODO: {node.method.capitalize()}Window with Window set "
+            f"({_describe_expr_for_comment(node.window)}) — Window object "
+            "reference not modeled, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: {node.method.capitalize()}Window with "
+            f"ContinueOnError set ({_describe_expr_for_comment(node.continue_on_error)}) "
+            "— error-continuation mapping not confirmed, refusing to guess"
+        ]
+    return [f'{prefix}Desktop(backend="uia").window(active_only=True).{node.method}()']
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

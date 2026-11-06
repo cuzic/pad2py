@@ -102,6 +102,7 @@ from dump_daemon.uipath_dsl import (
     VariableDecl,
     VbExpr,
     WhileNode,
+    WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
@@ -2143,6 +2144,67 @@ def test_close_window_with_use_window_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: CloseWindow with UseWindow set" in code
     assert ".close()" not in code
+    _compiles(code)
+
+
+def test_maximize_window_generates_active_only_maximize():
+    """知見173: `ui:MaximizeWindow`(`Window`省略時、ほとんどの実例)。
+    pywinautoの`active_only=True`(`GetGUIThreadInfo()`でOS全体の
+    アクティブウィンドウを取得、確認済み標準API)が「現在アクティブな
+    ウィンドウ」の意味論に直接対応する。"""
+    wf = _wrap([WindowStateNode(method="maximize")])
+    code = generate_python(wf)
+    assert 'Desktop(backend="uia").window(active_only=True).maximize()' in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_minimize_window_generates_active_only_minimize():
+    wf = _wrap([WindowStateNode(method="minimize")])
+    code = generate_python(wf)
+    assert 'Desktop(backend="uia").window(active_only=True).minimize()' in code
+    _compiles(code)
+
+
+def test_restore_window_generates_active_only_restore():
+    wf = _wrap([WindowStateNode(method="restore")])
+    code = generate_python(wf)
+    assert 'Desktop(backend="uia").window(active_only=True).restore()' in code
+    _compiles(code)
+
+
+def test_window_state_display_name_becomes_a_comment():
+    wf = _wrap([WindowStateNode(method="maximize", display_name="Maximize Window")])
+    code = generate_python(wf)
+    assert "# Maximize Window" in code
+    assert ".maximize()" in code
+    _compiles(code)
+
+
+def test_window_state_with_window_variable_reference_is_todo_not_guessed():
+    """知見173: `Window`(実機`Apress/Robotic-Process-Automation-Using-
+    UiPath-StudioX`で確認した`[Saved.Values(Of Window)("ActiveWindow")]`
+    のようなStudioX保存済み`Window`型変数参照)はオブジェクト参照自体
+    が未モデル化のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            WindowStateNode(
+                method="minimize",
+                window=VbExpr(text='Saved.Values(Of Window)("ActiveWindow")'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: MinimizeWindow with Window set" in code
+    assert ".minimize()" not in code
+    _compiles(code)
+
+
+def test_window_state_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap([WindowStateNode(method="maximize", continue_on_error=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: MaximizeWindow with ContinueOnError set" in code
+    assert ".maximize()" not in code
     _compiles(code)
 
 
