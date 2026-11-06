@@ -392,10 +392,14 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   要素単位比較ロジックを持つ——標準`If`条件UI(またはそれ以外)から到達可能かどうか自体
   未確認。知見75と同じクリップボード往復確認手法(ペースト→コピー読み取り)を試行した
   (知見202)が、`query user`が「Active」・idle time一桁秒を示す状態でも`type_keys()`
-  ペーストが再現性よく無効化され、到達可能性は依然未確認のまま。「`query user`の
-  Active/idle timeだけでは`type_keys()`系入力の成否を判定できない」と判明したため、
-  実際のRDPクライアント接続状態での再試行が必要(次回VM作業時、RDP接続を伴う作業の
-  機会があれば合わせて試す)。
+  ペーストが再現性よく無効化され、到達可能性は依然未確認のまま。**知見203で判明**:
+  ユーザーが実際にRDP接続した状態で再試行してもなお失敗し、真の原因は「RDP接続の
+  有無」ではなく`clipwire`(clipd)プロセス自身が対話的デスクトップ(ウィンドウ
+  ステーション)に紐付いていないことだと確定した(`click_input()`が明示的に
+  `"There is no active desktop..."`を返した)。`clipwire exec`経由で起動する限り
+  `type_keys()`/`click_input()`等の`SendInput`系操作は原理的に成功しない——
+  ユーザーがWindows側でclipd自身を対話的セッション内から再起動するまで、この項目
+  および他の全🖥️(RDP必須)項目は一律凍結される。
 - [ ] 🖥️ `VariableTrailer`の引数付きトレーラ(`.Name (args)`)を実際に生成するPAD機能の特定。
   🔍 **どのPAD機能が生成するかはdecompileのみ(VM不要)で特定できた、ただし実機構築は依然RDP必須**:
   `Microsoft.Flow.RPA.Desktop.Robin.Engine.dll`を新規取得・ilspycmdで再デコンパイルし、
