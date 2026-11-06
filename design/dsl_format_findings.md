@@ -3095,3 +3095,20 @@ pywin32の`win32serviceutil.QueryServiceStatus()`が返すタプルの`[1]`(`ser
 **`WaitForWindowContent`側の残る4件は別種のギャップ**: 知見190で一緒に列挙していた`WindowToContainElementInState`/`WindowToContainText`/`WindowToNotContainElement`/`WindowToNotContainText`は、`ByInstanceOrHandle`/`ByTitleClass`の単純な「ウィンドウ参照の取得元が違うだけ」のリネームではなく、**判定条件自体が異なる**(テキスト内容マッチ・要素の状態チェック・否定系)——`WindowToContainElement`の単純な`exists()`拡張では済まないため、今回は見送り、`pad_todo.md`の件数を8件(今回解決)+4件(別種、未解決)に訂正して記録する。
 
 実装: `pad_codegen/selectors.py`に`_window_expr_by_instance_or_title_class()`を追加。`pad_codegen/actions/conditions.py`を同関数を使う形にリファクタ(振る舞いは不変、`VarRef`/`render_value`のimportが不要になったため削除)。`pad_codegen/actions/wait.py`に`_WAIT_FOR_WINDOW_BY_INSTANCE_OR_TITLE_CLASS`辞書と対応する分岐を追加(8アクション: `ToOpen`/`ToClose`/`ToBecomeFocused`/`ToLoseFocus` × `ByInstanceOrHandle`/`ByTitleClass`)。テストは`tests/test_pad_codegen.py`に8件追加(生成コード文字列確認6件+`fake_pywinauto`での実行確認1件+`Class`非空時のTODOフォールバック確認1件)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1084 passed, 28 skippedを確認(VM不要)。
+
+## 192. 知見190の残課題のうち`Excel.GetEmptyCellFromExcel`(8兄弟セレクタ)を新規実装・結線——走査順序・空判定・「見つからない場合は例外ではなく既定値0/0のまま」という3点をdecompileで確定
+
+知見190で見送った残課題(`ResizeColumnsOrRows`のCustomSize側・`ClearCellsFromExcel`・`DeleteCellsAction`・`CopyExcelWorksheet`・`GetEmptyCellFromExcel`)のうち、`GetEmptyCellFromExcel`を精査・実装した。
+
+`ExcelActions.GetFirstOrAllEmptyCells()`をdecompileし、以下を確定した:
+- **空判定**: `Cells(row, col).Text`(表示テキスト)が空文字列かどうか——`openpyxl`では`cell.value is None`または`cell.value == ""`で近似する(数式セルは文字列の数式そのものが値のため通常は空と判定されない、これは`openpyxl`の制約による妥当な近似であり実機のレンダリング結果とは異なる可能性がある旨をdocstringに明記)。
+- **走査順序**: `EmptyCellsSearchDirection.Rows`(既定)は行ごとに左から右(外側ループが行、内側ループが列)、`Columns`は列ごとに上から下——`AllEmptyCells`セレクタはこのパラメータ自体をUIに表示しない(decompile確認済み、常に既定値`Rows`で固定)。
+- **見つからない場合の挙動**: `FirstEmptyCell*`系で該当セルが1つも見つからない場合、例外ではなく出力が初期値(C#の`int`既定値、`0`/`0`)のまま——`pad_action_lib`側も同じ`(0, 0)`を返す形で忠実に再現した(でっち上げた例外を投げない)。
+- **`SearchColumn`の二重解釈**: 数値文字列(`"1"`)なら列番号として、そうでなければ列名(`"A"`)として解釈する(`ResizeColumnsOrRowsAction.GetColumn()`と同じパターン、知見166で既に確認済みの手法を再利用)。
+- **`AllEmptyCells`の出力形式**: `ColumnIndex`/`RowIndex`列を持つ`DataTable`(本プロジェクトの`list[dict]`表現)。
+
+8兄弟セレクタ(`GetEmptyCellsRangeMode`=`NamedCell`/`Coordinates` × `EmptyCellsOperation`=`AllEmptyCells`/`FirstEmptyCell`/`FirstEmptyCellInColumn`/`FirstEmptyCellInRow`)全てを結線した。`FirstEmptyCellInRow`/`FirstEmptyCellInColumn`は単一行/単一列への絞り込みのため`EmptyCellsSearchDirection`パラメータ自体が存在しない(decompile確認済み、UIに表示されず常に単一行/列内の走査になる)。
+
+実装: `pad_action_lib/excel_actions.py`に`GetEmptyCellError`・`_parse_column_ordinal()`・`_iter_empty_cells()`・`get_empty_cell()`を追加。`pad_codegen/actions/excel.py`に`_GET_EMPTY_CELL_DISPATCH`辞書と対応する分岐を追加(`AllEmptyCells`は単一出力変数、他3モードは`EmptyCellColumnIndex`/`EmptyCellRowIndex`の2出力変数パターン)。テストは`tests/test_pad_action_lib_excel.py`に9件追加、`tests/test_pad_codegen.py`に2件追加(いずれもexec検証込み)。`uv run pytest -q --ignore=tests/test_uipath_codegen.py`で1096 passed, 28 skippedを確認(VM不要)。
+
+残る知見190の見送り分(`ResizeColumnsOrRows`のCustomSize側・`ClearCellsFromExcel`・`DeleteCellsAction`・`CopyExcelWorksheet`)は次回以降の調査対象として`pad_todo.md`に記録する。

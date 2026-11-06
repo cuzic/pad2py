@@ -5,6 +5,7 @@ from pathlib import Path
 
 import openpyxl
 import pytest
+from openpyxl.utils import column_index_from_string
 
 from dump_daemon.pad_action_lib import excel_actions as xl
 
@@ -362,3 +363,118 @@ def test_read_cell_formula_unknown_mode_raises() -> None:
     instance = xl.launch_excel("NewDocument")
     with pytest.raises(xl.ReadCellFormulaError):
         xl.read_cell_formula(instance, "NotAMode")
+
+
+def test_get_empty_cell_first_empty_cell_coordinates_row_wise() -> None:
+    # design/dsl_format_findings.md 知見192(decompile確認済み): `GetFirstOrAllEmptyCells()`は
+    # `row_wise`時に行ごとに左から右へ走査する。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    sheet["B1"] = "y"
+    # A2/B2は空のまま。
+    assert xl.get_empty_cell(
+        instance,
+        operation="FirstEmptyCell",
+        range_mode="Coordinates",
+        start_column="A",
+        start_row=1,
+        end_column="B",
+        end_row=2,
+        search_direction="Rows",
+    ) == (1, 2)
+
+
+def test_get_empty_cell_first_empty_cell_column_wise() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    sheet["A2"] = "y"
+    # B1/B2は空のまま——列優先なのでB1が先に見つかる。
+    assert xl.get_empty_cell(
+        instance,
+        operation="FirstEmptyCell",
+        range_mode="Coordinates",
+        start_column="A",
+        start_row=1,
+        end_column="B",
+        end_row=2,
+        search_direction="Columns",
+    ) == (2, 1)
+
+
+def test_get_empty_cell_first_empty_cell_no_match_returns_zero_zero() -> None:
+    # decompile確認済み: 見つからない場合は例外ではなくC#のint既定値(0, 0)のまま。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    for col, row, value in [("A", 1, 1), ("B", 1, 2), ("A", 2, 3), ("B", 2, 4)]:
+        sheet.cell(row=row, column=column_index_from_string(col), value=value)
+    assert xl.get_empty_cell(
+        instance, operation="FirstEmptyCell", range_mode="Coordinates",
+        start_column="A", start_row=1, end_column="B", end_row=2,
+    ) == (0, 0)
+
+
+def test_get_empty_cell_first_empty_cell_in_row() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    assert xl.get_empty_cell(
+        instance, operation="FirstEmptyCellInRow", range_mode="Coordinates",
+        start_column="A", start_row=1, end_column="C", end_row=1, search_row=1,
+    ) == (2, 1)
+
+
+def test_get_empty_cell_first_empty_cell_in_row_out_of_range_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.GetEmptyCellError):
+        xl.get_empty_cell(
+            instance, operation="FirstEmptyCellInRow", range_mode="Coordinates",
+            start_column="A", start_row=1, end_column="C", end_row=1, search_row=5,
+        )
+
+
+def test_get_empty_cell_first_empty_cell_in_column_accepts_numeric_column() -> None:
+    # decompile確認済み: `SearchColumn`は列名("A")・数値文字列("1")のいずれも受け付ける。
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    assert xl.get_empty_cell(
+        instance, operation="FirstEmptyCellInColumn", range_mode="Coordinates",
+        start_column="A", start_row=1, end_column="A", end_row=3, search_column="1",
+    ) == (1, 2)
+
+
+def test_get_empty_cell_all_empty_cells_returns_data_table() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    result = xl.get_empty_cell(
+        instance, operation="AllEmptyCells", range_mode="Coordinates",
+        start_column="A", start_row=1, end_column="B", end_row=2,
+    )
+    assert result == [
+        {"ColumnIndex": 2, "RowIndex": 1},
+        {"ColumnIndex": 1, "RowIndex": 2},
+        {"ColumnIndex": 2, "RowIndex": 2},
+    ]
+
+
+def test_get_empty_cell_named_cell_mode() -> None:
+    instance = xl.launch_excel("NewDocument")
+    sheet = instance.active_sheet
+    sheet["B1"] = "x"
+    defined_name = openpyxl.workbook.defined_name.DefinedName(
+        "MyRange", attr_text=f"'{sheet.title}'!$A$1:$B$2"
+    )
+    instance.workbook.defined_names["MyRange"] = defined_name
+
+    assert xl.get_empty_cell(
+        instance, operation="FirstEmptyCell", range_mode="NamedCell", named_cell="MyRange",
+    ) == (1, 1)
+
+
+def test_get_empty_cell_named_cell_not_found_raises() -> None:
+    instance = xl.launch_excel("NewDocument")
+    with pytest.raises(xl.GetEmptyCellError):
+        xl.get_empty_cell(instance, operation="FirstEmptyCell", range_mode="NamedCell", named_cell="NoSuchName")

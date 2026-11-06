@@ -3237,6 +3237,72 @@ def test_generate_python_from_excel_read_cell_formula_by_named_cell_converts() -
     assert namespace["CellFormula"] == "=SUM(A1:A5)"
 
 
+def test_generate_python_from_excel_get_empty_cell_first_empty_cell_coordinates_converts() -> None:
+    # design/dsl_format_findings.md 知見192: `GetEmptyCellFromExcel`の8兄弟セレクタのうち
+    # `GetEmptyCellsAbsoluteRangeFirstEmptyCell`(行優先探索)。
+    setup_dsl = (
+        "Excel.LaunchExcel.Launch Instance=> ExcelInstance\n"
+        "Excel.WriteToExcel.WriteCell Instance: ExcelInstance Value: $'''x''' "
+        "Column: $'''A''' Row: 1"
+    )
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    dsl = (
+        "Excel.GetEmptyCellFromExcel.GetEmptyCellsAbsoluteRangeFirstEmptyCell "
+        "Instance: ExcelInstance StartColumn: $'''A''' StartRow: 1 EndColumn: $'''B''' "
+        "EndRow: 2 EmptyCellsSearchDirection: Excel.EmptyCellsSearchDirection.Rows "
+        "EmptyCellColumnIndex=> EmptyCol EmptyCellRowIndex=> EmptyRow"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert (
+        "_empty_cell = excel_actions.get_empty_cell(ExcelInstance, operation='FirstEmptyCell', "
+        "range_mode='Coordinates', start_column='A', start_row=1, end_column='B', end_row=2, "
+        "search_direction='Rows')" in code
+    )
+    assert "EmptyCol = _empty_cell[0]" in code
+    assert "EmptyRow = _empty_cell[1]" in code
+
+    exec(code, namespace)
+    assert namespace["EmptyCol"] == 2
+    assert namespace["EmptyRow"] == 1
+
+
+def test_generate_python_from_excel_get_empty_cell_all_empty_cells_named_cell_converts() -> None:
+    setup_dsl = "Excel.LaunchExcel.Launch Instance=> ExcelInstance"
+    tree = build_block_tree(parse_dsl(setup_dsl))
+    namespace: dict[str, object] = {}
+    exec(generate_python(tree), namespace)
+
+    import openpyxl.workbook.defined_name
+
+    instance = namespace["ExcelInstance"]
+    sheet = instance.active_sheet
+    sheet["A1"] = "x"
+    instance.workbook.defined_names["MyRange"] = openpyxl.workbook.defined_name.DefinedName(
+        "MyRange", attr_text=f"'{sheet.title}'!$A$1:$B$1"
+    )
+
+    dsl = (
+        "Excel.GetEmptyCellFromExcel.GetEmptyCellsNamedCellAllEmptyCells "
+        "Instance: ExcelInstance NamedCell: $'''MyRange''' EmptyCells=> EmptyCells"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "EmptyCells = excel_actions.get_empty_cell(ExcelInstance, operation='AllEmptyCells', "
+        "range_mode='NamedCell', named_cell='MyRange')" in code
+    )
+
+    exec(code, namespace)
+    assert namespace["EmptyCells"] == [{"ColumnIndex": 2, "RowIndex": 1}]
+
+
 def test_generate_python_from_excel_unsupported_live_com_modes_fall_back_to_todo() -> None:
     # design/dsl_format_findings.md 知見155: `ReadFromExcel.Read`(`ReadMode=Selection`、
     # ライブExcel UIの現在の選択範囲)・`WriteToExcel.Write`(`WriteMode=ActiveCell`、

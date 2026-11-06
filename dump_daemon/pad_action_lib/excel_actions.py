@@ -597,3 +597,111 @@ def read_cell_formula(
         value = cell.value
         return value if isinstance(value, str) else str(value)
     return ""
+
+
+class GetEmptyCellError(PadActionError):
+    pass
+
+
+def _parse_column_ordinal(value: str) -> int:
+    """decompile確認済み(`ResizeColumnsOrRowsAction.GetColumn()`/
+    `ExcelActions.FindEmptyCellsInRange()`の`inColumn`処理と同じ二重解釈):
+    数値文字列ならそのまま列番号として、そうでなければ列名(`"A"`等)として解釈する。
+    """
+    stripped = value.strip()
+    if stripped.isdigit():
+        return int(stripped)
+    return column_index_from_string(stripped)
+
+
+def _iter_empty_cells(
+    sheet: Worksheet, min_col: int, max_col: int, min_row: int, max_row: int, row_wise: bool
+):
+    """design/dsl_format_findings.md 知見192(decompile確認済み): `GetFirstOrAllEmptyCells()`の
+    走査順序(`row_wise=True`で行ごとに左から右、`False`で列ごとに上から下)と空判定
+    (`Cells(...).Text`が空文字列——`openpyxl`では`cell.value is None`または`cell.value == ""`
+    で近似する、数式セルは文字列の数式そのものが値のため通常は空と判定されない)をそのまま再現する。
+    """
+    if row_wise:
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                cell = sheet.cell(row=row, column=col)
+                if cell.value is None or cell.value == "":
+                    yield col, row
+    else:
+        for col in range(min_col, max_col + 1):
+            for row in range(min_row, max_row + 1):
+                cell = sheet.cell(row=row, column=col)
+                if cell.value is None or cell.value == "":
+                    yield col, row
+
+
+def get_empty_cell(
+    instance: ExcelInstanceHandle,
+    operation: str = "FirstEmptyCell",
+    range_mode: str = "NamedCell",
+    named_cell: str = "",
+    start_column: str = "A",
+    start_row: int = 1,
+    end_column: str = "A",
+    end_row: int = 1,
+    search_direction: str = "Rows",
+    search_column: str = "",
+    search_row: int = 0,
+) -> tuple[int, int] | DataTable:
+    """design/dsl_format_findings.md 知見192(decompile確認済み): `GetEmptyCellFromExcel`の
+    8兄弟セレクタ(`GetEmptyCellsRangeMode`=`NamedCell`/`Coordinates` ×
+    `EmptyCellsOperation`=`AllEmptyCells`/`FirstEmptyCell`/`FirstEmptyCellInColumn`/
+    `FirstEmptyCellInRow`)に対応する。
+
+    `FirstEmptyCell*`系で該当セルが1つも見つからない場合、decompile確認済みの通り
+    例外ではなく出力を既定値(`(0, 0)`、C#の`int`既定値)のままにする——でっち上げた
+    例外を投げない。`AllEmptyCells`は`ColumnIndex`/`RowIndex`列を持つ`DataTable`を返す
+    (列順序・列名は`DataTable.Columns`の定義順そのまま)。`AllEmptyCells`は
+    `EmptyCellsSearchDirection`をUIに表示しない(decompile確認済み、常定値`Rows`のまま)。
+    """
+    try:
+        if range_mode == "NamedCell":
+            try:
+                sheet, min_col, min_row, max_col, max_row = _defined_name_range(instance.workbook, named_cell)
+            except KeyError as exc:
+                raise GetEmptyCellError(f"named cell not found: {named_cell!r}") from exc
+        elif range_mode == "Coordinates":
+            sheet = instance.active_sheet
+            min_col, min_row = column_index_from_string(start_column), start_row
+            max_col, max_row = column_index_from_string(end_column), end_row
+        else:
+            raise ValueError(f"Unknown GetEmptyCellsRangeMode: {range_mode!r}")
+
+        if operation == "FirstEmptyCellInRow":
+            if not (min_row <= search_row <= max_row):
+                raise GetEmptyCellError(f"row {search_row} not found in range")
+            for col, row in _iter_empty_cells(sheet, min_col, max_col, search_row, search_row, True):
+                return col, row
+            return 0, 0
+
+        if operation == "FirstEmptyCellInColumn":
+            col_index = _parse_column_ordinal(search_column)
+            if not (min_col <= col_index <= max_col):
+                raise GetEmptyCellError(f"column {search_column!r} not found in range")
+            for col, row in _iter_empty_cells(sheet, col_index, col_index, min_row, max_row, True):
+                return col, row
+            return 0, 0
+
+        if operation == "FirstEmptyCell":
+            row_wise = search_direction == "Rows"
+            for col, row in _iter_empty_cells(sheet, min_col, max_col, min_row, max_row, row_wise):
+                return col, row
+            return 0, 0
+
+        if operation == "AllEmptyCells":
+            return [
+                {"ColumnIndex": col, "RowIndex": row}
+                for col, row in _iter_empty_cells(sheet, min_col, max_col, min_row, max_row, True)
+            ]
+
+        raise ValueError(f"Unknown EmptyCellsOperation: {operation!r}")
+    except (GetEmptyCellError, ValueError):
+        raise
+    except Exception as exc:
+        raise GetEmptyCellError(str(exc)) from exc

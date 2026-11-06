@@ -53,6 +53,29 @@ def _enum_arg(p: dict, name: str, default: str) -> str | None:
     return repr(default)
 
 
+# design/dsl_format_findings.md 知見192(decompile確認済み): `GetEmptyCellFromExcel`の
+# 8兄弟セレクタ → `(range_mode, operation)`。
+_GET_EMPTY_CELL_DISPATCH: dict[str, tuple[str, str]] = {
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsNamedCellFirstEmptyCell": ("NamedCell", "FirstEmptyCell"),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsNamedCellFirstEmptyCellInRow": ("NamedCell", "FirstEmptyCellInRow"),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsNamedCellFirstEmptyCellInColumn": (
+        "NamedCell",
+        "FirstEmptyCellInColumn",
+    ),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsNamedCellAllEmptyCells": ("NamedCell", "AllEmptyCells"),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsAbsoluteRangeFirstEmptyCell": ("Coordinates", "FirstEmptyCell"),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsAbsoluteRangeFirstEmptyCellInRow": (
+        "Coordinates",
+        "FirstEmptyCellInRow",
+    ),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsAbsoluteRangeFirstEmptyCellInColumn": (
+        "Coordinates",
+        "FirstEmptyCellInColumn",
+    ),
+    "Excel.GetEmptyCellFromExcel.GetEmptyCellsAbsoluteRangeAllEmptyCells": ("Coordinates", "AllEmptyCells"),
+}
+
+
 def _worksheet_lookup_args(p: dict, find_by: str) -> str | None:
     """`FindWorksheetBy`(セレクタごとに固定、知見155)/`Name`/`Index`の3引数を
     結合したPython式の断片を返す。"""
@@ -381,5 +404,60 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
                 return None
             call = f"excel_actions.read_cell_formula({instance}, 'NamedCell', cell_name={cell_name})"
         return [f"{prefix}{node.output_var} = {call}"]
+
+    empty_cell_dispatch = _GET_EMPTY_CELL_DISPATCH.get(action_id)
+    if empty_cell_dispatch is not None:
+        # design/dsl_format_findings.md 知見192: 各セレクタが`Show<>`するパラメータのみ
+        # DSLに現れる想定のため、モードごとに必要な引数だけ`safe_render()`する。
+        range_mode, operation = empty_cell_dispatch
+        instance = safe_render(p.get("Instance"))
+        if instance is None:
+            return None
+        args = [f"operation={operation!r}", f"range_mode={range_mode!r}"]
+        if range_mode == "NamedCell":
+            named_cell = safe_render(p.get("NamedCell"))
+            if named_cell is None:
+                return None
+            args.append(f"named_cell={named_cell}")
+        else:
+            start_column = safe_render(p.get("StartColumn"))
+            start_row = safe_render(p.get("StartRow"))
+            end_column = safe_render(p.get("EndColumn"))
+            end_row = safe_render(p.get("EndRow"))
+            if None in (start_column, start_row, end_column, end_row):
+                return None
+            args.append(f"start_column={start_column}, start_row={start_row}, "
+                        f"end_column={end_column}, end_row={end_row}")
+        if operation == "FirstEmptyCellInRow":
+            search_row = safe_render(p.get("SearchRow"))
+            if search_row is None:
+                return None
+            args.append(f"search_row={search_row}")
+        elif operation == "FirstEmptyCellInColumn":
+            search_column = safe_render(p.get("SearchColumn"))
+            if search_column is None:
+                return None
+            args.append(f"search_column={search_column}")
+        elif operation == "FirstEmptyCell":
+            search_direction = _enum_arg(p, "EmptyCellsSearchDirection", "Rows")
+            if search_direction is None:
+                return None
+            args.append(f"search_direction={search_direction}")
+        call = f"excel_actions.get_empty_cell({instance}, {', '.join(args)})"
+        if operation == "AllEmptyCells":
+            empty_cells_var = node.output_vars.get("EmptyCells")
+            if not empty_cells_var:
+                return None
+            return [f"{prefix}{empty_cells_var} = {call}"]
+        col_var = node.output_vars.get("EmptyCellColumnIndex")
+        row_var = node.output_vars.get("EmptyCellRowIndex")
+        if not (col_var or row_var):
+            return None
+        lines = [f"{prefix}_empty_cell = {call}"]
+        if col_var:
+            lines.append(f"{prefix}{col_var} = _empty_cell[0]")
+        if row_var:
+            lines.append(f"{prefix}{row_var} = _empty_cell[1]")
+        return lines
 
     return None
