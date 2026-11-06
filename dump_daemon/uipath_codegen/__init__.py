@@ -91,6 +91,7 @@ from ..uipath_dsl.types import (
     FlowSwitchNode,
     ForEachNode,
     GetAttributeNode,
+    GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
     GetTextNode,
@@ -281,6 +282,11 @@ def _collect_imports(body: list[str]) -> list[str]:
     # grab()`変換先、知見179)も同様。
     if any("PIL.ImageGrab.grab(" in line for line in body):
         imports.append("import PIL.ImageGrab")
+    # `pytesseract`(`GetOCRText`の`GoogleOCR`(=Tesseract OCR)→
+    # `pytesseract.image_to_string(...)`変換先、知見180)も同様。
+    # `tests/test_ocr_fallback.py`で実機VM検証済みの既存確認済み依存。
+    if any("pytesseract.image_to_string(" in line for line in body):
+        imports.append("import pytesseract")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -500,6 +506,8 @@ def _generate_node(
         return _generate_window_state(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
+    if isinstance(node, GetOcrTextNode):
+        return _generate_get_ocr_text(node, indent)
     if isinstance(node, SaveImageNode):
         return _generate_save_image(node, indent)
     if isinstance(node, TakeScreenshotNode):
@@ -1806,6 +1814,113 @@ def _generate_take_screenshot_body(node: TakeScreenshotNode, indent: int) -> lis
         ]
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
     lines.append(f"{prefix}{target} = {rendered.expr}.capture_as_image()")
+    return lines
+
+
+# 知見180: `ui:GetOCRText`。`OCREngine`デリゲートのタグが`ui:
+# GoogleOCR`(UiPath公式ドキュメントで「Tesseract OCR」と確認済み
+# ——内部クラス名が歴史的事情でそのまま)の場合のみ、本プロジェクトが
+# 既に実機VM検証済みの依存`pytesseract`(`tests/test_ocr_fallback.py`)
+# が直接対応する。`Language`(UiPath公式ドキュメントが明記する
+# `tessdata`言語コードそのもの)は`lang`引数へそのまま渡せるが、
+# 画像の前処理を変える他の属性(`Scale`/`Profile`/`AllowedCharacters`/
+# `DeniedCharacters`/`Invert`/`ComputeSkewAngle`/`FilterRegion`)が
+# 既定値から外れている場合、`ExtractWords`/`WordsInfo`(単語位置情報、
+# 未モデル化)が使われている場合は`# TODO`へ倒す。`Target`が`{x:Null}`
+# の場合は`TakeScreenshot`(知見179)と同じ`PIL.ImageGrab.grab()`で
+# 画面全体を対象にする。
+def _generate_get_ocr_text(node: GetOcrTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_ocr_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_ocr_text_body(node: GetOcrTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.engine_tag != "GoogleOCR":
+        return [
+            f"{prefix}# TODO: GetOCRText with OCREngine "
+            f"{node.engine_tag!r} — only the Tesseract-backed GoogleOCR "
+            "engine is confirmed, refusing to guess other engines"
+        ]
+    if node.text is None:
+        return [f"{prefix}# TODO: GetOCRText with no output Text captured"]
+    if node.words_info is not None:
+        return [
+            f"{prefix}# TODO: GetOCRText with WordsInfo bound "
+            f"({_describe_expr_for_comment(node.words_info)}) — per-word "
+            "position info not modeled, refusing to guess"
+        ]
+    if node.scale not in (None, "1"):
+        return [
+            f"{prefix}# TODO: GetOCRText with non-default Scale "
+            f"({node.scale!r}) — image preprocessing not modeled, refusing "
+            "to guess"
+        ]
+    if node.profile is not None:
+        return [
+            f"{prefix}# TODO: GetOCRText with Profile set ({node.profile!r}) "
+            "— image preprocessing not modeled, refusing to guess"
+        ]
+    if node.allowed_characters is not None:
+        return [
+            f"{prefix}# TODO: GetOCRText with AllowedCharacters set "
+            f"({_describe_expr_for_comment(node.allowed_characters)}) — "
+            "character whitelisting not modeled, refusing to guess"
+        ]
+    if node.denied_characters is not None:
+        return [
+            f"{prefix}# TODO: GetOCRText with DeniedCharacters set "
+            f"({_describe_expr_for_comment(node.denied_characters)}) — "
+            "character blacklisting not modeled, refusing to guess"
+        ]
+    if node.invert not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetOCRText with non-default Invert "
+            f"({node.invert!r}) — image preprocessing not modeled, refusing "
+            "to guess"
+        ]
+    if node.compute_skew_angle not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetOCRText with non-default ComputeSkewAngle "
+            f"({node.compute_skew_angle!r}) — image preprocessing not "
+            "modeled, refusing to guess"
+        ]
+    if node.extract_words not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetOCRText with ExtractWords set "
+            f"({node.extract_words!r}) — per-word output not modeled, "
+            "refusing to guess"
+        ]
+    if node.filter_region is not None:
+        return [
+            f"{prefix}# TODO: GetOCRText with FilterRegion set "
+            f"({_describe_expr_for_comment(node.filter_region)}) — region "
+            "filtering not modeled, refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.text, prefix, todo)
+    language = (
+        _render_value_or_todo(node.language, prefix, todo)
+        if node.language is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines: list[str] = []
+    if not node.selector:
+        lines.append(f"{prefix}_img = PIL.ImageGrab.grab()")
+    else:
+        rendered = selector_text_to_pywinauto(node.selector)
+        if rendered.expr == 'Desktop(backend="uia")':
+            return [
+                f"{prefix}# TODO: GetOCRText selector had no mappable "
+                f"attributes: {node.selector}"
+            ]
+        lines.extend(f"{prefix}# WARNING: {w}" for w in rendered.warnings)
+        lines.append(f"{prefix}_img = {rendered.expr}.capture_as_image()")
+    lang_kwarg = f", lang={language}" if language is not None else ""
+    lines.append(f"{prefix}{target} = pytesseract.image_to_string(_img{lang_kwarg})")
     return lines
 
 

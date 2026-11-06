@@ -66,6 +66,7 @@ from dump_daemon.uipath_dsl import (
     FlowSwitchNode,
     ForEachNode,
     GetAttributeNode,
+    GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
     GetTextNode,
@@ -2443,6 +2444,143 @@ def test_take_screenshot_with_unmappable_selector_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: TakeScreenshot selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_google_ocr_engine_calls_pytesseract():
+    """知見180: `ui:GetOCRText`。`GoogleOCR`(UiPath公式ドキュメントで
+    「Tesseract OCR」と確認済み)の場合のみ`pytesseract.image_to_
+    string()`(`tests/test_ocr_fallback.py`で実機VM検証済みの既存
+    確認済み依存)に対応する。"""
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None,
+                engine_tag="GoogleOCR",
+                text=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "pytesseract.image_to_string(" in code
+    assert "import pytesseract" in code
+    assert "PIL.ImageGrab.grab()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_language_passes_lang_kwarg():
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None,
+                engine_tag="GoogleOCR",
+                language=Literal(value="eng"),
+                text=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "lang='eng'" in code or 'lang="eng"' in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_known_selector_uses_capture_as_image():
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector="<wnd cls='Notepad' />",
+                engine_tag="GoogleOCR",
+                text=VbExpr(text="result"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".capture_as_image()" in code
+    assert "pytesseract.image_to_string(" in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_non_google_ocr_engine_is_todo_not_guessed():
+    """知見180: `MicrosoftOCR`(実機71件確認——Windows OCR API、
+    Tesseractとは別のエンジン)等は未確認のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [GetOcrTextNode(selector=None, engine_tag="MicrosoftOCR", text=VbExpr(text="result"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with OCREngine 'MicrosoftOCR'" in code
+    assert "pytesseract" not in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_no_text_is_todo():
+    wf = _wrap([GetOcrTextNode(selector=None, engine_tag="GoogleOCR", text=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with no output Text captured" in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_words_info_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None,
+                engine_tag="GoogleOCR",
+                text=VbExpr(text="result"),
+                words_info=VbExpr(text="info"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with WordsInfo bound" in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_non_default_scale_is_todo_not_guessed():
+    """知見180: 実機`cameronmcnz/uipath-tutorials`で確認した`Scale="2"`
+    のような画像前処理オプションは未モデル化のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None, engine_tag="GoogleOCR", text=VbExpr(text="result"), scale="2"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with non-default Scale" in code
+    assert "pytesseract" not in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_profile_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None,
+                engine_tag="GoogleOCR",
+                text=VbExpr(text="result"),
+                profile="Screen",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with Profile set" in code
+    _compiles(code)
+
+
+def test_get_ocr_text_with_extract_words_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetOcrTextNode(
+                selector=None,
+                engine_tag="GoogleOCR",
+                text=VbExpr(text="result"),
+                extract_words="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetOCRText with ExtractWords set" in code
     _compiles(code)
 
 

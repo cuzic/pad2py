@@ -41,6 +41,7 @@ from dump_daemon.uipath_dsl import (
     ExecuteQueryNode,
     ForEachNode,
     GetAttributeNode,
+    GetOcrTextNode,
     GetOutlookMailMessagesNode,
     GetPasswordNode,
     GetTextNode,
@@ -1236,6 +1237,87 @@ def test_take_screenshot_with_selector_properties():
     assert isinstance(node, TakeScreenshotNode)
     assert "WorkerW" in node.selector
     assert node.screenshot == VbExpr(text="screenShot")
+
+
+def test_get_ocr_text_google_ocr_engine_properties():
+    """知見180: `ui:GetOCRText`。`OCREngine`デリゲートが`ui:GoogleOCR`
+    (UiPath公式ドキュメントで「Tesseract OCR」と確認済み)をラップする
+    実例——実機`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`で確認した`Language="eng"`+`Scale="1"`の実例。"""
+    xml = (
+        f"<ui:GetOCRText {_UI_XMLNS} DisplayName=\"Get OCR Text\">"
+        "<ui:GetOCRText.OCREngine>"
+        '<ActivityFunc x:TypeArguments="sd:Image">'
+        '<ActivityFunc.Argument>'
+        '<DelegateInArgument x:TypeArguments="sd:Image" Name="Image" />'
+        "</ActivityFunc.Argument>"
+        '<ui:GoogleOCR Language="eng" Scale="1" Image="[Image]" />'
+        "</ActivityFunc>"
+        "</ui:GetOCRText.OCREngine>"
+        "<ui:GetOCRText.Target>"
+        '<ui:Target Selector="{x:Null}" />'
+        "</ui:GetOCRText.Target>"
+        "<ui:GetOCRText.Text>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[result]</OutArgument>'
+        "</ui:GetOCRText.Text>"
+        "</ui:GetOCRText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetOcrTextNode)
+    assert node.engine_tag == "GoogleOCR"
+    assert node.language == Literal(value="eng")
+    assert node.scale == "1"
+    assert node.text == VbExpr(text="result")
+    assert node.selector is None
+
+
+def test_get_ocr_text_normalizes_x_null_scale_to_none():
+    """実機で確認した`Scale="{x:Null}"`——`_attr`が`{x:Null}`正規化を
+    行わないフラット文字列属性(知見172と同種のバグを避ける、新しい
+    `_attr_or_none`ヘルパーで対応)。"""
+    xml = (
+        f"<ui:GetOCRText {_UI_XMLNS} DisplayName=\"Get OCR Text\">"
+        "<ui:GetOCRText.OCREngine>"
+        '<ActivityFunc x:TypeArguments="sd:Image">'
+        '<ActivityFunc.Argument>'
+        '<DelegateInArgument x:TypeArguments="sd:Image" Name="Image" />'
+        "</ActivityFunc.Argument>"
+        '<ui:GoogleOCR Scale="{x:Null}" Profile="{x:Null}" Image="[Image]" />'
+        "</ActivityFunc>"
+        "</ui:GetOCRText.OCREngine>"
+        "<ui:GetOCRText.Text>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[result]</OutArgument>'
+        "</ui:GetOCRText.Text>"
+        "</ui:GetOCRText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetOcrTextNode)
+    assert node.scale is None
+    assert node.profile is None
+
+
+def test_get_ocr_text_with_microsoft_ocr_engine():
+    """実機で確認した`ui:MicrosoftOCR`(71件ヒット、Tesseractとは別の
+    エンジン)——タグ名をそのまま保持し、未確認のまま`# TODO`へ倒せる
+    ようにする。"""
+    xml = (
+        f"<ui:GetOCRText {_UI_XMLNS} DisplayName=\"Get OCR Text\">"
+        "<ui:GetOCRText.OCREngine>"
+        '<ActivityFunc x:TypeArguments="sd:Image">'
+        '<ActivityFunc.Argument>'
+        '<DelegateInArgument x:TypeArguments="sd:Image" Name="Image" />'
+        "</ActivityFunc.Argument>"
+        '<ui:MicrosoftOCR Image="[Image]" />'
+        "</ActivityFunc>"
+        "</ui:GetOCRText.OCREngine>"
+        "<ui:GetOCRText.Text>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[result]</OutArgument>'
+        "</ui:GetOCRText.Text>"
+        "</ui:GetOCRText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetOcrTextNode)
+    assert node.engine_tag == "MicrosoftOCR"
 
 
 def test_log_message_properties():

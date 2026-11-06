@@ -689,6 +689,59 @@ class TakeScreenshotNode:
 
 
 @dataclass
+class GetOcrTextNode:
+    """`<ui:GetOCRText>`(知見180、`UiPath/skills`公式リポジトリの
+    Studio実機ground-truthコーパス(`UiPath.UIAutomation.Activities/
+    25.10/GetOCRText.xaml`)+実機4件(`cameronmcnz/uipath-tutorials`・
+    `PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`・
+    `DongJoonHan/RPA`)で確認)。`OCREngine`プロパティが`ActivityFunc`
+    デリゲート(`Argument`は常にキャプチャした`Image`)でラップした
+    別のOCR活動を保持する——実機確認した全例でそのタグは`ui:
+    GoogleOCR`(属性`Language`/`Scale`/`Profile`/`AllowedCharacters`/
+    `DeniedCharacters`/`Invert`/`ComputeSkewAngle`/`ExtractWords`/
+    `FilterRegion`を持つ)。
+
+    `ui:GoogleOCR`という紛らわしいタグ名(実機で`DisplayName="Tesseract
+    OCR"`になっている例を複数確認)は、UiPath公式ドキュメント
+    (docs.uipath.com/activities/other/latest/ui-automation/google-ocr)
+    で明確に確認した——内部クラス名`UiPath.Core.Activities.GoogleOCR`
+    のまま、ドキュメント上は「Tesseract OCR」(Tesseract OCR Engine
+    4.0使用)と記載されている歴史的な命名の名残で、Google Cloud Vision
+    とは**別の**活動(`GoogleCloudVisionOCR`という別タグが存在)。
+    `MicrosoftOCR`(実機71件確認——Windows OCR API、Tesseractとは別の
+    エンジン)等、`GoogleOCR`以外のタグは未確認のため対応しない。
+
+    本プロジェクトは`pytesseract`(`tests/test_ocr_fallback.py`で実機
+    VM検証済みの既存確認済み依存——`pytesseract.image_to_string()`が
+    直接対応する)を既に使っているため、`GoogleOCR`=Tesseract OCRという
+    対応は新しい依存の追加判断無しに実現できる。`Language`(UiPath公式
+    ドキュメントが明記する`tessdata`言語コード接頭辞、例: `"eng"`/
+    `"fra"`——`pytesseract.image_to_string(img, lang=...)`の`lang`
+    引数と全く同じ語彙)は信頼して渡せるが、`Scale`/`Profile`/
+    `AllowedCharacters`/`DeniedCharacters`/`Invert`/
+    `ComputeSkewAngle`/`FilterRegion`(いずれも画像の前処理を変える
+    属性で、対応するPython側の変換が未確認)が既定値から外れている
+    場合、`ExtractWords`(`True`の場合は`WordsInfo`側に単語位置情報が
+    必要になるが未モデル化)が`True`の場合、`WordsInfo`出力自体が
+    使われている場合は、いずれも`# TODO`へ倒す。"""
+
+    selector: str | None = None
+    engine_tag: str | None = None
+    language: Expr = None
+    scale: str | None = None
+    profile: str | None = None
+    allowed_characters: Expr = None
+    denied_characters: Expr = None
+    invert: str | None = None
+    compute_skew_angle: str | None = None
+    extract_words: str | None = None
+    filter_region: Expr = None
+    text: Expr = None
+    words_info: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1795,6 +1848,7 @@ Node = (
     | LoadImageNode
     | SaveImageNode
     | TakeScreenshotNode
+    | GetOcrTextNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

@@ -2329,3 +2329,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      DataTable操作系活動群(`FilterDataTable`等)は`DataTable`表現の
      非統一というアーキテクチャ上の前提作業が必要なため見送り、
      調査候補として記録。
+
+138. **(完了、2026-11-06)** `ui:GetOCRText`を新規実装(知見180):
+     `OCREngine`デリゲートのタグが`ui:GoogleOCR`(UiPath公式ドキュメント
+     で「Tesseract OCR」と確認済み——`DisplayName`ではなくタグ名で
+     判定したことが、この歴史的な命名の罠を回避できた理由)の場合のみ、
+     既存確認済み依存`pytesseract`に対応する。`Language`は`lang`引数へ
+     そのまま渡せる。画像前処理属性(`Scale`/`Profile`等)が既定値から
+     外れる場合、`GoogleOCR`以外のエンジン(`MicrosoftOCR`等)の場合は
+     `# TODO`へ倒す。実装中、フラット文字列属性の`{x:Null}`正規化漏れ
+     (知見163・172と同種)を実機確認で発見・`_attr_or_none()`ヘルパー
+     追加で即修正。実機XAML3件+合成テストで`generate_python()`+
+     `compile()`を確認。回帰テスト追加(`tests/test_uipath_dsl.py`3件・
+     `tests/test_uipath_codegen.py`10件)、UiPath関連テスト全741件通過、
+     リポジトリ全体で全1807件通過。

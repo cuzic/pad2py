@@ -8514,6 +8514,66 @@ UiPath関連テスト全750件通過、リポジトリ全体で全1795件通過�
 着手するには`DataTable`表現の統一(または変数ごとの表現追跡)という
 より大きなアーキテクチャ上の前提作業が必要。
 
+## 180. `ui:GetOCRText`を新規実装——`OCREngine`デリゲートのタグが`ui:GoogleOCR`(UiPath公式ドキュメントで「Tesseract OCR」と確認)の場合のみ既存確認済み依存`pytesseract`で対応
+
+知見179の`ui:TakeScreenshot`/`ui:SaveImage`で整えたPillow系の画像
+パイプラインを踏まえ、OCR系の活動`ui:GetOCRText`(`UiPath/skills`
+公式リポジトリのStudio実機ground-truthコーパス+実機4件
+(`cameronmcnz/uipath-tutorials`・`PacktPublishing/Robotic-Process-
+Automation-RPA-for-Developers`・`DongJoonHan/RPA`)で確認)を調査
+した。`OCREngine`プロパティが`ActivityFunc`デリゲート(`Argument`は
+常にキャプチャした`Image`)で別のOCR活動をラップする、UiPathの
+「OCR Engine選択」アーキテクチャになっている。
+
+実機で遭遇した興味深い罠: ラップされた活動のタグは`ui:GoogleOCR`
+だが、実機の`DisplayName`は`"Tesseract OCR"`になっている例を複数
+確認した——これはGoogle Cloud Vision APIへの誤誘導ではなく、
+UiPath公式ドキュメント(docs.uipath.com/activities/other/latest/
+ui-automation/google-ocr、WebSearchで確認)で明記されている歴史的な
+命名の名残だと判明した。内部クラス名`UiPath.Core.Activities.
+GoogleOCR`のまま、ドキュメント上は「Tesseract OCR Engine 4.0を使用」
+と明記されている——Google Cloud Vision APIを使う活動は
+`GoogleCloudVisionOCR`という**別の**タグ名で存在する。知見38の
+`role`属性の教訓(UiPathの語彙とpywinautoの語彙が一致する保証は無い)
+と同じ種類の罠だが、今回はタグ名そのものの意味が実際の実装と
+ズレているという、より根本的なレベルの罠だった——`DisplayName`
+(人間が見るラベル、自由に変更可能)ではなく活動タグ名そのもの
+(`node.tag`)で判定する実装にしたことが、たまたまこの罠を回避
+できた理由(`DisplayName`文字列マッチングで実装していたら、
+`DisplayName`を変更された実機XAMLで誤判定していた可能性がある)。
+
+`GoogleOCR`(=Tesseract OCR)と確認できた場合のみ、本プロジェクトが
+既に実機VM検証済みの依存`pytesseract`(`tests/test_ocr_fallback.py`
+——notepadへの入力文字列を実際にOCRで読み取れることを実機確認済み)
+が直接対応する——新しい依存の追加判断は不要。`Language`(UiPath公式
+ドキュメントが明記する`tessdata`言語コード接頭辞、例: `"eng"`)は
+`pytesseract.image_to_string(img, lang=...)`の`lang`引数と全く同じ
+語彙のため信頼して渡せる。画像の前処理を変える属性(`Scale`/
+`Profile`/`AllowedCharacters`/`DeniedCharacters`/`Invert`/
+`ComputeSkewAngle`/`FilterRegion`)が既定値から外れている場合、
+`ExtractWords`/`WordsInfo`(単語位置情報、未モデル化)が使われている
+場合、`GoogleOCR`以外のタグ(`MicrosoftOCR`——実機71件確認、Windows
+OCR API、Tesseractとは別のエンジン——等)の場合は`# TODO`へ倒す。
+`Target`が`{x:Null}`の場合は`TakeScreenshot`(知見179)と同じ
+`PIL.ImageGrab.grab()`で画面全体を対象にする。
+
+実装中、内部のOCR活動要素の`Scale`/`Profile`/`Invert`/
+`ComputeSkewAngle`/`ExtractWords`属性を素朴に`_attr()`で取得した
+ところ、実機`cameronmcnz/uipath-tutorials`の`Scale="{x:Null}"`が
+そのまま文字列として残り`node.scale not in (None, "1")`の判定を
+誤って通過する(知見163・172と同種の`{x:Null}`正規化漏れ)バグを
+実機確認で発見・即修正した——フラット文字列属性(`Expr`ではなく
+プレーンな`str | None`で保持する属性)向けの新しいヘルパー
+`_attr_or_none()`を追加し、既存の`_attr_expr`(`Expr`へ変換する
+属性向け)とは別経路として整理した。
+
+実機XAML3件+合成テストで`generate_python()`+`compile()`を実行し、
+`GoogleOCR`+既定値の実例(`invoiceNumber = pytesseract.image_to_
+string(_img)`)、`Scale`/`Profile`が既定値から外れる実例(正しく
+`# TODO`)の両方を確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+3件・`tests/test_uipath_codegen.py`10件)、UiPath関連テスト全741件
+通過、リポジトリ全体で全1807件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
