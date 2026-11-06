@@ -3903,6 +3903,44 @@ def test_generate_python_from_cmd_read_and_split_converts() -> None:
     assert namespace["Err"] == "stderr text"
 
 
+def test_generate_python_from_cmd_open_with_code_page_converts() -> None:
+    # design/dsl_format_findings.md 知見153(decompile+リフレクション確認済み):
+    # `OpenCmdSession`の兄弟セレクタ`OpenWithCodePage`。`Encoding`は列挙名(例: `utf_8`)
+    # がそのまま`cmd_actions.open_cmd_session()`の`encoding`引数へ渡り、実際の
+    # コードページ変換(`_ENCODING_CODEPAGES`)はそちら側の責務になる。
+    import dump_daemon.pad_action_lib.cmd_actions as cmd_actions
+
+    dsl = (
+        "Cmd.Open.OpenWithCodePage Directory: $'''C:\\\\work''' "
+        "Encoding: Cmd.Encoding.shift_jis CmdSession=> S"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "# TODO" not in code
+    assert "change_code_page=True" in code
+    assert "encoding='shift_jis'" in code
+
+    calls = []
+
+    def fake_open_cmd_session(directory, **kwargs):
+        calls.append((directory, kwargs))
+        return "fake-session"
+
+    original = cmd_actions.open_cmd_session
+    cmd_actions.open_cmd_session = fake_open_cmd_session
+    try:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)
+    finally:
+        cmd_actions.open_cmd_session = original
+    assert namespace["S"] == "fake-session"
+    assert len(calls) == 1
+    directory, kwargs = calls[0]
+    assert directory == "C:\\work"
+    assert kwargs == {"change_code_page": True, "encoding": "shift_jis"}
+
+
 def test_generate_python_from_write_xml_to_file_without_formatting_converts() -> None:
     # design/dsl_format_findings.md 知見139: `WriteToFileFormatted`の兄弟セレクタ
     # (`Indentation`パラメータ自体がDSL上に無い)。

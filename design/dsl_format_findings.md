@@ -2590,3 +2590,17 @@ VM上の`.Arguments`監査(知見150の手法)だけでは「`SaveToFolder`系�
 **監査手法の記録**: `.Arguments`プロパティ(知見150)は「どのパラメータがDSLに現れるか」を確定できるが、「現れたパラメータがどう処理されるか」(ファイル名決定アルゴリズム・multipart形式)はdecompileでなければ分からない——両者は補完関係にあり、後者が必要な場合は今回のように対象DLLをVMから取得してローカルでdecompileする(知見90の`ilspycmd`手法)のが確実。
 
 テストは`tests/test_pad_action_lib_web.py`に`_get_download_file_path()`系4件(Content-Disposition優先・URL末尾セグメント・ルートパスのhost+.htmlフォールバック・不正文字サニタイズ)・`invoke_web_service()`のSaveToFolder/Upload系3件、`tests/test_pad_codegen.py`に`DownloadToFolder`系4パターン・`InvokeWebService*SaveToFolder*`系6パターン・`InvokeWebService*Upload`系12パターンのparametrizeテストを追加し、いずれも実際に`exec()`して検証した。これでWeb.Actions.dll全46セレクタ中、未結線で残るのは`UploadType.Binary`方式(本プロジェクトに型が無く意図的に見送り)のみとなった。
+
+## 153. Cmd.Actions.dllをdecompileし`OpenWithCodePage`の`Encoding`型を解明——Windowsコードページ番号そのものを基底値に持つ共有列挙型だった、`chcp`には整数を送る
+
+知見141で見送っていた`Cmd.Open.OpenWithCodePage`(`Encoding`型パラメータの意味論が実機未確認)を解消した。`pad2py-fetch-cmd-dll`(新規clipwire target)で`Microsoft.Flow.RPA.Desktop.Modules.Cmd.Actions.dll`(52,552バイト)を取得し`ilspycmd`でdecompileしたところ、`OpenCmdSession.Execute()`が`(int)Encoding`というキャストを行っており、`Encoding`プロパティの型自体がこのDLL内では定義されていない(`Microsoft.Flow.RPA.Desktop.Robin.Shared.Runtime.Enums`という外部namespaceからの`using`)ことが分かった。
+
+`Microsoft.Flow.RPA.Desktop.Robin.Shared.Runtime.dll`(`Get-ChildItem -Recurse`で特定)を直接リフレクションで問い合わせ(型の`GetTypes()`→`Name -eq "Encoding"`→`[System.Enum]::GetNames()`+`GetValues()`)、全150メンバーの名前と基底`int`値を取得した——`utf_8=65001`・`shift_jis=932`・`Windows_1252=1252`等、**各メンバーの基底値がそのままWindowsのコードページ番号**になっている共有列挙型だと確定した(decompileとリフレクションの両方で確認、でっち上げではない)。
+
+`CmdSessionActions.OpenCmdSession()`の実装(decompile直読み): `ChangeCodePage=False`(`Open`)の場合は`Encoding.Default`(OS既定のANSIコードページ)を使い`Encoding`パラメータ自体はDSL上に存在しない(`Hide<Encoding>()`)。`ChangeCodePage=True`(`OpenWithCodePage`)の場合のみ`System.Text.Encoding.GetEncoding((int)Encoding)`で`StandardOutputEncoding`/`StandardErrorEncoding`を設定し、プロセス起動後に`chcp {encoding}`(`encoding`は**整数のコードページ番号そのもの**、コーデック名の文字列ではない)を最初のコマンドとして送信する。
+
+`pad_action_lib.cmd_actions.open_cmd_session()`に、リフレクション確認済みの全150メンバーをそのまま転記した`_ENCODING_CODEPAGES: dict[str, int]`を追加し、`encoding`引数の意味を「`ChangeCodePage=True`の場合は列挙名(`_ENCODING_CODEPAGES`のキー)、コードページ番号→Python`cp<N>`コーデックへ変換して`subprocess.Popen(encoding=...)`に渡し、`chcp <N>`をそのまま整数で送信」に変更した(`ChangeCodePage=False`の場合は`encoding`引数自体を無視し、ホスト依存の`Encoding.Default`の代わりに安全な既定値`utf-8`を使う——この挙動は元から変更無し)。未知の列挙名は`OpenCmdError`で安全に失敗する。
+
+`pad_codegen/actions/cmd.py`に`Cmd.Open.OpenWithCodePage`のディスパッチを新規追加し、`Encoding`パラメータを`enum_last()`で読み取った列挙名の文字列をそのまま`encoding=`引数へ渡すだけで済んだ(コードページ変換自体は`pad_action_lib`側の責務)。
+
+テストは`tests/test_pad_action_lib_cmd.py`に`_ENCODING_CODEPAGES`のサンプル値確認・`change_code_page=True`時に`chcp <コードページ番号>`が送信されることの確認(`CmdSession.write`をフェイクに差し替えて検証)・未知の列挙名で`OpenCmdError`になることの確認の3件、`tests/test_pad_codegen.py`に`OpenWithCodePage`のexec検証1件を追加した。これでCmd.Actions.dllの4セレクタ全件が結線完了した。

@@ -15,20 +15,22 @@
 クラスは既存結線の`Read`(`CmdOutput`/`CmdError`を1本に合流、`SplitOutputAndError=False`)
 に加え、兄弟セレクタ`ReadAndSplit`(`SplitOutputAndError=True`、`CmdOutput`/`CmdError`を
 別々の出力に分ける)を持つ——既存の`CmdSession.read(split_output_and_error=True)`が
-そのまま対応できるため新規結線した。`OpenCmdSession`クラスの兄弟セレクタ
+そのまま対応できるため新規結線した。
+
+知見153(decompile+リフレクション確認済み): `OpenCmdSession`クラスの兄弟セレクタ
 `OpenWithCodePage`(`ChangeCodePage: Boolean`/`Encoding: Encoding`という型付き列挙の
-組み合わせ)は、VM上のプロパティ確認で`Encoding`が単純な文字列ではなく専用の`Encoding`
-型だと判明し、その列挙値とPythonコーデック名/Windows `chcp`番号との対応関係が実機未確認
-のため今回は見送った(既存の`open_cmd_session(encoding: str = "utf-8")`がPythonの
-テキストデコードと`chcp {encoding}`コマンド引数の両方にこの1つの文字列を再利用している
-点も、実際のPADの`chcp`呼び出し形式との整合性が未検証のまま残っている)。
+組み合わせ)を新規結線した。`Encoding`は`Microsoft.Flow.RPA.Desktop.Robin.Shared.
+Runtime.Enums.Encoding`という専用の列挙型で、各メンバーの基底値がWindowsのコードページ
+番号そのもの(`utf_8=65001`等)——`pad_action_lib.cmd_actions.open_cmd_session()`の
+`_ENCODING_CODEPAGES`で列挙名→コードページ番号→Python`cp<N>`コーデック/`chcp <N>`
+コマンド引数への変換を行う。
 """
 from __future__ import annotations
 
 from ...pad_dsl import ActionRecord
 from ..context import CodegenContext
 from ..render import INDENT
-from ._support import safe_render
+from ._support import enum_last, safe_render
 
 
 def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] | None:
@@ -43,6 +45,20 @@ def generate(node: ActionRecord, indent: int, ctx: CodegenContext) -> list[str] 
         if directory is None or not node.output_var:
             return None
         return [f"{prefix}{node.output_var} = cmd_actions.open_cmd_session({directory})"]
+
+    if action_id == "Cmd.Open.OpenWithCodePage":
+        # 知見153(decompile+リフレクション確認済み): `Encoding`は専用の列挙型で、
+        # 各メンバーの基底値がWindowsのコードページ番号そのもの。`open_cmd_session()`の
+        # `_ENCODING_CODEPAGES`で列挙名→コードページ番号の変換とPython `cp<N>`コーデックの
+        # 解決、`chcp <N>`送信までを行う。
+        directory = safe_render(p.get("Directory"))
+        encoding = enum_last(p.get("Encoding"))
+        if directory is None or encoding is None or not node.output_var:
+            return None
+        return [
+            f"{prefix}{node.output_var} = cmd_actions.open_cmd_session({directory}, "
+            f"change_code_page=True, encoding={encoding!r})"
+        ]
 
     if action_id == "Cmd.Write":
         session = safe_render(p.get("Session"))

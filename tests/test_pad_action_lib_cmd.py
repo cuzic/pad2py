@@ -22,6 +22,39 @@ def test_open_cmd_session_missing_directory_raises(tmp_path) -> None:
         cmd.open_cmd_session(directory=str(tmp_path / "missing"), shell_command=["sh"])
 
 
+def test_encoding_codepages_table_matches_decompile_confirmed_values() -> None:
+    # design/dsl_format_findings.md 知見153: VM上のリフレクションで確認済みの
+    # 列挙名→Windowsコードページ番号の対応(でっち上げではない)。
+    assert cmd._ENCODING_CODEPAGES["utf_8"] == 65001
+    assert cmd._ENCODING_CODEPAGES["shift_jis"] == 932
+    assert cmd._ENCODING_CODEPAGES["Windows_1252"] == 1252
+    assert cmd._ENCODING_CODEPAGES["ibm850"] == 850
+
+
+def test_open_cmd_session_change_code_page_sends_chcp_with_codepage_number(monkeypatch) -> None:
+    # 知見153(decompile確認済み): `chcp`にはコーデック名ではなく整数のコードページ
+    # 番号そのものを送る(`WebActions`等の「でっち上げない」方針と同じ、実機確認無しの
+    # 推測ではなくdecompileソースの直読みに基づく)。
+    calls: list[str] = []
+    original_write = cmd.CmdSession.write
+
+    def fake_write(self, command, send_enter=True):
+        calls.append(command)
+        original_write(self, command, send_enter=send_enter)
+
+    monkeypatch.setattr(cmd.CmdSession, "write", fake_write)
+    session = _open_sh_session(change_code_page=True, encoding="utf_8")
+    try:
+        assert calls == ["chcp 65001"]
+    finally:
+        session.close()
+
+
+def test_open_cmd_session_change_code_page_unsupported_encoding_raises() -> None:
+    with pytest.raises(cmd.OpenCmdError):
+        _open_sh_session(change_code_page=True, encoding="not_a_real_encoding")
+
+
 def test_write_then_read_returns_combined_output_by_default() -> None:
     session = _open_sh_session()
     try:

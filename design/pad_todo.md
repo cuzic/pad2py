@@ -428,15 +428,16 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
       `AsDateTime`3兄弟も新規結線完了——`get_xml_element_attribute()`に
       `value_type`引数を新規実装し(`get_xml_element_value()`と変換ロジックを
       共通化)、VM確認済みの`ValueType`列挙値で対応した。
-    - [x] `Cmd.Actions.dll`(4セレクタ)。
+    - [x] `Cmd.Actions.dll`(4セレクタ、全件結線完了)。
       ✅ **決着(知見141)**: `Open`二重発見は単に`Open`/`OpenWithCodePage`が同じ
       `OpenCmdSession`クラスの兄弟セレクタだったと判明(既存結線は前者のみ)。
       `ReadAndSplit`(`Read`の兄弟セレクタ)を新規結線完了。
-      - [ ] 💻🖥️ **残課題**: `OpenWithCodePage`は`Encoding`型(単純な文字列では
-        ない)の意味論が実機未確認のため見送った。既存の`open_cmd_session()`が
-        `encoding`引数をPythonデコード用途と`chcp`コマンド引数用途の両方に
-        再利用している設計自体も、実機の`chcp`呼び出し形式との整合性が
-        未検証という留保事項が新たに判明した。
+      ✅ **決着(知見153、decompile+リフレクションで解消)**: `pad2py-fetch-cmd-dll`
+      でDLL本体を取得しdecompile、`Encoding`が`Microsoft.Flow.RPA.Desktop.Robin.
+      Shared.Runtime.Enums.Encoding`(各メンバーの基底値=Windowsコードページ番号)
+      だと特定。`open_cmd_session()`に全150メンバーの`_ENCODING_CODEPAGES`を追加し、
+      `chcp`には整数のコードページ番号そのものを送るよう修正。`OpenWithCodePage`を
+      新規結線完了。
     - [x] `Text.Actions.dll`(23セレクタ、`RecognizeEntitiesInText`を除き全件結線完了)。
       ✅ **決着(知見142)**: `GetSubtext`系3(`GetText`/`GetSubtextFromStartTo`/
       `GetSubtextFrom`)・`CropText`系2(`CropTextAfterFlag`/`CropTextBetweenFlags`)・
