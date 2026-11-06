@@ -208,6 +208,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見97)も同様。
     if any("openpyxl.load_workbook(" in line for line in body):
         imports.append("import openpyxl")
+    # `win32com.client`(`SendOutlookMail`→`win32com.client.Dispatch(...)`
+    # 変換先、知見98)も同様。
+    if any("win32com.client.Dispatch(" in line for line in body):
+        imports.append("import win32com.client")
     imports.sort()
     # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
     # 未使用時に増やさないよう、使われている場合のみ注入する——
@@ -326,7 +330,9 @@ def _generate_node(
         return _generate_http_client(node, indent)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
-    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode, SendOutlookMailNode)):
+    if isinstance(node, SendOutlookMailNode):
+        return _generate_send_outlook_mail(node, indent)
+    if isinstance(node, (InvokeCodeNode, ExcelWriteCellNode)):
         return _generate_unresolved_activity(node, indent)
     if isinstance(node, UnknownActivityNode):
         return _generate_unknown(node, indent)
@@ -869,6 +875,60 @@ def _generate_excel_write_cell_in_scope(
     ]
 
 
+# 知見98: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/
+# `IsDraft`は実機フィクスチャで確認済みの値(いずれもStudioの既定値)
+# 以外は未確認のため、確認済みの値の場合のみ実コード生成する(知見96の
+# HttpClientと同じ「確認済みの既定値のみ対応」方針)——UiPathの`ClickType`/
+# `MouseButton`(知見71)が.NET/Outlookの一般的な語彙とは異なる独自の
+# トークン名(`CLICK_SINGLE`等)だったのと同じ教訓により、"Low"/"High"等の
+# 未確認の値をOutlook VBAのOlImportance等の語彙から類推してでっち上げない。
+_OUTLOOK_IMPORTANCE_CONFIRMED = (None, "Normal")
+_OUTLOOK_SENSITIVITY_CONFIRMED = (None, "Normal")
+_OUTLOOK_BOOL_CONFIRMED = (None, "False")
+
+
+def _generate_send_outlook_mail(node: SendOutlookMailNode, indent: int) -> list[str]:
+    """知見98: `SendOutlookMailNode`は知見24以来常に`_generate_unresolved_
+    activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
+    (`Cc`/`Bcc`未設定、`Files`空、`Importance`/`Sensitivity`/`IsBodyHtml`/
+    `IsDraft`がStudio既定値のまま)に限り`win32com.client`経由で実際の
+    Outlookへの送信コードを生成する——ユーザー決定(2026-11-05)により
+    `win32com`(実際のOutlookクライアント経由、UiPathの実行時挙動に近い)
+    を選択。`CreateItem(0)`(`olMailItem`、Microsoft Learn
+    `Outlook.OlItemType`で確認済み)でメールアイテムを作成し、`Send()`する。
+
+    `Cc`/`Bcc`設定済み、`Files`に添付ファイルあり、または`Importance`等が
+    確認済み既定値以外の場合は、実際の変換規則(添付の追加方法、`Low`/
+    `High`等の文字列トークンが実際にXAMLでどう直列化されるか)が実機未確認
+    のため、でっち上げず`_generate_unresolved_activity`の`# TODO`へ倒す。
+    """
+    prefix = INDENT * indent
+    if (
+        node.cc is not None
+        or node.bcc is not None
+        or node.has_populated_files
+        or node.importance not in _OUTLOOK_IMPORTANCE_CONFIRMED
+        or node.sensitivity not in _OUTLOOK_SENSITIVITY_CONFIRMED
+        or node.is_body_html not in _OUTLOOK_BOOL_CONFIRMED
+        or node.is_draft not in _OUTLOOK_BOOL_CONFIRMED
+    ):
+        return _generate_unresolved_activity(node, indent)
+    todo: list[str] = []
+    to = _render_value_or_todo(node.to, prefix, todo)
+    subject = _render_value_or_todo(node.subject, prefix, todo)
+    body = _render_value_or_todo(node.body, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_outlook = win32com.client.Dispatch('Outlook.Application')",
+        f"{prefix}_mail = _outlook.CreateItem(0)",
+        f"{prefix}_mail.To = {VB_CSTR_HELPER_NAME}({to})",
+        f"{prefix}_mail.Subject = {VB_CSTR_HELPER_NAME}({subject})",
+        f"{prefix}_mail.Body = {VB_CSTR_HELPER_NAME}({body})",
+        f"{prefix}_mail.Send()",
+    ]
+
+
 def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
     """知見96: `HttpClientNode`は知見29以来常に`_generate_unresolved_
     activity`へ倒れていたが、実機フィクスチャで確認された最も単純な構成
@@ -964,10 +1024,18 @@ def _generate_unresolved_activity(node, indent: int) -> list[str]:
     elif isinstance(node, SendOutlookMailNode):
         # 知見93: `node.body`(メール本文そのもの)も知見75で`To`/`Subject`
         # だけを追記した際に見落としていた捕捉済みフィールド。
+        # 知見98: `Cc`/`Bcc`/`Importance`等も専用フィールドへ昇格した
+        # ため、このTODOフォールバックに分岐した理由が分かるよう表示する。
+        extra = {k: v for k, v in sorted(node.extra_attrs.items()) if k != "DisplayName"}
         detail = (
             f" (To={_describe_expr_for_comment(node.to)}, "
             f"Subject={_describe_expr_for_comment(node.subject)}, "
-            f"Body={_describe_expr_for_comment(node.body)})"
+            f"Body={_describe_expr_for_comment(node.body)}, "
+            f"Cc={_describe_expr_for_comment(node.cc)}, "
+            f"Bcc={_describe_expr_for_comment(node.bcc)}, "
+            f"Importance={node.importance!r}, Sensitivity={node.sensitivity!r}, "
+            f"IsBodyHtml={node.is_body_html!r}, IsDraft={node.is_draft!r}"
+            f"{f', ExtraAttrs={extra!r}' if extra else ''})"
         )
     elif isinstance(node, HttpClientNode):
         # 知見92: `node.extra_attrs`(`xaml_tree._parse_http_client`が

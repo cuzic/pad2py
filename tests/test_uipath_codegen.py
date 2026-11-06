@@ -654,10 +654,18 @@ def test_click_with_non_default_cursor_position_is_todo_not_guessed():
             "(Cell='A1', SheetName='Sheet1', Text='hi')",
         ),
         (
+            # 知見98: 単純な構成(Cc/Bcc未設定・Files空・Importance等が確認
+            # 済み既定値)はもはやunresolvedに倒れず実際のwin32comコードを
+            # 生成するため、ここではCcを設定してフォールバックを明示的に
+            # 発生させる(詳細は下記のOutlook専用テスト群を参照)。
             SendOutlookMailNode(
-                to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x")
+                to=Literal(value="a@b.com"),
+                subject=Literal(value="Hi"),
+                body=Literal(value="x"),
+                cc=Literal(value="c@d.com"),
             ),
-            "(To='a@b.com', Subject='Hi', Body='x')",
+            "(To='a@b.com', Subject='Hi', Body='x', Cc='c@d.com', Bcc=(not set), "
+            "Importance=None, Sensitivity=None, IsBodyHtml=None, IsDraft=None)",
         ),
         (
             # 知見96: 単純な構成(Body未設定・コレクション全て空)はもはや
@@ -760,6 +768,66 @@ def test_http_client_todo_includes_extra_attrs():
         "Method='POST', Body='payload', ExtraAttrs={'AcceptFormat': 'JSON'})"
     ) in code
     _compiles(code)
+
+
+def test_send_outlook_mail_generates_real_win32com_call_for_simple_case():
+    """知見98: `Cc`/`Bcc`未設定・`Files`空・`Importance`/`Sensitivity`/
+    `IsBodyHtml`/`IsDraft`が未設定(既定値扱い)という実機フィクスチャで
+    確認済みの構成では、`# TODO`ではなく実際に動く`win32com.client`経由の
+    Outlook送信コードを生成する。"""
+    node = SendOutlookMailNode(
+        to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="hello")
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "import win32com.client" in code
+    assert "_outlook = win32com.client.Dispatch('Outlook.Application')" in code
+    assert "_mail = _outlook.CreateItem(0)" in code
+    assert "_mail.To = _vb_cstr('a@b.com')" in code
+    assert "_mail.Subject = _vb_cstr('Hi')" in code
+    assert "_mail.Body = _vb_cstr('hello')" in code
+    assert "_mail.Send()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"cc": Literal(value="c@d.com")},
+        {"bcc": Literal(value="c@d.com")},
+        {"has_populated_files": True},
+        {"importance": "High"},
+        {"sensitivity": "Confidential"},
+        {"is_body_html": "True"},
+        {"is_draft": "True"},
+    ],
+)
+def test_send_outlook_mail_falls_back_to_todo_for_unconfirmed_fields(kwargs):
+    """知見98: `Cc`/`Bcc`設定済み・`Files`に添付あり・`Importance`等が
+    確認済み既定値以外、のいずれの場合も実直列化形・正確な挙動が実機
+    未確認のため、でっち上げず`# TODO`に倒す(知見71のClickTypeと同じ
+    「確認済みの値だけ安全に対応する」方針)。"""
+    node = SendOutlookMailNode(
+        to=Literal(value="a@b.com"), subject=Literal(value="Hi"), body=Literal(value="x"), **kwargs
+    )
+    wf = _wrap([node])
+    code = generate_python(wf)
+    assert "# TODO: unsupported in v1 codegen: SendOutlookMailNode" in code
+    assert "_mail.Send()" not in code
+    _compiles(code)
+
+
+def test_send_outlook_mail_real_fixture_now_generates_real_code():
+    """知見98: design/evidence/uipath_xaml_probe/Main.xamlの
+    `<ui:SendOutlookMail>`(知見24)はCc/Bcc未設定・Files空・Importance=
+    Normal/Sensitivity=Normal/IsBodyHtml=False/IsDraft=Falseという実機
+    確認済みの単純な構成——これまでは`# TODO`に倒れていたが、今は実際に
+    win32comコードが生成されることを確認する。"""
+    wf = parse_workflow_file(FIXTURE_DIR / "Main.xaml")
+    code = generate_python(wf)
+    assert "win32com.client.Dispatch('Outlook.Application')" in code
+    assert "# TODO: unsupported in v1 codegen: SendOutlookMailNode" not in code
 
 
 def test_unknown_activity_todo_includes_captured_attrs():
@@ -958,14 +1026,17 @@ def test_main_xaml_pipeline_smoke():
     # 知見92: Library呼び出し(p:NewActivity)の引数(in_greeting)は`attrs`
     # 経由でしか見えない捕捉済みデータ——TODOコメントに実際に出ることを確認。
     assert "in_greeting" in code and "hellofromlib" in code
-    # 知見93: SendOutlookMail.Bodyも捕捉済みなのに従来は未表示だった——
-    # TODOコメントに実際に出ることを確認(SendOutlookMailは見送り決定済み
-    # のため引き続きTODO)。
-    assert "Body='body'" in code
     # 知見97: ExcelWriteCell.Textはもはや知見93のTODOコメントではなく、
     # `openpyxl`への実際のセル代入として生成されることを確認。
     assert "openpyxl.load_workbook('wb.xlsx')" in code
     assert "['Sheet1']['A1'] = _vb_cstr('hello')" in code
+    # 知見98: SendOutlookMail.Bodyはもはや知見93のTODOコメントではなく、
+    # `win32com`への実際の`_mail.Body`代入として生成されることを確認
+    # (実機フィクスチャのCc/Bcc/Importance/Sensitivity/IsBodyHtml/IsDraft/
+    # Filesはいずれも確認済みの安全な既定値のため実コード生成される)。
+    assert "win32com.client.Dispatch('Outlook.Application')" in code
+    assert "_mail.Body = _vb_cstr('body')" in code
+    assert "_mail.Send()" in code
 
 
 def test_realistic_workflow_actually_executes_correctly():

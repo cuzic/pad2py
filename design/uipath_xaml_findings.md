@@ -4562,6 +4562,53 @@ SendOutlookMailNode)。回帰テストを更新・追加(スコープ単体で�
 真に未対応な子(InvokeCode)のTODOが引き続き出ることの確認)、UiPath関連
 テスト全280件通過、リポジトリ全体で全1014件通過。
 
+## 98. `SendOutlookMailNode`を実際に`win32com.client`(Outlook COM)へ変換するコード生成を実装——知見70以来TODO固定だった5活動のうち3件目を解消(VM不使用、ユーザーの明示的な意思決定を受けて着手)
+
+知見96(HttpClient)・知見97(Excel)に続き、ユーザー決定済みの`win32com`で
+Outlook連携のコード生成に着手した。
+
+**実機データの再確認**: `Main.xaml`の`<ui:SendOutlookMail>`(知見24)を
+再確認すると、`Cc`/`Bcc`/`Account`/`ReplyTo`/`MailMessage`/`TimeoutMS`は
+いずれも`{x:Null}`、`Files`は`<scg:List Capacity="0" />`(空)、
+`Importance="Normal"`・`Sensitivity="Normal"`・`IsBodyHtml="False"`・
+`IsDraft="False"`——いずれもStudioの既定値のままだった(HttpClientの
+`TimeoutMS`/`AcceptFormat`が知見96で既定値のままと確定したのと同じ構図)。
+
+**公式ドキュメント確認**(learn.microsoft.com、Outlook VBAリファレンス
+——UiPathのSendOutlookMailは内部的にOutlook COMオブジェクトモデルを
+ラップしていると推定されるため、VBA版の公式ドキュメントを根拠にした):
+`OlItemType.olMailItem = 0`、`OlImportance`(`olImportanceLow=0`/
+`olImportanceNormal=1`/`olImportanceHigh=2`)、`OlSensitivity`
+(`olNormal=0`/`olPersonal=1`/`olPrivate=2`/`olConfidential=3`)。
+
+**意図的に確認済みの値のみ対応する設計**(知見71のClickType/MouseButton
+と同じ教訓): UiPathの`ClickType`/`MouseButton`は`CLICK_SINGLE`/
+`BTN_LEFT`という独自トークン名で、一般的な.NET/Outlook語彙とは一致
+しなかった——同じ理由で、`Importance`/`Sensitivity`の実際のXAML直列化
+文字列が確認済みの`"Normal"`以外(`"Low"`/`"High"`/`"Personal"`等)で
+本当にOutlook VBAの英語名と一致するかは未確認のため、`"Normal"`
+(両方とも)・`IsBodyHtml`/`IsDraft`の`"False"`以外は実コード生成せず
+`# TODO`へ安全に倒す。`Cc`/`Bcc`設定済み・`Files`に添付ありの場合も
+同様(添付の追加方法(`Attachments.Add`)自体は標準的だが、実際の値の
+受け渡し形が実機未確認)。
+
+**実装**(`dump_daemon/uipath_dsl/types.py`・`xaml_tree.py`・
+`uipath_codegen/__init__.py`): `SendOutlookMailNode`に`cc`/`bcc`/
+`importance`/`sensitivity`/`is_body_html`/`is_draft`/
+`has_populated_files`/`extra_attrs`を追加(知見92の教訓を活かし、今回は
+最初から`extra_attrs`も用意して同じ「捕捉済みデータの未活用」の再発を
+防いだ)。新設の`_generate_send_outlook_mail`は確認済みの安全な構成の
+場合のみ`win32com.client.Dispatch('Outlook.Application')`→
+`CreateItem(0)`→`To`/`Subject`/`Body`代入(`_vb_cstr()`経由)→`Send()`
+という実コードを生成、それ以外は`_generate_unresolved_activity`の
+`# TODO`へ委ねる(その詳細コメントにも新設フィールドを追記)。
+
+**結果**: カバレッジ79%(23/29、知見97)→83%(24/29)へ向上。知見70の
+未対応5活動は残り2件(ExcelWriteCellNode(※単独評価のみ、知見97参照)/
+InvokeCodeNode)。回帰テスト追加(単純ケースの実コード生成・7種の
+未確認フィールドそれぞれでのTODOフォールバック・実機フィクスチャでの
+確認)、UiPath関連テスト全289件通過、リポジトリ全体で全1024件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

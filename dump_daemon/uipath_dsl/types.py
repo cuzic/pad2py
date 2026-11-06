@@ -311,11 +311,26 @@ class ExcelApplicationScopeNode:
 
 @dataclass
 class SendOutlookMailNode:
-    """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。"""
+    """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
+
+    `cc`/`bcc`/`importance`/`sensitivity`/`is_body_html`/`is_draft`/
+    `has_populated_files`は知見98でコード生成対象に追加した属性(実機
+    確認済みの値は`Cc`/`Bcc`ともに`{x:Null}`、`Importance`/`Sensitivity`
+    ともに`"Normal"`、`IsBodyHtml`/`IsDraft`ともに`"False"`、`Files`は
+    空の`scg:List`)。これら以外の値は実機未確認のためコード生成しない
+    (知見96のHttpClientと同じ「確認済みの既定値のみ対応」方針)。"""
 
     to: Expr
     subject: Expr
     body: Expr
+    cc: Expr = None
+    bcc: Expr = None
+    importance: str | None = None
+    sensitivity: str | None = None
+    is_body_html: str | None = None
+    is_draft: str | None = None
+    has_populated_files: bool = False
+    extra_attrs: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

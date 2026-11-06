@@ -445,11 +445,38 @@ def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScop
     )
 
 
+_SEND_OUTLOOK_MAIL_KNOWN_ATTRS = {
+    "To", "Subject", "Body", "Cc", "Bcc", "Importance", "Sensitivity", "IsBodyHtml", "IsDraft",
+}
+
+
 def _parse_send_outlook_mail(elem: etree._Element) -> SendOutlookMailNode:
+    """知見98: `Cc`/`Bcc`/`Importance`/`Sensitivity`/`IsBodyHtml`/`IsDraft`も
+    `To`/`Subject`/`Body`と同じく専用フィールドへ昇格する。`Files`
+    (`scg:List`プロパティ要素、実機フィクスチャでは`Capacity="0"`で子要素
+    なし)は1件以上のエントリを持つかどうかだけを記録する(知見96の
+    `HttpClient.Headers`と同じ理由——populated時の実直列化形は未確認)。"""
+    extra = {
+        k: v for k, v in elem.attrib.items() if _split_tag(k)[1] not in _SEND_OUTLOOK_MAIL_KNOWN_ATTRS
+    }
+    has_populated_files = False
+    files_elem = _find_property_element(elem, "Files")
+    if files_elem is not None:
+        for list_elem in _direct_children(files_elem):
+            if _direct_children(list_elem):
+                has_populated_files = True
     return SendOutlookMailNode(
         to=_attr_expr(elem, "To"),
         subject=_attr_expr(elem, "Subject"),
         body=_attr_expr(elem, "Body"),
+        cc=_attr_expr(elem, "Cc"),
+        bcc=_attr_expr(elem, "Bcc"),
+        importance=_attr(elem, "Importance"),
+        sensitivity=_attr(elem, "Sensitivity"),
+        is_body_html=_attr(elem, "IsBodyHtml"),
+        is_draft=_attr(elem, "IsDraft"),
+        has_populated_files=has_populated_files,
+        extra_attrs=extra,
     )
 
 

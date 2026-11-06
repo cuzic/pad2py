@@ -39,8 +39,8 @@ Switch/While/DoWhile/Break/Parallel)・Variables/Argumentsの既定値初期化�
 実際にIR・コード生成を追加する)、(2) Excel=`openpyxl`・Outlook=`win32com`で
 実装する、(3) HttpClientのHeaders/Bodyパースを先に進める(知見96で着手・
 最も単純な構成は解消済み)、(4) InvokeCodeは今回は見送る。Excel(知見97、
-openpyxl)も完了済み。残る実質的なタスクはFlowchart本体の実装・Outlookの
-コード生成実装の2つ——それ以外は実データ
+openpyxl)・Outlook(知見98、win32com)も完了済み。残る実質的なタスクは
+Flowchart本体の実装のみ——それ以外は実データ
 での需要が出るまで意図的に見送っている既知の限界(セレクタ属性・配列添字
 曖昧性・相対パス等)であり、v1「完成」の障害とはみなさない。
 
@@ -412,8 +412,10 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
    としての`Write Cell`(知見22で確認済みの実機構造)に限り実コード生成
    (カバレッジ76%→79%)。If/Switch/ループ越しにネストした場合は
    `scope_var`文脈を失うため安全に`# TODO`のまま。
-4. `SendOutlookMailNode`: `win32com`で実装する(ユーザー決定、2026-11-05)
-   ——未着手
+4. **(完了、知見98)** `SendOutlookMailNode`: `win32com`で実装した
+   (ユーザー決定、2026-11-05)——`Cc`/`Bcc`未設定・`Files`空・`Importance`/
+   `Sensitivity`/`IsBodyHtml`/`IsDraft`が確認済み既定値の場合に限り実
+   コード生成(カバレッジ79%→83%)。
 5. `InvokeCodeNode`: 今回は見送る(ユーザー決定、2026-11-05)——インライン
    VB.NETコード(文単位、`uipath_expr`が対応する式単位の範囲外)をPythonへ
    どう変換するか自体が未解決のまま
@@ -1091,3 +1093,17 @@ VB式の変換規則は非常に手厚く検証済み(UiPath関連テスト271�
     (23/29)。知見84の子再帰生成ロジックは専用関数へ完全に移行したため
     死んだコードとして削除。回帰テスト更新・追加、UiPath関連テスト全280件
     通過、リポジトリ全体で全1014件通過。
+58. **(完了、2026-11-05)** `SendOutlookMailNode`の`win32com.client`
+    (Outlook COM)への実コード生成を実装(VM不使用、知見98——知見96・97に
+    続く残タスクB完了): Microsoft Learn(Outlook VBAリファレンス)で
+    `OlItemType.olMailItem=0`・`OlImportance`(Low=0/Normal=1/High=2)・
+    `OlSensitivity`(Normal=0/Personal=1/Private=2/Confidential=3)を確認。
+    `ClickType`/`MouseButton`(知見71)がUiPath独自トークン名だった教訓から、
+    `Importance`/`Sensitivity`の確認済み値(`"Normal"`)以外は実コード
+    生成せず安全に`# TODO`へ倒す——`Cc`/`Bcc`未設定・`Files`空・
+    `IsBodyHtml`/`IsDraft`が`"False"`の場合のみ`Dispatch('Outlook.
+    Application')`→`CreateItem(0)`→`To`/`Subject`/`Body`→`Send()`を
+    生成。`extra_attrs`も最初から用意し知見92の再発を防止。カバレッジ
+    79%→83%(24/29)。知見70の未対応5活動は残り2件
+    (ExcelWriteCellNode/InvokeCodeNode)。回帰テスト追加、UiPath関連
+    テスト全289件通過、リポジトリ全体で全1024件通過。
