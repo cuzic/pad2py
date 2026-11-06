@@ -306,6 +306,11 @@ def find_and_replace_in_datatable_everywhere(
     セル全体をそのまま置換、それ以外は`ReplaceString()`相当(大文字小文字を区別した/しない
     部分文字列置換、置換後の文字列中の元のケースは保持しない——decompile確認済みの通り
     置換文字列自体をそのまま挿入するだけ)。
+
+    知見183(decompile確認済みの追記): `use_regex`/それ以外(`match_entire_cell_contents`を
+    除く)の2分岐は、置換後に元のセルの型(`int`/`float`)へ変換し直す
+    (`_convert_replaced_text_to_original_type()`参照)——`match_entire_cell_contents`のみ
+    型変換を経由せず常に文字列になる、decompile確認済みの非対称性。
     """
     import re
 
@@ -321,18 +326,49 @@ def find_and_replace_in_datatable_everywhere(
             matches.append((row_idx, col_idx))
             text = str(cell)
             if use_regex:
-                row[col_name] = re.sub(value_to_find, text_to_replace_with, text)
+                # 知見183(decompile確認済み): `UseRegex`分岐も`TryReplaceCellContent()`を
+                # 経由するため、置換後に元のセルの型へ変換し直す。
+                row[col_name] = _convert_replaced_text_to_original_type(
+                    re.sub(value_to_find, text_to_replace_with, text), cell
+                )
             elif match_entire_cell_contents:
+                # decompile確認済み: `DataTable.Rows[row][column] = TextToReplaceWith;`の
+                # 直接代入のみで、`TryReplaceCellContent()`を経由しない——型変換は無く
+                # 常に文字列になる(他の2分岐との非対称性、でっち上げではなく実機の挙動)。
                 row[col_name] = text_to_replace_with
             elif match_case:
-                row[col_name] = text.replace(value_to_find, text_to_replace_with)
+                row[col_name] = _convert_replaced_text_to_original_type(
+                    text.replace(value_to_find, text_to_replace_with), cell
+                )
             else:
-                row[col_name] = re.sub(
-                    re.escape(value_to_find), text_to_replace_with, text, flags=re.IGNORECASE
+                row[col_name] = _convert_replaced_text_to_original_type(
+                    re.sub(re.escape(value_to_find), text_to_replace_with, text, flags=re.IGNORECASE),
+                    cell,
                 )
             if not all_matches:
                 return matches
     return matches
+
+
+def _convert_replaced_text_to_original_type(text: str, original_cell: object) -> object:
+    """design/dsl_format_findings.md 知見183(decompile確認済み): `FindOrReplaceForCell`の
+    `TryReplaceCellContent()`は、置換後の文字列を`Converter.ConvertToType(text, type, ...)`で
+    元のセルの型へ変換し直す——`int`/`float`のみ確信を持って変換できる(標準的なパース、
+    .NETの`Convert.ToInt32`/`ToDouble`相当)。`bool`/日付等の他の型への変換規則は実機未確認
+    のため、でっち上げずそのまま文字列のままにする(変換前の挙動を維持、部分的な対応)。
+    """
+    original_type = type(original_cell)
+    if original_type is int:
+        try:
+            return int(text)
+        except ValueError:
+            return text
+    if original_type is float:
+        try:
+            return float(text)
+        except ValueError:
+            return text
+    return text
 
 
 def find_item_in_datatable_everywhere(

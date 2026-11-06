@@ -2968,3 +2968,15 @@ OOXMLでは`<w:bookmarkStart w:name="..." w:id="N"/>`と`<w:bookmarkEnd w:id="N"
 試験後は即座にクリーンアップした: 検索語入力が失敗したため何も入力されておらず、Designerの`Button "Close window"` `.invoke()`で未保存確認ダイアログも出ずに正常終了(アクション0件のまま)。`pad2py_kbadd_probe`という名前の空のフロー自体はPADのフロー一覧に残存(前回の`pad2py_populate_probe`と同じ、実害の無いコスメティックな残骸)。
 
 `design/pad_todo.md`・`memory: pad2py_clipboard_paste_technique`を更新: `PopulateTextFieldInWindow`等のUI操作系action_idの実機動作確認は、`type_keys()`系の操作が全滅している現在の状態では**RDP接続以外に有効な代替手段が無い**と確定した。`.invoke()`ベースの操作(ボタン押下・Run実行)のみは引き続き安全に使える。
+
+## 183. 知見176で新規実装した`Variables.FindOrReplaceInDataTable`のReplace系4セレクタに、自分自身が気づかずに持ち込んでいた型保持の欠落を発見・修正——過去に別セッションが3回(知見123/125/135)記録していた既知の懸念を、実装時に見落としていたと判明
+
+知見176の実装を見直すため`find_and_replace_in_datatable_everywhere()`を`grep`していたところ、`design/dsl_format_findings.md`の過去の知見(知見123/125/135、いずれも本tick以前の別セッションが記録)に、**全く同じ4セレクタについて「既存の`find_or_replace_in_datatable()`には型保持処理が無いため意図的に見送った」という記録が既に3回**(知見123で発見、知見125・135で再確認のたび「方針は変更無し」と繰り越されていた)されていたと気づいた——つまり、知見176で私がこの4セレクタを新規結線した際、過去に同じ懸念が記録されていたことを**確認せずに実装してしまい、同じギャップをそのまま持ち込んでいた**。
+
+decompileした`FindOrReplaceForCell()`の`TryReplaceCellContent()`を再確認すると、`UseRegex`分岐・素の部分文字列置換分岐(`MatchEntireCellContents`以外の2分岐)は、置換後の文字列を`Converter.ConvertToType(text, type, ...)`で**元のセルの型(例: `int`なら`int(35)`)へ変換し直す**——知見176の実装はこの変換を一切行わず、常に文字列を代入していた(例: セル`100`(int)を`"100"→"200"`に部分置換すると、実機では`int(200)`になるはずが、知見176の実装では文字列`"200"`になってしまう潜在バグ)。既存のテスト(知見176で追加した8件)は全て文字列セルのみを使っており、この型保持の欠落を一度も検出できていなかった。
+
+**修正**: `_convert_replaced_text_to_original_type()`を新規追加し、`int`/`float`のみ確信を持って変換(標準的な`int()`/`float()`パース、.NETの`Convert.ToInt32`/`ToDouble`相当)、他の型(`bool`/日付等、実機の変換規則が未確認)はそのまま文字列のままにする(でっち上げない、部分対応)。`UseRegex`分岐・部分文字列置換分岐の両方に適用。`MatchEntireCellContents`分岐は decompile確認済みの通り`TryReplaceCellContent()`を経由せず直接代入のみ(`DataTable.Rows[row][column] = TextToReplaceWith;`)なので、型変換を**意図的に適用しない**(常に文字列になる非対称性こそが実機の正しい挙動)。
+
+**教訓**: 新しいaction_idを結線する前に、同じ名前(関数名・action_id)で過去に記録された知見を`grep`で確認する習慣が、今回は不十分だった——知見123/125/135という3回分の既存記録が`design/dsl_format_findings.md`に既にあったにもかかわらず、知見176の作業時にこれらを検索せずに実装してしまった。今後、既存の`pad_action_lib`関数を再利用・置き換える際は、その関数名で知見ログ全体を検索し、過去に記録された既知のギャップが解消されているかを確認するステップを必須にする。
+
+実装: `pad_action_lib/variables_actions.py`に`_convert_replaced_text_to_original_type()`を追加し、`find_and_replace_in_datatable_everywhere()`の`use_regex`/素の部分文字列置換の2分岐に適用。テストは`tests/test_pad_action_lib_variables.py`に3件追加(`int`保持・`float`保持・`MatchEntireCellContents`の非対称性確認)。VM不要。

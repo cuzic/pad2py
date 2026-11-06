@@ -340,6 +340,11 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
     (未使用だった旧`find_or_replace_in_datatable()`を置き換え)。副産物として
     `_cell_matches()`のregex分岐が実機と逆(常にIGNORECASEを付与していたが実機は常に
     大文字小文字を区別)という既存の潜在バグも発見・修正した。VM不要。
+    **自己訂正(知見183)**: 知見176の実装自体に、過去に別セッションが3回(知見123/
+    125/135)記録していた既知の懸念(「置換後のセル型を元の型へ戻す処理が無い」)を
+    見落として持ち込んでいたと判明——`_convert_replaced_text_to_original_type()`を
+    追加し、`int`/`float`のみ型変換を復元した(`bool`/日付等は実機未確認のため文字列
+    のまま、`MatchEntireCellContents`は decompile確認済みの非対称性で意図的に非変換)。
 - [x] 🖥️ 型混在の`+`(数値+文字列等)のディスパッチルール(`ExpressionCalculator`/`CalculatorBase<T>`)調査。
   ✅ **実機確認・結線完了(知見86)**: VMが空いたタイミングで知見81の手法を使い、
   `1 + $'''2'''` = `3`・`$'''2''' + 1` = `3`・`$'''a''' + $'''b'''` = `"ab"`を

@@ -250,6 +250,32 @@ def test_find_and_replace_in_datatable_everywhere_use_regex_is_case_sensitive() 
     assert table == [{"a": "MATCHED"}, {"a": "ORDER-456"}]
 
 
+def test_find_and_replace_in_datatable_everywhere_substring_preserves_int_type() -> None:
+    # design/dsl_format_findings.md 知見183(decompile確認済み): `TryReplaceCellContent()`が
+    # 置換後の文字列を元のセルの型(`int`)へ変換し直す——部分文字列置換の場合。
+    table = [{"a": 100}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, "100", "200")
+    assert matches == [(0, 0)]
+    assert table == [{"a": 200}]
+    assert isinstance(table[0]["a"], int)
+
+
+def test_find_and_replace_in_datatable_everywhere_regex_preserves_float_type() -> None:
+    table = [{"a": 12.5}]
+    matches = va.find_and_replace_in_datatable_everywhere(table, r"12\.5", "99.75", use_regex=True)
+    assert matches == [(0, 0)]
+    assert table == [{"a": 99.75}]
+    assert isinstance(table[0]["a"], float)
+
+
+def test_find_and_replace_in_datatable_everywhere_entire_cell_contents_does_not_preserve_type() -> None:
+    # decompile確認済みの非対称性: `MatchEntireCellContents`は型変換を経由せず常に文字列になる。
+    table = [{"a": 100}]
+    va.find_and_replace_in_datatable_everywhere(table, "100", "200", match_entire_cell_contents=True)
+    assert table == [{"a": "200"}]
+    assert isinstance(table[0]["a"], str)
+
+
 def test_find_and_replace_in_datatable_everywhere_all_matches_false_stops_at_first() -> None:
     table = [{"a": "x", "b": "x"}, {"a": "x", "b": "x"}]
     matches = va.find_and_replace_in_datatable_everywhere(table, "x", "y", all_matches=False)
