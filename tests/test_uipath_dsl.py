@@ -60,6 +60,7 @@ from dump_daemon.uipath_dsl import (
     WhileNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WriteLineNode,
     parse_activity,
     parse_workflow_file,
 )
@@ -556,6 +557,19 @@ def test_comment_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, CommentNode)
     assert node.text == "// Attach a browser"
+
+
+def test_write_line_properties():
+    """知見147: `WriteLine`(.NET Workflow Foundation本体の標準活動、
+    `WF_NS`——UiPath独自ではないため`ui:`接頭辞が無い)。`RealBenTen10/
+    Handle-Order`等、実機検証を通じて非常に高頻度で「unknown activity」
+    として素通りしていたことが判明——基本的な活動にも関わらず長らく
+    未実装だった。"""
+    xml = f'<WriteLine {_UI_XMLNS} DisplayName="Print it" Text="[&quot;hi&quot;]" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteLineNode)
+    assert node.text == VbExpr(text='"hi"')
+    assert node.display_name == "Print it"
 
 
 def test_log_message_properties():

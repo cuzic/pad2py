@@ -89,6 +89,7 @@ from dump_daemon.uipath_dsl import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteLineNode,
     parse_workflow_file,
 )
 
@@ -3623,6 +3624,32 @@ def test_comment_with_multiline_text_generates_one_comment_per_line():
     code = generate_python(wf)
     assert "# line one" in code
     assert "# line two" in code
+    _compiles(code)
+
+
+def test_write_line_maps_to_print():
+    """知見147: `WriteLine`(.NET Workflow Foundation本体の標準活動)は
+    `print()`と直接対応する——`RealBenTen10/Handle-Order`等、実機検証を
+    通じて非常に高頻度で「unknown activity」として素通りしていたことが
+    判明した基本的な活動。"""
+    wf = _wrap([WriteLineNode(text=Literal(value="hi"))])
+    code = generate_python(wf)
+    assert "print(_vb_cstr('hi'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_write_line_display_name_becomes_a_comment():
+    wf = _wrap([WriteLineNode(text=Literal(value="hi"), display_name="Say hi")])
+    code = generate_python(wf)
+    assert "# Say hi" in code
+    _compiles(code)
+
+
+def test_write_line_with_no_text_is_todo_not_guessed():
+    wf = _wrap([WriteLineNode(text=None)])
+    code = generate_python(wf)
+    assert "# TODO: Write Line with no Text captured" in code
     _compiles(code)
 
 

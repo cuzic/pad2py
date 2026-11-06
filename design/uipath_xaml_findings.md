@@ -6951,6 +6951,51 @@ property`/`_apply_chained_call`/`_render_node`のIdent分岐に
 `string.concat`分岐を追加。`tests/test_uipath_codegen.py`に9件
 追加、UiPath関連テスト全554件通過、リポジトリ全体で全1506件通過。
 
+## 147. 【見落とし発見】`WriteLine`(.NET Workflow Foundation本体の基本活動)が完全に未実装だったことを発見・実装(未使用の新規18リポジトリでの実機検証、VM不使用)
+
+知見117〜146の手法を未使用の新規18リポジトリへ適用する過程で、
+`WriteLine`(`http://schemas.microsoft.com/netfx/2009/xaml/activities`
+——`WF_NS`、UiPath独自の活動ではなく.NET Workflow Foundation本体の
+標準活動)が`uipath_dsl`/`uipath_codegen`のどこにも実装されていない
+ことに気づいた——この実機検証を通じて「unknown activity (Write
+Line)」という`# TODO`コメントが非常に高頻度(本セッションの複数の
+batchで繰り返し)で出現していたにも関わらず、個々のbatchでは「この
+活動は未実装」という個別の事実としてしか認識しておらず、「これほど
+基本的な活動が丸ごと欠けている」という体系的な見落としとして気づく
+のに時間がかかっていた——知見184(PAD側の`Display.ShowMessageDialog`
+未結線の発見、別セッションの知見)と同種の「基本的すぎて見落とされて
+いた機能」というパターン。
+
+**実装**: `WriteLine`は`Console.WriteLine`相当で、Pythonの`print()`
+と直接対応する——`MessageBox`(知見79)と違い対話的なブロッキングや
+ユーザーの選択を伴わない単純なテキスト出力のため、でっち上げの懸念が
+無い直接対応。`Text`属性は動的な式(VBの`&`連結式含む)が確認済みの
+ため`Expr`として扱い、`_vb_cstr()`(知見46)経由で文字列化してから
+`print()`に渡す——`_vb_cstr`を使う理由はVBの`&`演算子と同じ変換規則に
+揃えるため(非文字列値を渡された場合の見た目の一致)。
+
+**効果の大きさ**: 実装後、同じ新規18リポジトリの再検証で複数ファイルの
+`# TODO`件数が大幅に減少した(例:`RealBenTen10/Handle-Order`は10件→
+4件、他の数ファイルは`WriteLine`のみが残っていた`# TODO`だったため
+0件に)——他の個別の静的メソッド追加1つあたりの効果より明らかに大きい、
+基本活動の見落としを埋めることの価値を実証した。
+
+**新たに発見した未解決事項(コード変更無し)**: `new DriveInfo(“C”)`
+(`saurabhshaan/Disk-Monitoring-and-Clean-Up-Robot`)は(1)VB.NETの
+一般的なオブジェクト構築構文`New ClassName(args)`(知見125の配列専用
+構文とは別の、まだ未対応の構文領域)、(2)引用符がタイプライター風の
+曲線引用符(`“”`、直線の`"`ではない)という、元のソースデータ自体が
+破損している(実際の.NETコンパイラでもこのままではコンパイルエラーに
+なるはず)という2つの問題が重なったケース——本トランスパイラの責任
+範囲外の破損データとして見送る。
+
+`dump_daemon/uipath_dsl/types.py`に`WriteLineNode`、`xaml_tree.py`に
+`_parse_write_line`+`(WF_NS, "WriteLine")`の`_DISPATCH`登録、
+`uipath_codegen/__init__.py`に`_generate_write_line`/`_generate_
+write_line_body`を追加。`tests/test_uipath_dsl.py`に1件・`tests/
+test_uipath_codegen.py`に3件追加、UiPath関連テスト全558件通過、
+リポジトリ全体で全1524件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -75,6 +75,7 @@ from .types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteLineNode,
 )
 
 # 知見1〜36で確認済みの主要XML名前空間URI。
@@ -773,6 +774,13 @@ def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
 
+def _parse_write_line(elem: etree._Element) -> WriteLineNode:
+    return WriteLineNode(
+        text=_attr_expr(elem, "Text"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _LOG_LEVEL_ENUM_PREFIX = "UiPath.Core.Activities.LogLevel."
 
 
@@ -1222,6 +1230,7 @@ _DISPATCH = {
     (WF_NS, "TryCatch"): _parse_try_catch,
     (WF_NS, "Switch"): _parse_switch,
     (WF_NS, "Parallel"): _parse_parallel,
+    (WF_NS, "WriteLine"): _parse_write_line,
     (UI_NS, "MessageBox"): _parse_message_box,
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,

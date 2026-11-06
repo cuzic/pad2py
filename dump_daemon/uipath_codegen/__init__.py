@@ -99,6 +99,7 @@ from ..uipath_dsl.types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteLineNode,
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
 from ..uipath_selector import selector_text_to_pywinauto
@@ -457,6 +458,8 @@ def _generate_node(
         return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, CommentNode):
         return _generate_comment(node, indent)
+    if isinstance(node, WriteLineNode):
+        return _generate_write_line(node, indent)
     if isinstance(node, LogMessageNode):
         return _generate_log_message(node, indent)
     if isinstance(
@@ -2087,6 +2090,27 @@ def _generate_comment(node: CommentNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = node.text.splitlines() or [""]
     return [f"{prefix}# {line}" for line in lines]
+
+
+# 知見147: `WriteLine`(.NET Workflow Foundation本体の標準活動、UiPath
+# 独自ではない)。`Console.WriteLine`相当で、Pythonの`print()`と直接
+# 対応する——`MessageBox`(知見79)と違い対話的なブロッキング・ユーザー
+# の選択を伴わないため、でっち上げの懸念が無い単純な変換。
+def _generate_write_line(node: WriteLineNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_write_line_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_write_line_body(node: WriteLineNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.text is None:
+        return [f"{prefix}# TODO: Write Line with no Text captured"]
+    todo: list[str] = []
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}print({VB_CSTR_HELPER_NAME}({text}))"]
 
 
 # 知見119: `ui:LogMessage`。実機確認済みの`Level`は`"Info"`/`"Error"`のみ

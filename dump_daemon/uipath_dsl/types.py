@@ -643,6 +643,23 @@ class CommentNode:
 
 
 @dataclass
+class WriteLineNode:
+    """`<WriteLine Text="..." />`(知見147、`System.Activities.
+    Statements.WriteLine`——UiPath独自活動ではなく.NET Workflow
+    Foundation本体の標準活動、`WF_NS`名前空間。`RealBenTen10/
+    Handle-Order`等、この実機検証を通じて非常に高頻度で「unknown
+    activity」として素通りしていたことが判明——基本的な活動にも関わらず
+    長らく未実装だった)。`Text`は動的な式が確認済み(VBの`&`連結式含む)
+    のため`Expr`として扱う。`Console.WriteLine`相当で、Pythonの
+    `print()`と直接対応する——`MessageBox`(知見79)と違い、対話的な
+    ブロッキングやユーザーの選択を伴わない単純なテキスト出力のため
+    「でっち上げ」の懸念が無い。"""
+
+    text: Expr
+    display_name: str | None = None
+
+
+@dataclass
 class LogMessageNode:
     """`<ui:LogMessage Level="..." Message="..." />`(知見119、
     `UiPath.System.Activities`、`PacktPublishing/
@@ -1053,6 +1070,7 @@ Node = (
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode
+    | WriteLineNode
     | LogMessageNode
     | ExcelReadCellNode
     | ExcelWriteCellNode

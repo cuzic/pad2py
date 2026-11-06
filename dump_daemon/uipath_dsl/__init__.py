@@ -69,6 +69,7 @@ from .types import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WorkflowFile,
+    WriteLineNode,
 )
 from .xaml_tree import parse_activity, parse_workflow_file
 
@@ -131,6 +132,7 @@ __all__ = [
     "WordApplicationScopeNode",
     "WordReplaceTextNode",
     "WorkflowFile",
+    "WriteLineNode",
     "parse_activity",
     "parse_workflow_file",
 ]
