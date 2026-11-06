@@ -22,6 +22,7 @@ from dump_daemon.uipath_dsl import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseApplicationNode,
     CloseTabNode,
     CommentNode,
     CopyFileNode,
@@ -977,6 +978,40 @@ def test_close_tab_with_browser_variable_reference():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, CloseTabNode)
     assert node.browser == VbExpr(text="firefox")
+
+
+def test_close_application_selector_and_properties():
+    """知見171: `ui:CloseApplication`(GitHub code searchで532件
+    ヒット)。`Target`+`DisplayName`/`ContinueOnError`のみという
+    `Activate`(知見162)と同じ属性構成——実機
+    `allenlooplee/RPABook`(`CloseNotepad.xaml`)で確認。"""
+    xml = (
+        f"<ui:CloseApplication {_UI_XMLNS} DisplayName=\"Close application\">"
+        "<ui:CloseApplication.Target>"
+        "<ui:Target Selector=\"&lt;wnd app='notepad.exe' /&gt;\" />"
+        "</ui:CloseApplication.Target>"
+        "</ui:CloseApplication>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseApplicationNode)
+    assert "notepad.exe" in node.selector
+    assert node.display_name == "Close application"
+    assert node.continue_on_error is None
+
+
+def test_close_application_no_selector():
+    """実機`HarshadRanganathan/uipath-learning`(`Web_Recording.xaml`)で
+    確認した`Selector="{x:Null}"`(未設定)のケース。"""
+    xml = (
+        f"<ui:CloseApplication {_UI_XMLNS} DisplayName=\"Close application\">"
+        "<ui:CloseApplication.Target>"
+        '<ui:Target Selector="{x:Null}" />'
+        "</ui:CloseApplication.Target>"
+        "</ui:CloseApplication>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CloseApplicationNode)
+    assert node.selector is None
 
 
 def test_log_message_properties():

@@ -43,6 +43,7 @@ from dump_daemon.uipath_dsl import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseApplicationNode,
     CloseTabNode,
     CommentNode,
     CopyFileNode,
@@ -2021,6 +2022,57 @@ def test_kill_process_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: KillProcess with ContinueOnError set" in code
+    _compiles(code)
+
+
+_CLOSE_APPLICATION_SELECTOR = "<wnd cls='Notepad' />"
+
+
+def test_close_application_with_known_selector_generates_close():
+    """知見171: `ui:CloseApplication`(GitHub code searchで532件
+    ヒット)。pywinautoの`close()`(`WM_CLOSE`送信、実機確認済み
+    `.venv`のソースで`post_message(win32defines.WM_CLOSE)`を直接
+    呼ぶ標準API)が直接対応する。"""
+    wf = _wrap([CloseApplicationNode(selector=_CLOSE_APPLICATION_SELECTOR)])
+    code = generate_python(wf)
+    assert ".close()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_close_application_display_name_becomes_a_comment_even_when_falling_back_to_todo():
+    wf = _wrap([CloseApplicationNode(selector=None, display_name="Close application")])
+    code = generate_python(wf)
+    assert "# Close application" in code
+    assert "# TODO: CloseApplication with no selector captured" in code
+    _compiles(code)
+
+
+def test_close_application_with_no_selector_is_todo():
+    wf = _wrap([CloseApplicationNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: CloseApplication with no selector captured" in code
+    _compiles(code)
+
+
+def test_close_application_with_unmappable_selector_is_todo():
+    wf = _wrap([CloseApplicationNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: CloseApplication selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_close_application_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CloseApplicationNode(
+                selector=_CLOSE_APPLICATION_SELECTOR, continue_on_error=Literal(value="True")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CloseApplication with ContinueOnError set" in code
+    assert ".close()" not in code
     _compiles(code)
 
 

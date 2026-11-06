@@ -8083,6 +8083,55 @@ send_keys`の`import`検出条件を`_collect_imports`に追加。実機XAML
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
 UiPath関連テスト全699件通過、リポジトリ全体で全1739件通過。
 
+## 171. `ui:CloseApplication`(GitHub code searchで532件ヒット)を新規実装——pywinautoの`close()`(`WM_CLOSE`送信)で`ActivateNode`の`set_focus()`とは別の専用ノード型に
+
+知見170の`ui:CloseTab`に続き、同じ「閉じる」系活動の兄弟として
+`ui:CloseApplication`(GitHub code searchで532件ヒット)を調査した。
+実機3件(`HarshadRanganathan/uipath-learning`の`Web_Recording.xaml`・
+`piyushagarwal08/JU-Notes`のBlankProcess1`Main.xaml`・
+`allenlooplee/RPABook`の`CloseNotepad.xaml`)で確認した構造は`Target`
++`DisplayName`/`ContinueOnError`のみ——知見162の`ui:Activate`と完全に
+同一の属性構成。
+
+ただし`ActivateNode`は再利用しなかった。属性構成が同一でも、生成する
+pywinauto呼び出しの意味が全く違う——`Activate`は`set_focus()`
+(フォーカス切替のみ、副作用なし)だが、`CloseApplication`は
+`close()`(実機確認した`.venv`の`pywinauto/controls/hwndwrapper.py`
+の実装で`self.post_message(win32defines.WM_CLOSE)`を送る、ウィンドウ
+を実際に閉じる副作用のある操作)。`AttachWindowNode`を`WindowScope`/
+`BrowserScope`で再利用した「透過スコープ」族(知見158・161)とは違い、
+これは「実際に効果を起こす」活動同士なので、属性構成の一致だけを
+理由にノード型を共有すると生成コードの意図(フォーカス切替か、
+ウィンドウを閉じるか)が型レベルで読み取れなくなる——ノード型は
+最終的な副作用の意味論で分けるべきだという判断。
+
+実機3件で選択肢を確認:
+- `HarshadRanganathan/uipath-learning`: `Selector="{x:Null}"`(未設定)
+  →`# TODO: CloseApplication with no selector captured`
+- `piyushagarwal08/JU-Notes`: 同じく`Selector="{x:Null}"`(ただし
+  `OpenApplication.Body`の内側にネストされており、`OpenApplication`
+  自体が`Arguments`設定時に未対応のため`# TODO`止まりで本体が
+  展開されない——既知の別ギャップ、本調査の対象外)
+- `allenlooplee/RPABook`: `Selector="<wnd app='notepad.exe' cls='Notepad'
+  title='TestLog*' />"`(マッピング可能なセレクタ)→
+  `Desktop(backend="uia").window(class_name='Notepad',
+  title='TestLog*').close()`
+
+`dump_daemon/uipath_dsl/types.py`に`CloseApplicationNode(selector,
+display_name, continue_on_error)`、`xaml_tree.py`に
+`_parse_close_application`+`(UI_NS, "CloseApplication")`の
+`_DISPATCH`登録(`_target_selector`共通ヘルパー、知見163を再利用)、
+`uipath_codegen/__init__.py`に`_generate_close_application`/
+`_generate_close_application_body`(`Activate`の決定木——`selector`
+無し→`# TODO`、`continue_on_error`設定時→`# TODO`、セレクタが
+マッピング不能→`# TODO`、それ以外は`close()`——をそのまま流用)を
+追加。実機XAML(`allenlooplee/RPABook`の`CloseNotepad.xaml`)で
+`generate_python()`+`compile()`を実行し、
+`Desktop(backend="uia").window(...).close()`が正しく生成されることを
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全704件通過、
+リポジトリ全体で全1746件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

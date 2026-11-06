@@ -2207,3 +2207,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      で`send_keys('^w')`の生成を確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
      UiPath関連テスト全699件通過、リポジトリ全体で全1739件通過。
+
+129. **(完了、2026-11-06)** `ui:CloseApplication`(GitHub code search
+     で532件ヒット)を新規実装(知見171): `Target`+`DisplayName`/
+     `ContinueOnError`のみという`Activate`(知見162)と同じ属性構成だが、
+     `set_focus()`(副作用なし)とは別の`close()`(`WM_CLOSE`送信、実際
+     にウィンドウを閉じる)を生成するため、専用の`CloseApplicationNode`
+     とした(属性構成が同じでも副作用の意味論が違うノード型は共有
+     しない判断)。実機3件で確認、1件はマッピング可能なセレクタで
+     `.close()`生成を確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     2件・`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全704件
+     通過、リポジトリ全体で全1746件通過。

@@ -67,6 +67,7 @@ from ..uipath_dsl.types import (
     BuildDataTableNode,
     CheckNode,
     ClickNode,
+    CloseApplicationNode,
     CloseTabNode,
     CommentNode,
     CopyFileNode,
@@ -475,6 +476,8 @@ def _generate_node(
         return _generate_check(node, indent)
     if isinstance(node, HighlightNode):
         return _generate_highlight(node, indent)
+    if isinstance(node, CloseApplicationNode):
+        return _generate_close_application(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
     if isinstance(node, CloseTabNode):
@@ -1523,6 +1526,38 @@ def _generate_highlight(node: HighlightNode, indent: int) -> list[str]:
         "debugging aid, no automation effect to reproduce"
     ]
     return _with_scope_child_display_name(node, lines, prefix)
+
+
+# 知見171: `ui:CloseApplication`(GitHub code searchで532件ヒット)。
+# `Target`+`DisplayName`/`ContinueOnError`のみという`Activate`(知見162)
+# と同じ属性構成だが、生成コードはpywinautoの`close()`(`WM_CLOSE`送信、
+# 実際にウィンドウを閉じる)——`set_focus()`(副作用なし)とは全く別の
+# 効果なので、`ActivateNode`は再利用せず専用のノード型にした。
+def _generate_close_application(node: CloseApplicationNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_close_application_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_close_application_body(node: CloseApplicationNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: CloseApplication with no selector captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: CloseApplication with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: CloseApplication selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{rendered.expr}.close()")
+    return lines
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——

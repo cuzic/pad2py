@@ -27,6 +27,7 @@ from .types import (
     CatchArm,
     CheckNode,
     ClickNode,
+    CloseApplicationNode,
     CloseTabNode,
     CommentNode,
     CopyFileNode,
@@ -643,6 +644,14 @@ def _parse_highlight(elem: etree._Element) -> HighlightNode:
         display_name=_attr(elem, "DisplayName"),
         color=_attr(elem, "Color"),
         highlight_time=_attr_expr(elem, "HighlightTime"),
+    )
+
+
+def _parse_close_application(elem: etree._Element) -> CloseApplicationNode:
+    return CloseApplicationNode(
+        selector=_target_selector(elem),
+        display_name=_attr(elem, "DisplayName"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
     )
 
 
@@ -1550,6 +1559,7 @@ _DISPATCH = {
     (UI_NS, "Activate"): _parse_activate,
     (UI_NS, "Check"): _parse_check,
     (UI_NS, "Highlight"): _parse_highlight,
+    (UI_NS, "CloseApplication"): _parse_close_application,
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "SetFocus"): _parse_activate,

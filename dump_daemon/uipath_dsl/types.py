@@ -463,6 +463,25 @@ class HighlightNode:
 
 
 @dataclass
+class CloseApplicationNode:
+    """`<ui:CloseApplication>`(知見171、GitHub code searchで532件
+    ヒット)。`Target`+`DisplayName`/`ContinueOnError`のみという、
+    `ActivateNode`(知見162)と全く同じ属性構成——実機3件
+    (`HarshadRanganathan/uipath-learning`・`piyushagarwal08/JU-Notes`・
+    `allenlooplee/RPABook`)で確認。`ActivateNode`を再利用せず新規に
+    ノード型を分けたのは、生成するpywinauto呼び出しが`set_focus()`
+    (フォーカス切替、副作用なし)とは全く異なる`close()`
+    (`WM_CLOSE`送信、ウィンドウを実際に閉じる)になるため——
+    `AttachWindowNode`のような「透過スコープ」族と違い、これは
+    「実際に効果を起こす」活動であり、ノード型を共有すると
+    生成コードの意図が不明瞭になるという判断。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    continue_on_error: Expr = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -1537,6 +1556,7 @@ Node = (
     | ActivateNode
     | CheckNode
     | HighlightNode
+    | CloseApplicationNode
     | KillProcessNode
     | CloseTabNode
     | TypeIntoNode
