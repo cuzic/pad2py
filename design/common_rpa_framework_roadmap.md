@@ -62,6 +62,11 @@ class ErrorHandlingNode:
   この節は訂正せずに残す。
 - `ActionCallNode`(文字列キー+辞書の汎用レコード)は、UiPathが現在活動ごとに専用dataclass(`MessageBoxNode`/`ClickNode`等、11種+`UnknownActivityNode`)を持っている構造からの**移行コストを伴う**——ただし移行する価値は高い。専用dataclassは活動が増えるたびに型を増やす必要があるが、汎用レコードは「新しい活動=新しいaction_idの文字列」でしかなく、PAD側で116アクションまで線形にスケールした実績がある。
 - `ErrorHandlingNode`: PADの`GuardedNode`(直前の文に遡及的に付与)とUiPathの`TryCatchNode`(先頭から囲む)は**構築方向が逆**で、これは単なる命名の違いではなく実際のツールの挙動差である。共有型に無理に1つの構築手順を強制せず、`attachment`フィールドで明示する(でっち上げない方針をIR設計自体にも適用する)。
+  **2026-11-05追記(この見立ても`ConditionalNode`/`IfNode`と同じ理由で撤回)**: 実際の
+  両トラックの型(`GuardedNode`/`OnErrorNode`の判別子`case_name`は任意ラベル、
+  `TryCatchNode`/`CatchArm`の判別子`exception_type`は実際の.NET型、`finally_body`/
+  `variables`はUiPath専用)を読んだ結果、`attachment`1フィールドでは吸収できない
+  非対称性が複数あると判明し、Phase 2で**統合しない**と決定した。
 
 ### 層2: 「でっち上げない」を型で強制する変換結果の契約
 
@@ -161,7 +166,7 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
 
 | 層 | 現状 | 評価 |
 |---|---|---|
-| 1. 共通IR | `Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は`rpa_ir`へ移行済み(PAD側、UiPath側は見送り中)。`SwitchNode`は見た目ほど同形ではないと判明(PADは比較演算子付き`CASE`、UiPathは等価専用)——共通`Arm`型に`operator: str | None`を加える設計は決定済みだが実装は未着手。`ConditionalNode`(N-ary)↔`IfNode`(binary)は**統合しない方針で確定**(構築コストが非対称、どちらのcodegenも得をしないため)。`GuardedNode`(遡及付与)↔`TryCatchNode`(先頭包含)は構築方向こそ逆だが、`ErrorHandlingNode`+`attachment`フィールドでの統合案は素描時点から決定済み(実装は未着手)。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass(未着手)。 | **Value系は着手済み、他は「統合しない」決定を含めて設計が進んだ** |
+| 1. 共通IR | `Value`系(`Literal`/`VarRef`/`RawExpr`/`EnumRef`)は`rpa_ir`へ移行済み(PAD側、UiPath側は見送り中)。`SwitchNode`は見た目ほど同形ではないと判明(PADは比較演算子付き`CASE`、UiPathは等価専用)——共通`Arm`型に`operator: str | None`を加える設計は決定済みだが実装は未着手。`ConditionalNode`(N-ary)↔`IfNode`(binary)は**統合しない方針で確定**(構築コストが非対称、どちらのcodegenも得をしないため)。`GuardedNode`(遡及付与、判別子は任意ラベル`case_name`)↔`TryCatchNode`(先頭包含、判別子は実際の.NET型`exception_type`、`finally_body`/`variables`はUiPath専用)も`ConditionalNode`/`IfNode`と同じ理由で**統合しない方針で確定**。`ActionCallNode`相当はPAD側のみ汎用化済み、UiPathは活動ごとの専用dataclass(未着手)。 | **Value系は着手済み、他は「統合しない」決定を含めて設計が進んだ** |
 | 2. 型での契約強制 | 両トラックとも`return None`→汎用TODO、という同じ「規約」を持つが、PAD側は1箇所に集約されたTODOレンダラ、UiPath側は呼び出し箇所ごとに手書きの自由文字列。理由コードは両方とも無し(自由文字列のみ) | **部分的**。規約はあるが型で強制されていない、理由の構造化なし |
 | 3. 発見ツール | 今回確立した監査手法(知見135-137)はPowerShellスクリプトとしてVM上で毎回その場で書いて実行しているだけで、**リポジトリにコミットされたものは1つも無い** | **未着手**。知見ログに手法は書いてあるが再現可能な資産ではない |
 | 4. 実行結果検証 | 知見129以降、新しく書くテストでは出力値を必ずアサートする運用が確立している。`tools/check_exec_assertions.py`で慣習をツール化済み(手動実行のレビュー補助、CI gateではない)——`tests/test_pad_codegen.py`全件への初回実行で実際に1件の見逃しを発見・修正した。ただし既存テストの遡及棚卸しは(今回の1件を除き)まだ実施していない | **部分的だが前進**。新規分は良い状態、ツールで能動的に見逃しを探せるようになった |
@@ -357,7 +362,22 @@ def assert_generated(dsl: str, expected_vars: dict[str, object]) -> None:
   適用した——構築方向・構文上のネスト可否が違う構造は、違う型のままにしておく方が
   誠実。本項目は**設計判断の確定**であり、コード変更は無い(両トラックとも現状の型を
   そのまま使い続ける)。
-- [ ] `ErrorHandlingNode`の`attachment`フィールドで`GuardedNode`/`TryCatchNode`の構築方向差を吸収する設計を確定する
+- [x] `ErrorHandlingNode`の`attachment`フィールドで`GuardedNode`/`TryCatchNode`の構築方向差を吸収する設計を確定する。
+  **決定(2026-11-05、実際の両トラックの型定義を読んで判明——`ConditionalNode`/`IfNode`と
+  同じ結論)**: **統合しない**。層1素描時点の「`attachment`フィールドだけで吸収できる」
+  という見立ては、実際に`dump_daemon/pad_dsl/types.py`(`GuardedNode(node, on_error)`・
+  `OnErrorNode(arms: list[tuple[OnErrorRecord | OnBlockErrorRecord, list[Node]]])`、
+  各アームの判別子は`case_name: str | None`という**任意のラベル**)と
+  `dump_daemon/uipath_dsl/types.py`(`TryCatchNode(try_body, variables, catches:
+  list[CatchArm], finally_body)`・`CatchArm(exception_type: str, var_name: str | None,
+  body)`、判別子は`exception_type`という**実際の.NET型名**)を読んだ結果、不十分だと
+  判明した。`attachment`(構築方向)の違いに加え、判別子の種類そのものが違う
+  (PADは型と無関係な任意ラベル、UiPathは型階層に基づく実際の例外型)——`SwitchNode`の
+  `operator`発見と同種の、見た目の類似の奥にある意味論の非対称性。さらに
+  `finally_body`/`variables`(例外変数宣言)はUiPath側にしか存在しない概念で、
+  `attachment`1フィールドでは説明できない非対称情報が複数ある。`ConditionalNode`/
+  `IfNode`と同じ理由(横断的に両方を消費するコードが存在しない、変換コストが非対称)
+  により、本項目も**統合しない**方針に変更する。コード変更は無い。
 
 ### Phase 3: 共通dispatch基盤の統合(Phase 2の成果を前提、最もリスクが高い)
 
