@@ -1817,3 +1817,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`1件)、UiPath関連テスト全546件通過、
      リポジトリ全体で全1497件通過。
+
+104. **(完了・重要な体系的発見、2026-11-06)** チェーンメンバアクセスが
+     大文字小文字を区別していたバグを発見・修正(VB.NETは大文字小文字
+     不区別の言語)、`.StartsWith`/`.EndsWith`/`.IndexOf`/`.Replace`/
+     `String.Concat`を新規実装(知見146): `johnowino/
+     String-Manipulation-in-UIPath`の実機XAML`[strInput.length]`
+     (**小文字**の`.length`)から発見——`_render_func_call`の静的
+     メソッド名判定は既に`.lower()`で大文字小文字不区別だったが、
+     チェーンメンバアクセス側(3つの経路、知見118・119・127)は区別
+     する比較のまま取り残されていた結果、既に確認済みの`Length`メンバ
+     すら小文字表記では取り逃していた——知見136〜145とは異なる種類の
+     「既存の確認済み機能が動かない」バグ。`_CHAINED_PROPERTY_
+     TRANSLATIONS`/`_SAFE_BARE_MEMBERS`を小文字化し3経路全てで
+     `.lower()`比較するよう修正。同じ実機XAMLで`.StartsWith`/
+     `.EndsWith`→`str.startswith`/`str.endswith`、`.IndexOf`→
+     `str.find`(知見144の`.LastIndexOf`と対)、`.Replace`→
+     `str.replace`、`String.Concat`→`&`演算子と同じ`ToString`変換
+     連結も新規実装。回帰テスト追加(`tests/test_uipath_codegen.py`
+     9件)、UiPath関連テスト全554件通過、リポジトリ全体で全1506件
+     通過。

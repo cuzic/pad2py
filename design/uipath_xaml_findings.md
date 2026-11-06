@@ -6907,6 +6907,50 @@ string)`)。既知の限界: 名前付きキャプチャグループの記法(.N
 `tests/test_uipath_dsl.py`に1件・`tests/test_uipath_codegen.py`に1件
 追加、UiPath関連テスト全546件通過、リポジトリ全体で全1497件通過。
 
+## 146. 【重要な体系的発見】チェーンメンバアクセスが大文字小文字を区別していたバグを発見・修正(VB.NETは大文字小文字不区別の言語)、`.StartsWith`/`.EndsWith`/`.IndexOf`/`.Replace`/`String.Concat`を新規実装(未使用の新規14リポジトリでの実機検証、VM不使用)
+
+知見117〜145の手法を未使用の新規14リポジトリへ適用する過程で、
+`johnowino/String-Manipulation-in-UIPath`という.NET文字列操作の基本
+メソッドを一通りデモする実機XAML(`[strInput.length]`という**小文字**
+の`.length`表記)から、既存実装の体系的な欠陥を発見した。
+
+**根本原因**: VB.NETは識別子の大文字小文字を区別しない言語——
+`.Length`/`.length`/`.LENGTH`はいずれも同じメンバを指す。`_render_
+func_call`の静的メソッド名判定(`key = node.name.lower()`)は既に
+この方針で実装済みだったが、チェーンメンバアクセス側(`_apply_
+chained_property`/`_apply_chained_call`/`_render_node`のIdent分岐、
+知見118・119・127で確立した3つの経路)は大文字小文字を区別する
+比較のまま取り残されていた——`[strInput.length]`という小文字表記の
+実例により、既に確認済みの`Length`メンバすら認識できず`# TODO`へ
+倒れてしまっていた(新しいメンバの未対応ではなく、既存の確認済み
+メンバの**取り逃し**という、知見136〜145とは異なる種類の「正しく
+動くはずの機能が動かない」バグ)。
+
+**修正**: `_CHAINED_PROPERTY_TRANSLATIONS`/`_SAFE_BARE_MEMBERS`の
+キー・値を小文字へ統一し、3つの呼び出し経路全てで比較直前に
+`.lower()`する——出力には元の大文字小文字を使わないため(`len()`/
+`.upper()`等の変換先は入力の表記と無関係)、安全に正規化できる。
+
+**同じ実機XAMLで追加発見・新規実装**:
+- `.StartsWith(value)`/`.EndsWith(value)`→Pythonの`str.startswith`/
+  `str.endswith`に直接対応(.NET公式ドキュメント確認済み)。
+- `.IndexOf(value)`→`str.find(value)`(知見144の`.LastIndexOf`→
+  `rfind`と対になる、最初の出現位置、見つからなければ`-1`)。
+- `.Replace(oldValue, newValue)`→`str.replace(old, new)`(単純な
+  部分文字列の全置換、正規表現ではない——`Regex.Replace`は知見144で
+  別途対応済み)。
+- `String.Concat(a, b, c, ...)`→VBの`&`演算子(知見46の`_vb_cstr`)と
+  同じ`ToString`変換規則で連結(各引数を暗黙的に文字列化してから
+  連結する.NETの仕様に合わせる)。
+
+`dump_daemon/uipath_codegen/render.py`の`_CHAINED_PROPERTY_
+TRANSLATIONS`/`_SAFE_BARE_MEMBERS`を小文字化、`_apply_chained_
+property`/`_apply_chained_call`/`_render_node`のIdent分岐に
+`.lower()`比較を追加、`_apply_chained_call`に`StartsWith`/
+`EndsWith`/`IndexOf`/`Replace`分岐、`_render_func_call`に
+`string.concat`分岐を追加。`tests/test_uipath_codegen.py`に9件
+追加、UiPath関連テスト全554件通過、リポジトリ全体で全1506件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

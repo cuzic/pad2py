@@ -492,7 +492,9 @@ def _render_node(node: ExprNode) -> str:
             # 知見130: `Copy`(`DataTable.Copy`、括弧省略形)、知見133:
             # `Length`(配列/文字列、括弧省略形)も同じ安全なメンバ名の
             # 一覧に加える(`_SAFE_BARE_MEMBERS`、本モジュール後方で定義)。
-            if last in _SAFE_BARE_MEMBERS or last in _CHAINED_PROPERTY_TRANSLATIONS:
+            # 知見146: VB.NETの大文字小文字不区別のため比較前に`.lower()`。
+            last_lower = last.lower()
+            if last_lower in _SAFE_BARE_MEMBERS or last_lower in _CHAINED_PROPERTY_TRANSLATIONS:
                 return _apply_chained_property(prefix, last)
         return node.name
     if isinstance(node, StringLiteral):
@@ -588,19 +590,31 @@ def _render_node(node: ExprNode) -> str:
 # Pythonの`str.upper()`/`str.lower()`はそもそもロケールを一切参照しない
 # (Unicode標準の単純な大小文字マッピングのみ)仕様のため、`ToUpper`/
 # `ToLower`と全く同じ変換先で意味論上の食い違いが無い。
+#
+# 知見146: VB.NETは識別子の大文字小文字を区別しない言語——`.Length`/
+# `.length`/`.LENGTH`はいずれも同じメンバを指す(`johnowino/
+# String-Manipulation-in-UIPath`の実機XAML`[strInput.length]`で発見、
+# `.length`という小文字表記が実在した)。本辞書のキー・`_SAFE_BARE_
+# MEMBERS`はいずれも小文字で統一し、呼び出し側(`_apply_chained_
+# property`/`_apply_chained_call`/`_render_node`のIdent分岐)で比較
+# 直前に`.lower()`してから調べる——`_render_func_call`の静的メソッド
+# 名(`key = node.name.lower()`)は既にこの方針で実装済みだったが、
+# チェーンメンバアクセス側だけ大文字小文字を区別する比較のまま取り
+# 残されていた、一貫性の欠落だった。
 _CHAINED_PROPERTY_TRANSLATIONS = {
-    "ToUpper": "upper",
-    "ToUpperInvariant": "upper",
-    "ToLower": "lower",
-    "ToLowerInvariant": "lower",
-    "Trim": "strip",
+    "toupper": "upper",
+    "toupperinvariant": "upper",
+    "tolower": "lower",
+    "tolowerinvariant": "lower",
+    "trim": "strip",
 }
 
-# 知見119/130/133: 括弧省略形の素の変数へのメンバアクセス連鎖
+# 知見119/130/133/146: 括弧省略形の素の変数へのメンバアクセス連鎖
 # (`_render_node`のIdent分岐)で、`_apply_chained_property`へそのまま
 # 委ねて良いと確認済みのメンバ名(`_CHAINED_PROPERTY_TRANSLATIONS`の
 # キー群とは別の、1:1の名前変換では済まない特別処理を持つもの)。
-_SAFE_BARE_MEMBERS = ("ToString", "Copy", "Length")
+# 小文字で統一(知見146)。
+_SAFE_BARE_MEMBERS = ("tostring", "copy", "length")
 
 # 知見140: 呼び出しを伴わない静的クラスプロパティの完全修飾名(小文字化
 # 済み)→Python式。`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`
@@ -637,28 +651,31 @@ def _apply_chained_call(base: str, last: str, args: list[str]) -> str:
     `_render_func_call`の末尾フォールバック(素の変数への連鎖、知見127)
     の両方から共通で呼ばれる——どちらも「`base`は既に文字列として
     レンダリング済み、末尾セグメントだけが未確定」という同じ形に帰着
-    するため。"""
-    if last == "Equals" and len(args) == 1:
+    するため。知見146: VB.NETは大文字小文字を区別しないため、比較前に
+    `.lower()`する(`last`自体は元のまま——出力には使わないため無関係)。
+    """
+    last_lower = last.lower()
+    if last_lower == "equals" and len(args) == 1:
         return f"({base}) == ({args[0]})"
-    if last == "Contains" and len(args) == 1:
+    if last_lower == "contains" and len(args) == 1:
         # 知見133: `String.Contains(value)`(`sarvesh0718/
         # RCM-Bot-using-uipath-studio`・`harsranjan/RPA`の実機XAMLで発見、
         # いずれも`strXxx.ToLower.Contains(...)`のように`.ToLower`との
         # 連鎖で使われていた)はPythonの`in`演算子と同じ意味論
         # (部分文字列の包含判定、順序が逆になる点に注意)。
         return f"({args[0]}) in ({base})"
-    if last == "LastIndexOf" and len(args) == 1:
+    if last_lower == "lastindexof" and len(args) == 1:
         # 知見144: `String.LastIndexOf(value)`(`IS300-G6/PwC-Onboarding`
         # の実機XAML`excelFilePath.LastIndexOf(".")`で発見、拡張子の
         # 位置を調べる定石パターン)はPythonの`str.rfind(value)`と同じ
         # 意味論——いずれも最後に出現した位置を返し、見つからない場合は
         # `-1`を返す(.NET公式ドキュメント/Python公式ドキュメント確認済み)。
         return f"({base}).rfind({args[0]})"
-    if last == "Substring" and len(args) == 1:
+    if last_lower == "substring" and len(args) == 1:
         # 知見144: `String.Substring(startIndex)`はPythonの`s[startIndex:]`
         # と同じ意味論(.NET公式ドキュメント確認済み、末尾まで切り出す)。
         return f"({base})[{args[0]}:]"
-    if last == "Substring" and len(args) == 2:
+    if last_lower == "substring" and len(args) == 2:
         # 知見144: `String.Substring(startIndex, length)`
         # (`IS300-G6/PwC-Onboarding`の実機XAML`excelFilePath.
         # Substring(0, excelFilePath.LastIndexOf("."))`で発見、拡張子
@@ -666,13 +683,41 @@ def _apply_chained_call(base: str, last: str, args: list[str]) -> str:
         # と同じ意味論——第2引数が「開始位置からの文字数」である点に注意
         # (終了位置そのものではない、.NET公式ドキュメント確認済み)。
         return f"({base})[({args[0]}):({args[0]})+({args[1]})]"
+    if last_lower == "startswith" and len(args) == 1:
+        # 知見146: `String.StartsWith(value)`(`johnowino/
+        # String-Manipulation-in-UIPath`の実機XAML`strInput.ToUpper.
+        # StartsWith("HELLO")`で発見)はPythonの`str.startswith(value)`
+        # と直接対応する(.NET公式ドキュメント確認済み、既定の序数比較)。
+        return f"({base}).startswith({args[0]})"
+    if last_lower == "endswith" and len(args) == 1:
+        # 知見146: 同上の`.EndsWith(value)`はPythonの`str.endswith(value)`
+        # と直接対応する。
+        return f"({base}).endswith({args[0]})"
+    if last_lower == "indexof" and len(args) == 1:
+        # 知見146: `String.IndexOf(value)`(同上の実機XAML`StrInput2.
+        # IndexOf("2")`で発見)はPythonの`str.find(value)`と同じ意味論
+        # ——いずれも最初に出現した位置を返し、見つからない場合は`-1`を
+        # 返す(知見144の`.LastIndexOf`→`rfind`と対になる)。
+        return f"({base}).find({args[0]})"
+    if last_lower == "replace" and len(args) == 2:
+        # 知見146: `String.Replace(oldValue, newValue)`(同上の実機XAML
+        # `StrInput4.Replace("BluePrism","UIPath")`で発見)はPythonの
+        # `str.replace(old, new)`と直接対応する(いずれも単純な部分文字列
+        # の全置換、正規表現ではない——`Regex.Replace`は知見144で別途
+        # 対応済み)。
+        return f"({base}).replace({args[0]}, {args[1]})"
     raise NotImplementedError(f"unsupported chained method call: .{last}(...)")
 
 
 def _apply_chained_property(base: str, member: str) -> str:
-    if member == "ToString":
+    """知見146: VB.NETは大文字小文字を区別しないため、比較前に
+    `.lower()`する(`member`自体は元のまま——出力には使わないため無関係、
+    `johnowino/String-Manipulation-in-UIPath`の実機XAML`[strInput.
+    length]`という小文字表記で発見)。"""
+    member_lower = member.lower()
+    if member_lower == "tostring":
         return f"{VB_CSTR_HELPER_NAME}({base})"
-    if member == "Copy":
+    if member_lower == "copy":
         # 知見130: `DataTable.Copy()`(`Dits21/Proyecto-Sistema-RPA-...`
         # の実機XAML`dtUB92.Copy`で発見、括弧無しの呼び出し——VB.NETの
         # 引数無しメソッドは括弧省略可能という既存の慣習、知見118参照)。
@@ -681,15 +726,15 @@ def _apply_chained_property(base: str, member: str) -> str:
         # ——`.Copy()`を複数回呼んだ結果が元のDataTableと行データを
         # 共有しないことを保証する。
         return f"[dict(_r) for _r in {base}]"
-    if member == "Length":
+    if member_lower == "length":
         # 知見133: `Directory.GetFiles(path).Length`(`dexbob/RPA_Example`
         # の実機XAML、`.Length`は括弧省略形)。配列(`String()`等)・文字列
         # (`String.Length`)いずれも.NETでは文字数/要素数を返す`Length`
         # プロパティで、Pythonの`len()`に同じ意味論で直接対応する
         # ——型による分岐は不要。
         return f"len({base})"
-    if member in _CHAINED_PROPERTY_TRANSLATIONS:
-        return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member]}()"
+    if member_lower in _CHAINED_PROPERTY_TRANSLATIONS:
+        return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member_lower]}()"
     raise NotImplementedError(f"unsupported chained member access: .{member}")
 
 
@@ -919,6 +964,16 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("String.IsNullOrEmpty expects exactly 1 argument")
         return f"(not ({args[0]}))"
+    if key == "string.concat":
+        # 知見146: `String.Concat(a, b, c, ...)`(`johnowino/
+        # String-Manipulation-in-UIPath`の実機XAML`String.Concat("1",
+        # "B","3","A")`で発見)は各引数を暗黙的に`ToString`してから連結
+        # する——VBの`&`演算子(知見46の`_vb_cstr`)と全く同じ変換規則の
+        # ため、同じヘルパーで各引数を文字列化してから`+`で連結する。
+        if len(args) < 1:
+            raise NotImplementedError("String.Concat expects at least 1 argument")
+        joined = " + ".join(f"{VB_CSTR_HELPER_NAME}({a})" for a in args)
+        return joined
     if key == "string.isnullorwhitespace":
         # 知見134: `String.IsNullOrWhiteSpace(value)`(`Ray-Tel/CICDtest`
         # の実機XAML`String.IsNullOrWhiteSpace(in_ConfValueExpectedResult)`

@@ -410,6 +410,61 @@ def test_bare_variable_lastindexof_renders_as_rfind():
     _compiles(code)
 
 
+def test_bare_variable_startswith_renders():
+    """知見146: `String.StartsWith(value)`(`johnowino/
+    String-Manipulation-in-UIPath`の実機XAML`strInput.ToUpper.
+    StartsWith("HELLO")`で発見)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.StartsWith("a")'))])
+    code = generate_python(wf)
+    assert "x = (y).startswith('a')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_endswith_renders():
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.EndsWith("a")'))])
+    code = generate_python(wf)
+    assert "x = (y).endswith('a')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_indexof_renders():
+    """知見146: `String.IndexOf(value)`(`johnowino/
+    String-Manipulation-in-UIPath`の実機XAML`StrInput2.IndexOf("2")`で
+    発見)。知見144の`.LastIndexOf`→`rfind`と対になる。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.IndexOf("a")'))])
+    code = generate_python(wf)
+    assert "x = (y).find('a')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_replace_renders():
+    """知見146: `String.Replace(oldValue, newValue)`(`johnowino/
+    String-Manipulation-in-UIPath`の実機XAML`StrInput4.Replace(
+    "BluePrism","UIPath")`で発見)。単純な部分文字列の全置換
+    (正規表現ではない、`Regex.Replace`は知見144で別途対応済み)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text='y.Replace("a", "b")'))])
+    code = generate_python(wf)
+    assert "x = (y).replace('a', 'b')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_string_concat_renders():
+    """知見146: `String.Concat(a, b, c, ...)`(`johnowino/
+    String-Manipulation-in-UIPath`の実機XAML`String.Concat("1","B",
+    "3","A")`で発見)。VBの`&`演算子と同じ`ToString`変換規則で連結する。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='String.Concat("1","B","3")'))]
+    )
+    code = generate_python(wf)
+    assert "x = _vb_cstr('1') + _vb_cstr('B') + _vb_cstr('3')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
 def test_regex_replace_renders_as_re_sub():
     """知見144: `Regex.Replace(input, pattern, replacement)`
     (`vermilion9312/RegularExpression`の実機XAML`Regex.Replace(str,
@@ -500,6 +555,41 @@ def test_bare_variable_dotted_length_without_call_renders_as_len():
     wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="arr.Length"))])
     code = generate_python(wf)
     assert "x = len(arr)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_variable_dotted_member_access_is_case_insensitive():
+    """知見146: VB.NETは識別子の大文字小文字を区別しない言語——
+    `johnowino/String-Manipulation-in-UIPath`の実機XAML`[strInput.
+    length]`という小文字表記で発見(それまでの実装は`Length`しか認識
+    しておらず、既存の確認済みメンバの大文字小文字が違うだけで
+    `# TODO`へ倒れてしまっていた)。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="strInput.length"))])
+    code = generate_python(wf)
+    assert "x = len(strInput)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_chained_call_member_access_is_case_insensitive():
+    """知見146: 関数呼び出し結果への連鎖(知見118の経路)でも同じ
+    大文字小文字不区別が適用されることを確認する。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="CStr(y).toupper()"))])
+    code = generate_python(wf)
+    assert "x = _vb_cstr(y).upper()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_chained_call_with_args_member_access_is_case_insensitive():
+    """知見146: 引数付きの連鎖呼び出し(`Equals`/`Contains`等)でも同じ
+    大文字小文字不区別が適用されることを確認する。"""
+    wf = _wrap(
+        [AssignNode(target=VbExpr(text="x"), value=VbExpr(text='CStr(y).contains("z")'))]
+    )
+    code = generate_python(wf)
+    assert "x = ('z') in (_vb_cstr(y))" in code
     assert "# TODO" not in code
     _compiles(code)
 
