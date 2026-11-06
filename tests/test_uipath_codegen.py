@@ -108,6 +108,19 @@ def _compiles(code: str) -> None:
     compile(code, "<generated>", "exec")
 
 
+def test_empty_class_name_falls_back_to_workflow_function_name():
+    """知見145: `class_name=""`(`x:Class="{x:Null}"`を`xaml_tree`側で
+    正規化した結果、`bacdillon/UiPath-Automation`の実機XAMLで発見)は
+    `_safe_func_name`の既存の「空文字列なら既定名`workflow`」という
+    安全網でカバーされることを確認する(`uipath_codegen`レベルの
+    回帰テスト、`xaml_tree`側の正規化は別途`test_uipath_dsl.py`で
+    検証済み)。"""
+    wf = WorkflowFile(class_name="", root=SequenceNode(body=[]))
+    code = generate_python(wf)
+    assert "def workflow(" in code
+    _compiles(code)
+
+
 def test_assign_object_typed_expr():
     wf = _wrap([AssignNode(target=VbExpr(text="result"), value=VbExpr(text='"ok"'))])
     code = generate_python(wf)

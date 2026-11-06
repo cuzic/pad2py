@@ -1061,3 +1061,26 @@ def test_parse_workflow_file_tolerates_assembly_qualified_clr_namespace_xmlns(tm
     wf = parse_workflow_file(path)
     assert wf.class_name == "Test"
     assert isinstance(wf.root, SequenceNode)
+
+
+def test_parse_workflow_file_treats_null_class_name_as_unset(tmp_path):
+    """知見145: `x:Class="{x:Null}"`(`bacdillon/UiPath-Automation`の
+    実機XAMLで発見——Studioでクラス名が未設定/削除された状態の
+    ワークフロー)。`_parse_expr`(知見13)が属性値の`{x:Null}`を一般に
+    「未設定」として`None`へ正規化する規約を`x:Class`にも適用する——
+    正規化せずに放置すると、修正前は`class_name`にリテラル文字列
+    `"{x:Null}"`がそのまま残り、`uipath_codegen`が生成するPython関数
+    定義の名前に埋め込まれ`def {x:Null}(...):`という構文的に無効な
+    コードになっていた。"""
+    xaml = (
+        '<Activity x:Class="{x:Null}" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        '<Sequence DisplayName="Body" />'
+        "</Activity>"
+    )
+    path = tmp_path / "Test.xaml"
+    path.write_text(xaml, encoding="utf-8")
+    wf = parse_workflow_file(path)
+    assert wf.class_name == ""
+    assert isinstance(wf.root, SequenceNode)

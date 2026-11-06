@@ -1341,6 +1341,21 @@ def parse_workflow_file(path: str | Path) -> WorkflowFile:
         raise ValueError(f"unsupported root element: {root.tag!r} (expected Activity)")
 
     class_name = _attr(root, "Class", X_NS) or _attr(root, "Class") or ""
+    if class_name == "{x:Null}":
+        # 知見145: `x:Class="{x:Null}"`(`bacdillon/UiPath-Automation`の
+        # 実機XAMLで発見——Studioでクラス名が未設定/削除された状態の
+        # ワークフロー)。`_parse_expr`(知見13)が属性値の`{x:Null}`を
+        # 一般に「未設定」として`None`へ正規化する規約と同じものを、
+        # ここでも適用する——`x:Class`はこの関数だけが`_attr()`で直接
+        # 読んでおり`_parse_expr`を経由しないため、この規約から漏れて
+        # いた。正規化せずに放置すると`uipath_codegen`側が生成する
+        # Python関数定義`def {class_name}(...)`の名前にリテラル文字列
+        # `"{x:Null}"`がそのまま埋め込まれ、`def {x:Null}(...):`という
+        # 構文的に無効なコードになっていた(`_safe_func_name`の既存の
+        # 「空文字列なら既定名`workflow`」という安全網は、`class_name`
+        # が空文字列ではなく非空の`"{x:Null}"`という文字列だったため
+        # 機能していなかった)。
+        class_name = ""
     arguments = _find_members(root)
     variables = _parse_variables(root)
 
