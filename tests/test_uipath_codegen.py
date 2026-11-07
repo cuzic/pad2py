@@ -3111,6 +3111,61 @@ def test_add_data_row_with_data_row_is_todo_not_guessed():
     _compiles(code)
 
 
+def test_add_data_row_uses_dict_row_when_build_data_table_columns_are_known():
+    """知見205(知見203の`ScopeInfo`アーキテクチャ第3段): 知見117が
+    発見し見送った「`AddDataRow`が`list.append()`すると、同じ
+    `DataTable`を後で読む他の活動(`LookupDataTable`/`GetRowItem.
+    ColumnName`等、dict行前提の直接アクセス)が実行時に`TypeError`で
+    落ちる」という実在のバグ(本テストで実際に再現・修正を確認)を、
+    `ScopeInfo.data_table_columns`(`BuildDataTable`で確認済みの列名)
+    で解消する——`ArrayRow`を`dict(zip(columns, array_row))`へ変換
+    してから追加する。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Name", "Age"]),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Alice", 30}'),
+                data_table=VbExpr(text="dt"),
+            ),
+            LookupDataTableNode(
+                data_table=VbExpr(text="dt"),
+                lookup_column_name=Literal(value="Name"),
+                lookup_value=Literal(value="Alice"),
+                target_column_name=Literal(value="Age"),
+                row_index=VbExpr(text="idx"),
+                cell_value=VbExpr(text="cellValue"),
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "dt.append(dict(zip(['Name', 'Age'], ['Alice', 30])))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+
+
+def test_add_data_row_falls_back_to_list_when_columns_are_unknown():
+    """知見205: `DataTable`が`BuildDataTable`由来だと確認できない場合
+    (スコープ情報に列名が無い)は、従来通り位置指定のlistのまま追加する
+    ——安全側のフォールバック、新しい挙動の後退は無い。"""
+    wf = _wrap(
+        [
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Hello World", -1}'),
+                data_table=VbExpr(text="MyDataTable"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "MyDataTable.append(['Hello World', -_vb_num(1)])" in code
+    assert "dict(zip(" not in code
+    _compiles(code)
+
+
 def test_remove_data_row_with_row_index_deletes_by_position():
     """知見182: `ui:RemoveDataRow`。`RowIndex`はPythonのlistインデックス
     として使うため、`round(_vb_cdbl(...))`(VBの`CInt`と同じ確認済みの

@@ -835,9 +835,19 @@ class AddDataRowNode:
     とは違い、本活動は既存のDataTable変数の**内容を読む**必要が無い
     (列名・既存の行表現を一切参照せず、単純に新しい行を末尾に追加
     するだけ)——`list.append(...)`はPythonの素のlistが何を保持して
-    いても安全に呼べるため、`DataTable`変数がどちらの表現(dict行/
-    list行/空のBuildDataTable由来)であっても正しく動作する、数少ない
-    「表現非依存で安全な」DataTable操作。"""
+    いても安全に呼べる。
+
+    知見205追記: 当初は`ArrayRow`をそのままlist行として追加していた
+    (`dt.append([val1, val2])`)が、これは同じ`DataTable`を後で読む
+    他の活動(`LookupDataTable`/`GetRowItem.ColumnName`等、いずれも
+    dict行を前提にした`row[列名]`直接アクセス)が`TypeError`で実行時に
+    落ちる実在のバグを生んでいた——「表現非依存で安全」という当初の
+    判断は、単体では正しいが他の活動との組み合わせでは不十分だった。
+    知見203の`ScopeInfo.data_table_columns`(同じ`DataTable`変数が
+    `BuildDataTable`で確認済みの列名を持つと分かる場合)が使える場合は
+    `dict(zip(columns, array_row))`としてdict行を追加し、列名が
+    分からない場合のみ従来通りlist行のまま追加する(安全側の
+    フォールバック)。"""
 
     array_row: Expr = None
     data_row: Expr = None

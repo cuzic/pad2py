@@ -2676,3 +2676,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_codegen.py`3件)、UiPath関連テスト
      全927件通過、リポジトリ全体で全2013件通過。`data_table_columns`
      (知見117向け)は依然未消費のまま、次段の候補。
+
+163. **(完了・アーキテクチャ刷新第3段・実在バグ修正、2026-11-06)**
+     「スコープ対応のコード生成アーキテクチャ」第3段——`ScopeInfo.
+     data_table_columns`を初めて消費し、知見117が当初警告していた
+     リスクが実際に発生していたことを確認・修正(知見205):
+     `AddDataRow`(知見181)が`ArrayRow`を`list.append()`する実装で、
+     `BuildDataTable`→`AddDataRow`→`LookupDataTable`(知見196)という
+     定番パターンを実際に実行すると`TypeError: list indices must be
+     integers or slices, not str`で実行時に落ちる実在のバグを発見した
+     ——`LookupDataTable`等のdict行前提の直接アクセスと組み合わせると
+     壊れるという、知見117の当初の警告がそのまま現実になっていた。
+     `ScopeInfo.data_table_columns`で対象`DataTable`の列名が確認
+     できる場合のみ`dict(zip(columns, array_row))`へ変換して追加する
+     よう修正——列名が分からない場合は従来通りlist行のまま(安全側の
+     フォールバック、後退無し)。式のレンダリングを介さず`ScopeInfo`
+     を直接読むための新しい公開アクセサ`render.get_active_scope()`を
+     追加。実際に修正前後のクラッシュ有無+修正後の正しい値(行
+     インデックス0・セル値30)を対話的に確認。回帰テスト追加
+     (`tests/test_uipath_codegen.py`2件、うち1件は`exec()`経由の
+     統合テスト)、UiPath関連テスト全929件通過、リポジトリ全体で
+     全2015件通過。知見117・126・130が記録した3件の設計課題全てに
+     対応する「スコープ対応のコード生成アーキテクチャ」がこれで
+     完成した。

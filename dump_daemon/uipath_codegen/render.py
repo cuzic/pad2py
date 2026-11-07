@@ -75,6 +75,14 @@ def use_scope(scope: ScopeInfo | None):
         _ACTIVE_SCOPE.reset(token)
 
 
+def get_active_scope() -> ScopeInfo | None:
+    """`uipath_codegen/__init__.py`側のノード別生成関数が、式単体の
+    変換(`render_expr`)を介さずに直接`ScopeInfo`を読みたい場合
+    (`AddDataRow`の`data_table_columns`参照、知見205)向けの公開
+    アクセサ。"""
+    return _ACTIVE_SCOPE.get()
+
+
 def _canonical_name(name: str) -> str:
     scope = _ACTIVE_SCOPE.get()
     if scope is None:

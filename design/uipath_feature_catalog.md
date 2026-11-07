@@ -235,6 +235,14 @@ resolverの新設が必要なケース。今回は見送ったが、同種のDat
 ことを見据えると、一度「DataTableスキーマ解決パス」を設計する価値は
 ある。
 
+**追記(知見205、2026-11-06、完了・実在バグ修正)**: 知見203の
+`ScopeInfo`アーキテクチャ第3段として実装完了した。それだけでなく、
+当初ここで警告していたリスク(`list`のまま追加する妥協案が他の
+dict前提の活動を壊す)が、知見181の実装でそのまま実在のバグになって
+いたことも確認・修正した——`BuildDataTable`→`AddDataRow`→
+`LookupDataTable`の組み合わせを実際に実行すると`TypeError`で
+クラッシュすることを確認してから修正した。詳細は知見205参照。
+
 **追記(知見195、2026-11-06、調査のみ・コード変更無し)**: `Filter
 DataTable`/`AddDataColumn`/`RemoveDataColumn`/`SortDataTable`/
 `MergeDataTable`を実機サンプル+ground-truthコーパスで再調査した結果、

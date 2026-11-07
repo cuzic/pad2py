@@ -194,6 +194,7 @@ from .render import (
     VB_XOR_HELPER_NAME,
     VB_XOR_HELPER_SOURCE,
     ScopeInfo,
+    get_active_scope,
     render_expr,
     use_scope,
 )
@@ -2286,6 +2287,21 @@ def _generate_add_data_row_body(node: AddDataRowNode, indent: int) -> list[str]:
     array_row = _render_value_or_todo(node.array_row, prefix, todo)
     if todo:
         return todo
+    # 知見205: `ScopeInfo.data_table_columns`(知見203で構築済み、同じ
+    # `DataTable`変数が`BuildDataTable`で確認済みの列名を持つと分かる
+    # 場合)が分かれば、`ArrayRow`(位置指定の値)を列名付きのdict行へ
+    # 変換する——`AddDataRow`が素のlist行を追加すると、同じDataTableを
+    # 後で読む他の活動(`LookupDataTable`/`GetRowItem.ColumnName`等、
+    # いずれもdict行を前提にした直接アクセス)が`TypeError`で実行時に
+    # 落ちる実在のバグを修正する。列名が分からない場合は従来通り
+    # 位置指定のlistのまま追加する(安全側のフォールバック、新しい
+    # 挙動の後退は無い)。
+    columns = None
+    scope = get_active_scope()
+    if scope is not None and isinstance(node.data_table, VbExpr):
+        columns = scope.data_table_columns.get(node.data_table.text.lower())
+    if columns:
+        return [f"{prefix}{data_table}.append(dict(zip({columns!r}, {array_row})))"]
     return [f"{prefix}{data_table}.append({array_row})"]
 
 

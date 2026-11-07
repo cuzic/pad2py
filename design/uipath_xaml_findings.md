@@ -9695,6 +9695,55 @@ columns`を使って`list[dict]`へ変換することが、同じ`ScopeInfo`基�
 DataTableスキーマ解決、知見117向け)は依然未消費のまま——次の段の
 候補として残る。
 
+## 205. 「スコープ対応のコード生成アーキテクチャ」第3段——知見117が当初警告していた「`AddDataRow`のlist行追加が他の活動を実行時に壊す」リスクが実際に発生していたことを確認・修正、`ScopeInfo.data_table_columns`で初めて消費
+
+知見203で構築したが未消費のまま残していた`ScopeInfo.data_table_
+columns`(`BuildDataTableNode`の対象変数→確認済みの列名、知見117で
+パーサー側はすでに抽出・保持していたが生成側が一度も読んでいなかった
+情報)を、ついに実際に消費する3段目の実装を行った。
+
+**発見した実在のバグ**: 知見117は当初「`ArrayRow`(位置指定)を
+`list`のまま追加する妥協案は、既に実装済みの`ExcelWriteRange`
+(`AddHeaders=True`時に`.keys()`を呼ぶ)等のdict前提の消費者を
+静かに壊す実害があるため、正直に`# TODO`へ倒す方が安全」と警告して
+いた。しかし後の知見181で`AddDataRow`は実際に`list.append()`方式で
+実装されており、この警告がそのまま現実になっていた——`BuildDataTable`
+→`AddDataRow`→`LookupDataTable`(知見196)という、本調査で何度も
+繰り返し確認した定番パターンの組み合わせを実際に実行して確認した
+ところ、`TypeError: list indices must be integers or slices, not str`
+で実行時に落ちることを確認した(`generate_python()`自体は正常に
+完了し、`compile()`も通過する——構文的には正しいが実行すれば確実に
+クラッシュする、知見182のRowIndexバグと同種の問題)。`GetRowItem.
+ColumnName`(知見183)・`OutputDataTable`/`WriteCsvFile`のdict行分岐・
+`AddDataColumn`/`RemoveDataColumn`(知見198)も同じ理由で影響を受ける。
+
+**修正**: `_generate_add_data_row_body`で、対象`DataTable`変数が
+`ScopeInfo.data_table_columns`経由で確認済みの列名を持つと分かる
+場合のみ、`ArrayRow`を`dict(zip(columns, array_row))`へ変換してから
+追加するよう変更した——`BuildDataTable`→`AddDataRow`の組み合わせが
+dict行として一貫するようになり、上記の`TypeError`が解消される。
+列名が分からない場合(`DataTable`が`BuildDataTable`由来だと確認
+できない、`ScopeInfo`自体が無い等)は、従来通り位置指定の`list`の
+まま追加する安全側のフォールバックのまま変えていない——既存の
+動作に対する後退は無い。`uipath_codegen/render.py`に`get_active_
+scope()`という新しい公開アクセサを追加した(`AddDataRow`の生成関数は
+式のレンダリング(`render_expr`)を介さずに`ScopeInfo`を直接読む
+必要があったため)。
+
+実際に`BuildDataTable`→`AddDataRow`→`LookupDataTable`という上記の
+組み合わせを`generate_python()`で生成し、修正前は`TypeError`で
+クラッシュすること・修正後は正しく`{'Name': 'Alice', 'Age': 30}`
+というdict行が追加され`LookupDataTable`が正しく行インデックス0・
+セル値30を返すことの両方を対話的に確認した。回帰テスト追加
+(`tests/test_uipath_codegen.py`2件、うち1件は`exec()`経由で生成
+コードを実際に実行する統合テスト)、UiPath関連テスト全929件通過、
+リポジトリ全体で全2015件通過(28件skip、変化無し)。
+
+**知見203で設計した3段構成(識別子大文字小文字正規化・`row(...)`
+添字解消・DataTableスキーマ解決)がこれで全て実装完了した**——
+知見117・126・130が記録していた「式レンダリングにスコープ情報が
+必要」という3件の設計課題全てに対応する基盤が揃った。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
