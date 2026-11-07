@@ -115,6 +115,7 @@ from ..uipath_dsl.types import (
     InvokeCodeNode,
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
+    JoinPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -589,6 +590,8 @@ def _generate_node(
         return _generate_get_pdf_page_count(node, indent)
     if isinstance(node, ExtractPdfPageRangeNode):
         return _generate_extract_pdf_page_range(node, indent)
+    if isinstance(node, JoinPdfNode):
+        return _generate_join_pdf(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
     if isinstance(node, InvokePowerShellNode):
@@ -2641,6 +2644,38 @@ def _generate_extract_pdf_page_range_body(
         f"{inner}_eppr_writer.add_page(_eppr_reader.pages[_eppr_i - 1])",
         f'{prefix}with open({output_file_name}, "wb") as _eppr_f:',
         f"{inner}_eppr_writer.write(_eppr_f)",
+    ]
+
+
+# 知見201: `JoinPDF`(`GetPDFPageCount`/`ExtractPDFPageRange`知見200と
+# 同じ`upap:`名前空間)。`pypdf.PdfWriter`(`pad_action_lib/
+# pdf_actions.py`の`merge_pdf_files()`と同じ`writer.append(reader)`
+# イディオム)で`FileList`の各パスを順に結合する。実機の`FileList`は
+# VB.NET配列リテラル構文だが、`render_expr`が既に`ArrayLiteral`→
+# Pythonの`list`リテラルへの変換に対応済み(知見195時点では未確認
+# として保留していたが、実際には動くと確認できた)。
+def _generate_join_pdf(node: JoinPdfNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_join_pdf_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_join_pdf_body(node: JoinPdfNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_list is None or node.output_file_name is None:
+        return [f"{prefix}# TODO: JoinPDF with missing FileList/OutputFileName"]
+    todo: list[str] = []
+    file_list = _render_value_or_todo(node.file_list, prefix, todo)
+    output_file_name = _render_value_or_todo(node.output_file_name, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_jp_writer = pypdf.PdfWriter()",
+        f"{prefix}for _jp_path in {file_list}:",
+        f"{inner}_jp_writer.append(pypdf.PdfReader(_jp_path))",
+        f'{prefix}with open({output_file_name}, "wb") as _jp_f:',
+        f"{inner}_jp_writer.write(_jp_f)",
     ]
 
 

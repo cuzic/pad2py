@@ -77,6 +77,7 @@ from .types import (
     InvokeCodeNode,
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
+    JoinPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -983,6 +984,14 @@ def _parse_extract_pdf_page_range(elem: etree._Element) -> ExtractPdfPageRangeNo
         file_name=_attr_expr(elem, "FileName"),
         output_file_name=_attr_expr(elem, "OutputFileName"),
         range=_attr_expr(elem, "Range"),
+    )
+
+
+def _parse_join_pdf(elem: etree._Element) -> JoinPdfNode:
+    return JoinPdfNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_list=_attr_expr(elem, "FileList"),
+        output_file_name=_attr_expr(elem, "OutputFileName"),
     )
 
 
@@ -2123,6 +2132,7 @@ _DISPATCH = {
     (UI_NS, "ReadPDFText"): _parse_read_pdf_text,
     (PDF_NS, "GetPDFPageCount"): _parse_get_pdf_page_count,
     (PDF_NS, "ExtractPDFPageRange"): _parse_extract_pdf_page_range,
+    (PDF_NS, "JoinPDF"): _parse_join_pdf,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,

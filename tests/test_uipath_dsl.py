@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     InvokeCodeNode,
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
+    JoinPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -1636,6 +1637,21 @@ def test_extract_pdf_page_range_properties():
     assert node.file_name == Literal(value="Sample PDF file.pdf")
     assert node.output_file_name == Literal(value="Sample PDF file pages 8 to 22.pdf")
     assert node.range == Literal(value="8-22")
+
+
+def test_join_pdf_properties():
+    """知見201: `JoinPDF`(`GetPDFPageCount`/`ExtractPDFPageRange`
+    知見200と同じ`upap:`名前空間)。実機`vajrang-b/UiPathIn30Days`で
+    確認したVB.NET配列リテラル構文の`FileList`の実例。"""
+    xml = (
+        f"<upap:JoinPDF {_PDF_XMLNS} DisplayName=\"Join PDF Files\" "
+        'FileList="[{&quot;PDF Sample2.pdf&quot;,&quot;Sample PDF file.pdf&quot;}]" '
+        'OutputFileName="Combined PDF File.pdf" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, JoinPdfNode)
+    assert node.file_list == VbExpr(text='{"PDF Sample2.pdf","Sample PDF file.pdf"}')
+    assert node.output_file_name == Literal(value="Combined PDF File.pdf")
 
 
 def test_write_csv_file_properties():

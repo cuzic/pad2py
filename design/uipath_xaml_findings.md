@@ -9515,6 +9515,35 @@ from_real_capture`)があったが、本トランスパイラのコードとは�
 無関係であることを確認した(知見128以来の「共有git作業ツリー」
 注意点の実例)。
 
+## 201. `JoinPDF`を新規実装——知見195・知見200時点で「VB配列リテラル構文が未対応かもしれない」と保留していた懸念を検証し、`uipath_expr`/`render_expr`が既に`ArrayLiteral`→Pythonの`list`リテラル変換に対応済みと判明
+
+知見200で見送った`UiPath.PDF.Activities.PDF`名前空間(`upap:`)の
+残り活動のうち、`JoinPDF`を実装した。`UiPath/skills`公式リポジトリ
+のStudio実機ground-truthコーパス+実機(`vajrang-b/UiPathIn30Days`)
+で確認した構成は`FileList`+`OutputFileName`のみ(`Password`等の
+暗号化関連属性は一切無い)。
+
+知見195・知見200で「`FileList`の実機シリアライズ形
+(`[{"a.pdf","b.pdf"}]`というVB.NETの配列リテラル構文)を`uipath_expr`
+が解釈できるか未確認」として実装候補からペンディングにしていたが、
+実際に検証したところ`uipath_expr`は既に`ArrayLiteral`という専用の
+ASTノード型を持ち、`render_expr`(`uipath_codegen/render.py`)も既に
+これをPythonの`list`リテラルへ変換する処理を持っていた——つまり
+着手前の懸念は的外れで、実装自体に新しいVB構文対応は一切不要だった。
+`render_expr(VbExpr(text='{"a.pdf", "b.pdf"}'))`が`['a.pdf', 'b.pdf']`
+を返すことを対話的に確認した。
+
+`pypdf.PdfWriter`(`pad_action_lib/pdf_actions.py`の`merge_pdf_files()`
+と同じ`writer.append(reader)`イディオム)で`FileList`の各パスを
+順に結合する——新しい依存・新しいイディオムの追加は不要だった。
+
+実機サンプル(VB配列リテラル構文そのまま)で`parse_activity()`+
+`generate_python()`+`compile()`を確認し、さらに実際に`pypdf`で
+2ページ+3ページの空白PDF2件を生成して結合を実行し、結合後5ページに
+なることを手動確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全912件
+通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

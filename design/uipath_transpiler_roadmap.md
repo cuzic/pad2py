@@ -2609,3 +2609,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (ページ数取得・3-5ページ範囲抽出)。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`11件)、
      UiPath関連テスト全908件通過。
+
+159. **(完了、2026-11-06)** `JoinPDF`を新規実装(知見201): 知見200で
+     見送った`upap:`名前空間の残り活動のうち1件。知見195・200で
+     「`FileList`のVB配列リテラル構文(`[{"a.pdf","b.pdf"}]`)が
+     `uipath_expr`で解釈できるか未確認」としていた懸念を検証した
+     結果、`uipath_expr`は既に`ArrayLiteral`ASTノードを持ち
+     `render_expr`も既にPythonの`list`リテラルへの変換に対応済み
+     だったと判明——新しいVB構文対応は不要だった。`pypdf.PdfWriter`
+     (`pad_action_lib/pdf_actions.py`の`merge_pdf_files()`と同じ
+     `writer.append(reader)`イディオム)で対応。実機XAML+実際に
+     生成した2ページ+3ページのPDF結合で5ページになることを確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`3件)、UiPath関連テスト全912件通過。

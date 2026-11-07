@@ -1125,6 +1125,28 @@ class ExtractPdfPageRangeNode:
 
 
 @dataclass
+class JoinPdfNode:
+    """`<JoinPDF>`(知見201、`GetPDFPageCount`/`ExtractPDFPageRange`
+    (知見200)と同じ`upap:`名前空間)。`UiPath/skills`公式リポジトリの
+    Studio実機ground-truthコーパス+実機(`vajrang-b/UiPathIn30Days`)
+    で確認した構成は`FileList`+`OutputFileName`のみ——`Password`等の
+    暗号化関連属性は一切無い。実機の`FileList="[{&quot;a.pdf&quot;,
+    &quot;b.pdf&quot;}]"`はVB.NETの配列リテラル構文
+    (`uipath_expr`が既に`ArrayLiteral`として対応済み、`render_expr`が
+    Pythonの`list`リテラルへ変換することを確認済み——未対応だと思って
+    知見195・pad_todo.mdの既存メモで保留していたが、実際には既に動く
+    ことが分かった)。
+
+    `pypdf.PdfWriter`(`pad_action_lib/pdf_actions.py`の
+    `merge_pdf_files()`と同じ`writer.append(reader)`イディオム)で
+    `FileList`の各パスを順に結合する。"""
+
+    display_name: str | None = None
+    file_list: Expr = None
+    output_file_name: Expr = None
+
+
+@dataclass
 class WriteCsvFileNode:
     """`<ui:WriteCsvFile>`(知見185、`ReadCsvFile`の正反対)。`UiPath/
     skills`公式リポジトリのStudio実機ground-truthコーパス
@@ -2587,6 +2609,7 @@ Node = (
     | ReadPdfTextNode
     | GetPdfPageCountNode
     | ExtractPdfPageRangeNode
+    | JoinPdfNode
     | WriteCsvFileNode
     | InvokePowerShellNode
     | RetryScopeNode

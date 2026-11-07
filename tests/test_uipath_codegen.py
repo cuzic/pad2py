@@ -90,6 +90,7 @@ from dump_daemon.uipath_dsl import (
     InvokeCodeNode,
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
+    JoinPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -3764,6 +3765,49 @@ def test_extract_pdf_page_range_with_dynamic_range_generates_runtime_split():
     code = generate_python(wf)
     assert "_eppr_start, _eppr_end = (rangeVar).split('-')" in code
     assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_join_pdf_appends_each_file_in_order():
+    """知見201: `JoinPDF`(`GetPDFPageCount`/`ExtractPDFPageRange`
+    知見200と同じ`upap:`名前空間)。`pypdf.PdfWriter.append()`
+    (`pad_action_lib/pdf_actions.py`の`merge_pdf_files()`と同じ
+    イディオム)で各パスを順に結合する。"""
+    wf = _wrap(
+        [
+            JoinPdfNode(
+                file_list=VbExpr(text='{"a.pdf","b.pdf"}'),
+                output_file_name=Literal(value="out.pdf"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for _jp_path in ['a.pdf', 'b.pdf']:" in code
+    assert "_jp_writer.append(pypdf.PdfReader(_jp_path))" in code
+    assert "import pypdf" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_join_pdf_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            JoinPdfNode(
+                file_list=VbExpr(text='{"a.pdf"}'),
+                output_file_name=Literal(value="out.pdf"),
+                display_name="Join PDF Files",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Join PDF Files" in code
+    _compiles(code)
+
+
+def test_join_pdf_with_missing_properties_is_todo():
+    wf = _wrap([JoinPdfNode(file_list=None, output_file_name=Literal(value="out.pdf"))])
+    code = generate_python(wf)
+    assert "# TODO: JoinPDF with missing FileList/OutputFileName" in code
     _compiles(code)
 
 
