@@ -9544,6 +9544,37 @@ ASTノード型を持ち、`render_expr`(`uipath_codegen/render.py`)も既に
 1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全912件
 通過。
 
+## 202. `ManagePDFPassword`を新規実装——`pypdf`本体のAPI(`PdfWriter.encrypt()`)を直接使う初めての活動、ground-truthが`NewUserPassword`/`NewOwnerPassword`を一切載せていなかったことを再確認
+
+知見200で見送った`upap:`名前空間の残り活動のうち`ManagePDFPassword`
+を実装した。`UiPath/skills`公式リポジトリのStudio実機ground-truth
+コーパスは`FileName`+`OutputFileName`のみ(`知見197`の
+`GenerateDataTable`と同じ「ground-truthが実機の全属性を網羅して
+いない」傾向)だが、実機3件(いずれも`vajrang-b/UiPathIn30Days`)で
+`NewUserPassword`(平文VBリテラル)と`NewOwnerPassword`(同)の両方
+——異なる実例でそれぞれ単独使用——を確認した。`OldUserPassword`/
+`OldOwnerPassword`(既存パスワードの変更/削除用と推測)は実機で
+一度も非nullの実例を確認できなかったため未モデル化。
+
+この活動は本調査で初めて、本リポジトリのPAD側に既存イディオムが
+無く、`pypdf`本体のAPI(`PdfWriter.encrypt(user_password,
+owner_password=...)`)を直接使った——`pad_action_lib/pdf_actions.py`
+には暗号化(パスワードを新規に設定する)機能は無く、復号
+(`_open_decrypted`、既存のパスワードで開く)のみ。`pypdf`を対話的に
+実行して確認した挙動: `NewOwnerPassword`のみ設定時は
+`user_password=""`(空文字列)を渡すとパスワード無しで開けるが
+owner権限のみ制限される——これがUiPath実機の挙動と完全に一致するか
+までは確認できていないが、PDFの一般的な仕様(owner-only保護)として
+妥当な解釈であることを明記する。
+
+実機サンプル2件(`NewUserPassword`単独・`NewOwnerPassword`単独)で
+`parse_activity()`+`generate_python()`+`compile()`を確認し、さらに
+実際に`pypdf`で空白PDFを生成して両パターンを実行し、生成したPDFが
+正しく暗号化され、意図したパスワードで(またはowner-onlyの場合は
+パスワード無しで)開けることを手動確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+6件)、UiPath関連テスト全920件通過。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

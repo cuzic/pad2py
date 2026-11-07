@@ -121,6 +121,7 @@ from ..uipath_dsl.types import (
     LoadImageNode,
     LookupDataTableNode,
     LogMessageNode,
+    ManagePdfPasswordNode,
     MessageBoxNode,
     MoveFileNode,
     MultipleAssignNode,
@@ -592,6 +593,8 @@ def _generate_node(
         return _generate_extract_pdf_page_range(node, indent)
     if isinstance(node, JoinPdfNode):
         return _generate_join_pdf(node, indent)
+    if isinstance(node, ManagePdfPasswordNode):
+        return _generate_manage_pdf_password(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
     if isinstance(node, InvokePowerShellNode):
@@ -2676,6 +2679,69 @@ def _generate_join_pdf_body(node: JoinPdfNode, indent: int) -> list[str]:
         f"{inner}_jp_writer.append(pypdf.PdfReader(_jp_path))",
         f'{prefix}with open({output_file_name}, "wb") as _jp_f:',
         f"{inner}_jp_writer.write(_jp_f)",
+    ]
+
+
+# 知見202: `ManagePDFPassword`(`GetPDFPageCount`/`ExtractPDFPageRange`/
+# `JoinPDF`知見200・201と同じ`upap:`名前空間)。`pypdf.PdfWriter.
+# encrypt(user_password, owner_password=...)`(`pypdf`本体のAPIを
+# 直接使う最初の例、本リポジトリのPAD側に既存の暗号化イディオムは
+# 無い)が直接対応する。`NewOwnerPassword`のみ設定時は
+# `user_password=""`(対話的に確認済みの挙動、パスワード無しで開ける
+# がowner権限のみ制限される)を渡す。`OldUserPassword`/
+# `OldOwnerPassword`(既存パスワードの変更/削除用と推測、実機未確認)
+# は常に`# TODO`へ倒す。
+def _generate_manage_pdf_password(
+    node: ManagePdfPasswordNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_manage_pdf_password_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_manage_pdf_password_body(
+    node: ManagePdfPasswordNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None or node.output_file_name is None:
+        return [
+            f"{prefix}# TODO: ManagePDFPassword with missing "
+            "FileName/OutputFileName"
+        ]
+    if node.old_user_password is not None or node.old_owner_password is not None:
+        return [
+            f"{prefix}# TODO: ManagePDFPassword with OldUserPassword/"
+            "OldOwnerPassword set — changing/removing an existing "
+            "password not confirmed, refusing to guess"
+        ]
+    if node.new_user_password is None and node.new_owner_password is None:
+        return [
+            f"{prefix}# TODO: ManagePDFPassword with no NewUserPassword/"
+            "NewOwnerPassword captured"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    output_file_name = _render_value_or_todo(node.output_file_name, prefix, todo)
+    user_password = (
+        _render_value_or_todo(node.new_user_password, prefix, todo)
+        if node.new_user_password is not None
+        else "''"
+    )
+    owner_password = (
+        _render_value_or_todo(node.new_owner_password, prefix, todo)
+        if node.new_owner_password is not None
+        else "None"
+    )
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_mpp_writer = pypdf.PdfWriter()",
+        f"{prefix}_mpp_writer.append(pypdf.PdfReader({file_name}))",
+        f"{prefix}_mpp_writer.encrypt(user_password={user_password}, "
+        f"owner_password={owner_password})",
+        f'{prefix}with open({output_file_name}, "wb") as _mpp_f:',
+        f"{inner}_mpp_writer.write(_mpp_f)",
     ]
 
 

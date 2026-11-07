@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     LoadImageNode,
     LookupDataTableNode,
     LogMessageNode,
+    ManagePdfPasswordNode,
     MessageBoxNode,
     MoveFileNode,
     MultipleAssignNode,
@@ -1652,6 +1653,41 @@ def test_join_pdf_properties():
     assert isinstance(node, JoinPdfNode)
     assert node.file_list == VbExpr(text='{"PDF Sample2.pdf","Sample PDF file.pdf"}')
     assert node.output_file_name == Literal(value="Combined PDF File.pdf")
+
+
+def test_manage_pdf_password_with_new_owner_password():
+    """知見202: `ManagePDFPassword`(`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`知見200・201と同じ`upap:`名前空間)。
+    実機`vajrang-b/UiPathIn30Days`で確認した`NewOwnerPassword`単独
+    使用の実例。"""
+    xml = (
+        f"<upap:ManagePDFPassword {_PDF_XMLNS} "
+        'DisplayName="Manage PDF Password" '
+        'FileName="SamplePdf1_12mb_6pages (1).pdf" NewOwnerPassword="1234" '
+        'OutputFileName="output\\password.pdf" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ManagePdfPasswordNode)
+    assert node.file_name == Literal(value="SamplePdf1_12mb_6pages (1).pdf")
+    assert node.new_owner_password == Literal(value="1234")
+    assert node.new_user_password is None
+    assert node.old_user_password is None
+    assert node.old_owner_password is None
+
+
+def test_manage_pdf_password_with_new_user_password():
+    """知見202: 実機`vajrang-b/UiPathIn30Days`で確認した
+    `NewUserPassword`単独使用の実例。"""
+    xml = (
+        f"<upap:ManagePDFPassword {_PDF_XMLNS} "
+        'DisplayName="Manage PDF Password for security for current file." '
+        'FileName="SamplePdf1_12mb_6pages (1).pdf" NewUserPassword="1234" '
+        'OutputFileName="Output\\password.pdf" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ManagePdfPasswordNode)
+    assert node.new_user_password == Literal(value="1234")
+    assert node.new_owner_password is None
 
 
 def test_write_csv_file_properties():

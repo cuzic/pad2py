@@ -83,6 +83,7 @@ from .types import (
     LoadImageNode,
     LookupDataTableNode,
     LogMessageNode,
+    ManagePdfPasswordNode,
     MessageBoxNode,
     MoveFileNode,
     MultipleAssignNode,
@@ -992,6 +993,18 @@ def _parse_join_pdf(elem: etree._Element) -> JoinPdfNode:
         display_name=_attr(elem, "DisplayName"),
         file_list=_attr_expr(elem, "FileList"),
         output_file_name=_attr_expr(elem, "OutputFileName"),
+    )
+
+
+def _parse_manage_pdf_password(elem: etree._Element) -> ManagePdfPasswordNode:
+    return ManagePdfPasswordNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=_attr_expr(elem, "FileName"),
+        output_file_name=_attr_expr(elem, "OutputFileName"),
+        new_user_password=_attr_expr(elem, "NewUserPassword"),
+        new_owner_password=_attr_expr(elem, "NewOwnerPassword"),
+        old_user_password=_attr_expr(elem, "OldUserPassword"),
+        old_owner_password=_attr_expr(elem, "OldOwnerPassword"),
     )
 
 
@@ -2133,6 +2146,7 @@ _DISPATCH = {
     (PDF_NS, "GetPDFPageCount"): _parse_get_pdf_page_count,
     (PDF_NS, "ExtractPDFPageRange"): _parse_extract_pdf_page_range,
     (PDF_NS, "JoinPDF"): _parse_join_pdf,
+    (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,

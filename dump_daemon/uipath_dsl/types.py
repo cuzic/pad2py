@@ -1147,6 +1147,37 @@ class JoinPdfNode:
 
 
 @dataclass
+class ManagePdfPasswordNode:
+    """`<ManagePDFPassword>`(知見202、`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`(知見200・201)と同じ`upap:`
+    名前空間)。`UiPath/skills`公式リポジトリのStudio実機ground-truth
+    コーパスは`FileName`+`OutputFileName`のみだが、実機3件(いずれも
+    `vajrang-b/UiPathIn30Days`)で`NewUserPassword`(平文VBリテラル
+    `"1234"`)と`NewOwnerPassword`(同`"1234"`)の両方——異なる実例で
+    それぞれ単独使用——を確認した(ground-truthが実機の全属性を
+    網羅していない、知見197の`GenerateDataTable`と同じ傾向)。
+    `OldUserPassword`/`OldOwnerPassword`(既存のパスワードの変更/削除
+    用と推測される)は実機で一度も非nullの実例を確認できなかったため
+    未モデル化、設定時は常に`# TODO`へ倒す。
+
+    `pypdf.PdfWriter.encrypt(user_password, owner_password=...)`
+    (`pyproject.toml`で既に確認済みの依存、`pypdf`自体で対話的に
+    動作確認済み——本リポジトリのPAD側に暗号化の既存イディオムは
+    無いため、`pypdf`本体のAPIを直接使う最初の例)が直接対応する。
+    `NewOwnerPassword`のみ設定時は`user_password=""`(空文字列、
+    パスワード無しで開けるがowner権限のみ制限される——実際に`pypdf`で
+    対話的に確認した挙動)を渡す。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    output_file_name: Expr = None
+    new_user_password: Expr = None
+    new_owner_password: Expr = None
+    old_user_password: Expr = None
+    old_owner_password: Expr = None
+
+
+@dataclass
 class WriteCsvFileNode:
     """`<ui:WriteCsvFile>`(知見185、`ReadCsvFile`の正反対)。`UiPath/
     skills`公式リポジトリのStudio実機ground-truthコーパス
@@ -2610,6 +2641,7 @@ Node = (
     | GetPdfPageCountNode
     | ExtractPdfPageRangeNode
     | JoinPdfNode
+    | ManagePdfPasswordNode
     | WriteCsvFileNode
     | InvokePowerShellNode
     | RetryScopeNode

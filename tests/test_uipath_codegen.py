@@ -96,6 +96,7 @@ from dump_daemon.uipath_dsl import (
     LoadImageNode,
     LookupDataTableNode,
     LogMessageNode,
+    ManagePdfPasswordNode,
     MessageBoxNode,
     MoveFileNode,
     MultipleAssignNode,
@@ -3808,6 +3809,103 @@ def test_join_pdf_with_missing_properties_is_todo():
     wf = _wrap([JoinPdfNode(file_list=None, output_file_name=Literal(value="out.pdf"))])
     code = generate_python(wf)
     assert "# TODO: JoinPDF with missing FileList/OutputFileName" in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_with_owner_password_only():
+    """知見202: `ManagePDFPassword`(`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`知見200・201と同じ`upap:`名前空間)。
+    `pypdf.PdfWriter.encrypt()`が直接対応する。`NewOwnerPassword`のみ
+    設定時は`user_password=''`を渡す。"""
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                new_owner_password=Literal(value="1234"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_mpp_writer.encrypt(user_password='', owner_password='1234')" in code
+    assert "import pypdf" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_with_user_password_only():
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                new_user_password=Literal(value="1234"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_mpp_writer.encrypt(user_password='1234', owner_password=None)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                new_user_password=Literal(value="1234"),
+                display_name="Manage PDF Password",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Manage PDF Password" in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=None,
+                output_file_name=Literal(value="out.pdf"),
+                new_user_password=Literal(value="1234"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ManagePDFPassword with missing FileName/OutputFileName" in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_with_old_password_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+                old_user_password=Literal(value="1234"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ManagePDFPassword with OldUserPassword/OldOwnerPassword set" in code
+    _compiles(code)
+
+
+def test_manage_pdf_password_with_no_new_password_is_todo():
+    wf = _wrap(
+        [
+            ManagePdfPasswordNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.pdf"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ManagePDFPassword with no NewUserPassword/NewOwnerPassword captured" in code
     _compiles(code)
 
 

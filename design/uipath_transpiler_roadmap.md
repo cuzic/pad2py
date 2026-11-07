@@ -2622,3 +2622,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      生成した2ページ+3ページのPDF結合で5ページになることを確認。
      回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`3件)、UiPath関連テスト全912件通過。
+
+160. **(完了、2026-11-06)** `ManagePDFPassword`を新規実装(知見202):
+     知見200で見送った`upap:`名前空間の残り活動のうち1件。
+     ground-truthは`FileName`+`OutputFileName`のみだが実機3件で
+     `NewUserPassword`/`NewOwnerPassword`(いずれも単独使用)を確認
+     (知見197の`GenerateDataTable`と同じground-truthの限界)。
+     `pypdf`本体のAPI(`PdfWriter.encrypt(user_password,
+     owner_password=...)`)を直接使う初めての活動——本リポジトリの
+     PAD側に暗号化の既存イディオムは無い。`NewOwnerPassword`のみ
+     設定時は`user_password=""`を渡す(対話的に確認済み、owner-only
+     保護として妥当)。`OldUserPassword`/`OldOwnerPassword`は実機
+     未確認のため常にTODOへ倒す。実機XAML2件+実際に生成したPDFでの
+     暗号化・復号確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     2件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト
+     全920件通過。
