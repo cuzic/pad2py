@@ -1249,6 +1249,17 @@ def _render_func_call(node: FuncCall) -> str:
         # Statement`ページの`condition`定義で確定)——`_vb_bool()`
         # (知見60の`AndAlso`/`OrElse`と同じヘルパー)で変換する。
         return f"({args[1]} if {VB_BOOL_HELPER_NAME}({args[0]}) else {args[2]})"
+    # 知見126・知見203: VB.NETの`識別子(引数)`構文はDataRow行の列アクセス
+    # (`row("E-Mail")`)と関数呼び出しで全く同じ見た目になり、静的型情報
+    # 無しでは構文だけでは判別不能——`ScopeInfo.data_row_vars`
+    # (`ForEachRow`のDataRow型反復変数、知見203の`ScopeInfo`基盤)で
+    # この識別子が実際にDataRow型だと分かった場合のみ、列アクセスとして
+    # 解釈する(知見183の`GetRowItem.ColumnName`分岐と同じ、dict行を
+    # 前提にした直接アクセス)。引数が1個以外の場合はDataRowインデクサの
+    # 実際の形と一致しないため対象外とし、下記の従来の判定へ委ねる。
+    scope = _ACTIVE_SCOPE.get()
+    if scope is not None and len(args) == 1 and node.name.lower() in scope.data_row_vars:
+        return f"{_canonical_name(node.name)}[{args[0]}]"
     if "." in node.name:
         # 知見127: `mail_Category.Equals("x")`のような、関数呼び出しを
         # 介さない素の変数へのメンバ**メソッド**呼び出し連鎖

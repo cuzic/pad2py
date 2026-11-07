@@ -269,6 +269,13 @@ DataTableへ変換——既存のDataTableを読まず新規に構築するた�
 ——`AddDataRow`と同じ「cross-node/スコープ resolverの新設が必要」な
 ケースとして一緒に設計を検討する価値がある。
 
+**追記(知見204、2026-11-06、完了)**: 知見203の`ScopeInfo`
+アーキテクチャの第2段として実装完了した。`ScopeInfo.data_row_vars`
+(`ForEachRow`の反復変数)を`render.py`の`_render_func_call`で使い、
+`row(...)`/`keyrow(...)`を`row[列名]`へ変換する——新しいパーサー
+ヘルパーは不要だった(知見203で構築済みのフィールドをそのまま消費)。
+詳細は知見204参照。
+
 **新しい参照データ源: `marcelocruzrpa/uipath-ai-skills`のground-truth
 コーパス(知見128で発見、2026-11-06)**: `uipath-core/references/
 studio-ground-truth/`配下に、UiPathパッケージ名・バージョンごとに

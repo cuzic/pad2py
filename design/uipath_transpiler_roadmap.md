@@ -2660,3 +2660,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      解決(知見117)に向けた土台として用意した。回帰テスト追加
      (`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全924件
      通過、リポジトリ全体で全2010件通過。
+
+162. **(完了・アーキテクチャ刷新第2段、2026-11-06)** 「スコープ対応の
+     コード生成アーキテクチャ」第2段——知見126が発見・保留していた
+     `row(...)`/`keyrow(...)`添字の曖昧性を解消(知見204): 知見203で
+     構築済みだが未消費だった`ScopeInfo.data_row_vars`
+     (`ForEachNode.type_arguments == "sd:DataRow"`の反復変数)を
+     `render.py`の`_render_func_call`で実際に使う——1引数呼び出しの
+     識別子が`data_row_vars`に含まれる場合のみ`row[列名]`(知見183の
+     `GetRowItem.ColumnName`と同じdict行前提の直接アクセス)へ変換。
+     既存のTier1確認済み関数名判定が常に優先され、`data_row_vars`に
+     含まれない識別子は従来通り`# TODO`へ倒れる。`parse_workflow_file`
+     +`generate_python`でのエンドツーエンド確認(`ui:ForEachRow`+
+     `row("E-Mail")`→`# TODO`無しで正しいコード生成)。回帰テスト
+     追加(`tests/test_uipath_codegen.py`3件)、UiPath関連テスト
+     全927件通過、リポジトリ全体で全2013件通過。`data_table_columns`
+     (知見117向け)は依然未消費のまま、次段の候補。

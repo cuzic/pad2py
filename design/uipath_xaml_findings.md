@@ -9653,6 +9653,48 @@ skip、変化無し)。
 columns`を使って`list[dict]`へ変換することが、同じ`ScopeInfo`基盤の
 上に実装できる状態になった。
 
+## 204. 「スコープ対応のコード生成アーキテクチャ」第2段——知見126が発見・保留していた`row(...)`/`keyrow(...)`添字の曖昧性を、知見203の`ScopeInfo.data_row_vars`で解消
+
+知見203で新設した`ScopeInfo`アーキテクチャの第2段として、知見126が
+発見し知見130でも実需要を再確認していた`row(...)`/`keyrow(...)`添字
+の曖昧性(VB.NETの`識別子(引数)`構文は関数呼び出しとDataRow行の列
+アクセスで全く同じ見た目になり、静的型情報無しでは構文だけでは判別
+不能)を解消した。
+
+`ScopeInfo.data_row_vars`(`ForEachNode.type_arguments.lower() ==
+"sd:datarow"`の反復変数、知見203で構築済みだが知見203自身では未消費
+だったフィールド)を`render.py`の`_render_func_call`で実際に使う——
+呼び出し先の識別子が1引数で呼ばれ、かつその識別子(大文字小文字を
+区別せず`ScopeInfo.canonical_names`で正規化)が`data_row_vars`に
+含まれる場合のみ、`row[列名]`という添字アクセス(知見183の
+`GetRowItem.ColumnName`分岐と同じ、dict行を前提にした直接アクセス)
+へ変換する。既存のTier1確認済み関数名判定(`CStr`/`Split`等)は全て
+この新しい判定より前に実行されるため、万が一DataRow反復変数の名前が
+確認済みの関数名と衝突しても、既存の確認済み変換が優先される(衝突の
+実例は本調査では一度も確認していないが、安全側の優先順位として記録)。
+`ScopeInfo`が無い(今まで通り`use_scope()`を使わない呼び出し)場合、
+または識別子が`data_row_vars`に含まれない場合は、従来通り
+`NotImplementedError`で保守的に`# TODO`へ倒れる——でっち上げた列
+アクセス変換はしない。
+
+`ui:ForEachRow`(知見118、`ForEachNode`を再利用)の反復変数名は
+`row`固定ではなく、知見130で`keyrow`という別名の実例も確認済み
+——合成データで両方の変数名+大文字小文字の揺れ(`KeyRow("Status")`
+→`keyRow['Status']`)を確認した。また、`ForEachRow`ではない通常の
+`ForEach`(`type_arguments`が`sd:DataRow`以外)の反復変数に対する
+同じ構文の呼び出しは、`data_row_vars`に含まれないため引き続き
+`# TODO`へ倒れることも確認した(でっち上げ防止の安全策が機能して
+いることの裏付け)。実際に`parse_workflow_file()`+`generate_python()`
+で実機相当のXAML(`ui:ForEachRow`+`row("E-Mail")`参照)を通して
+エンドツーエンドで確認し、`# TODO`無しで`for row in dt: print(row
+['E-Mail'])`相当のコードが生成されることを確認した。
+
+回帰テスト追加(`tests/test_uipath_codegen.py`3件)、UiPath関連
+テスト全927件通過、リポジトリ全体で全2013件通過(28件skip、変化
+無し)。`ScopeInfo.data_table_columns`(`AddDataRow`のクロスノード
+DataTableスキーマ解決、知見117向け)は依然未消費のまま——次の段の
+候補として残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

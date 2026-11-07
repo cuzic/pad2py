@@ -659,7 +659,7 @@ def test_bare_variable_dotted_copy_without_call_renders_as_datatable_copy():
 
 
 def test_outargument_reference_with_different_casing_is_normalized():
-    """知見130で発見・保留していた【重大】バグの再現テスト(知見207で
+    """知見130で発見・保留していた【重大】バグの再現テスト(知見203で
     `ScopeInfo`/`render.use_scope()`アーキテクチャにより解消): VB.NETは
     識別子の大文字小文字を区別しないため、`out_RequirementLanCur`という
     表記で宣言されたOutArgumentを本体が`Out_RequirementLanCur`
@@ -682,7 +682,7 @@ def test_outargument_reference_with_different_casing_is_normalized():
 
 
 def test_declared_variable_reference_with_different_casing_is_normalized():
-    """知見130・知見207: 通常のローカル変数でも同じ大文字小文字の揺れが
+    """知見130・知見203: 通常のローカル変数でも同じ大文字小文字の揺れが
     起こりうる(宣言は`myCounter`、代入先は`MyCounter`、読み取りは
     `myCounter`)——全て同じPython変数へ正規化される。"""
     wf = WorkflowFile(
@@ -702,7 +702,7 @@ def test_declared_variable_reference_with_different_casing_is_normalized():
 
 
 def test_identifier_not_declared_anywhere_is_left_unchanged():
-    """知見207: 宣言済みの変数/引数集合に含まれない識別子は、大文字小文字が
+    """知見203: 宣言済みの変数/引数集合に含まれない識別子は、大文字小文字が
     偶然似ていても無変換のまま——でっち上げた正規化をしない安全策。"""
     wf = WorkflowFile(
         class_name="Test",
@@ -716,7 +716,7 @@ def test_identifier_not_declared_anywhere_is_left_unchanged():
 
 
 def test_scope_info_does_not_leak_across_separate_generate_python_calls():
-    """知見207: `render.use_scope()`は`contextvars`経由でアンビエントに
+    """知見203: `render.use_scope()`は`contextvars`経由でアンビエントに
     渡すため、1回の`generate_python()`呼び出しが終わればスコープ情報は
     必ずリセットされる——別のワークフローの宣言済み変数が後続の
     `generate_python()`呼び出しへ漏れ出さないことを確認する。"""
@@ -732,6 +732,66 @@ def test_scope_info_does_not_leak_across_separate_generate_python_calls():
     code2 = generate_python(wf2)
     assert "x = MyCounter" in code2
     _compiles(code2)
+
+
+def test_for_each_row_subscript_disambiguates_as_column_access():
+    """知見126で発見・保留していた`row(...)`添字の曖昧性(VB.NETの
+    `識別子(引数)`構文は関数呼び出しとDataRow列アクセスで全く同じ見た目
+    になり構文だけでは判別不能)を、知見203の`ScopeInfo.data_row_vars`
+    (`ForEachRow`のDataRow型反復変数)で解消する——`GetRowItem.
+    ColumnName`(知見183)と同じdict行前提の直接アクセスに変換する。"""
+    wf = _wrap(
+        [
+            ForEachNode(
+                item_var="row",
+                values=VbExpr(text="dt"),
+                type_arguments="sd:DataRow",
+                body=[MessageBoxNode(text=VbExpr(text='row("E-Mail")'))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "row['E-Mail']" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_for_each_row_subscript_disambiguation_is_case_insensitive():
+    """知見126・知見130: `ForEachRow`の反復変数名は`row`固定ではなく
+    (`keyrow`等の実例を知見130で確認)、参照時の大文字小文字の揺れも
+    正規化される(知見203)。"""
+    wf = _wrap(
+        [
+            ForEachNode(
+                item_var="keyRow",
+                values=VbExpr(text="dt"),
+                type_arguments="sd:DataRow",
+                body=[MessageBoxNode(text=VbExpr(text='KeyRow("Status")'))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "keyRow['Status']" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_bare_subscript_without_data_row_scope_still_declines():
+    """知見203: `ScopeInfo`が`row`をDataRow型と確認できない場合
+    (`ForEachRow`の反復変数ではない通常の`ForEach`等)は、従来通り
+    `# TODO`へ倒れる——でっち上げた列アクセス変換をしない安全策。"""
+    wf = _wrap(
+        [
+            ForEachNode(
+                item_var="row",
+                values=VbExpr(text="items"),
+                body=[MessageBoxNode(text=VbExpr(text='row("E-Mail")'))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" in code
+    _compiles(code)
 
 
 def test_len_renders_as_python_len():
