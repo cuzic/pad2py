@@ -9575,6 +9575,84 @@ owner権限のみ制限される——これがUiPath実機の挙動と完全に
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
 6件)、UiPath関連テスト全920件通過。
 
+## 203. 「スコープ対応のコード生成アーキテクチャ」を新設——知見130が最優先と記録していたVB.NET識別子の大文字小文字正規化を実装、`contextvars`によるアンビエントなスコープ情報で既存の`render_expr`呼び出し規約を一切変えずに済ませた
+
+知見117(`AddDataRow`のクロスノードDataTableスキーマ解決)・知見126
+(`row(...)`添字のDataRow型追跡)・知見130(識別子の大文字小文字正規化、
+「次にスコープ対応アーキテクチャを設計する際は最優先の要件として含め
+るべき」と明記)という3件の「式レンダリングにスコープ情報が必要」な
+設計課題に対応する、新しいアーキテクチャの第1段を実装した。ユーザー
+からの明示的な指示(「アーキテクチャ刷新、設計をやりましょう」)を
+受けて着手。
+
+**設計**: `render_expr`/`_render_node`(`uipath_codegen/render.py`)は
+式単体を文脈無しに文字列化する純粋関数で、呼び出し規約(引数は式
+のみ)を変える仕組みが無いという知見130の診断はそのまま正しかったが、
+実際に全呼び出し経路(`uipath_codegen/__init__.py`内の`_render_value_
+or_todo`呼び出しは150件超)へ新しい引数を明示的にスレッディングする
+のは、既存の`invoke_resolver`/`out_arg_resolver`(`_generate_node`/
+`_generate_body`経由で約77箇所に伝播済み)と同種の手法を踏襲すると
+あまりに広範囲な変更になる。代わりに`contextvars.ContextVar`による
+アンビエントなスコープ情報(`ScopeInfo`)を採用した——`render_expr`/
+`_render_node`の関数シグネチャを一切変えずに、`generate_python()`の
+`with render.use_scope(scope):`ブロックの間だけ有効化する設計。
+`contextvars`はネスト・再入可能なため、`generate_project_python()`が
+複数ファイルへ順に`generate_python()`を呼んでもスコープ情報が別
+ファイルへ漏れないことも確認した(回帰テストで検証)。スコープ情報が
+無い(呼び出し元が`use_scope`を使わない場合、デフォルトは`None`)場合
+は常に無変換——既存の挙動を一切変えない安全なデフォルトになっている。
+
+**`ScopeInfo`の構築**(`_build_scope_info()`、`uipath_codegen/
+__init__.py`): ワークフロー木全体を再帰的に歩いて、宣言済みの
+識別子(`workflow.arguments`+全ての`VariableDecl`)の小文字キー→
+実際の表記(最初に見つかったものを正規形とする)という対応表を作る。
+`Node`は実クラスではなく巨大な`Union`型エイリアスのため`isinstance`
+の対象にできない——個々のコンテナ型を手で列挙する代わりに「任意の
+dataclassのフィールドを再帰的に辿る」という汎用的な走査(`_walk_
+scope_sources`)にした。これにより`SwitchArm`/`CatchArm`等のNode本体
+ではない補助dataclass内部の`.body`も自動的に拾え、将来新しい
+コンテナ型が追加されても個別対応が要らない。`Flowchart`はグラフ
+構造(`FlowNode.next`等)でループを持ちうるため、`id()`に基づく
+`visited`集合で無限再帰を防いだ。
+
+`ScopeInfo`は`canonical_names`(今回実際に消費する)に加え、
+`data_row_vars`(`ForEachNode.type_arguments == "sd:DataRow"`の
+反復変数、知見126向け)・`data_table_columns`(`BuildDataTableNode`の
+`data_table`変数名→`columns`、知見117向け)というフィールドも用意した
+——今回は構築するが消費しない、将来の`row(...)`添字解消・AddDataRow
+解禁に向けた土台。`BuildDataTableNode.columns`は実はパーサー側で
+すでに抽出・保持されていた(知見117)にもかかわらず、コード生成側が
+一度も読んでいなかったことが分かった——両方の情報源はすでに存在して
+いたのに、それらを橋渡しする仕組みが無かっただけだった。
+
+**`render.py`側の消費**: `_render_node`のIdent分岐のうち、ドット無し
+の素の識別子は`_canonical_name()`経由で即座に正規化する。ドット付き
+識別子のうち、末尾セグメントが確認済みの安全なメンバ名(知見118〜
+140で確立した`_apply_chained_property`の経路)に一致する場合は、
+先頭セグメント(変数参照部分)のみ正規化してからメンバ変換を適用する
+——`DateTime.Now`等の静的クラス参照を含む未一致のドット付き名前は
+従来通り無変換のまま(でっち上げた正規化をしない安全策)。
+
+実機で知見130が発見した正確なシナリオ(`out_RequirementLanCur`という
+表記で宣言されたOutArgumentを、本体が`Out_RequirementLanCur`
+(大文字`O`)という別表記で参照する)を合成XMLで再現し、修正前なら
+2つの別々のPython変数になり関数の仮引数が一度も更新されない静かな
+誤りを生成していたのが、正しく1つの変数へ正規化されることを確認
+した。通常のローカル変数宣言での大文字小文字の揺れ(`myCounter`
+宣言、`MyCounter`で代入、`myCounter`で読み取り)も同様に確認。
+宣言済み集合に無い識別子は無変換のまま(でっち上げ無し)・スコープ
+情報が別の`generate_python()`呼び出しへ漏れないことも回帰テストで
+確認した。回帰テスト追加(`tests/test_uipath_codegen.py`5件)、
+UiPath関連テスト全924件通過、リポジトリ全体で全2010件通過(28件
+skip、変化無し)。
+
+**今後**: `ScopeInfo`の`data_row_vars`/`data_table_columns`フィールド
+は構築済みだが未消費——次の段として、`row(...)`/`keyrow(...)`添字
+(知見126)を`render_expr`の`FuncCall`分岐で`data_row_vars`を使って
+解消すること、`AddDataRow`の`ArrayRow`(知見117)を`data_table_
+columns`を使って`list[dict]`へ変換することが、同じ`ScopeInfo`基盤の
+上に実装できる状態になった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

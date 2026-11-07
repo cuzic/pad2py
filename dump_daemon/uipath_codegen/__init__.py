@@ -50,6 +50,7 @@ docstringへ`ForEach.Values`を正式に明記することで方針を確定し�
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -192,7 +193,9 @@ from .render import (
     VB_OR_HELPER_SOURCE,
     VB_XOR_HELPER_NAME,
     VB_XOR_HELPER_SOURCE,
+    ScopeInfo,
     render_expr,
+    use_scope,
 )
 
 INDENT = "    "
@@ -226,6 +229,80 @@ def _collect_out_arg_names(arguments: dict[str, str]) -> frozenset[str]:
         arg_name
         for arg_name, type_str in arguments.items()
         if type_str.lower().startswith(("outargument", "inoutargument"))
+    )
+
+
+def _walk_scope_sources(obj, visited: set[int], on_node) -> None:
+    """`workflow`木全体を再帰的に歩き、`VariableDecl`/`ForEachNode`/
+    `BuildDataTableNode`のインスタンスに遭遇するたびに`on_node`を呼ぶ
+    (知見117・126・130が記録した「スコープ情報が式レンダリングに必要」
+    という3件の実需要に共通する、名前解決の一次情報源)。`Node`は
+    実際には巨大な`Union`型エイリアス(実クラスではない)で`isinstance`
+    の対象にできないため、個々のケースをハンドラ側で判定する代わりに
+    「任意のdataclassのフィールドを再帰的に辿る」という汎用的な走査に
+    した——`SwitchArm`/`CatchArm`等のNode本体ではない補助dataclassの
+    内部(`.body`)もこれで自動的に拾える。`Flowchart`はグラフ構造
+    (`FlowNode.next`等)でループを持ちうるため、`id()`に基づく`visited`
+    集合で無限再帰を防ぐ。"""
+    if obj is None or isinstance(obj, (str, int, float, bool, bytes)):
+        return
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        if id(obj) in visited:
+            return
+        visited.add(id(obj))
+        on_node(obj)
+        for f in dataclasses.fields(obj):
+            _walk_scope_sources(getattr(obj, f.name), visited, on_node)
+    elif isinstance(obj, (list, tuple, frozenset, set)):
+        for item in obj:
+            _walk_scope_sources(item, visited, on_node)
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            _walk_scope_sources(value, visited, on_node)
+
+
+def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
+    """知見130(識別子の大文字小文字正規化、最優先の設計課題として記録)・
+    知見126(`row(...)`添字のDataRow型追跡)・知見117(`AddDataRow`の
+    クロスノードDataTableスキーマ解決)という3件の「スコープ情報が
+    式レンダリングに必要」という実需要に対応する、ワークフロー単位で
+    一度だけ構築するスコープ情報。`canonical_names`は今回の`generate_
+    python()`から実際に使われる(`render.use_scope()`経由)が、
+    `data_row_vars`/`data_table_columns`はまだ消費側が無く、将来の
+    拡張に備えてフィールドだけ用意してある。"""
+    canonical_names: dict[str, str] = {}
+
+    def register_name(name: str) -> None:
+        key = name.lower()
+        if key not in canonical_names:
+            canonical_names[key] = name
+
+    for arg_name in workflow.arguments:
+        register_name(arg_name)
+    for decl in workflow.variables:
+        register_name(decl.name)
+
+    data_row_vars: set[str] = set()
+    data_table_columns: dict[str, list[str] | None] = {}
+
+    def on_node(obj) -> None:
+        if isinstance(obj, VariableDecl):
+            register_name(obj.name)
+        elif isinstance(obj, ForEachNode):
+            if obj.type_arguments.lower() == "sd:datarow":
+                register_name(obj.item_var)
+                data_row_vars.add(obj.item_var.lower())
+        elif isinstance(obj, BuildDataTableNode):
+            if isinstance(obj.data_table, VbExpr):
+                register_name(obj.data_table.text)
+                data_table_columns[obj.data_table.text.lower()] = list(obj.columns)
+
+    _walk_scope_sources(workflow.root, set(), on_node)
+
+    return ScopeInfo(
+        canonical_names=canonical_names,
+        data_row_vars=frozenset(data_row_vars),
+        data_table_columns=data_table_columns,
     )
 
 
@@ -270,9 +347,10 @@ def generate_python(
     params = list(workflow.arguments.keys())
     name = func_name or _safe_func_name(workflow.class_name)
     header = f"def {name}({', '.join(params)}):"
-    body = _generate_node(
-        workflow.root, indent=1, invoke_resolver=invoke_resolver, out_arg_resolver=out_arg_resolver
-    )
+    with use_scope(_build_scope_info(workflow)):
+        body = _generate_node(
+            workflow.root, indent=1, invoke_resolver=invoke_resolver, out_arg_resolver=out_arg_resolver
+        )
     out_params = _collect_out_arg_names(workflow.arguments)
     if out_params:
         body = [

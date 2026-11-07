@@ -11,6 +11,10 @@
 """
 from __future__ import annotations
 
+import contextlib
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+
 from dump_daemon.uipath_expr import (
     ArrayLiteral,
     BinOp,
@@ -30,6 +34,54 @@ from dump_daemon.uipath_expr import (
 )
 
 from ..uipath_dsl.types import Expr, Literal, VbExpr
+
+# 知見130: VB.NETの識別子は大文字小文字を区別しないが、`render_expr`/
+# `_render_node`は式単体を文脈無しに文字列化する純粋関数のため、同じ変数が
+# 異なる大文字小文字表記で参照されると2つの別々のPython変数になってしまう
+# (構文的には正しいが意味的に誤ったコードを静かに生成する、最も重大な
+# 種類のバグ)。この問題を解消するため、`ScopeInfo`(ワークフロー単位で
+# 一度だけ構築する、宣言済み識別子の正規化情報)を`contextvars.ContextVar`
+# 経由でアンビエントに渡す——`render_expr`/`_render_node`の既存の呼び出し
+# 規約(引数は式のみ、スコープ情報を渡す仕組みが無い)を変えずに済む設計。
+# `uipath_codegen/__init__.py`の`generate_python()`が`use_scope()`で
+# 1回のコード生成呼び出しの間だけ有効化する(`contextvars`はネスト・再入
+# 可能なため`generate_project_python()`が複数ファイルへ順に呼んでも
+# 安全)。スコープ情報が無い(`None`)場合は常に無変換——既存の挙動を一切
+# 変えない安全なデフォルト。
+@dataclass(frozen=True)
+class ScopeInfo:
+    """`_build_scope_info()`(`uipath_codegen/__init__.py`)が1ワークフロー
+    につき1回構築する。`canonical_names`は小文字キー→実際に宣言された
+    (最初に見つかった)表記への対応表——`Ident`レンダリング時にこの表記へ
+    正規化する。`data_row_vars`/`data_table_columns`はまだ生成に使われて
+    いない(今後の`row(...)`添字解消・DataTableスキーマ解決向けに用意した
+    フィールドで、知見126・117の設計課題に対応する将来の拡張用)。"""
+
+    canonical_names: dict[str, str] = field(default_factory=dict)
+    data_row_vars: frozenset[str] = frozenset()
+    data_table_columns: dict[str, list[str] | None] = field(default_factory=dict)
+
+
+_ACTIVE_SCOPE: ContextVar[ScopeInfo | None] = ContextVar("uipath_codegen_scope", default=None)
+
+
+@contextlib.contextmanager
+def use_scope(scope: ScopeInfo | None):
+    """このブロックの間だけ`scope`をアンビエントに有効化する。"""
+    token = _ACTIVE_SCOPE.set(scope)
+    try:
+        yield
+    finally:
+        _ACTIVE_SCOPE.reset(token)
+
+
+def _canonical_name(name: str) -> str:
+    scope = _ACTIVE_SCOPE.get()
+    if scope is None:
+        return name
+    canonical = scope.canonical_names.get(name.lower())
+    return canonical if canonical is not None else name
+
 
 # design/uipath_vb_expression_mapping.md で実機確認済み(知見32・36)の
 # 型変換関数は全て、値そのものがVBとPythonで食い違いうる(知見42・45・52と
@@ -496,7 +548,9 @@ def _render_node(node: ExprNode) -> str:
             # 知見146: VB.NETの大文字小文字不区別のため比較前に`.lower()`。
             last_lower = last.lower()
             if last_lower in _SAFE_BARE_MEMBERS or last_lower in _CHAINED_PROPERTY_TRANSLATIONS:
-                return _apply_chained_property(prefix, last)
+                return _apply_chained_property(_canonical_name(prefix), last)
+        else:
+            return _canonical_name(node.name)
         return node.name
     if isinstance(node, StringLiteral):
         return repr(node.value)

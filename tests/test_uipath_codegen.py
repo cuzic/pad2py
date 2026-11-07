@@ -658,6 +658,82 @@ def test_bare_variable_dotted_copy_without_call_renders_as_datatable_copy():
     _compiles(code)
 
 
+def test_outargument_reference_with_different_casing_is_normalized():
+    """知見130で発見・保留していた【重大】バグの再現テスト(知見207で
+    `ScopeInfo`/`render.use_scope()`アーキテクチャにより解消): VB.NETは
+    識別子の大文字小文字を区別しないため、`out_RequirementLanCur`という
+    表記で宣言されたOutArgumentを本体が`Out_RequirementLanCur`
+    (大文字`O`)という別表記で参照する実機XAMLが存在する——修正前は
+    これが2つの別々のPython変数になり、関数の仮引数が実際には一度も
+    更新されない静かな誤り(`# TODO`で保守的に失敗するのではなく
+    構文的には正しいが意味的に誤ったコード)を生成していた。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        arguments={"out_RequirementLanCur": "OutArgument(x:String)"},
+        root=SequenceNode(
+            body=[AssignNode(target=VbExpr(text="Out_RequirementLanCur"), value=Literal(value="hello"))]
+        ),
+    )
+    code = generate_python(wf)
+    assert "def Test(out_RequirementLanCur):" in code
+    assert "out_RequirementLanCur = 'hello'" in code
+    assert "Out_RequirementLanCur" not in code
+    _compiles(code)
+
+
+def test_declared_variable_reference_with_different_casing_is_normalized():
+    """知見130・知見207: 通常のローカル変数でも同じ大文字小文字の揺れが
+    起こりうる(宣言は`myCounter`、代入先は`MyCounter`、読み取りは
+    `myCounter`)——全て同じPython変数へ正規化される。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            variables=[VariableDecl(name="myCounter", type_arguments="x:String")],
+            body=[
+                AssignNode(target=VbExpr(text="MyCounter"), value=Literal(value="hi")),
+                MessageBoxNode(text=VbExpr(text="myCounter")),
+            ],
+        ),
+    )
+    code = generate_python(wf)
+    assert "myCounter = 'hi'" in code
+    assert "MyCounter" not in code
+    _compiles(code)
+
+
+def test_identifier_not_declared_anywhere_is_left_unchanged():
+    """知見207: 宣言済みの変数/引数集合に含まれない識別子は、大文字小文字が
+    偶然似ていても無変換のまま——でっち上げた正規化をしない安全策。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[AssignNode(target=VbExpr(text="x"), value=VbExpr(text="SomeUnrelatedName"))]
+        ),
+    )
+    code = generate_python(wf)
+    assert "x = SomeUnrelatedName" in code
+    _compiles(code)
+
+
+def test_scope_info_does_not_leak_across_separate_generate_python_calls():
+    """知見207: `render.use_scope()`は`contextvars`経由でアンビエントに
+    渡すため、1回の`generate_python()`呼び出しが終わればスコープ情報は
+    必ずリセットされる——別のワークフローの宣言済み変数が後続の
+    `generate_python()`呼び出しへ漏れ出さないことを確認する。"""
+    wf1 = WorkflowFile(
+        class_name="First",
+        root=SequenceNode(
+            variables=[VariableDecl(name="myCounter", type_arguments="x:String")],
+            body=[AssignNode(target=VbExpr(text="MyCounter"), value=Literal(value="hi"))],
+        ),
+    )
+    generate_python(wf1)
+    wf2 = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="MyCounter"))])
+    code2 = generate_python(wf2)
+    assert "x = MyCounter" in code2
+    _compiles(code2)
+
+
 def test_len_renders_as_python_len():
     """知見127: `Len(expr)`(`LowyShin/lwrpa-uip-moveoldfiles`の実機XAML
     `Len(sRstHttp)`で発見)。文字列用法のみ想定し`len(expr)`へ対応する。"""

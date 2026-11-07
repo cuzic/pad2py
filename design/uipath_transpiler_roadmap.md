@@ -2637,3 +2637,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      暗号化・復号確認。回帰テスト追加(`tests/test_uipath_dsl.py`
      2件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト
      全920件通過。
+
+161. **(完了・アーキテクチャ刷新、2026-11-06)** 「スコープ対応のコード
+     生成アーキテクチャ」第1段を新設し、知見130が最優先と記録していた
+     VB.NET識別子の大文字小文字正規化を実装(知見203): ユーザー指示
+     (「アーキテクチャ刷新、設計をやりましょう」)を受けて着手。
+     `render_expr`/`_render_node`の呼び出し規約を変えずに済むよう、
+     `contextvars.ContextVar`によるアンビエントな`ScopeInfo`
+     (`uipath_codegen/render.py`の`use_scope()`)を採用——明示的な
+     パラメータスレッディング(既存の`invoke_resolver`/
+     `out_arg_resolver`と同じ手法)だと150件超の呼び出し箇所に影響する
+     ため回避した。`ScopeInfo`は`_build_scope_info()`(`uipath_codegen/
+     __init__.py`)がワークフロー木全体を再帰的に歩いて構築する——
+     `Node`がUnion型エイリアス(実クラスではない)なので、個々のコン
+     テナ型を手で列挙せず「任意のdataclassのフィールドを再帰的に辿る」
+     汎用走査(`_walk_scope_sources`、`Flowchart`のグラフ循環は
+     `id()`ベースの`visited`集合で防止)にした。知見130の実機バグ
+     シナリオ(`out_RequirementLanCur`宣言→`Out_RequirementLanCur`
+     参照)を合成XMLで再現し修正を確認。`ScopeInfo`の`data_row_vars`/
+     `data_table_columns`フィールドは構築済みだが未消費——次段の
+     `row(...)`添字解消(知見126)・`AddDataRow`のDataTableスキーマ
+     解決(知見117)に向けた土台として用意した。回帰テスト追加
+     (`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全924件
+     通過、リポジトリ全体で全2010件通過。
