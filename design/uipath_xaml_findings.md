@@ -10068,6 +10068,43 @@ add-queue-item`、WebFetch確認)で「ロボットはOrchestratorに接続済�
 この設計判断(接続情報の受け渡し方式)をユーザーと相談することから
 始める必要がある。
 
+## 212. `ui:WriteTextFile`を新規実装——知見211のOrchestrator系調査で見送った後、GitHub code searchヒット数で突出していた`ui:ReadTextFile`(知見16)の対になる書き込み側に着手、ground-truthに`Encoding`属性自体が存在しないという`ReadTextFile`/`AppendLine`との差異を発見
+
+知見211でOrchestratorキュー系(接続情報がXAMLに現れないため見送り)を
+調査した後、ローカル専用(Orchestrator接続不要)の活動に絞って
+GitHub code searchヒット数を再調査した。`IsMatch`(2404件)・
+`WriteTextFile`(1980件)が突出して高く、`UpdateRowItem`(120件)・
+`ExtractFiles`(124件)・`CompressFiles`(106件)・`GetEnvironmentVariable`
+(101件)・`RemoveDuplicateRows`(103件)・`ChangeCase`(111件)等が続いた
+——今回は最も高かった`WriteTextFile`に着手した(`IsMatch`は次候補)。
+
+ground-truthの属性構成は`File`+`FileName`+`Output`+`Text`のみ——
+**`ReadTextFile`/`AppendLine`には存在する`Encoding`属性自体が存在
+しない**(実機でも一度も確認できず)。実機3件
+(`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`・
+`spritlesoftware/Uipath-RPA-AutomationProjects`・`vajrang-b/
+UiPathIn30Days`、計6箇所)で`File`/`Output`が常に`{x:Null}`、
+`FileName`+`Text`のみが実際に使われていることを確認した——`File`は
+`FileInfo`オブジェクト参照、`Output`は書き込み後の`FileInfo`出力と
+推測されるが、いずれも未モデル化のまま`# TODO`へ倒す。
+
+`Encoding`属性が無いため、`ReadTextFile`(知見108)が既に下した
+判断(公式ドキュメント上の正確な既定——BOM検出→失敗時はシステムの
+ANSIコードページ——ではなく、実機round-trip確認済みの`"utf-8"`を
+そのまま使う)に合わせ、本活動も`"utf-8"`固定で書き込む——読み書き対
+で一貫した既存の判断を踏襲した。`Text`は`SetToClipboard`(知見46)と
+同じ`InArgument<String>`型のため`_vb_cstr()`で変換する。
+
+実機相当の構成(非ASCII文字を含むテキスト)を`exec()`経由で実際に
+実行し、UTF-8で正しく書き込まれ・読み戻せることを確認した。回帰テスト
+追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+3件、うち1件はファイル書き込み+読み戻しの統合テスト)、UiPath関連
+テスト全960件通過、リポジトリ全体で全2046件通過(28件skip、変化
+無し)。
+
+次の候補として`IsMatch`(正規表現マッチのbool判定、GitHub 2404件
+ヒット)を記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

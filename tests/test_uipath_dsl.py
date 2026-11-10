@@ -89,6 +89,7 @@ from dump_daemon.uipath_dsl import (
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
+    WriteTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -2524,6 +2525,25 @@ def test_append_line_and_read_text_file(main_wf):
     read = main_wf.root.body[13]
     assert isinstance(read, ReadTextFileNode)
     assert read.content == VbExpr(text="content")
+
+
+def test_write_text_file_properties():
+    """知見212: `ui:WriteTextFile`(`ReadTextFile`の対になる書き込み側)。
+    実機3件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`・`spritlesoftware/Uipath-RPA-AutomationProjects`・
+    `vajrang-b/UiPathIn30Days`)で確認した`FileName`+`Text`のみの構成
+    ——`File`/`Output`は常に`{x:Null}`。"""
+    xml = (
+        f"<ui:WriteTextFile {_UI_XMLNS} "
+        'DisplayName="Write Text File" FileName="outputs\\RPA.txt" '
+        'Text="[pdfText]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteTextFileNode)
+    assert node.file_name == Literal(value="outputs\\RPA.txt")
+    assert node.text == VbExpr(text="pdfText")
+    assert node.file is None
+    assert node.output is None
 
 
 def test_invoke_code(main_wf):

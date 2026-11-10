@@ -2178,6 +2178,33 @@ class ReadTextFileNode:
 
 
 @dataclass
+class WriteTextFileNode:
+    """`<ui:WriteTextFile FileName="..." Text="..." />`(知見212、
+    `ReadTextFile`(知見16)の対になる書き込み側)。実機6件
+    (`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`・
+    `spritlesoftware/Uipath-RPA-AutomationProjects`・`vajrang-b/
+    UiPathIn30Days`)で確認した構成は`FileName`+`Text`のみ——
+    ground-truthの`File`(常に`{x:Null}`、`FileInfo`オブジェクト参照と
+    推測・未モデル化)+`Output`(常に未設定、書き込み後の`FileInfo`
+    出力と推測・未モデル化)は実機で一度も非`{x:Null}`の値を確認
+    できなかった。
+
+    `ReadTextFile`(知見108)とは違い、ground-truthに`Encoding`属性
+    自体が存在しない(実機でも一度も確認できず)——公式ドキュメント上は
+    `Encoding`未指定時の既定がBOM検出→失敗時はシステムのANSIコード
+    ページという`ReadTextFile`と同じ挙動だが、`ReadTextFile`が既存の
+    実機round-trip確認済みの判断でそのまま`"utf-8"`を使っている
+    (知見108のdocstring参照)のに合わせ、本活動も同じ`"utf-8"`で
+    書き込む——読み書き対の既存の一貫した判断を維持する。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    text: Expr = None
+    file: Expr = None
+    output: Expr = None
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -2897,6 +2924,7 @@ Node = (
     | BuildDataTableNode
     | AppendLineNode
     | ReadTextFileNode
+    | WriteTextFileNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

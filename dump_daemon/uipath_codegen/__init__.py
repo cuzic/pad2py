@@ -140,6 +140,7 @@ from ..uipath_dsl.types import (
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
+    WriteTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -638,6 +639,8 @@ def _generate_node(
         return _generate_parallel(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, AppendLineNode):
         return _generate_append_line(node, indent)
+    if isinstance(node, WriteTextFileNode):
+        return _generate_write_text_file(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -1400,6 +1403,41 @@ def _generate_read_text_file(node: ReadTextFileNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f'{prefix}{target} = open({file_name}, encoding="utf-8").read()']
+
+
+def _generate_write_text_file(node: WriteTextFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_write_text_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_write_text_file_body(node: WriteTextFileNode, indent: int) -> list[str]:
+    """知見212: `File`(`FileInfo`オブジェクト参照と推測)・`Output`
+    (書き込み後の`FileInfo`出力と推測)は実機で非`{x:Null}`の実例が無く
+    未モデル化のため常に`# TODO`。`Text`は`SetToClipboard`(知見46)と
+    同じ`InArgument<String>`型のため`_vb_cstr()`で変換する。"""
+    prefix = INDENT * indent
+    if node.file is not None:
+        return [
+            f"{prefix}# TODO: WriteTextFile with File set — object "
+            "reference not modeled, refusing to guess"
+        ]
+    if node.output is not None:
+        return [
+            f"{prefix}# TODO: WriteTextFile with Output captured — "
+            "output FileInfo semantics not confirmed, refusing to guess"
+        ]
+    if node.file_name is None or node.text is None:
+        return [f"{prefix}# TODO: WriteTextFile with missing FileName/Text"]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f'{prefix}open({file_name}, "w", encoding="utf-8").write('
+        f"{VB_CSTR_HELPER_NAME}({text}))"
+    ]
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:

@@ -103,6 +103,7 @@ from .types import (
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
+    WriteTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -1664,6 +1665,18 @@ def _parse_read_text_file(elem: etree._Element) -> ReadTextFileNode:
     )
 
 
+def _parse_write_text_file(elem: etree._Element) -> WriteTextFileNode:
+    return WriteTextFileNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=_attr_expr(elem, "FileName") or _in_argument_property_expr(
+            elem, "FileName"
+        ),
+        text=_attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text"),
+        file=_attr_expr(elem, "File") or _in_argument_property_expr(elem, "File"),
+        output=_attr_expr(elem, "Output") or _in_argument_property_expr(elem, "Output"),
+    )
+
+
 def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -2349,6 +2362,7 @@ _DISPATCH = {
     (UI_NS, "BuildDataTable"): _parse_build_data_table,
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,
+    (UI_NS, "WriteTextFile"): _parse_write_text_file,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,

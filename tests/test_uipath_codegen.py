@@ -114,6 +114,7 @@ from dump_daemon.uipath_dsl import (
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
+    WriteTextFileNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -9199,6 +9200,67 @@ def test_read_text_file_with_unrenderable_content_target_is_todo_not_invalid_pyt
     code = generate_python(wf)
     assert "# TODO: unresolved VB expression:" in code
     assert "None = " not in code
+    _compiles(code)
+
+
+def test_write_text_file_writes_utf8_text_to_the_given_path():
+    """知見212: 実機3件相当の`FileName`+`Text`構成。`Text`は
+    `SetToClipboard`(知見46)と同じ`InArgument<String>`型のため
+    `_vb_cstr()`で変換、UTF-8で書き込む(`ReadTextFile`知見108と同じ
+    既存の一貫した判断)。"""
+    out_path = tempfile.mktemp(suffix=".txt")
+    wf = _wrap(
+        [
+            WriteTextFileNode(
+                file_name=Literal(value=out_path),
+                text=Literal(value="hello world こんにちは"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert f'open({out_path!r}, "w", encoding="utf-8").write(' in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    assert open(out_path, encoding="utf-8").read() == "hello world こんにちは"
+
+
+def test_write_text_file_declines_file_and_output_object_references():
+    """知見212: `File`/`Output`は実機で非`{x:Null}`の実例が無く未
+    モデル化のため常に`# TODO`。"""
+    wf = _wrap(
+        [
+            WriteTextFileNode(
+                file_name=Literal(value="out.txt"),
+                text=Literal(value="hi"),
+                file=VbExpr(text="someFile"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: WriteTextFile with File set" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            WriteTextFileNode(
+                file_name=Literal(value="out.txt"),
+                text=Literal(value="hi"),
+                output=VbExpr(text="writtenFile"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: WriteTextFile with Output captured" in code2
+    _compiles(code2)
+
+
+def test_write_text_file_with_missing_properties_is_todo():
+    wf = _wrap([WriteTextFileNode(file_name=None, text=Literal(value="hi"))])
+    code = generate_python(wf)
+    assert "# TODO: WriteTextFile with missing FileName/Text" in code
     _compiles(code)
 
 

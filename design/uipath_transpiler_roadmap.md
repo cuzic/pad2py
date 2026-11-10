@@ -2810,3 +2810,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加関数引数等)という新しい設計判断が必要なケース、知見209の
      依存追加相談と同種かそれ以上にユーザーとの事前相談が必要と判断
      し、実装は見送った。
+
+170. **(完了、2026-11-10)** `ui:WriteTextFile`を新規実装(知見212)
+     ——`ReadTextFile`(知見16)の対になる書き込み側。GitHub code
+     search再調査でOrchestrator接続不要な候補に絞り、`WriteTextFile`
+     (1980件ヒット、`IsMatch`の2404件に次ぐ高さ)に着手した。
+     ground-truthに`Encoding`属性自体が存在しない(`ReadTextFile`/
+     `AppendLine`とは異なる)ことを発見、実機3件で`File`/`Output`が
+     常に`{x:Null}`・`FileName`+`Text`のみが実際に使われることを確認
+     ——`File`/`Output`は未モデル化のまま`# TODO`。`Encoding`が無い
+     ため`ReadTextFile`(知見108)の既存判断(round-trip確認済みの
+     `"utf-8"`固定)を踏襲、`Text`は`SetToClipboard`(知見46)と同じ
+     `_vb_cstr()`変換を適用。実機相当の構成(非ASCII文字含む)を
+     `exec()`経由で実際に書き込み・読み戻しまで確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全960件通過、リポジトリ全体で全2046件
+     通過。次の候補`IsMatch`(2404件ヒット)を記録。
