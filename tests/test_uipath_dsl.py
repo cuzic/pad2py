@@ -42,6 +42,7 @@ from dump_daemon.uipath_dsl import (
     CombineTextNode,
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
+    SelectFolderNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -606,6 +607,24 @@ def test_select_file_properties():
     assert node.selected_files is None
     assert node.multiselect is None
     assert node.initial_directory is None
+
+
+def test_select_folder_properties():
+    """知見252: `ui:SelectFolder`(`SelectFile`(知見192)のフォルダ版、
+    タグ名限定GitHub検索で211件ヒット)。実機2件
+    (`cameronmcnz/uipath-tutorials`の`SelectedFolderProject/
+    Main.xaml`、`rohanbaraskar/UiPath-11`の`Get_Driectory_info/
+    Main.xaml`)+ground-truthいずれも一致した唯一の属性構成
+    ——`SelectedFolder`(出力)のみ、`Filter`等の入力プロパティ自体が
+    存在しない。"""
+    xml = (
+        f"<ui:SelectFolder {_UI_XMLNS} DisplayName=\"Select Folder\" "
+        'SelectedFolder="[selectedFolder]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SelectFolderNode)
+    assert node.selected_folder == VbExpr(text="selectedFolder")
+    assert node.display_name == "Select Folder"
 
 
 def test_select_item_selector_and_alter_if_disabled():

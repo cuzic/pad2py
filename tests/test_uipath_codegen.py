@@ -66,6 +66,7 @@ from dump_daemon.uipath_dsl import (
     CombineTextNode,
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
+    SelectFolderNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -7603,6 +7604,30 @@ def test_select_file_with_no_properties_is_still_todo():
     wf = _wrap([SelectFileNode()])
     code = generate_python(wf)
     assert "# TODO: SelectFile" in code
+    _compiles(code)
+
+
+def test_select_folder_always_declines_with_output():
+    """知見252: `ui:SelectFolder`——`SelectFile`(知見192)と同じ理由
+    (ネイティブOSダイアログでの対話操作)で常に`# TODO`へ倒す。"""
+    wf = _wrap([SelectFolderNode(selected_folder=VbExpr(text="selectedFolder"))])
+    code = generate_python(wf)
+    assert "# TODO: SelectFolder" in code
+    _compiles(code)
+
+
+def test_select_folder_display_name_becomes_a_comment():
+    wf = _wrap([SelectFolderNode(display_name="Select Folder")])
+    code = generate_python(wf)
+    assert "# Select Folder" in code
+    assert "# TODO: SelectFolder" in code
+    _compiles(code)
+
+
+def test_select_folder_with_no_properties_is_still_todo():
+    wf = _wrap([SelectFolderNode()])
+    code = generate_python(wf)
+    assert "# TODO: SelectFolder" in code
     _compiles(code)
 
 

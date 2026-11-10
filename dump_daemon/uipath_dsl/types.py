@@ -2564,6 +2564,27 @@ class SelectFileNode:
 
 
 @dataclass
+class SelectFolderNode:
+    """`<ui:SelectFolder SelectedFolder="..." />`(知見252、10回目発見
+    パスで発見、タグ名限定GitHub検索で211件ヒット)。`SelectFileNode`
+    (知見192)のフォルダ版——実機2件(`cameronmcnz/uipath-tutorials`の
+    `SelectedFolderProject/Main.xaml`、`rohanbaraskar/UiPath-11`の
+    `Get_Driectory_info/Main.xaml`)+ground-truthいずれも一致した
+    唯一の属性構成: `SelectedFolder`(出力)のみ——`Filter`等の入力
+    プロパティ自体が存在しない(フォルダ選択ダイアログには拡張子
+    フィルタの概念が無いため、`SelectFile`より更に単純)。
+
+    `SelectFile`と同じ理由(ネイティブOSダイアログでのユーザー操作
+    そのものを表し、headless実行環境で代わりに応答する安全な方法が
+    無い)で常に`# TODO`へ倒す——知見176・174・192と同じ「常にTODOへ
+    倒れる活動でも、ノード型を適切にモデル化する価値がある」という
+    判断の4例目。"""
+
+    display_name: str | None = None
+    selected_folder: Expr = None
+
+
+@dataclass
 class SelectItemNode:
     """`<ui:SelectItem>`(知見112)。`selector`は`ui:SelectItem.Target`配下の
     `ui:Target`要素の`Selector`属性(`ClickNode`等と同じ構造)。`item`は
@@ -4501,6 +4522,7 @@ Node = (
     | CombineTextNode
     | GetIMAPMailMessagesNode
     | SaveMailAttachmentsNode
+    | SelectFolderNode
     | ParallelNode
     | ClickNode
     | HoverNode

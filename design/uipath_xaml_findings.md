@@ -11951,6 +11951,39 @@ Message.walk()`でMIMEツリーを走査)を追加——知見250で「`.Attachm
 4件)、リポジトリ全体で全2274件通過(28件skip)。9回目発見パスは
 これで完全に完了——次tickには新しい(10回目)発見パスが必要。
 
+## 252. `ui:SelectFolder`を新規実装——`SelectFile`(知見192)と同じ「常にTODOへ倒れる活動でも適切にモデル化する価値がある」判断の4例目
+
+10回目発見パスで見つかった`ui:SelectFolder`(タグ名限定GitHub検索で
+211件ヒット)に着手した——サブエージェントが提示した候補群
+(`uas:GetUsernamePasswordX`・`ui:GetEnvironmentFolder`・
+`ui:GetProcesses`・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)の中で最も
+クリーン・低リスクと判断した最初の1件。
+
+実機2件(`cameronmcnz/uipath-tutorials`の`SelectedFolderProject/
+Main.xaml`、`rohanbaraskar/UiPath-11`の`Get_Driectory_info/
+Main.xaml`)+ground-truthいずれも独立に再取得・確認した結果、
+一致する唯一の属性構成は`SelectedFolder`(出力)のみ——`SelectFile`
+(知見192)と違い`Filter`等の入力プロパティ自体が存在しない
+(フォルダ選択ダイアログには拡張子フィルタの概念が無いため、
+`SelectFile`より更に単純な構成)。
+
+ネイティブOSダイアログでのユーザー操作そのものを表すため、
+headless実行環境で代わりに応答する安全な方法が無い——`SelectFile`
+と全く同じ理由で常に`# TODO`へ倒す。知見176の`GetPassword`・
+知見174の`GetAttribute`・知見192の`SelectFile`と同じ「常にTODOへ
+倒れる活動でも、ノード型を適切にモデル化する価値がある」という
+判断の4例目として実装した——新規コード生成ロジックは実質無く、
+`SelectFile`のパーサー・コード生成パターンをそのまま1属性構成へ
+縮小しただけ。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、リポジトリ全体で全2278件通過
+(28件skip)。残る10回目発見パスの候補(`uas:
+GetUsernamePasswordX`・`ui:GetEnvironmentFolder`・`ui:GetProcesses`
+・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録する
+——特に`uas:GetUsernamePasswordX`は知見248の`win32cred.CredRead()`
+基盤をそのまま再利用できる見込みで次の良い候補。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

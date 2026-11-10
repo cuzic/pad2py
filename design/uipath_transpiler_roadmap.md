@@ -3585,3 +3585,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`4件)、リポジトリ全体で全2274件通過。
      9回目発見パスはこれで完全に完了。
+
+210. **(完了、2026-11-10)** `ui:SelectFolder`を新規実装(知見252)
+     ——タグ名限定検索で211件ヒット、10回目発見パス。実機2件
+     (`cameronmcnz/uipath-tutorials`・`rohanbaraskar/UiPath-11`)+
+     ground-truthいずれも一致した唯一の属性構成は`SelectedFolder`
+     (出力)のみ——`SelectFile`(知見192)と違い`Filter`等の入力
+     プロパティ自体が存在しない。ネイティブOSダイアログでの対話操作
+     そのものを表すため、`SelectFile`と同じ理由で常に`# TODO`へ倒す
+     ——知見176・174・192と同じ「常にTODOへ倒れる活動でも適切に
+     モデル化する価値がある」判断の4例目。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、
+     リポジトリ全体で全2278件通過。残る10回目発見パスの候補
+     (`uas:GetUsernamePasswordX`・`ui:GetEnvironmentFolder`・
+     `ui:GetProcesses`・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は
+     次の候補として記録。

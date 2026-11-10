@@ -46,6 +46,7 @@ from .types import (
     CombineTextNode,
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
+    SelectFolderNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -1822,6 +1823,13 @@ def _parse_select_file(elem: etree._Element) -> SelectFileNode:
     )
 
 
+def _parse_select_folder(elem: etree._Element) -> SelectFolderNode:
+    return SelectFolderNode(
+        display_name=_attr(elem, "DisplayName"),
+        selected_folder=_attr_expr(elem, "SelectedFolder"),
+    )
+
+
 def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     selector = _target_selector(elem)
     return SelectItemNode(
@@ -3116,6 +3124,7 @@ _DISPATCH = {
     (UI_NS, "AddCredential"): _parse_add_credential,
     (UI_NS, "RequestCredential"): _parse_request_credential,
     (UI_NS, "SelectFile"): _parse_select_file,
+    (UI_NS, "SelectFolder"): _parse_select_folder,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,

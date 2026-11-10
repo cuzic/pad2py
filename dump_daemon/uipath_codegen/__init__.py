@@ -88,6 +88,7 @@ from ..uipath_dsl.types import (
     CombineTextNode,
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
+    SelectFolderNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -936,6 +937,8 @@ def _generate_node(
         return _generate_remove_duplicate_rows(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
+    if isinstance(node, SelectFolderNode):
+        return _generate_select_folder(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
     if isinstance(node, UiElementExistsNode):
@@ -5465,6 +5468,24 @@ def _generate_select_file_body(node: SelectFileNode, indent: int) -> list[str]:
         f"{prefix}# TODO: SelectFile — displays a native OS file-picker "
         "dialog for interactive user selection, no safe unattended "
         "equivalent exists, refusing to guess"
+    ]
+
+
+def _generate_select_folder(node: SelectFolderNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_select_folder_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_select_folder_body(node: SelectFolderNode, indent: int) -> list[str]:
+    """知見252: `ui:SelectFolder`——`SelectFile`(知見192)と同じ理由
+    (ネイティブOSダイアログでのユーザー操作そのもの)で常に`# TODO`へ
+    倒す。"""
+    prefix = INDENT * indent
+    return [
+        f"{prefix}# TODO: SelectFolder — displays a native OS folder-"
+        "picker dialog for interactive user selection, no safe "
+        "unattended equivalent exists, refusing to guess"
     ]
 
 
