@@ -11984,6 +11984,68 @@ GetUsernamePasswordX`・`ui:GetEnvironmentFolder`・`ui:GetProcesses`
 ——特に`uas:GetUsernamePasswordX`は知見248の`win32cred.CredRead()`
 基盤をそのまま再利用できる見込みで次の良い候補。
 
+## 253. `uas:GetUsernamePasswordX`を新規実装——知見248の`win32cred.CredRead()`基盤を再利用するが、`_win32_cred_read`ヘルパーは意図的に再利用せず例外を素通りさせる設計判断を下した
+
+10回目発見パスの残り候補のうち、知見248の`win32cred.CredRead()`
+基盤を直接再利用できる見込みだった`uas:GetUsernamePasswordX`
+(タグ名限定GitHub検索で67件ヒット)に着手した。初出の
+`UiPath.Activities.System`名前空間(`uas:`)を確認——知見237で
+確認済みの`UiPath.Activities.System.Text`(`uast:`)とは同じ
+アセンブリ(`UiPath.System.Activities`)配下の別CLR名前空間の兄弟
+関係だったため、既存の`SYSTEM_TEXT_NS`とは別に`SYSTEM_NS`定数を
+新設した。
+
+実機2件(`tudor555/Best-Flight`の`Main.xaml`、
+`adithya0414/GetEmailsWith_IMAP-Filtering`の`Main.xaml`)で独立に
+確認した属性構成は完全一致——`CredentialsSource=
+"CredentialsManager"`+`OrchestratorCredentialName="{x:Null}"`+
+`AutosubmitTimeoutSeconds="10"`+`TimeoutInSeconds="{x:Null}"`+
+`Credential`(出力)+`CredentialName`(資格情報マネージャーの検索
+キー名)。下流は両サンプルとも`Credential.Username`/`Credential.
+Password`を`ui:SendMail`/`ui:GetIMAPMailMessages`の`Email`/
+`Password`引数として直接消費していた。公式ドキュメント
+(`docs.uipath.com/activities/other/latest/workflow/
+get-username-password-x`、StudioXフレーバーのページ)で
+`CredentialsSource`の値が「Credential Manager」/「Orchestrator」の
+2つのみであることと、資格情報が見つからない場合の挙動については
+一切記載が無いことを確認した。
+
+`GetSecureCredentialNode`(知見248)との重要な違いは、本活動には
+`Result`出力が存在しないこと——見つからない場合の挙動が公式
+ドキュメントでも実機サンプルでも未確認のため、でっち上げた
+フォールバックを用意せず`win32cred.CredRead()`を直接呼んで
+`pywintypes.error`(`ERROR_NOT_FOUND`)を素通りさせる設計とした
+(`GetRowItem`/`UpdateRowItem`の「不明な場合は自然な例外に委ねる」
+方針の継承)。これは`GetSecureCredentialNode`が使う`_win32_cred_read`
+ヘルパー(例外を`None`へ変換、`Result`の計算専用に作られたもの)を
+意図的に再利用しない判断であり、もし安易に再利用していたら
+「見つからない」という本当のエラーを静かに握り潰してしまうところ
+だった。
+
+ドット記法アクセス(`.Username`/`.Password`)に対応するため、
+`_ImapMailMessage`(知見250)と同じ判断クラスの新規薄いラッパー
+`_Win32Credential`を設計した——`win32cred.CredRead()`が返す生の
+dict(`UserName`/`CredentialBlob`キー)をラップし、`CredentialBlob`
+は`GetSecureCredential`と対になる`.decode("utf-16-le")`で復号する。
+`AutosubmitTimeoutSeconds`(対話的ログインダイアログの自動確定
+タイマー、本トランスパイラは対話無しで直接`CredRead()`するため
+意味を持たない)・`OrchestratorCredentialName`/`TimeoutInSeconds`
+(実機2件とも`{x:Null}`)はデータクラスにフィールドとして持たせず
+——`CredentialsSource`が`"CredentialsManager"`以外、または
+`OrchestratorCredentialName`が設定されている場合は`# TODO`へ倒す。
+
+`exec()`経由で発見・見つからない両ケースを確認した
+(`sys.modules`へのフェイク`win32cred`/`pywintypes`モジュール注入、
+知見248と同じ技法)——見つかった場合は`_Win32Credential`越しの
+属性アクセスが正しい値を返し、見つからない場合は`pywintypes.error`
+(`winerror=1168`)がキャッチされずそのまま伝播することを確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`5件)、リポジトリ全体で全2284件通過
+(28件skip)。残る10回目発見パスの候補(`ui:GetEnvironmentFolder`・
+`ui:GetProcesses`・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補
+として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

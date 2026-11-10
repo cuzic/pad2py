@@ -89,6 +89,7 @@ from ..uipath_dsl.types import (
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
+    GetUsernamePasswordXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -688,6 +689,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見250)も同様。
     if any(f"{_IMAP_MAIL_MESSAGE_HELPER_NAME}(" in line for line in body):
         imports.append(_IMAP_MAIL_MESSAGE_HELPER_SOURCE.rstrip("\n"))
+    # `_Win32Credential`(`GetUsernamePasswordX`→`.Username`/`.Password`
+    # 属性アクセス先、知見253)も同様。
+    if any(f"{_WIN32_CREDENTIAL_HELPER_NAME}(" in line for line in body):
+        imports.append(_WIN32_CREDENTIAL_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -923,6 +928,8 @@ def _generate_node(
         return _generate_add_credential(node, indent)
     if isinstance(node, RequestCredentialNode):
         return _generate_request_credential(node, indent)
+    if isinstance(node, GetUsernamePasswordXNode):
+        return _generate_get_username_password_x(node, indent)
     if isinstance(node, LoadImageNode):
         return _generate_load_image(node, indent)
     if isinstance(node, LookupDataTableNode):
@@ -3228,6 +3235,66 @@ def _generate_request_credential_body(node: RequestCredentialNode, indent: int) 
     if result_target is not None:
         lines.append(f"{prefix}{result_target} = True")
     return lines
+
+
+# 知見253: `win32cred.CredRead()`の生の戻り値(dict、`UserName`/
+# `CredentialBlob`キー)に対し、実機2件とも確認した`.Username`/
+# `.Password`のドット記法アクセスを可能にする薄いラッパー
+# (`_ImapMailMessage`(知見250)と同じ判断クラス)。
+_WIN32_CREDENTIAL_HELPER_NAME = "_Win32Credential"
+_WIN32_CREDENTIAL_HELPER_SOURCE = '''\
+class _Win32Credential:
+    def __init__(self, cred):
+        self.Username = cred["UserName"]
+        self.Password = cred["CredentialBlob"].decode("utf-16-le")
+'''
+
+
+def _generate_get_username_password_x(node: GetUsernamePasswordXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_username_password_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_username_password_x_body(
+    node: GetUsernamePasswordXNode, indent: int
+) -> list[str]:
+    """知見253: `uas:GetUsernamePasswordX`——`GetSecureCredentialNode`
+    (知見248)が確立した`win32cred.CredRead()`基盤を再利用するが、
+    本活動には`Result`出力が存在せず資格情報が見つからない場合の
+    挙動も未確認のため、`_win32_cred_read()`ヘルパー(例外を`None`へ
+    変換)は使わず`win32cred.CredRead()`を直接呼び`pywintypes.error`
+    を素通りさせる。"""
+    prefix = INDENT * indent
+    if node.credential is None:
+        return [f"{prefix}# TODO: GetUsernamePasswordX with no Credential output captured"]
+    if node.credentials_source not in (None, "CredentialsManager"):
+        return [
+            f"{prefix}# TODO: GetUsernamePasswordX with CredentialsSource "
+            f"{node.credentials_source!r} — only the confirmed "
+            '"CredentialsManager" value is implemented, refusing to guess'
+        ]
+    if node.orchestrator_credential_name is not None:
+        return [
+            f"{prefix}# TODO: GetUsernamePasswordX with OrchestratorCredentialName set "
+            f"({_describe_expr_for_comment(node.orchestrator_credential_name)}) — "
+            "Orchestrator-backed credential lookup not supported"
+        ]
+    if node.credential_name is None:
+        return [f"{prefix}# TODO: GetUsernamePasswordX with no CredentialName captured"]
+    try:
+        target = render_expr(node.credential)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    todo: list[str] = []
+    credential_name = _render_value_or_todo(node.credential_name, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{target} = {_WIN32_CREDENTIAL_HELPER_NAME}(win32cred.CredRead("
+        f"Type={_CREDENTIAL_TYPE_CONSTANTS['Generic']}, "
+        f"TargetName={VB_CSTR_HELPER_NAME}({credential_name})))",
+    ]
 
 
 # 知見178: `ui:LoadImage`(GitHub code searchで58件ヒット、OCR系活動の

@@ -43,6 +43,7 @@ from dump_daemon.uipath_dsl import (
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
+    GetUsernamePasswordXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -627,6 +628,29 @@ def test_select_folder_properties():
     assert node.display_name == "Select Folder"
 
 
+def test_get_username_password_x_properties():
+    """知見253: `uas:GetUsernamePasswordX`(タグ名限定GitHub検索で67件
+    ヒット、`UiPath.Activities.System`名前空間)。実機2件
+    (`tudor555/Best-Flight`・`adithya0414/GetEmailsWith_IMAP-
+    Filtering`)で確認した構成——いずれも`CredentialsSource=
+    "CredentialsManager"`+`OrchestratorCredentialName="{x:Null}"`で
+    完全一致。"""
+    xml = (
+        f'<uas:GetUsernamePasswordX {_SYSTEM_XMLNS} '
+        'OrchestratorCredentialName="{x:Null}" TimeoutInSeconds="{x:Null}" '
+        'AutosubmitTimeoutSeconds="10" Credential="[gmail_Credentials]" '
+        'CredentialName="UiPath: Gmail" CredentialsSource="CredentialsManager" '
+        'DisplayName="Get Username/Password" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetUsernamePasswordXNode)
+    assert node.credential == VbExpr(text="gmail_Credentials")
+    assert node.credential_name == Literal(value="UiPath: Gmail")
+    assert node.credentials_source == "CredentialsManager"
+    assert node.orchestrator_credential_name is None
+    assert node.display_name == "Get Username/Password"
+
+
 def test_select_item_selector_and_alter_if_disabled():
     """知見112: `ui:SelectItem`。`UiPath/skills`公式リポジトリの実機保存済み
     XAMLの属性構成をそのまま合成XMLで再現する——`ContinueOnError`/
@@ -826,6 +850,13 @@ def test_database_transaction_self_connecting_mode_properties():
 _SYSTEM_TEXT_XMLNS = (
     'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
     'xmlns:uast="clr-namespace:UiPath.Activities.System.Text;'
+    'assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+_SYSTEM_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:uas="clr-namespace:UiPath.Activities.System;'
     'assembly=UiPath.System.Activities" '
     'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
 )

@@ -47,6 +47,7 @@ from .types import (
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
+    GetUsernamePasswordXNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -240,6 +241,10 @@ MAIL_BUSINESS_NS = (
 SYSTEM_TEXT_NS = (
     "clr-namespace:UiPath.Activities.System.Text;assembly=UiPath.System.Activities"
 )
+# 知見253: `uas:GetUsernamePasswordX`が使う、`SYSTEM_TEXT_NS`の兄弟
+# 名前空間(`.Text`サブパッケージが無い、`UiPath.Activities.System`
+# 直下)——同じ`UiPath.System.Activities`アセンブリ内の別パッケージ。
+SYSTEM_NS = "clr-namespace:UiPath.Activities.System;assembly=UiPath.System.Activities"
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -515,6 +520,18 @@ def _parse_request_credential(elem: etree._Element) -> RequestCredentialNode:
         username=_attr_expr(elem, "Username") or _in_argument_property_expr(elem, "Username"),
         password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_get_username_password_x(elem: etree._Element) -> GetUsernamePasswordXNode:
+    return GetUsernamePasswordXNode(
+        credential=_attr_expr(elem, "Credential")
+        or _in_argument_property_expr(elem, "Credential"),
+        credential_name=_attr_expr(elem, "CredentialName")
+        or _in_argument_property_expr(elem, "CredentialName"),
+        credentials_source=_attr_or_none(elem, "CredentialsSource"),
+        orchestrator_credential_name=_attr_expr(elem, "OrchestratorCredentialName"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -3137,6 +3154,7 @@ _DISPATCH = {
     (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
     (SYSTEM_TEXT_NS, "SplitText"): _parse_split_text,
     (SYSTEM_TEXT_NS, "CombineText"): _parse_combine_text,
+    (SYSTEM_NS, "GetUsernamePasswordX"): _parse_get_username_password_x,
     (UI_NS, "GetLastDownloadedFile"): _parse_get_last_downloaded_file,
     (UI_NS, "CheckTrue"): _parse_check_true,
     (UI_NS, "CheckFalse"): _parse_check_false,

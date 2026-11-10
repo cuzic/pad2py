@@ -67,6 +67,7 @@ from dump_daemon.uipath_dsl import (
     GetIMAPMailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
+    GetUsernamePasswordXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3086,6 +3087,97 @@ def test_get_secure_credential_with_no_target_is_todo():
     wf = _wrap([GetSecureCredentialNode(target=None)])
     code = generate_python(wf)
     assert "# TODO: GetSecureCredential with no Target captured" in code
+    _compiles(code)
+
+
+def test_get_username_password_x_found_exec():
+    """知見253: `uas:GetUsernamePasswordX`——`win32cred.CredRead()`を
+    (`_win32_cred_read`ヘルパーを経由せず)直接呼び、結果を`_Win32Credential`
+    でラップして`.Username`/`.Password`のドット記法アクセスを可能にする
+    ことを`exec()`経由で確認する。"""
+    store = _install_fake_win32cred()
+    store[(1, "UiPath: Gmail")] = {
+        "UserName": "bob",
+        "CredentialBlob": "s3cr3t".encode("utf-16-le"),
+    }
+    wf = _wrap(
+        [
+            GetUsernamePasswordXNode(
+                credential=VbExpr(text="cred"),
+                credential_name=Literal(value="UiPath: Gmail"),
+                credentials_source="CredentialsManager",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_Win32Credential(" in code
+    assert "win32cred.CredRead(" in code
+    assert "_win32_cred_read(" not in code
+    assert "import win32cred" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return cred.Username, cred.Password", ns)  # noqa: S102 - 信頼できる自作コード
+    assert ns["Test"]() == ("bob", "s3cr3t")
+
+
+def test_get_username_password_x_not_found_propagates_exec():
+    """知見253: `Result`出力が存在せず挙動未確認のため、
+    `_win32_cred_read`ヘルパー(`None`へ変換)を再利用せず
+    `pywintypes.error`をそのまま伝播させることを確認する。"""
+    _install_fake_win32cred()
+    wf = _wrap(
+        [
+            GetUsernamePasswordXNode(
+                credential=VbExpr(text="cred"),
+                credential_name=Literal(value="UiPath: NoSuchCred"),
+                credentials_source="CredentialsManager",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    ns: dict[str, object] = {}
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with pytest.raises(Exception) as excinfo:
+        ns["Test"]()
+    assert getattr(excinfo.value, "winerror", None) == 1168
+
+
+def test_get_username_password_x_with_no_credential_is_todo():
+    wf = _wrap([GetUsernamePasswordXNode(credential=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetUsernamePasswordX with no Credential output captured" in code
+    _compiles(code)
+
+
+def test_get_username_password_x_with_orchestrator_source_is_todo():
+    wf = _wrap(
+        [
+            GetUsernamePasswordXNode(
+                credential=VbExpr(text="cred"),
+                credential_name=Literal(value="x"),
+                credentials_source="Orchestrator",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetUsernamePasswordX with CredentialsSource" in code
+    _compiles(code)
+
+
+def test_get_username_password_x_with_orchestrator_credential_name_is_todo():
+    wf = _wrap(
+        [
+            GetUsernamePasswordXNode(
+                credential=VbExpr(text="cred"),
+                credential_name=Literal(value="x"),
+                credentials_source="CredentialsManager",
+                orchestrator_credential_name=Literal(value="y"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetUsernamePasswordX with OrchestratorCredentialName set" in code
     _compiles(code)
 
 

@@ -3600,3 +3600,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`uas:GetUsernamePasswordX`・`ui:GetEnvironmentFolder`・
      `ui:GetProcesses`・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は
      次の候補として記録。
+
+211. **(完了、2026-11-10)** `uas:GetUsernamePasswordX`を新規実装
+     (知見253)——タグ名限定検索で67件ヒット、知見248の
+     `win32cred.CredRead()`基盤を再利用。初出の`UiPath.Activities.
+     System`名前空間(`uas:`、知見237の`uast:`の兄弟)を確認。実機2件
+     (`tudor555/Best-Flight`・`adithya0414/GetEmailsWith_IMAP-
+     Filtering`)で完全一致した構成(`CredentialsSource=
+     "CredentialsManager"`+`Credential`+`CredentialName`)を確認。
+     `Result`出力が存在せず挙動未確認のため`_win32_cred_read`ヘルパー
+     (例外を`None`へ変換)は再利用せず、`win32cred.CredRead()`を直接
+     呼んで`pywintypes.error`を素通りさせる設計とした——`GetRowItem`/
+     `UpdateRowItem`の「不明な場合は自然な例外に委ねる」方針の継承。
+     `.Username`/`.Password`ドット記法アクセスには`_ImapMailMessage`
+     (知見250)と同じ判断クラスの新規薄いラッパー`_Win32Credential`を
+     設計。`exec()`経由で発見・見つからない両ケース(フェイク
+     `win32cred`/`pywintypes`モジュール注入)を確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     5件)、リポジトリ全体で全2284件通過。残る10回目発見パスの候補
+     (`ui:GetEnvironmentFolder`・`ui:GetProcesses`・
+     `ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録。

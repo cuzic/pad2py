@@ -1009,6 +1009,53 @@ class RequestCredentialNode:
 
 
 @dataclass
+class GetUsernamePasswordXNode:
+    """`<uas:GetUsernamePasswordX CredentialsSource="CredentialsManager"
+    CredentialName="..." OrchestratorCredentialName="{x:Null}"
+    AutosubmitTimeoutSeconds="10" TimeoutInSeconds="{x:Null}"
+    Credential="..." />`(知見253、10回目発見パスで発見、タグ名限定
+    GitHub検索で67件ヒット、`UiPath.Activities.System`名前空間
+    (`uas:`——知見237の`UiPath.Activities.System.Text`(`uast:`)とは
+    別の、同じ接頭辞を持つ兄弟名前空間)。実機2件
+    (`tudor555/Best-Flight`・`adithya0414/GetEmailsWith_IMAP-
+    Filtering`)で確認した構成——いずれも`CredentialsSource=
+    "CredentialsManager"`+`OrchestratorCredentialName="{x:Null}"`+
+    `AutosubmitTimeoutSeconds="10"`+`TimeoutInSeconds="{x:Null}"`で
+    完全一致。
+
+    `GetSecureCredentialNode`(知見248)が既に解決した`win32cred.
+    CredRead()`基盤をそのまま再利用できる——`CredentialName`が単なる
+    実行時のWindows資格情報マネージャー検索キー名で、秘密自体はXAML
+    に一切含まれない点も同じ。確認済みの下流アクセス(`Credential.
+    Username`/`Credential.Password`、いずれも実機2件とも`ui:SendMail`/
+    `ui:GetIMAPMailMessages`の`Email`/`Password`引数として直接消費)に
+    絞った`_Win32Credential`薄いラッパークラスで対応する
+    (`_ImapMailMessage`(知見250)と同じ判断クラス)。
+
+    `GetSecureCredentialNode`と違い本活動には`Result`出力が存在しない
+    (実機2件とも確認)——資格情報が見つからない場合の挙動(公式
+    ドキュメント確認済み、記載無し)は未確認のため、でっち上げた
+    フォールバックを用意せず`win32cred.CredRead()`の`pywintypes.
+    error`(`ERROR_NOT_FOUND`)を素通りさせる(`GetRowItem`/
+    `UpdateRowItem`の「不明な場合は自然な例外に委ねる」方針と同じ)
+    ——`GetSecureCredentialNode`の`_win32_cred_read()`ヘルパー
+    (例外を`None`へ変換、`Result`の計算に必要)は再利用しない。
+    `AutosubmitTimeoutSeconds`(対話的ログインダイアログの自動確定
+    タイマー、本トランスパイラは対話無しで直接`CredRead()`するため
+    意味を持たない)・`OrchestratorCredentialName`/`TimeoutInSeconds`
+    (実機2件とも`{x:Null}`)はモデル化しない——`CredentialsSource`が
+    `"CredentialsManager"`以外(`"Orchestrator"`、公式ドキュメント確認
+    済みの別の選択肢だが実機未確認、Orchestrator接続が必要な既存の
+    除外カテゴリ)の場合は`# TODO`へ倒す。"""
+
+    credential: Expr = None
+    credential_name: Expr = None
+    credentials_source: str | None = None
+    orchestrator_credential_name: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class LoadImageNode:
     """`<ui:LoadImage FileName="..." Image="..." />`(知見178、GitHub
     code searchで58件ヒット)。`UiPath/skills`公式リポジトリの
@@ -4523,6 +4570,7 @@ Node = (
     | GetIMAPMailMessagesNode
     | SaveMailAttachmentsNode
     | SelectFolderNode
+    | GetUsernamePasswordXNode
     | ParallelNode
     | ClickNode
     | HoverNode
