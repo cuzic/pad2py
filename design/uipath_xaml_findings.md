@@ -11850,6 +11850,66 @@ String) From {...}`で本トランスパイラの式パーサー未対応のた�
 これで完了——残るは`ui:GetIMAPMailMessages`/`ui:SaveMailAttachments`
 (大きめの実装、新しい`MailMessage`相当のラッパー設計が必要)のみ。
 
+## 250. `ui:GetIMAPMailMessages`を新規実装——`GetOutlookMailMessages`の「生のネイティブオブジェクトをそのまま返す」方針が通用しないため、`.Subject`1つに絞った最小限の薄いラッパークラスを新規設計した
+
+9回目発見パスで唯一残っていた大物候補`ui:GetIMAPMailMessages`
+(タグ名限定GitHub検索で579件ヒット)に着手した——`ui:
+SaveMailAttachments`は別設計課題として今回は見送り、次の候補として
+記録する。
+
+実機2件(`cameronmcnz/uipath-tutorials`の`GmailAttachments/
+Main.xaml`、`JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`)で
+属性を確認——`Server`+`Port`+`Email`+`Password`(または
+`SecurePassword`、実機どちらも確認済み)+`EnableSSL="True"`+
+`SecureConnection="Auto"`(実機2件とも唯一の確認値)+`MailFolder`+
+`Top`+`MarkAsRead`(`"True"`/`"False"`両方確認)+
+`OnlyUnreadMessages`+`DeleteMessages`+`OrderByDate`(公式ドキュメント
+確認済みの既定値`"NewestFirst"`+実機確認済みの`"OldestFirst"`)+
+`Messages`(出力)。`ClientName`/`ClientVersion`(IMAP ID拡張)・
+`FilterExpression`(生のIMAP SEARCH構文と推定されるが実機で非nullの
+実例が無い)・`UseOAuth`・`IgnoreCRL`はいずれも実機で非既定値の
+実例が無いため見送る。
+
+**`GetOutlookMailMessagesNode`(知見120)の「生のネイティブオブジェクト
+をそのまま返す(ラッパークラスをでっち上げない)」方針が今回は
+通用しないと判明した**点が重要な設計判断だった: Outlook COMの
+`MailItem`は`.Subject`等をネイティブなCOMプロパティとして既に持つが
+(`win32com`経由でPythonから見ても`.Subject`属性アクセスがそのまま
+動く)、Python標準の`email.message.Message`(`imaplib`で取得した生
+メールの標準的な解析先)は`.get("Subject")`形の辞書的アクセスのみで
+`.Subject`属性アクセスには対応しない。実機確認済みの下流アクセス
+(`email.Subject.ToString`/`Mail.Subject.ToLower.Contains(...)`)が
+`.Subject`1つに狭く絞れたため、`GetFileInfoX`等の「広い未確認
+dot-accessサーフェス」懸念には当たらないと判断し、`.Subject`
+プロパティだけを持つ最小限の薄いラッパークラス(`_ImapMailMessage`)
+を新規注入した——`GetLastDownloadedFile`(知見233)の「狙い撃ちできる
+狭いパターンなら薄いラッパーを作る」判断の延長。実機確認済みの
+`Mail.Attachments.Any`という下流利用も1件あったが、`.Attachments`
+自体は`SaveMailAttachments`と合わせて設計すべきため今回は見送った
+(ラッパーに実装しない)。
+
+`OrderByDate`の既定値`"NewestFirst"`(公式ドキュメント確認済み)は
+IMAPの`SEARCH`が返す昇順(古い順)のUID一覧を反転することで対応した
+——`Top`による絞り込みは反転後に適用する(新しい方から数える)。
+`OnlyUnreadMessages`/`DeleteMessages`は実機確認済みの`"False"`以外、
+`"True"`も曖昧性の無いIMAP操作(`UNSEEN`検索条件/`\Deleted`フラグ+
+`expunge()`)のため実装した——`MarkAsRead`と同様。`Port`の整数変換は
+既存の`SendMail`(知見98のSMTP版)と同じ`int(_vb_num(x))`変換、
+`Top`は既存の`RepeatNumberOfTimesX`等と同じ`round(_vb_cdbl(x))`
+(Int32相当)変換をそれぞれ再利用した。
+
+`imaplib`/`email`はPython標準ライブラリ(`pywin32`と違いこの
+サンドボックスでも利用可能)——`imaplib.IMAP4_SSL`自体をモックして
+`exec()`経由で実際の制御フロー(`login`/`select`/`search`/
+`OrderByDate`既定の`NewestFirst`反転/`Top`絞り込み/`fetch`/`.Subject`
+ラッパープロパティ/`MarkAsRead`の`\Seen`フラグ設定/`DeleteMessages`
+の`\Deleted`フラグ+`expunge()`/`OnlyUnreadMessages`の`UNSEEN`検索
+条件/`close`/`logout`)を確認した——既存のOutlook COM系テスト
+(`pywin32`が無いため文字列検証のみ)より一歩進んだ検証手法。
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`8件)、リポジトリ全体で全2268件通過
+(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

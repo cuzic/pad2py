@@ -64,6 +64,7 @@ from dump_daemon.uipath_dsl import (
     RequestCredentialNode,
     SplitTextNode,
     CombineTextNode,
+    GetIMAPMailMessagesNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -9678,6 +9679,156 @@ def test_get_outlook_mail_messages_with_timeout_ms_is_todo_not_guessed():
     wf = _wrap([_get_outlook_mail_messages_node(timeout_ms=Literal(value="5000"))])
     code = generate_python(wf)
     assert "# TODO: Get Outlook Mail Messages with TimeoutMS set" in code
+    _compiles(code)
+
+
+def _imap_node(**overrides):
+    defaults = dict(
+        messages=VbExpr(text="emails"),
+        server=Literal(value="imap.gmail.com"),
+        port=Literal(value="993"),
+        email=Literal(value="user@gmail.com"),
+        password=Literal(value="secret"),
+        enable_ssl="True",
+        secure_connection="Auto",
+        mail_folder=Literal(value="Inbox"),
+        top=Literal(value="2"),
+        mark_as_read="False",
+        only_unread_messages="False",
+        delete_messages="False",
+    )
+    defaults.update(overrides)
+    return GetIMAPMailMessagesNode(**defaults)
+
+
+def test_get_imap_mail_messages_full_exec_newest_first_and_top():
+    """知見250: `ui:GetIMAPMailMessages`。`imaplib`/`email`は標準
+    ライブラリ(`pywin32`と違いこのサンドボックスでも利用可能)——
+    `imaplib.IMAP4_SSL`自体をモックして`exec()`経由で実際の制御フロー
+    (`login`/`select`/`search`/`OrderByDate`既定の`NewestFirst`
+    (UIDリスト反転)/`Top`による絞り込み/`fetch`/`.Subject`ラッパー
+    プロパティ)を確認する。"""
+    wf = _wrap([_imap_node()])
+    code = generate_python(wf)
+    assert "import imaplib" in code
+    assert "import email" in code
+    assert "_ImapMailMessage" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    raw_msgs = {
+        b"1": b"Subject: Hello One\r\n\r\nBody1",
+        b"2": b"Subject: Hello Two\r\n\r\nBody2",
+        b"3": b"Subject: Hello Three\r\n\r\nBody3",
+    }
+    fake_imap = unittest.mock.MagicMock()
+    fake_imap.search.return_value = ("OK", [b"1 2 3"])
+    fake_imap.fetch.side_effect = lambda uid, spec: ("OK", [(None, raw_msgs[uid])])
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("imaplib.IMAP4_SSL", return_value=fake_imap):
+        result = namespace["Test"]()
+
+    assert len(result) == 2
+    assert [m.Subject for m in result] == ["Hello Three", "Hello Two"]
+    fake_imap.login.assert_called_once_with("user@gmail.com", "secret")
+    fake_imap.select.assert_called_once_with("Inbox")
+    fake_imap.search.assert_called_once_with(None, "ALL")
+    fake_imap.close.assert_called_once()
+    fake_imap.logout.assert_called_once()
+
+
+def test_get_imap_mail_messages_mark_as_read_and_only_unread_exec():
+    """知見250: `MarkAsRead="True"`→`\\Seen`フラグ設定、
+    `OnlyUnreadMessages="True"`→IMAPの`UNSEEN`検索条件を確認する。"""
+    wf = _wrap(
+        [_imap_node(mark_as_read="True", only_unread_messages="True", top=None)]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+
+    fake_imap = unittest.mock.MagicMock()
+    fake_imap.search.return_value = ("OK", [b"1"])
+    fake_imap.fetch.return_value = ("OK", [(None, b"Subject: Only\r\n\r\nBody")])
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("imaplib.IMAP4_SSL", return_value=fake_imap):
+        result = namespace["Test"]()
+
+    assert [m.Subject for m in result] == ["Only"]
+    fake_imap.search.assert_called_once_with(None, "UNSEEN")
+    fake_imap.store.assert_called_once_with(b"1", "+FLAGS", "\\Seen")
+
+
+def test_get_imap_mail_messages_delete_messages_expunges_exec():
+    wf = _wrap([_imap_node(delete_messages="True", top=None)])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+
+    fake_imap = unittest.mock.MagicMock()
+    fake_imap.search.return_value = ("OK", [b"1"])
+    fake_imap.fetch.return_value = ("OK", [(None, b"Subject: Bye\r\n\r\nBody")])
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("imaplib.IMAP4_SSL", return_value=fake_imap):
+        namespace["Test"]()
+
+    fake_imap.store.assert_called_once_with(b"1", "+FLAGS", "\\Deleted")
+    fake_imap.expunge.assert_called_once()
+
+
+def test_get_imap_mail_messages_oldest_first_does_not_reverse_exec():
+    wf = _wrap([_imap_node(order_by_date="OldestFirst", top=None)])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+
+    fake_imap = unittest.mock.MagicMock()
+    fake_imap.search.return_value = ("OK", [b"1 2"])
+    raw_msgs = {
+        b"1": b"Subject: First\r\n\r\nBody1",
+        b"2": b"Subject: Second\r\n\r\nBody2",
+    }
+    fake_imap.fetch.side_effect = lambda uid, spec: ("OK", [(None, raw_msgs[uid])])
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("imaplib.IMAP4_SSL", return_value=fake_imap):
+        result = namespace["Test"]()
+
+    assert [m.Subject for m in result] == ["First", "Second"]
+
+
+def test_get_imap_mail_messages_with_missing_properties_is_todo():
+    wf = _wrap([_imap_node(messages=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetIMAPMailMessages with no output Messages captured" in code
+    _compiles(code)
+
+
+def test_get_imap_mail_messages_with_unconfirmed_secure_connection_is_todo():
+    wf = _wrap([_imap_node(secure_connection="StartTls")])
+    code = generate_python(wf)
+    assert "# TODO: GetIMAPMailMessages with SecureConnection" in code
+    _compiles(code)
+
+
+def test_get_imap_mail_messages_with_filter_expression_is_todo():
+    wf = _wrap([_imap_node(filter_expression=Literal(value="SINCE 23-Feb-2021"))])
+    code = generate_python(wf)
+    assert "# TODO: GetIMAPMailMessages with FilterExpression set" in code
+    _compiles(code)
+
+
+def test_get_imap_mail_messages_with_use_oauth_is_todo():
+    wf = _wrap([_imap_node(use_oauth=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: GetIMAPMailMessages with UseOAuth set" in code
     _compiles(code)
 
 

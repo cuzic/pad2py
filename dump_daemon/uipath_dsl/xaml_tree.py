@@ -44,6 +44,7 @@ from .types import (
     RequestCredentialNode,
     SplitTextNode,
     CombineTextNode,
+    GetIMAPMailMessagesNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -2674,6 +2675,33 @@ def _parse_get_outlook_mail_messages(elem: etree._Element) -> GetOutlookMailMess
     )
 
 
+def _parse_get_imap_mail_messages(elem: etree._Element) -> GetIMAPMailMessagesNode:
+    return GetIMAPMailMessagesNode(
+        messages=_attr_expr(elem, "Messages") or _in_argument_property_expr(elem, "Messages"),
+        server=_attr_expr(elem, "Server") or _in_argument_property_expr(elem, "Server"),
+        port=_attr_expr(elem, "Port") or _in_argument_property_expr(elem, "Port"),
+        email=_attr_expr(elem, "Email") or _in_argument_property_expr(elem, "Email"),
+        password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
+        secure_password=_attr_expr(elem, "SecurePassword")
+        or _in_argument_property_expr(elem, "SecurePassword"),
+        enable_ssl=_attr_or_none(elem, "EnableSSL"),
+        secure_connection=_attr_or_none(elem, "SecureConnection"),
+        mail_folder=_attr_expr(elem, "MailFolder") or _in_argument_property_expr(elem, "MailFolder"),
+        top=_attr_expr(elem, "Top") or _in_argument_property_expr(elem, "Top"),
+        mark_as_read=_attr_or_none(elem, "MarkAsRead"),
+        only_unread_messages=_attr_or_none(elem, "OnlyUnreadMessages"),
+        delete_messages=_attr_or_none(elem, "DeleteMessages"),
+        order_by_date=_attr_or_none(elem, "OrderByDate"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        client_name=_attr_expr(elem, "ClientName"),
+        client_version=_attr_expr(elem, "ClientVersion"),
+        filter_expression=_attr_expr(elem, "FilterExpression"),
+        use_oauth=_attr_expr(elem, "UseOAuth"),
+        ignore_crl=_attr_or_none(elem, "IgnoreCRL"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_mark_mail_as_read_x(elem: etree._Element) -> MarkMailAsReadXNode:
     return MarkMailAsReadXNode(
         display_name=_attr(elem, "DisplayName"),
@@ -3137,6 +3165,7 @@ _DISPATCH = {
     (UI_NS, "WordReplaceText"): _parse_word_replace_text,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
+    (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,
     (MAIL_BUSINESS_NS, "MarkMailAsReadX"): _parse_mark_mail_as_read_x,
     (MAIL_BUSINESS_NS, "DeleteMailX"): _parse_delete_mail_x,
     (MAIL_BUSINESS_NS, "MoveMailX"): _parse_move_mail_x,

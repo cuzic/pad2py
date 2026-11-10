@@ -86,6 +86,7 @@ from ..uipath_dsl.types import (
     RequestCredentialNode,
     SplitTextNode,
     CombineTextNode,
+    GetIMAPMailMessagesNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -516,6 +517,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 変換先、知見98)も同様。
     if any("win32com.client.Dispatch(" in line for line in body):
         imports.append("import win32com.client")
+    # `imaplib`/`email`(`GetIMAPMailMessages`→`imaplib.IMAP4_SSL(...)`・
+    # `email.message_from_bytes(...)`変換先、知見250)も同様。
+    if any("imaplib.IMAP4_SSL(" in line for line in body):
+        imports.append("import imaplib")
+    if any("email.message_from_bytes(" in line for line in body):
+        imports.append("import email")
     # `win32cred`/`pywintypes`(`GetSecureCredential`→`win32cred.
     # CredRead(...)`・`AddCredential`→`win32cred.CredWrite(...)`変換先、
     # 知見248)も同様——`pywintypes.error`は`_win32_cred_read`ヘルパー
@@ -675,6 +682,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 「見つからない」例外を`None`へ変換する先、知見248)も同様。
     if any(f"{_WIN32_CRED_READ_HELPER_NAME}(" in line for line in body):
         imports.append(_WIN32_CRED_READ_HELPER_SOURCE.rstrip("\n"))
+    # `_ImapMailMessage`(`GetIMAPMailMessages`→`.Subject`属性アクセス先、
+    # 知見250)も同様。
+    if any(f"{_IMAP_MAIL_MESSAGE_HELPER_NAME}(" in line for line in body):
+        imports.append(_IMAP_MAIL_MESSAGE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -1006,6 +1017,8 @@ def _generate_node(
         return _generate_send_outlook_mail(node, indent)
     if isinstance(node, GetOutlookMailMessagesNode):
         return _generate_get_outlook_mail_messages(node, indent)
+    if isinstance(node, GetIMAPMailMessagesNode):
+        return _generate_get_imap_mail_messages(node, indent)
     if isinstance(node, MarkMailAsReadXNode):
         return _generate_mark_mail_as_read_x(node, indent)
     if isinstance(node, DeleteMailXNode):
@@ -8055,6 +8068,145 @@ def _generate_get_outlook_mail_messages_body(
         lines.append(f"{prefix}{target} = list(_items)[:int({VB_NUM_HELPER_NAME}({top}))]")
     else:
         lines.append(f"{prefix}{target} = list(_items)")
+    return lines
+
+
+# 知見250: `ui:GetIMAPMailMessages`——`email.message.Message`
+# (`imaplib`経由で取得した生メールの標準的な解析先)は`.get("Subject")`
+# 形の辞書的アクセスのみで`.Subject`属性アクセスには対応しないため、
+# `GetOutlookMailMessages`(知見120)の「生のネイティブオブジェクトを
+# そのまま返す」方針が通用しない——実機確認済みの下流アクセス
+# (`.Subject`のみ)に絞った最小限の薄いラッパークラスを注入する。
+_IMAP_MAIL_MESSAGE_HELPER_NAME = "_ImapMailMessage"
+_IMAP_MAIL_MESSAGE_HELPER_SOURCE = '''\
+class _ImapMailMessage:
+    def __init__(self, msg):
+        self._msg = msg
+
+    @property
+    def Subject(self):
+        return self._msg.get("Subject", "")
+'''
+
+_IMAP_SECURE_CONNECTION_VALUES = (None, "Auto")
+_IMAP_ORDER_BY_DATE_VALUES = (None, "NewestFirst", "OldestFirst")
+
+
+def _generate_get_imap_mail_messages(
+    node: GetIMAPMailMessagesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_imap_mail_messages_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_imap_mail_messages_body(
+    node: GetIMAPMailMessagesNode, indent: int
+) -> list[str]:
+    """知見250: `imaplib.IMAP4_SSL`(`EnableSSL`+`SecureConnection=
+    "Auto"`が確認済みの唯一の組み合わせ、直接SSL接続と解釈)+
+    `email.message_from_bytes()`に対応する。`OrderByDate`は公式
+    ドキュメント確認済みの既定値`"NewestFirst"`——IMAPの`SEARCH`が
+    返す昇順(古い順)のUIDリストを反転して対応する。"""
+    prefix = INDENT * indent
+    if node.messages is None:
+        return [f"{prefix}# TODO: GetIMAPMailMessages with no output Messages captured"]
+    if node.server is None or node.port is None or node.email is None:
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with missing Server/Port/Email"
+        ]
+    password_expr = node.password if node.password is not None else node.secure_password
+    if password_expr is None:
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with no Password/"
+            "SecurePassword captured"
+        ]
+    if node.enable_ssl not in (None, "True"):
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with EnableSSL "
+            f"{node.enable_ssl!r} — only the confirmed \"True\" value is "
+            "implemented, refusing to guess"
+        ]
+    if node.secure_connection not in _IMAP_SECURE_CONNECTION_VALUES:
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with SecureConnection "
+            f"{node.secure_connection!r} — only the confirmed \"Auto\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.order_by_date not in _IMAP_ORDER_BY_DATE_VALUES:
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with OrderByDate "
+            f"{node.order_by_date!r} — refusing to guess"
+        ]
+    for label, value in (
+        ("TimeoutMS", node.timeout_ms),
+        ("ClientName", node.client_name),
+        ("ClientVersion", node.client_version),
+        ("FilterExpression", node.filter_expression),
+        ("UseOAuth", node.use_oauth),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: GetIMAPMailMessages with {label} set "
+                f"({_describe_expr_for_comment(value)}) — refusing to guess"
+            ]
+    if node.ignore_crl not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetIMAPMailMessages with IgnoreCRL "
+            f"{node.ignore_crl!r} — only the confirmed \"False\" value is "
+            "implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.messages, prefix, todo)
+    server = _render_value_or_todo(node.server, prefix, todo)
+    port = _render_value_or_todo(node.port, prefix, todo)
+    email_addr = _render_value_or_todo(node.email, prefix, todo)
+    password = _render_value_or_todo(password_expr, prefix, todo)
+    mail_folder = (
+        _render_value_or_todo(node.mail_folder, prefix, todo)
+        if node.mail_folder is not None
+        else repr("Inbox")
+    )
+    top = _render_value_or_todo(node.top, prefix, todo) if node.top is not None else None
+    if todo:
+        return todo
+    search_criteria = "'UNSEEN'" if node.only_unread_messages == "True" else "'ALL'"
+    lines = [
+        f"{prefix}_imap = imaplib.IMAP4_SSL({VB_CSTR_HELPER_NAME}({server}), "
+        f"int({VB_NUM_HELPER_NAME}({port})))",
+        f"{prefix}_imap.login({VB_CSTR_HELPER_NAME}({email_addr}), "
+        f"{VB_CSTR_HELPER_NAME}({password}))",
+        f"{prefix}_imap.select({VB_CSTR_HELPER_NAME}({mail_folder}))",
+        f"{prefix}_typ, _imap_data = _imap.search(None, {search_criteria})",
+        f"{prefix}_imap_uids = _imap_data[0].split()",
+    ]
+    if node.order_by_date != "OldestFirst":
+        lines.append(f"{prefix}_imap_uids = list(reversed(_imap_uids))")
+    if top is not None:
+        lines.append(
+            f"{prefix}_imap_uids = _imap_uids[:round({VB_CDBL_HELPER_NAME}({top}))]"
+        )
+    lines.extend(
+        [
+            f"{prefix}_imap_messages = []",
+            f"{prefix}for _imap_uid in _imap_uids:",
+            f"{INDENT * (indent + 1)}_typ, _imap_msg_data = _imap.fetch(_imap_uid, '(RFC822)')",
+            f"{INDENT * (indent + 1)}_imap_messages.append("
+            f"{_IMAP_MAIL_MESSAGE_HELPER_NAME}(email.message_from_bytes(_imap_msg_data[0][1])))",
+        ]
+    )
+    if node.mark_as_read == "True":
+        lines.append(f"{INDENT * (indent + 1)}_imap.store(_imap_uid, '+FLAGS', '\\\\Seen')")
+    if node.delete_messages == "True":
+        lines.append(f"{INDENT * (indent + 1)}_imap.store(_imap_uid, '+FLAGS', '\\\\Deleted')")
+        lines.append(f"{prefix}_imap.expunge()")
+    lines.extend(
+        [
+            f"{prefix}_imap.close()",
+            f"{prefix}_imap.logout()",
+            f"{prefix}{target} = _imap_messages",
+        ]
+    )
     return lines
 
 

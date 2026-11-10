@@ -4128,6 +4128,75 @@ class GetOutlookMailMessagesNode:
 
 
 @dataclass
+class GetIMAPMailMessagesNode:
+    """`<ui:GetIMAPMailMessages Server="..." Port="..." Email="..."
+    Password="..." EnableSSL="..." SecureConnection="..."
+    MailFolder="..." Top="..." MarkAsRead="..." OnlyUnreadMessages="..."
+    DeleteMessages="..." OrderByDate="..." Messages="..." />`
+    (知見250、9回目発見パスで見送った`Mail.Activities`プロトコル系候補
+    (`GetPOP3MailMessages`等、知見227注記)をようやく実機確認できた、
+    タグ名限定GitHub検索で579件ヒット)。実機2件
+    (`cameronmcnz/uipath-tutorials`の`GmailAttachments/Main.xaml`、
+    `JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`)で属性を確認。
+
+    `GetOutlookMailMessagesNode`(知見120)の「生のネイティブオブジェクト
+    をそのまま返す(ラッパークラスをでっち上げない)」方針が通用しない
+    ——Outlook COMの`MailItem`は`.Subject`等をネイティブなCOMプロパティ
+    として既に持つが、Python標準の`email.message.Message`(IMAPで
+    取得した生メールの標準的な解析先)は`.get("Subject")`形の辞書的
+    アクセスのみで`.Subject`属性アクセスには対応しない。実機確認済み
+    の下流アクセス(`email.Subject.ToString`/`Mail.Subject.ToLower.
+    Contains(...)`)が`.Subject`1つに狭く絞れたため、`GetFileInfoX`等の
+    「広い未確認dot-accessサーフェス」懸念には当たらないと判断し、
+    `.Subject`プロパティだけを持つ最小限の薄いラッパークラス
+    (`_ImapMailMessage`)を注入する——`GetLastDownloadedFile`(知見233)
+    の「狙い撃ちできる狭いパターンなら薄いラッパーを作る」判断と同じ
+    クラス。`.Attachments`(`Mail.Attachments.Any`という実機確認済みの
+    下流利用も1件あるが)は`ui:SaveMailAttachments`(別活動、知見251で
+    後続予定)と合わせて設計すべきため今回は見送る——ラッパーに実装
+    しない。
+
+    `Server`/`Port`/`Email`/`Password`(または`SecurePassword`、実機
+    どちらも確認済み——`SecureString`型の違いは本トランスパイラが
+    変数の型を区別しないため関係無い)+`EnableSSL="True"`(実機2件とも
+    唯一の確認値)+`SecureConnection="Auto"`(実機2件とも唯一の確認値
+    ——`imaplib.IMAP4_SSL`の直接SSL接続と解釈)+`MailFolder`+`Top`+
+    `MarkAsRead`(`"True"`/`"False"`両方実機確認済み)+
+    `OnlyUnreadMessages`(`"False"`実機確認、`"True"`は未確認だが
+    IMAPの`UNSEEN`検索条件への対応が曖昧性無しのため実装)+
+    `DeleteMessages`(同様)+`OrderByDate`(公式ドキュメント確認済みの
+    既定値`"NewestFirst"`+実機確認済みの`"OldestFirst"`)。
+
+    `ClientName`/`ClientVersion`(IMAP ID拡張)・`FilterExpression`
+    (生のIMAP SEARCH構文と推定されるが実機で非nullの実例が無い)・
+    `UseOAuth`(別の認証フロー)・`IgnoreCRL`(TLS証明書失効確認の詳細、
+    `"False"`のみ実機確認)・`TimeoutMS`はいずれも設定されている場合
+    `# TODO`へ倒す。"""
+
+    messages: Expr = None
+    server: Expr = None
+    port: Expr = None
+    email: Expr = None
+    password: Expr = None
+    secure_password: Expr = None
+    enable_ssl: str | None = None
+    secure_connection: str | None = None
+    mail_folder: Expr = None
+    top: Expr = None
+    mark_as_read: str | None = None
+    only_unread_messages: str | None = None
+    delete_messages: str | None = None
+    order_by_date: str | None = None
+    timeout_ms: Expr = None
+    client_name: Expr = None
+    client_version: Expr = None
+    filter_expression: Expr = None
+    use_oauth: Expr = None
+    ignore_crl: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class MarkMailAsReadXNode:
     """`<umab:MarkMailAsReadX MailMessage="..." MarkAs="..." />`(知見229、
     `umab:` = `clr-namespace:UiPath.Mail.Activities.Business;
@@ -4390,6 +4459,7 @@ Node = (
     | RequestCredentialNode
     | SplitTextNode
     | CombineTextNode
+    | GetIMAPMailMessagesNode
     | ParallelNode
     | ClickNode
     | HoverNode

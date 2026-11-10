@@ -3539,3 +3539,27 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`6件)、リポジトリ全体で全2258件通過。
      9回目発見パスはこれで完了。
+
+208. **(完了、2026-11-10)** `ui:GetIMAPMailMessages`を新規実装
+     (知見250)——タグ名限定検索で579件ヒット、9回目発見パスで唯一
+     残っていた大物候補。実機2件(`cameronmcnz/uipath-tutorials`・
+     `JAYASIMMA/Loan_Apply_Utility_Bot`)で確認——`Server`+`Port`+
+     `Email`+`Password`/`SecurePassword`+`EnableSSL="True"`+
+     `SecureConnection="Auto"`+`MailFolder`+`Top`+`MarkAsRead`+
+     `OnlyUnreadMessages`+`DeleteMessages`+`OrderByDate`(公式確認済み
+     既定値`"NewestFirst"`+実機確認済み`"OldestFirst"`)。
+     `GetOutlookMailMessages`(知見120)の「生のネイティブオブジェクト
+     をそのまま返す」方針が`email.message.Message`(`.get()`辞書的
+     アクセスのみ、`.Subject`属性アクセス不可)には通用しないと判明
+     ——確認済みの下流アクセス(`.Subject`のみ)に絞った最小限の薄い
+     ラッパークラス`_ImapMailMessage`を新規設計した
+     (`GetLastDownloadedFile`知見233と同じ判断クラス)。`.Attachments`
+     は`ui:SaveMailAttachments`と合わせて設計すべきため見送り、
+     次の候補として記録。`imaplib.IMAP4_SSL`自体をモックして
+     `exec()`経由で`login`/`select`/`search`/`NewestFirst`反転/`Top`
+     絞り込み/`fetch`/`MarkAsRead`/`DeleteMessages`/
+     `OnlyUnreadMessages`/`close`/`logout`の全制御フローを確認した
+     ——標準ライブラリのため既存のOutlook COM系テストより一歩進んだ
+     検証手法。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`8件)、リポジトリ全体で全2268件
+     通過。

@@ -40,6 +40,7 @@ from dump_daemon.uipath_dsl import (
     RequestCredentialNode,
     SplitTextNode,
     CombineTextNode,
+    GetIMAPMailMessagesNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3044,6 +3045,65 @@ def test_get_outlook_mail_messages_properties():
     assert node.mark_as_read == "False"
     assert node.only_unread_messages == "False"
     assert node.top == Literal(value="30")
+
+
+def test_get_imap_mail_messages_properties():
+    """知見250: `ui:GetIMAPMailMessages`(タグ名限定GitHub検索で579件
+    ヒット)。実機`cameronmcnz/uipath-tutorials`の
+    `GmailAttachments/Main.xaml`で確認した構成——`Password`が平文の
+    フラット属性(`SecurePassword`は`{x:Null}`)。"""
+    xml = (
+        f"<ui:GetIMAPMailMessages {_UI_XMLNS} TimeoutMS=\"{{x:Null}}\" "
+        'DeleteMessages="False" DisplayName="Get IMAP Mail Messages" '
+        'Email="arpeeyeah@gmail.com" EnableSSL="True" '
+        'MailFolder="Inbox" MarkAsRead="False" Messages="[EmailMessages]" '
+        'OnlyUnreadMessages="False" Password="100thMeridian" Port="993" '
+        'SecureConnection="Auto" Server="imap.gmail.com" Top="30" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetIMAPMailMessagesNode)
+    assert node.server == Literal(value="imap.gmail.com")
+    assert node.port == Literal(value="993")
+    assert node.email == Literal(value="arpeeyeah@gmail.com")
+    assert node.password == Literal(value="100thMeridian")
+    assert node.secure_password is None
+    assert node.enable_ssl == "True"
+    assert node.secure_connection == "Auto"
+    assert node.mail_folder == Literal(value="Inbox")
+    assert node.top == Literal(value="30")
+    assert node.mark_as_read == "False"
+    assert node.only_unread_messages == "False"
+    assert node.delete_messages == "False"
+    assert node.order_by_date is None
+    assert node.messages == VbExpr(text="EmailMessages")
+
+
+def test_get_imap_mail_messages_with_secure_password_and_order_by_date():
+    """実機`JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`で確認した
+    実例——`Password`が`{x:Null}`で`SecurePassword`が設定され、
+    `OrderByDate="NewestFirst"`+動的VB式の`Server`/`MailFolder`/`Top`。"""
+    xml = (
+        f"<ui:GetIMAPMailMessages {_UI_XMLNS} ClientName=\"{{x:Null}}\" "
+        'ClientVersion="{x:Null}" FilterExpression="{x:Null}" '
+        'Password="{x:Null}" UseOAuth="{x:Null}" DeleteMessages="False" '
+        'DisplayName="Get IMAP Mail Messages" Email="[str_UserName]" '
+        'EnableSSL="True" IgnoreCRL="False" '
+        'MailFolder="[Config(&quot;FolderName&quot;).ToString]" '
+        'MarkAsRead="True" Messages="[List_Mails]" '
+        'OnlyUnreadMessages="False" OrderByDate="NewestFirst" '
+        'Port="[Convert.ToInt32(Config(&quot;Port&quot;))]" '
+        'SecureConnection="Auto" SecurePassword="[Password]" '
+        'Server="[Config(&quot;Server&quot;).ToString]" '
+        'Top="[Convert.ToInt32(Config(&quot;TopMails&quot;))]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetIMAPMailMessagesNode)
+    assert node.password is None
+    assert node.secure_password == VbExpr(text="Password")
+    assert node.mark_as_read == "True"
+    assert node.order_by_date == "NewestFirst"
+    assert node.ignore_crl == "False"
+    assert node.messages == VbExpr(text="List_Mails")
 
 
 _MAIL_BUSINESS_XMLNS = (
