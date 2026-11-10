@@ -148,6 +148,8 @@ from .types import (
     WordReplaceTextNode,
     WorkflowFile,
     WriteCsvFileNode,
+    DeserializeXmlNode,
+    ExecuteXPathNode,
     WriteLineNode,
 )
 from .xaml_tree import parse_activity, parse_workflow_file
@@ -290,6 +292,8 @@ __all__ = [
     "WordReplaceTextNode",
     "WorkflowFile",
     "WriteCsvFileNode",
+    "DeserializeXmlNode",
+    "ExecuteXPathNode",
     "WriteLineNode",
     "parse_activity",
     "parse_workflow_file",

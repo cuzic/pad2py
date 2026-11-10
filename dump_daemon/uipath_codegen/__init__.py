@@ -191,6 +191,8 @@ from ..uipath_dsl.types import (
     WordReplaceTextNode,
     WorkflowFile,
     WriteCsvFileNode,
+    DeserializeXmlNode,
+    ExecuteXPathNode,
     WriteLineNode,
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
@@ -482,6 +484,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     # も同様。
     if any("zipfile.ZipFile(" in line for line in body):
         imports.append("import zipfile")
+    # `lxml.etree`(`DeserializeXml`→`lxml.etree.fromstring(...)`変換先、
+    # `ExecuteXPath`→`....xpath(...)`変換先、知見228)も同様。`pyproject.
+    # toml`で既に確認済みの依存(`xaml_tree.py`自身がXAMLパースに使う)
+    # ——`pymupdf`知見209のような新規「プラグイン」依存ではない。
+    if any("lxml.etree.fromstring(" in line or ".xpath(" in line for line in body):
+        imports.append("import lxml.etree")
     # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)・
     # `os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`(Recursive=
     # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
@@ -757,6 +765,10 @@ def _generate_node(
         return _generate_manage_pdf_password(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
+    if isinstance(node, DeserializeXmlNode):
+        return _generate_deserialize_xml(node, indent)
+    if isinstance(node, ExecuteXPathNode):
+        return _generate_execute_xpath(node, indent)
     if isinstance(node, InvokePowerShellNode):
         return _generate_invoke_powershell(node, indent)
     if isinstance(node, RetryScopeNode):
@@ -4099,6 +4111,82 @@ def _generate_write_csv_file_body(node: WriteCsvFileNode, indent: int) -> list[s
         ]
     )
     return lines
+
+
+def _generate_deserialize_xml(node: DeserializeXmlNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_deserialize_xml_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_deserialize_xml_body(
+    node: DeserializeXmlNode, indent: int
+) -> list[str]:
+    """知見228: `.NET XDocument.Parse()`相当は`lxml.etree.fromstring()`
+    (本体の既存確認済み依存`lxml`、`ExportPDFPageAsImage`知見209の
+    ような新規「プラグイン」依存ではない)に対応する——XML宣言内の
+    エンコーディング指定を正しく解釈させるため、文字列を
+    `.encode("utf-8")`してバイト列として渡す。"""
+    prefix = INDENT * indent
+    if node.xml_string is None or node.xml_document is None:
+        return [
+            f"{prefix}# TODO: DeserializeXml with missing XMLString/"
+            "XMLDocument"
+        ]
+    todo: list[str] = []
+    xml_string = _render_value_or_todo(node.xml_string, prefix, todo)
+    xml_document = _render_value_or_todo(node.xml_document, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{xml_document} = lxml.etree.fromstring("
+        f"{VB_CSTR_HELPER_NAME}({xml_string}).encode(\"utf-8\"))"
+    ]
+
+
+def _generate_execute_xpath(node: ExecuteXPathNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_execute_xpath_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_execute_xpath_body(node: ExecuteXPathNode, indent: int) -> list[str]:
+    """知見228: `DeserializeXml`の兄弟活動。公式ドキュメント確認済み
+    ——`XMLString`を入力すると`ExistingXML`は使用不可になる(両方
+    非nullな実機例は無い)ため`XMLString`を優先する。`.NET
+    XDocument.XPathEvaluate`相当は`lxml`の`Element.xpath()`
+    (.NET実装もXPath 1.0相当のため構文変換は不要、`Regex`系活動
+    (知見144/213/220)とは違う)に対応する——`string(...)`で
+    ラップされたXPath式はPythonの`str`を返す(`.xpath()`の
+    ネイティブな戻り値型分岐)。"""
+    prefix = INDENT * indent
+    if node.xpath_expression is None or node.result is None:
+        return [
+            f"{prefix}# TODO: ExecuteXPath with missing XPathExpression/"
+            "Result"
+        ]
+    if node.xml_string is None and node.existing_xml is None:
+        return [
+            f"{prefix}# TODO: ExecuteXPath with no XMLString/ExistingXML "
+            "captured"
+        ]
+    todo: list[str] = []
+    xpath_expression = _render_value_or_todo(node.xpath_expression, prefix, todo)
+    result = _render_value_or_todo(node.result, prefix, todo)
+    if node.xml_string is not None:
+        xml_string = _render_value_or_todo(node.xml_string, prefix, todo)
+        if todo:
+            return todo
+        tree_expr = (
+            f'lxml.etree.fromstring({VB_CSTR_HELPER_NAME}({xml_string})'
+            '.encode("utf-8"))'
+        )
+    else:
+        existing_xml = _render_value_or_todo(node.existing_xml, prefix, todo)
+        if todo:
+            return todo
+        tree_expr = existing_xml
+    return [f"{prefix}{result} = {tree_expr}.xpath({xpath_expression})"]
 
 
 # 知見186: `ui:InvokePowerShell`。`PowerShellProcess="PowerShellCore"`

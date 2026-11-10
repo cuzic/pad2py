@@ -139,6 +139,8 @@ from dump_daemon.uipath_dsl import (
     WordApplicationScopeNode,
     WordReplaceTextNode,
     WriteCsvFileNode,
+    DeserializeXmlNode,
+    ExecuteXPathNode,
     WriteLineNode,
     parse_activity,
     parse_workflow_file,
@@ -2095,6 +2097,40 @@ def test_write_csv_file_properties():
     assert node.data_table == VbExpr(text="TestData")
     assert node.add_headers == "True"
     assert node.delimitator == "Comma"
+
+
+def test_deserialize_xml_properties():
+    """知見228: `ui:DeserializeXml`(`UiPath.WebAPI.Activities`
+    名前空間だがタグは`ui:`、タグ名限定GitHub検索で54件ヒット)。実機
+    `Sundsvallskommun/RPA-openeplatformapi`の`Get Case Status.xaml`で
+    確認した構成——`XMLString`+`XMLDocument`のプレーンな属性2つ。"""
+    xml = (
+        f"<ui:DeserializeXml {_UI_XMLNS} DisplayName=\"Deserialize XML\" "
+        'XMLDocument="[ResultAsXMLDocument]" XMLString="[ResultString]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeserializeXmlNode)
+    assert node.xml_string == VbExpr(text="ResultString")
+    assert node.xml_document == VbExpr(text="ResultAsXMLDocument")
+
+
+def test_execute_xpath_properties():
+    """知見228: `ui:ExecuteXPath`(`DeserializeXml`の兄弟活動、タグ名
+    限定GitHub検索で31件ヒット)。実機`Sundsvallskommun/
+    RPA-openeplatformapi`で確認した「`string()`ラップされたXPath式で
+    単一文字列を抜き出す」定番用途——`XMLString`は`{{x:Null}}`のまま
+    `ExistingXML`だけが使われる構成。"""
+    xml = (
+        f'<ui:ExecuteXPath {_UI_XMLNS} XMLString="{{x:Null}}" '
+        'DisplayName="Execute XPath" ExistingXML="[ResultAsXMLDocument]" '
+        'Result="[statusName]" XPathExpression="string(//Status/name)" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExecuteXPathNode)
+    assert node.xml_string is None
+    assert node.existing_xml == VbExpr(text="ResultAsXMLDocument")
+    assert node.xpath_expression == Literal(value="string(//Status/name)")
+    assert node.result == VbExpr(text="statusName")
 
 
 def test_invoke_powershell_properties():

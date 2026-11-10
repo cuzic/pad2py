@@ -3080,3 +3080,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      これで知見225の発見パスで見つかった3件(`CommentOut`/
      `Continue`/`RepeatNumberOfTimesX`)全てに着手済み——次の候補は
      無く、次のtickで新規発見パスが必要。
+
+186. **(完了、2026-11-10)** `ui:DeserializeXml`・`ui:ExecuteXPath`を
+     新規実装(知見228)——`UiPath.WebAPI.Activities`パッケージの
+     兄弟活動ペア、タグ名限定検索で54件/31件ヒット。`XMLString`
+     (入力)+`XMLDocument`(出力、.NET`XDocument`)の2属性のみの
+     `DeserializeXml`は`lxml.etree.fromstring()`(本体の既存確認済み
+     依存、新規「プラグイン」依存ではない)に対応、`ExecuteXPath`は
+     `ExistingXML`/`XMLString`の2入力経路+`XPathExpression`+
+     `Result`——公式ドキュメント確認済みの「`XMLString`入力時は
+     `ExistingXML`使用不可」仕様に従い`XMLString`優先。`.NET`のXPath
+     実装もXPath 1.0相当のため`lxml`の`Element.xpath()`に構文変換
+     無しで対応(`Regex`系活動とは違う)、`string(...)`ラップされた
+     XPath式はPythonの`str`を返す。`DeserializeXml`→`ExecuteXPath`の
+     実機相当パイプライン(`Sundsvallskommun/RPA-openeplatformapi`)を
+     `exec()`経由で実際に実行し、単一文字列を正しく抜き出せることを
+     確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`4件)、UiPath関連テスト全1034件
+     通過、リポジトリ全体で全2120件通過。同じ発見パスで見つけた
+     `umab:`(`UiPath.Mail.Activities.Business`)名前空間の
+     `MarkMailAsReadX`/`DeleteMailX`/`MoveMailX`トリオを次の候補と
+     して記録。

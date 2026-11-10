@@ -155,6 +155,8 @@ from .types import (
     WordReplaceTextNode,
     WorkflowFile,
     WriteCsvFileNode,
+    DeserializeXmlNode,
+    ExecuteXPathNode,
     WriteLineNode,
 )
 
@@ -1241,6 +1243,30 @@ def _parse_write_csv_file(elem: etree._Element) -> WriteCsvFileNode:
         should_quote=_attr_or_none(elem, "ShouldQuote"),
         encoding=_attr_expr(elem, "Encoding"),
         display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_deserialize_xml(elem: etree._Element) -> DeserializeXmlNode:
+    return DeserializeXmlNode(
+        display_name=_attr(elem, "DisplayName"),
+        xml_string=_attr_expr(elem, "XMLString")
+        or _in_argument_property_expr(elem, "XMLString"),
+        xml_document=_attr_expr(elem, "XMLDocument")
+        or _in_argument_property_expr(elem, "XMLDocument"),
+    )
+
+
+def _parse_execute_xpath(elem: etree._Element) -> ExecuteXPathNode:
+    return ExecuteXPathNode(
+        display_name=_attr(elem, "DisplayName"),
+        existing_xml=_attr_expr(elem, "ExistingXML")
+        or _in_argument_property_expr(elem, "ExistingXML"),
+        xml_string=_attr_expr(elem, "XMLString")
+        or _in_argument_property_expr(elem, "XMLString"),
+        xpath_expression=_attr_expr(elem, "XPathExpression")
+        or _in_argument_property_expr(elem, "XPathExpression"),
+        result=_attr_expr(elem, "Result")
+        or _in_argument_property_expr(elem, "Result"),
     )
 
 
@@ -2594,6 +2620,8 @@ _DISPATCH = {
     (COMPRESSION_NS, "CompressFiles"): _parse_compress_files,
     (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
+    (UI_NS, "DeserializeXml"): _parse_deserialize_xml,
+    (UI_NS, "ExecuteXPath"): _parse_execute_xpath,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "MoveFile"): _parse_move_file,

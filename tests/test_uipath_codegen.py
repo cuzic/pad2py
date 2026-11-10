@@ -169,6 +169,8 @@ from dump_daemon.uipath_dsl import (
     WordReplaceTextNode,
     WorkflowFile,
     WriteCsvFileNode,
+    DeserializeXmlNode,
+    ExecuteXPathNode,
     WriteLineNode,
     parse_workflow_file,
 )
@@ -5257,6 +5259,88 @@ def test_write_csv_file_with_non_true_should_quote_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: WriteCsvFile with non-default ShouldQuote" in code
+    _compiles(code)
+
+
+def test_deserialize_xml_then_execute_xpath_pipeline():
+    """知見228: `ui:DeserializeXml`→`ui:ExecuteXPath`の定番パイプライン
+    (実機`Sundsvallskommun/RPA-openeplatformapi`相当)。`exec()`経由で
+    実際にXML文字列をパースし、`string()`ラップされたXPath式で
+    単一文字列を抜き出せることを確認する。"""
+    wf = _wrap(
+        [
+            DeserializeXmlNode(
+                xml_string=VbExpr(text="ResultString"),
+                xml_document=VbExpr(text="ResultAsXMLDocument"),
+            ),
+            ExecuteXPathNode(
+                existing_xml=VbExpr(text="ResultAsXMLDocument"),
+                xpath_expression=Literal(value="string(//Status/name)"),
+                result=VbExpr(text="statusName"),
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "import lxml.etree" in code
+    assert "lxml.etree.fromstring(" in code
+    assert ".xpath(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(ResultString):")
+    code2 += "\n    return statusName"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert (
+        namespace["Test"]("<Status><name>Processed</name></Status>")
+        == "Processed"
+    )
+
+
+def test_execute_xpath_prefers_xml_string_when_both_set():
+    """知見228: 公式ドキュメント確認済み——`XMLString`を入力すると
+    `ExistingXML`は使用不可になる(実機では常に片方だけが非null)
+    ため、両方設定されている場合は`XMLString`を優先する。"""
+    wf = _wrap(
+        [
+            ExecuteXPathNode(
+                xml_string=VbExpr(text="raw"),
+                existing_xml=VbExpr(text="unused_existing"),
+                xpath_expression=Literal(value="string(//a)"),
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "lxml.etree.fromstring(" in code
+    assert "unused_existing" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(raw):")
+    code2 += "\n    return r"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("<root><a>hi</a></root>") == "hi"
+
+
+def test_execute_xpath_with_no_xml_source_is_todo():
+    wf = _wrap(
+        [
+            ExecuteXPathNode(
+                xml_string=None,
+                existing_xml=None,
+                xpath_expression=Literal(value="string(//a)"),
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExecuteXPath with no XMLString/ExistingXML captured" in code
+    _compiles(code)
+
+
+def test_deserialize_xml_with_missing_properties_is_todo():
+    wf = _wrap([DeserializeXmlNode(xml_string=None, xml_document=VbExpr(text="x"))])
+    code = generate_python(wf)
+    assert "# TODO: DeserializeXml with missing XMLString/XMLDocument" in code
     _compiles(code)
 
 

@@ -1521,6 +1521,57 @@ class WriteCsvFileNode:
 
 
 @dataclass
+class DeserializeXmlNode:
+    """`<ui:DeserializeXml XMLString="..." XMLDocument="...">`(知見228、
+    `UiPath.WebAPI.Activities`名前空間だがタグは`ui:`、タグ名限定
+    GitHub検索で54件ヒット)。ground-truth(`marcelocruzrpa/
+    uipath-ai-skills`、`XMLDocument="{x:Null}" XMLString="{x:Null}"`)・
+    実機(`Sundsvallskommun/RPA-openeplatformapi`の`Get Case
+    Status.xaml`、`XMLDocument="[ResultAsXMLDocument]"
+    XMLString="[ResultString]"`——プレーンな属性で十分、`feli203040/
+    PruebaConceptoUiPath`のC#式活動版はプロパティ要素でラップされる
+    形も確認)いずれも`XMLString`(文字列入力)+`XMLDocument`(出力、
+    .NETの`System.Xml.Linq.XDocument`)の2属性のみ。`lxml.etree.
+    fromstring()`(本体の`dependencies`に既にある`lxml`——
+    `xaml_tree.py`自身がXAMLパースに使っている既存の確認済み依存、
+    `ExportPDFPageAsImage`知見209の「新規依存」とは違う)が対応する
+    ——XML宣言内のエンコーディング指定を正しく解釈させるため、文字列
+    を`.encode("utf-8")`してバイト列として渡す。"""
+
+    display_name: str | None = None
+    xml_string: Expr = None
+    xml_document: Expr = None
+
+
+@dataclass
+class ExecuteXPathNode:
+    """`<ui:ExecuteXPath ExistingXML="..." XMLString="..."
+    XPathExpression="..." Result="..." />`(知見228、`DeserializeXml`
+    の兄弟活動、タグ名限定GitHub検索で31件ヒット)。ground-truth・
+    実機複数件(`Sundsvallskommun/RPA-openeplatformapi`で3件、
+    `XPathExpression="string(//Status/name)"`のような`string()`
+    ラップされたXPath式で単一文字列を抜き出す定番用途)いずれも
+    `ExistingXML`(既にパース済みの`XDocument`)と`XMLString`
+    (未パースの生文字列、こちらを直接渡すとその場でパースする)の
+    2つの入力経路を持つ——実機では常に片方だけが非nullで、他方は
+    `{x:Null}`のまま。公式ドキュメント(WebSearch経由確認、
+    `execute-x-path`ページ)で「`XMLString`を入力すると`ExistingXML`
+    は使用不可になる」と確認済み——`XMLString`が優先される。
+
+    `.NET`の`XDocument.XPathEvaluate`相当は`lxml`の`Element.xpath()`
+    (.NET実装もXPath 1.0相当のため構文的な互換性は十分高い、
+    `Regex`系活動(知見144/213/220)とは違い構文変換は不要)に対応する
+    ——`string(...)`でラップされたXPath式はPythonの`str`を返す
+    (`.xpath()`のネイティブな戻り値型分岐、XPath仕様に準拠)。"""
+
+    display_name: str | None = None
+    existing_xml: Expr = None
+    xml_string: Expr = None
+    xpath_expression: Expr = None
+    result: Expr = None
+
+
+@dataclass
 class InvokePowerShellNode:
     """`<ui:InvokePowerShell>`(知見186、GitHub code searchで337件
     ヒット——`UiPath/skills`公式リポジトリのStudio実機ground-truth
@@ -3396,6 +3447,8 @@ Node = (
     | ExtractImagesFromPdfNode
     | ManagePdfPasswordNode
     | WriteCsvFileNode
+    | DeserializeXmlNode
+    | ExecuteXPathNode
     | InvokePowerShellNode
     | RetryScopeNode
     | MoveFileNode

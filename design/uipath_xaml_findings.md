@@ -10702,6 +10702,64 @@ UiPath関連テスト全1028件通過、リポジトリ全体で全2114件通過
 `RepeatNumberOfTimesX`)全てに着手済みとなった。次の候補は無く、
 次のtickで新規発見パスが必要。
 
+## 228. `ui:DeserializeXml`・`ui:ExecuteXPath`を新規実装——XML文字列をパースして`string()`ラップされたXPath式で単一文字列を抜き出す定番パイプライン、lxml.etree.xpath()がXPath 1.0相当の.NET実装と構文互換
+
+サブエージェントによる3回目の新規発見パス(`UiPath.System.
+Activities`以外のパッケージ——`UiPath.WebAPI.Activities`・
+`UiPath.Mail.Activities.Business`等——も探索範囲に含めた)で発見した
+2件の兄弟活動。`DeserializeXml`(タグ名限定検索で54件ヒット)+
+`ExecuteXPath`(31件ヒット)はいずれも`ui:`タグだが
+`UiPath.WebAPI.Activities`パッケージが実装元(名前空間URIは
+他の`ui:`活動と同じ`http://schemas.uipath.com/workflow/activities`
+——パッケージの違いはXMLタグ名前空間に現れない)。
+
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`Sundsvallskommun/RPA-openeplatformapi`の`Get Case Status.xaml`で
+3組の`DeserializeXml`→`ExecuteXPath`、`XPathExpression="string(//
+Status/name)"`のような`string()`ラップされたXPath式で「ラベル配下の
+値だけ抜き出す」定番用途)で確認した構成——`DeserializeXml`は
+`XMLString`(入力)+`XMLDocument`(出力、.NETの`XDocument`)の
+プレーンな属性2つのみ。`ExecuteXPath`は`ExistingXML`(既に
+パース済みの`XDocument`)/`XMLString`(未パースの生文字列、直接
+渡すとその場でパース)の2つの入力経路+`XPathExpression`+`Result`
+——実機では常に片方だけが非null。
+
+`.NET`の`XDocument.Parse()`→`lxml.etree.fromstring()`、
+`XDocument.XPathEvaluate()`→`Element.xpath()`が対応する——
+`lxml`は本体の`pyproject.toml``dependencies`に既にある確認済み依存
+(`xaml_tree.py`自身がXAMLパースに使っている、知見209の
+「プラグイン」依存とは違い新規追加の判断が不要だった)。.NETの
+XPath実装もXPath 1.0相当のため、`Regex`系活動(知見144/213/220)の
+「正規表現構文は変換しない」ケースとは違い**構文変換が一切不要**
+——`string(...)`でラップされたXPath式はXPath仕様通り`lxml`も
+Pythonの`str`を返す。
+
+公式ドキュメント(WebSearch経由確認、`execute-x-path`ページ)で
+「`XMLString`を入力すると`ExistingXML`は使用不可になる」と確認済み
+——両方設定されている場合は`XMLString`を優先する判断を採用。
+XML宣言内のエンコーディング指定を正しく解釈させるため、
+`lxml.etree.fromstring()`には文字列を`.encode("utf-8")`してバイト
+列として渡す(`lxml`は文字列にXML宣言が含まれる場合、文字列型の
+まま渡すと`ValueError`になる既知の制約)。
+
+`_collect_imports()`に`lxml.etree.fromstring(`/`.xpath(`トリガーを
+新規追加(既存の`os.environ.`等と同じ文字列部分一致パターン)。
+`DeserializeXml`→`ExecuteXPath`の実機相当パイプラインを`exec()`
+経由で実際に実行し、XML文字列から単一文字列を正しく抜き出せる
+ことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全1034件通過、
+リポジトリ全体で全2120件通過(28件skip、変化無し)。
+
+同じ発見パスで`umab:`(`UiPath.Mail.Activities.Business`)名前空間の
+`MarkMailAsReadX`/`DeleteMailX`/`MoveMailX`(既実装の
+`GetOutlookMailMessages`が生成する`MailMessage`オブジェクトへの
+メソッド追加のみで済む見込み、32/31/19件ヒット)と、`ui:
+DeserializeJson`(1230件ヒットと破格だが、実機では`.SelectToken(...)`
+等のダウンストリームのドット記法アクセスが頻出——`GetFileInfoX`/
+`GetFolderInfoX`(知見で見送り済み)と同じ「未モデル化の型付き
+オブジェクト」懸念があり、スコープを絞った設計判断が先に必要)も
+発見済み——`umab:`メールトリオを次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
