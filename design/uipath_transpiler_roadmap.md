@@ -2954,3 +2954,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      UiPath関連テスト全998件通過、リポジトリ全体で全2084件通過。
      残る`Matches`(複数マッチ出力の実機確認が必要)を次の候補として
      記録。
+
+179. **(完了、2026-11-10)** `ui:Matches`を新規実装(知見221)——
+     知見220で次候補とした正規表現ビルダー系最後の兄弟活動、タグ名
+     限定検索で448件ヒット。実機6件で出力に2種類(`Result`——型未確認
+     ・`FirstMatch`——ラベル後の値を抜き出す単一文字列抽出の定番用途)
+     があることを発見、`Result`は型未確認のため`# TODO`、
+     `FirstMatch`のみ対応した。`.NET Regex.Match(input, pattern).
+     Value`→`re.search()`(不一致時は.NETの`Match.Value`の既知の挙動
+     に合わせ`None`ではなく`""`を返す)が対応する。実機の実際の
+     パターン(可変長lookbehind)がPython標準`re`では非対応
+     (`"look-behind requires fixed-width pattern"`)という.NET/Python
+     正規表現構文の互換性差異を発見したが、知見144/213/220と同じ
+     「パターン文字列自体は変換しない」既存の判断の範囲内——固定幅
+     パターンで動作確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全
+     1002件通過、リポジトリ全体で全2088件通過。これで知見213発見の
+     正規表現ビルダー系活動3件(`IsMatch`/`Replace`/`Matches`)全てに
+     着手済みとなった。

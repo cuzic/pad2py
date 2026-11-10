@@ -2447,6 +2447,39 @@ class ReplaceNode:
 
 
 @dataclass
+class MatchesNode:
+    """`<ui:Matches>`(知見221、`IsMatch`/`Replace`(知見213・220)と
+    同じ正規表現ビルダー系の兄弟活動、GitHub code searchで「`"ui:
+    Matches"`」タグ名限定448件ヒット)。ground-truthの属性構成は
+    `FirstMatch`(出力)+`Input`+`Pattern`+`IsBuilderTabModified`+
+    `RegexOption`(既定`"IgnoreCase, Compiled"`)——`Result`は
+    ground-truthには現れないが実機で確認済み。
+
+    実機6件(`mehmetbesli/UiPathExamples`1件・`mantri13/
+    Usecase2_ActiveLoans`5件)で、出力は**2種類**確認できた:
+    `Result`(1件、集合型と推測されるが具体的な型が実機XAMLだけからは
+    確認できない)と`FirstMatch`(5件、`(?<=ラベル:\\s*).*`のような
+    lookbehindパターンで「ラベルの後の値だけ抜き出す」という単一文字列
+    抽出の定番用途、`out_BankAcctName`/`out_LoanDate`/`out_Amount`等の
+    変数名から単一値であることが明確)。`Result`の正確な型(リスト?
+    `MatchCollection`相当?)が未確認のため、本活動は`FirstMatch`のみ
+    対応し`Result`設定時は`# TODO`へ倒す。
+
+    `.NET Regex.Match(input, pattern).Value`に対応する——マッチしない
+    場合、.NETの`Match.Value`は`null`ではなく空文字列`""`を返す
+    (.NET公式ドキュメントで確立された既知の挙動)ため、Pythonの
+    `re.search()`が`None`を返す場合も同様に`""`へ変換する。
+    `RegexOption`は`IsMatch`と同じ判断を再利用する。"""
+
+    display_name: str | None = None
+    input: Expr = None
+    pattern: Expr = None
+    regex_option: str | None = None
+    first_match: Expr = None
+    result: Expr = None
+
+
+@dataclass
 class GetEnvironmentVariableNode:
     """`<ui:GetEnvironmentVariable Variable="..." VariableValue="..." />`
     (知見215、知見214のタグ名限定GitHub検索で再発掘)。実機5件
@@ -3203,6 +3236,7 @@ Node = (
     | CompressFilesNode
     | IsMatchNode
     | ReplaceNode
+    | MatchesNode
     | GetEnvironmentVariableNode
     | InvokeCodeNode
     | SetToClipboardNode

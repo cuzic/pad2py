@@ -112,6 +112,7 @@ from .types import (
     CompressFilesNode,
     IsMatchNode,
     ReplaceNode,
+    MatchesNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -1808,6 +1809,19 @@ def _parse_replace(elem: etree._Element) -> ReplaceNode:
     )
 
 
+def _parse_matches(elem: etree._Element) -> MatchesNode:
+    return MatchesNode(
+        display_name=_attr(elem, "DisplayName"),
+        input=_attr_expr(elem, "Input") or _in_argument_property_expr(elem, "Input"),
+        pattern=_attr_expr(elem, "Pattern")
+        or _in_argument_property_expr(elem, "Pattern"),
+        regex_option=_attr(elem, "RegexOption"),
+        first_match=_attr_expr(elem, "FirstMatch")
+        or _in_argument_property_expr(elem, "FirstMatch"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
 def _parse_get_environment_variable(
     elem: etree._Element,
 ) -> GetEnvironmentVariableNode:
@@ -2514,6 +2528,7 @@ _DISPATCH = {
     (UI_NS, "WriteTextFile"): _parse_write_text_file,
     (UI_NS, "IsMatch"): _parse_is_match,
     (UI_NS, "Replace"): _parse_replace,
+    (UI_NS, "Matches"): _parse_matches,
     (UI_NS, "GetEnvironmentVariable"): _parse_get_environment_variable,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,

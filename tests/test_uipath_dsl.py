@@ -98,6 +98,7 @@ from dump_daemon.uipath_dsl import (
     CompressFilesNode,
     IsMatchNode,
     ReplaceNode,
+    MatchesNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -2733,6 +2734,26 @@ def test_replace_properties():
     assert node.replacement == Literal(value="},{")
     assert node.regex_option == "IgnoreCase, Compiled"
     assert node.result == VbExpr(text="kValue")
+
+
+def test_matches_properties_with_first_match_output():
+    """知見221: `ui:Matches`(`IsMatch`/`Replace`と同じ正規表現ビルダー
+    系の兄弟活動)。実機`mantri13/Usecase2_ActiveLoans`で確認した
+    「ラベルの後の値だけ抜き出す」という`FirstMatch`出力の定番用途。"""
+    xml = (
+        f"<ui:Matches {_UI_XMLNS} "
+        'DisplayName="Find Bank Account Name" '
+        'FirstMatch="[out_BankAcctName]" Input="[in_LoanDetails]" '
+        'IsBuilderTabModified="True" Pattern="(?&lt;=Branch:\\s*).*" '
+        'RegexOption="IgnoreCase, Compiled" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MatchesNode)
+    assert node.input == VbExpr(text="in_LoanDetails")
+    assert node.pattern == Literal(value="(?<=Branch:\\s*).*")
+    assert node.regex_option == "IgnoreCase, Compiled"
+    assert node.first_match == VbExpr(text="out_BankAcctName")
+    assert node.result is None
 
 
 def test_get_environment_variable_properties():

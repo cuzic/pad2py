@@ -10408,6 +10408,45 @@ test_uipath_codegen.py`3件)、UiPath関連テスト全998件通過、リポジ�
 残る`Matches`(複数マッチ出力の実機確認が必要)を次の候補として記録
 する。
 
+## 221. `ui:Matches`を新規実装——知見220で次候補とした正規表現ビルダー系最後の兄弟活動、`Result`(型未確認)と`FirstMatch`(単一文字列抽出)という2種類の出力が実機で確認できたため後者のみ対応
+
+知見220で次候補とした`Matches`(タグ名限定検索で448件ヒット、
+`IsMatch`/`Replace`と同じ正規表現ビルダー系の兄弟活動)に着手した。
+ground-truthの属性構成は`FirstMatch`(出力)+`Input`+`Pattern`+
+`IsBuilderTabModified`+`RegexOption`(既定`"IgnoreCase, Compiled"`)
+——`Result`はground-truthには現れない。
+
+実機6件(`mehmetbesli/UiPathExamples`1件・`mantri13/
+Usecase2_ActiveLoans`5件)で、出力に**2種類**あることを発見した:
+`Result`(1件のみ、集合型と推測されるが実機XAMLだけからは正確な型
+——`List(Of String)`か`MatchCollection`相当か等——が確認できない)
+と`FirstMatch`(5件、`(?<=ラベル:\s*).*`のようなlookbehindパターンで
+「ラベルの後の値だけ抜き出す」という単一文字列抽出の定番用途、
+`out_BankAcctName`/`out_LoanDate`/`out_Amount`等の変数名からも単一
+値であることが明確)。`Result`の型が未確認のため、本活動は
+`FirstMatch`のみに対応し`Result`設定時は`# TODO`へ倒す。
+
+`.NET Regex.Match(input, pattern).Value`に対応する——マッチしない
+場合、.NETの`Match.Value`は`null`ではなく空文字列`""`を返す(.NET
+公式ドキュメントで確立された既知の挙動)ため、Pythonの`re.search()`
+が`None`を返す場合も`""`へ変換する(`_mch.group(0) if _mch else
+""`)。`RegexOption`は`IsMatch`/`Replace`と同じ判断
+(`_REGEX_ALLOWED_OPTIONS`)を再利用する。
+
+実機相当の構成(ラベル後の値を抜き出すlookbehindパターン、.NET
+固有の可変長lookbehind構文だと知らずに最初試した実機の正確なパターン
+文字列が、Python標準の`re`モジュールでは`"look-behind requires
+fixed-width pattern"`エラーになることを発見——.NETとPythonの正規
+表現構文の互換性差異の実例、知見144/213/220と同じ「パターン文字列
+自体は変換しない」既存の判断の範囲内、固定幅のlookbehindパターンで
+動作を確認)を`exec()`経由で実際に実行し、一致/不一致の両方を確認
+した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、UiPath関連テスト全1002件通過、リポジ
+トリ全体で全2088件通過(28件skip、変化無し)。
+
+これで知見213で発見した正規表現ビルダー系活動3件
+(`IsMatch`/`Replace`/`Matches`)全てに着手済みとなった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

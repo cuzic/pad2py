@@ -149,6 +149,7 @@ from ..uipath_dsl.types import (
     CompressFilesNode,
     IsMatchNode,
     ReplaceNode,
+    MatchesNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -674,6 +675,8 @@ def _generate_node(
         return _generate_is_match(node, indent)
     if isinstance(node, ReplaceNode):
         return _generate_replace(node, indent)
+    if isinstance(node, MatchesNode):
+        return _generate_matches(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
         return _generate_get_environment_variable(node, indent)
     if isinstance(node, ReadTextFileNode):
@@ -1715,6 +1718,51 @@ def _generate_replace_body(node: ReplaceNode, indent: int) -> list[str]:
         f"{prefix}{result} = re.sub({pattern}, "
         f"{VB_CSTR_HELPER_NAME}({replacement}), "
         f"{VB_CSTR_HELPER_NAME}({input_}){flags})"
+    ]
+
+
+def _generate_matches(node: MatchesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_matches_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_matches_body(node: MatchesNode, indent: int) -> list[str]:
+    """知見221: `Result`の正確な型(リスト?`MatchCollection`相当?)が
+    実機からは確認できないため常に`# TODO`、`FirstMatch`のみ対応。
+    `.NET Regex.Match(input, pattern).Value`は`re.search()`が一致
+    しない場合も含め、常に文字列(不一致時は`""`)を返す——
+    `re.search()`の`None`を同じ`""`へ変換する。"""
+    prefix = INDENT * indent
+    if node.input is None or node.pattern is None:
+        return [f"{prefix}# TODO: Matches with missing Input/Pattern"]
+    if node.result is not None:
+        return [
+            f"{prefix}# TODO: Matches with Result captured — exact "
+            "collection type not confirmed in real samples, refusing "
+            "to guess"
+        ]
+    if node.first_match is None:
+        return [f"{prefix}# TODO: Matches with no output FirstMatch captured"]
+    if node.regex_option is None:
+        return [f"{prefix}# TODO: Matches with no RegexOption captured"]
+    options = {opt.strip() for opt in node.regex_option.split(",")}
+    if not options <= _REGEX_ALLOWED_OPTIONS:
+        return [
+            f"{prefix}# TODO: Matches with unrecognized RegexOption "
+            f"({node.regex_option!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    input_ = _render_value_or_todo(node.input, prefix, todo)
+    pattern = _render_value_or_todo(node.pattern, prefix, todo)
+    first_match = _render_value_or_todo(node.first_match, prefix, todo)
+    if todo:
+        return todo
+    flags = ", re.IGNORECASE" if "IgnoreCase" in options else ""
+    return [
+        f"{prefix}_mch = re.search({pattern}, "
+        f"{VB_CSTR_HELPER_NAME}({input_}){flags})",
+        f"{prefix}{first_match} = _mch.group(0) if _mch else \"\"",
     ]
 
 

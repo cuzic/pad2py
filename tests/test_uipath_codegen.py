@@ -124,6 +124,7 @@ from dump_daemon.uipath_dsl import (
     CompressFilesNode,
     IsMatchNode,
     ReplaceNode,
+    MatchesNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -9840,6 +9841,84 @@ def test_replace_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Replace with no Result captured" in code
+    _compiles(code)
+
+
+def test_matches_extracts_first_match_or_empty_string():
+    """知見221: `ui:Matches`(`IsMatch`/`Replace`と同じ正規表現ビルダー
+    系の兄弟活動)。`.NET Regex.Match(input, pattern).Value`は`re.
+    search()`が不一致でも`""`(`None`ではない)を返す——実機
+    `mantri13/Usecase2_ActiveLoans`相当の「ラベルの後の値を抜き出す」
+    構成を`exec()`経由で実際に実行し、一致/不一致の両方を確認する。"""
+    wf = _wrap(
+        [
+            MatchesNode(
+                input=VbExpr(text="in_LoanDetails"),
+                pattern=Literal(value=r"(?<=Amount: )\d+"),
+                regex_option="IgnoreCase, Compiled",
+                first_match=VbExpr(text="out_Amount"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_mch = re.search(" in code
+    assert 'out_Amount = _mch.group(0) if _mch else ""' in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(in_LoanDetails):")
+    code2 += "\n    return out_Amount"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("Amount: 1500 due") == "1500"
+    assert namespace["Test"]("nothing here") == ""
+
+
+def test_matches_declines_result_output_and_unconfirmed_regex_option():
+    """知見221: `Result`の正確な型(リスト?`MatchCollection`相当?)が
+    実機からは確認できないため常に`# TODO`。未確認の`RegexOption`も
+    `# TODO`——`IsMatch`/`Replace`と同じ判断。"""
+    wf = _wrap(
+        [
+            MatchesNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                regex_option="IgnoreCase",
+                result=VbExpr(text="allMatches"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Matches with Result captured" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            MatchesNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                regex_option="Multiline",
+                first_match=VbExpr(text="m"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: Matches with unrecognized RegexOption ('Multiline')" in code2
+    _compiles(code2)
+
+
+def test_matches_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            MatchesNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                regex_option="IgnoreCase",
+                first_match=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Matches with no output FirstMatch captured" in code
     _compiles(code)
 
 
