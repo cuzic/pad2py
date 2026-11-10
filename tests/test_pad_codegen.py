@@ -6444,3 +6444,142 @@ def test_generate_python_wait_for_window_by_title_class_with_class_set_falls_bac
     tree = build_block_tree(parse_dsl(dsl))
     code = generate_python(tree)
     assert "# TODO: map PAD wait action: UIAutomation.WaitForWindow.ToOpenByTitleClass" in code
+
+
+def test_generate_python_from_outlook_launch_and_close_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `Outlook.Close`/`Outlook.Launch`は
+    # `[Action(Name = "Close"/"Launch")]`(Id属性無し)のフラットな2セグメント形式。
+    dsl = "Outlook.Launch Instance=> OutlookInstance\nOutlook.Close Instance: OutlookInstance"
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert "from dump_daemon.pad_action_lib import outlook_actions" in code
+    assert "OutlookInstance = outlook_actions.launch_outlook()" in code
+    assert "outlook_actions.close_outlook(OutlookInstance)" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_outlook_retrieve_emails_both_selectors_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `RetrieveEmailMessages`の兄弟セレクタ2件
+    # (`AttachmentsOptions`は`DoNotSave`/`Save`で固定、`RetrieveEmails`は
+    # `SaveAttachmentsInto`が`Hide<>()`されている)。
+    dsl = (
+        "Outlook.RetrieveEmailMessages.RetrieveEmails Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' MailFolder: $'''Inbox''' "
+        "Messages=> RetrievedEmails\n"
+        "Outlook.RetrieveEmailMessages.RetrieveEmailsAndSaveAttachments Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' MailFolder: $'''Inbox''' "
+        "SaveAttachmentsInto: $'''C:\\temp''' Messages=> RetrievedEmails2"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "RetrievedEmails = outlook_actions.retrieve_email_messages(OutlookInstance, "
+        "'tomoya@example.com', 'Inbox', emails_to_retrieve='All', mark_as_read=True, "
+        "read_body_as_html=False, from_contains='', to_contains='', subject_contains='', "
+        "body_contains='', attachments_options='DoNotSave')" in code
+    )
+    assert "attachments_options='Save', save_attachments_into='C:\\\\temp')" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_outlook_process_emails_all_operations_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `ProcessEmailMessages`の兄弟セレクタ3件
+    # (`DeleteEmails`/`MarkEmailsAsUnread`は`MailFolder`が`Hide<>()`されている)。
+    dsl = (
+        "Outlook.ProcessEmailMessages.DeleteEmails Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' EmailsToProcess: RetrievedEmails\n"
+        "Outlook.ProcessEmailMessages.MarkEmailsAsUnread Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' EmailsToProcess: RetrievedEmails\n"
+        "Outlook.ProcessEmailMessages.MoveEmails Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' EmailsToProcess: RetrievedEmails "
+        "MailFolder: $'''Archive'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "outlook_actions.process_email_messages(OutlookInstance, 'tomoya@example.com', "
+        "(RetrievedEmails if isinstance(RetrievedEmails, list) else [RetrievedEmails]), "
+        "operation='Delete')" in code
+    )
+    assert "operation='MarkAsUnread')" in code
+    assert "operation='Move', mail_folder='Archive')" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_outlook_respond_to_mail_message_all_selectors_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `RespondToMailMessage`の兄弟セレクタ3件
+    # (`ReplyToEmail`/`ReplyAllToEmail`は`SendTo`/`CC`/`BCC`が全て`Hide<>()`されている)。
+    dsl = (
+        "Outlook.RespondToMailMessage.ReplyToEmail Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' MailMessage: SomeMessage Body: $'''thanks'''\n"
+        "Outlook.RespondToMailMessage.ReplyAllToEmail Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' MailMessage: SomeMessage Body: $'''thanks all'''\n"
+        "Outlook.RespondToMailMessage.ForwardEmail Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' MailMessage: SomeMessage Body: $'''fyi''' "
+        "SendTo: $'''boss@example.com'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "outlook_actions.respond_to_mail_message(OutlookInstance, 'tomoya@example.com', "
+        "SomeMessage, 'thanks', response_action='Reply', attachments=None)" in code
+    )
+    assert "response_action='ReplyAll', attachments=None)" in code
+    assert (
+        "response_action='Forward', send_to='boss@example.com', cc='', bcc='', "
+        "attachments=None)" in code
+    )
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_outlook_save_email_messages_both_selectors_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `SaveOutlookEmailMessages`の兄弟セレクタ2件
+    # (`SaveEmails`は`SaveEmailsAs`が`Hide<>()`されている)。
+    dsl = (
+        "Outlook.SaveOutlookEmailMessages.SaveEmails Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' EmailsToSave: RetrievedEmails "
+        "SaveEmailsTo: $'''C:\\out''' StoredMessagesFiles=> Saved1\n"
+        "Outlook.SaveOutlookEmailMessages.SaveEmailsAs Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' EmailsToSave: RetrievedEmails "
+        "SaveEmailsTo: $'''C:\\out''' SaveEmailsAs: $'''custom''' StoredMessagesFiles=> Saved2"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "Saved1 = outlook_actions.save_outlook_email_messages(OutlookInstance, "
+        "'tomoya@example.com', (RetrievedEmails if isinstance(RetrievedEmails, list) "
+        "else [RetrievedEmails]), 'C:\\\\out', save_as_mode='DefaultName', "
+        "save_format='OutlookMessageFormatUnicode')" in code
+    )
+    assert "save_as_mode='CustomName', save_as='custom', save_format=" in code
+    assert "# TODO" not in code
+
+
+def test_generate_python_from_outlook_send_email_both_selectors_converts() -> None:
+    # design/dsl_format_findings.md 知見208: `SendEmailThroughOutlook`の兄弟セレクタ2件
+    # (`SendEmail`は`SendFrom`が`Hide<>()`されている)。
+    dsl = (
+        "Outlook.SendEmailThroughOutlook.SendEmail Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' SendTo: $'''a@example.com''' "
+        "Subject: $'''hi''' Body: $'''hello'''\n"
+        "Outlook.SendEmailThroughOutlook.SendEmailFromMailbox Instance: OutlookInstance "
+        "Account: $'''tomoya@example.com''' SendTo: $'''a@example.com''' "
+        "Subject: $'''hi2''' Body: $'''hello2''' SendFrom: $'''shared@example.com'''"
+    )
+    tree = build_block_tree(parse_dsl(dsl))
+    code = generate_python(tree)
+    compile(code, "<generated>", "exec")
+    assert (
+        "outlook_actions.send_email_through_outlook(OutlookInstance, 'tomoya@example.com', "
+        "'a@example.com', 'hi', 'hello', cc='', bcc='', attachments=None, "
+        "is_body_html=False, is_draft=False, send_email_from='Account')" in code
+    )
+    assert (
+        "send_email_from='OtherMailbox', send_from='shared@example.com')" in code
+    )
+    assert "# TODO" not in code

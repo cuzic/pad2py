@@ -22,6 +22,7 @@ from . import (
     file,
     folder,
     mouse_keyboard,
+    outlook,
     pad_datetime,
     pdf,
     powerpoint,
@@ -59,6 +60,7 @@ _FAMILIES = (
     powerpoint,
     display,
     services,
+    outlook,
 )
 
 

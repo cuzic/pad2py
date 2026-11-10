@@ -880,13 +880,22 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
 
   新規発見した`Microsoft.Flow.RPA.Desktop.Modules.System.Actions.dll`は未調査のまま
   次回以降に残す。
-- [ ] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
+- [x] 🔍 **【ユーザー判断が必要】丸ごと未着手の可能性があるPAD標準モジュール群**: `Email`
   (SMTP送受信)・`Outlook`(ライブCOM経由)・`FTP`/`SFTP`・`Printer`・`Registry`・
   `Remote Desktop`(`UseDesktop`等の一部のみ既知)・`Terminal`(VT)・`System`/`Run application`
   (プロセス起動・管理)。`design/pad_todo.md`・`README.md`のいずれにも「対象外」として明示的に
   記載された形跡が無く、除外の意思決定がされたのではなく単に未調査の可能性が高い。
   **これらを本プロジェクトの対象スコープに加えるかどうかは、個々の技術的判断ではなく
   プロジェクト方針の決定であるため、着手せずユーザーへの申し送りとする。**
+  → **2026-11-10、ユーザーが`Outlook`のみ明示的にスコープ拡大を指示**(M365ライセンス
+  確保・`pad2py-pad-host`へのOffice/Outlookインストール後)。知見208で実装完了(decompile
+  ベース、7系統14 action_id、実機未確認)。`Email`/`FTP`/`SFTP`/`Printer`/`Registry`/
+  `Remote Desktop`/`Terminal`/`System`は依然ユーザー判断待ちのまま未着手。
+- [ ] 🖥️ **`Outlook`モジュールの実機DSLキャプチャ・round-trip確認(知見208)**: 現在の
+  実装は全てdecompile(`Microsoft.Flow.RPA.Desktop.Modules.Outlook.Actions.dll`)ベースの
+  推定で、実機未確認。VMが空いてOutlookへの実際のサインインが済んだタイミングで、
+  知見75の往復確認手法を使い、14 action_id全てのDSL文字列・パラメータ名・
+  `ToContains`のBcc除外仕様(decompile確認済みだが実機未確認)を実証確認する。
 
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 

@@ -126,6 +126,7 @@ def generate_python(
         "display_actions",
         "services_actions",
         "ui_image_actions",
+        "outlook_actions",
     ):
         if any(f"{module_name}." in line for line in body):
             imports.append(f"from dump_daemon.pad_action_lib import {module_name}")
