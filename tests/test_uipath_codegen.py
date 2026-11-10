@@ -62,6 +62,8 @@ from dump_daemon.uipath_dsl import (
     GetSecureCredentialNode,
     AddCredentialNode,
     RequestCredentialNode,
+    SplitTextNode,
+    CombineTextNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -8233,6 +8235,107 @@ def test_extract_text_with_ignore_duplicates_true_is_todo_not_guessed():
     wf = _wrap([_extract_text_node(ignore_duplicates="True")])
     code = generate_python(wf)
     assert "# TODO: ExtractText with IgnoreDuplicates set ('True')" in code
+    _compiles(code)
+
+
+def test_split_text_with_newline_separator_key_exec():
+    """知見249: `uast:SplitText`。実機2件(本活動+`CombineText`)で
+    確認した`SeparatorKey="NewLine"`時の`Separator`実際の直列化値は
+    文字そのまま`"NewLine"`(`ui:TextToLeftRight`の実CRLFバイトとは
+    違う規約)——`SeparatorKey`に応じてPython側で実際の区切り文字
+    (`"\\r\\n"`)へ変換することを`exec()`経由で確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                SplitTextNode(
+                    source=VbExpr(text="brandLinks"),
+                    separator="NewLine",
+                    separator_key="NewLine",
+                    results=VbExpr(text="links"),
+                )
+            ]
+        ),
+        arguments={"brandLinks": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "links = _vb_cstr(brandLinks).split('\\r\\n')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return links", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]("a\r\nb\r\nc") == ["a", "b", "c"]
+
+
+def test_split_text_with_unconfirmed_separator_key_is_todo():
+    wf = _wrap(
+        [
+            SplitTextNode(
+                source=Literal(value="a,b,c"),
+                separator=",",
+                separator_key="Custom",
+                results=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SplitText with SeparatorKey" in code
+    _compiles(code)
+
+
+def test_split_text_with_missing_properties_is_todo():
+    wf = _wrap([SplitTextNode(source=None, results=VbExpr(text="r"))])
+    code = generate_python(wf)
+    assert "# TODO: SplitText with missing Source/Results" in code
+    _compiles(code)
+
+
+def test_combine_text_with_newline_separator_key_exec():
+    """知見249: `uast:CombineText`——`SplitText`の逆方向、
+    `"\\r\\n".join(...)`に対応する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                CombineTextNode(
+                    source=VbExpr(text="parts"),
+                    separator="NewLine",
+                    separator_key="NewLine",
+                    result=VbExpr(text="joined"),
+                )
+            ]
+        ),
+        arguments={"parts": "InArgument(scg:List(x:String))"},
+    )
+    code = generate_python(wf)
+    assert "joined = '\\r\\n'.join(parts)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return joined", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"](["x", "y", "z"]) == "x\r\ny\r\nz"
+
+
+def test_combine_text_with_unconfirmed_separator_key_is_todo():
+    wf = _wrap(
+        [
+            CombineTextNode(
+                source=VbExpr(text="parts"),
+                separator=",",
+                separator_key="Custom",
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CombineText with SeparatorKey" in code
+    _compiles(code)
+
+
+def test_combine_text_with_missing_properties_is_todo():
+    wf = _wrap([CombineTextNode(source=None, result=VbExpr(text="r"))])
+    code = generate_python(wf)
+    assert "# TODO: CombineText with missing Source/Result" in code
     _compiles(code)
 
 

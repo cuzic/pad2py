@@ -3520,3 +3520,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      正しい`Result=False`を確認した。回帰テスト追加(`tests/
      test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`8件)、
      リポジトリ全体で全2250件通過。
+
+207. **(完了、2026-11-10)** `uast:SplitText`・`uast:CombineText`を
+     新規実装(知見249)——タグ名限定検索で22/12件ヒット、9回目発見
+     パス最後のTier 3候補。「トリビアルな穴埋め」という事前評価を
+     覆す発見があった: 実機2件(`liamsrowley/uipath-product-
+     tracker`・`mhmdreda99/UipathProjects`)で`SeparatorKey=
+     "NewLine"`時の`Separator`実際の直列化値を確認したところ、
+     同じ`SeparatorKey`概念を持つ既存の`ui:TextToLeftRight`
+     (知見222、実CRLFバイト確認済み)とは違う規約——文字そのまま
+     `"NewLine"`というラベル文字列だった。もし`TextToLeftRight`と
+     同じ戦略を流用していたら`str.split("NewLine")`という静かに
+     間違ったコードを生成してしまっていた——`SeparatorKey`の値に
+     応じてPython側で実際の区切り文字(確認済みは`"NewLine"`→
+     `"\r\n"`のみ)へ変換する設計に切り替えた。`SplitText`は
+     `str.split(separator)`、`CombineText`は`separator.join(source)`
+     に対応する。実機相当の式を`exec()`経由で実際に実行し確認した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`6件)、リポジトリ全体で全2258件通過。
+     9回目発見パスはこれで完了。

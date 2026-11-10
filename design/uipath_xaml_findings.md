@@ -11805,6 +11805,51 @@ CredRead()`で解決する。`pywin32`は本プロジェクト既存の確認済
 test_uipath_codegen.py`8件)、リポジトリ全体で全2250件通過
 (28件skip)。
 
+## 249. `uast:SplitText`・`uast:CombineText`を新規実装——`SeparatorKey="NewLine"`時の`Separator`実際の直列化値が同じ`SeparatorKey`概念を持つ`ui:TextToLeftRight`とは違う規約(文字そのまま"NewLine")だと実機2件で確認した
+
+9回目発見パスのTier 3候補(「トリビアルな穴埋め」と見込んでいた)
+だった`uast:SplitText`(タグ名限定GitHub検索で22件ヒット)・
+`uast:CombineText`(12件ヒット)——知見220・232で既に発見済みの
+`UiPath.Activities.System.Text`(`uast:`、`ui:`ではない)名前空間
+——に着手した。ground-truthコーパスには`uast:`名前空間自体が存在
+しないため(知見232で既に確認済みの限界)、実機確認のみに依った。
+
+実機2件(`liamsrowley/uipath-product-tracker`の
+`GetBrandAndLinksDictionary.xaml`、`mhmdreda99/UipathProjects`の
+`randomweather/Main.xaml`)で独立に再取得・確認した結果、
+**「トリビアル」という事前評価を覆す重要な発見があった**: 両方の
+サンプルで`SeparatorKey="NewLine"`の時の`Separator`属性の実際の
+直列化値が**文字そのまま`"NewLine"`というラベル文字列**だった
+(実際の改行文字ではない)。これは`SeparatorKey`という同じ概念を
+持つ既存の`ui:TextToLeftRight`(知見222、実CRLFバイト
+`"&#13;&#10;"`を確認済み)の直列化規約とは**異なる**——もし
+`TextToLeftRight`と同じ「`Separator`の生の値を信頼する」戦略を
+そのまま流用していたら、`str.split("NewLine")`(リテラル文字列
+"NewLine"で分割、実際の改行では分割しない)という静かに間違った
+コードを生成してしまっていた。2つの独立した実機サンプル
+(異なる活動・異なるリポジトリ)で一致したため偶然ではなく
+`uast:`名前空間全体の一貫した規約と判断し、`SeparatorKey`の値に
+応じてPython側で実際の区切り文字へ変換する設計に切り替えた——
+確認済みは`"NewLine"`→`"\r\n"`(.NETの`Environment.NewLine`、
+本プロジェクト既存のCRLF規約と統一)のみ、他の`SeparatorKey`値
+(`Comma`/`Tab`等、公式ドキュメント確認済みの既定値一覧に存在が
+推定されるが実機未確認)は見送る。
+
+`SplitText`は`Source`(文字列)+`Results`(複数形出力)——
+`str.split(separator)`(全出現箇所で分割、.NETの`String.Split`の
+既定動作と一致)に対応する。`CombineText`は`Source`(文字列の集合)+
+`Result`(単数形出力)——`separator.join(source)`に対応する(実機
+サンプルの`Source`自体はVBコレクション初期化子式`New List(Of
+String) From {...}`で本トランスパイラの式パーサー未対応のため
+自然に`# TODO`へ倒れることを確認済み——活動自体の実装とは独立の
+既知の制約)。
+
+実機相当の式を`exec()`経由で実際に実行し確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+6件)、リポジトリ全体で全2258件通過(28件skip)。9回目発見パスは
+これで完了——残るは`ui:GetIMAPMailMessages`/`ui:SaveMailAttachments`
+(大きめの実装、新しい`MailMessage`相当のラッパー設計が必要)のみ。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -3391,6 +3391,65 @@ class TextToLeftRightNode:
 
 
 @dataclass
+class SplitTextNode:
+    """`<uast:SplitText Source="..." Separator="..." SeparatorKey="..."
+    Results="..." />`(知見249、9回目発見パスのTier 3候補、タグ名限定
+    GitHub検索で22件ヒット——`UiPath.Activities.System.Text`
+    (`uast:`、知見220・232で既に発見済みの第4の名前空間、`ui:`では
+    無い点に注意)の比較的新しい活動のため実機ヒットが薄い)。実機
+    (`liamsrowley/uipath-product-tracker`の
+    `GetBrandAndLinksDictionary.xaml`)で確認: `Source`(入力文字列)+
+    `Separator`+`SeparatorKey`+`Results`(出力、複数形——`IEnumerable
+    <String>`相当)。
+
+    `TextToLeftRight`(知見222、同じ`SeparatorKey`という概念を持つが
+    `ui:`名前空間の別の活動)とは**違う**、`SeparatorKey="NewLine"`
+    の時の`Separator`実際の直列化値が確認できた——`TextToLeftRight`
+    は実CRLFバイト(`"&#13;&#10;"`)だったが、`SplitText`は実機2件
+    (本活動+`CombineText`、下記)いずれも`Separator="NewLine"`という
+    **文字そのまま**のラベル文字列だった(実際の改行文字ではない)。
+    つまり`uast:`名前空間のこの活動群は`ui:TextToLeftRight`と直列化
+    規約が異なり、`Separator`属性の生の値をそのまま使うと区切り文字
+    として機能しない——`SeparatorKey`の値に応じてPython側で実際の
+    区切り文字へ変換する必要がある。確認済みは`"NewLine"`→`"\\r\\n"`
+    (.NETの`Environment.NewLine`、本プロジェクト既存の`vbCrLf`/CRLF
+    規約と統一)のみ——他の`SeparatorKey`値(`Comma`/`Tab`等、公式
+    ドキュメント確認済みの既定値一覧に存在が推定されるが実機未確認)
+    は見送る。`Separator`属性自体はこの意味論の違いに気付いた記録
+    として保持するが、コード生成では参照しない。"""
+
+    source: Expr = None
+    separator: str | None = None
+    separator_key: str | None = None
+    results: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class CombineTextNode:
+    """`<uast:CombineText Source="..." Separator="..."
+    SeparatorKey="..." Result="..." />`(知見249、`SplitText`の逆方向、
+    タグ名限定GitHub検索で12件ヒット)。実機
+    (`mhmdreda99/UipathProjects`の`randomweather/Main.xaml`)で確認:
+    `Source`(入力、文字列の集合——実機サンプルは`New List(Of String)
+    From {...}`というVBコレクション初期化子式で、本トランスパイラの
+    式パーサーが未対応のため構文解析自体が失敗し自然に`# TODO`へ倒れる
+    ことを確認済み)+`Separator`+`SeparatorKey`+`Result`(出力、単数形
+    ——`SplitText.Results`とは違い文字列1つ)。`SplitText`と全く同じ
+    `SeparatorKey="NewLine"`→`Separator`が文字そのまま"NewLine"という
+    ラベルになる直列化規約を確認(2つの独立した実機サンプルで一致——
+    偶然ではなく`uast:`名前空間全体の一貫した規約と判断)。`SplitText`
+    と同じ理由で`SeparatorKey="NewLine"`のみ対応し`"\\r\\n"`で
+    `str.join()`する。"""
+
+    source: Expr = None
+    separator: str | None = None
+    separator_key: str | None = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class GetEnvironmentVariableNode:
     """`<ui:GetEnvironmentVariable Variable="..." VariableValue="..." />`
     (知見215、知見214のタグ名限定GitHub検索で再発掘)。実機5件
@@ -4329,6 +4388,8 @@ Node = (
     | GetSecureCredentialNode
     | AddCredentialNode
     | RequestCredentialNode
+    | SplitTextNode
+    | CombineTextNode
     | ParallelNode
     | ClickNode
     | HoverNode

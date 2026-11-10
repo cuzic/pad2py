@@ -42,6 +42,8 @@ from .types import (
     GetSecureCredentialNode,
     AddCredentialNode,
     RequestCredentialNode,
+    SplitTextNode,
+    CombineTextNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -1938,6 +1940,26 @@ def _parse_extract_text(elem: etree._Element) -> ExtractTextNode:
     )
 
 
+def _parse_split_text(elem: etree._Element) -> SplitTextNode:
+    return SplitTextNode(
+        display_name=_attr(elem, "DisplayName"),
+        source=_attr_expr(elem, "Source") or _in_argument_property_expr(elem, "Source"),
+        separator=_attr_or_none(elem, "Separator"),
+        separator_key=_attr_or_none(elem, "SeparatorKey"),
+        results=_attr_expr(elem, "Results") or _in_argument_property_expr(elem, "Results"),
+    )
+
+
+def _parse_combine_text(elem: etree._Element) -> CombineTextNode:
+    return CombineTextNode(
+        display_name=_attr(elem, "DisplayName"),
+        source=_attr_expr(elem, "Source") or _in_argument_property_expr(elem, "Source"),
+        separator=_attr_or_none(elem, "Separator"),
+        separator_key=_attr_or_none(elem, "SeparatorKey"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
 def _parse_get_last_downloaded_file(
     elem: etree._Element,
 ) -> GetLastDownloadedFileNode:
@@ -3062,6 +3084,8 @@ _DISPATCH = {
     (UI_NS, "BulkInsert"): _parse_bulk_insert,
     (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
     (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
+    (SYSTEM_TEXT_NS, "SplitText"): _parse_split_text,
+    (SYSTEM_TEXT_NS, "CombineText"): _parse_combine_text,
     (UI_NS, "GetLastDownloadedFile"): _parse_get_last_downloaded_file,
     (UI_NS, "CheckTrue"): _parse_check_true,
     (UI_NS, "CheckFalse"): _parse_check_false,

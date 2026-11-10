@@ -84,6 +84,8 @@ from ..uipath_dsl.types import (
     GetSecureCredentialNode,
     AddCredentialNode,
     RequestCredentialNode,
+    SplitTextNode,
+    CombineTextNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -944,6 +946,10 @@ def _generate_node(
         )
     if isinstance(node, ExtractTextNode):
         return _generate_extract_text(node, indent)
+    if isinstance(node, SplitTextNode):
+        return _generate_split_text(node, indent)
+    if isinstance(node, CombineTextNode):
+        return _generate_combine_text(node, indent)
     if isinstance(node, GetLastDownloadedFileNode):
         return _generate_get_last_downloaded_file(
             node, indent, invoke_resolver, out_arg_resolver
@@ -5971,6 +5977,66 @@ def _generate_extract_text_body(node: ExtractTextNode, indent: int) -> list[str]
         )
     lines.append(f"{prefix}{target} = _et_source[_et_start_idx:_et_end_idx]")
     return lines
+
+
+# 知見249: `uast:SplitText`/`uast:CombineText`——実機2件(`SplitText`の
+# `liamsrowley/uipath-product-tracker`、`CombineText`の`mhmdreda99/
+# UipathProjects`)いずれも`SeparatorKey="NewLine"`時の`Separator`
+# 実際の直列化値が文字そのまま`"NewLine"`というラベルだった(`ui:
+# TextToLeftRight`(知見222)の実CRLFバイトとは異なる規約)——
+# `SeparatorKey`の値に応じてPython側で実際の区切り文字へ変換する、
+# 確認済みは`"NewLine"`→`"\r\n"`のみ。
+_UAST_SEPARATOR_KEY_VALUES = {"NewLine": "\r\n"}
+
+
+def _generate_split_text(node: SplitTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_split_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_split_text_body(node: SplitTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.source is None or node.results is None:
+        return [f"{prefix}# TODO: SplitText with missing Source/Results"]
+    if node.separator_key not in _UAST_SEPARATOR_KEY_VALUES:
+        return [
+            f"{prefix}# TODO: SplitText with SeparatorKey "
+            f"{node.separator_key!r} — only the confirmed \"NewLine\" "
+            "value is implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    source = _render_value_or_todo(node.source, prefix, todo)
+    target = _render_value_or_todo(node.results, prefix, todo)
+    if todo:
+        return todo
+    separator = _UAST_SEPARATOR_KEY_VALUES[node.separator_key]
+    return [f"{prefix}{target} = {VB_CSTR_HELPER_NAME}({source}).split({separator!r})"]
+
+
+def _generate_combine_text(node: CombineTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_combine_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_combine_text_body(node: CombineTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.source is None or node.result is None:
+        return [f"{prefix}# TODO: CombineText with missing Source/Result"]
+    if node.separator_key not in _UAST_SEPARATOR_KEY_VALUES:
+        return [
+            f"{prefix}# TODO: CombineText with SeparatorKey "
+            f"{node.separator_key!r} — only the confirmed \"NewLine\" "
+            "value is implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    source = _render_value_or_todo(node.source, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    separator = _UAST_SEPARATOR_KEY_VALUES[node.separator_key]
+    return [f"{prefix}{target} = {separator!r}.join({source})"]
 
 
 def _generate_get_last_downloaded_file(

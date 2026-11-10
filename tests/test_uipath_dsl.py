@@ -38,6 +38,8 @@ from dump_daemon.uipath_dsl import (
     GetSecureCredentialNode,
     AddCredentialNode,
     RequestCredentialNode,
+    SplitTextNode,
+    CombineTextNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -833,6 +835,47 @@ def test_extract_text_properties():
     assert node.match_case == "False"
     assert node.ignore_duplicates == "False"
     assert node.extract_base_url_only == "False"
+
+
+def test_split_text_properties():
+    """知見249: `uast:SplitText`(タグ名限定GitHub検索で22件ヒット、
+    知見232で発見済みの`uast:`名前空間)。実機
+    `liamsrowley/uipath-product-tracker`の
+    `GetBrandAndLinksDictionary.xaml`で確認した構成——
+    `SeparatorKey="NewLine"`時の`Separator`の実際の直列化値は
+    (`ui:TextToLeftRight`の実CRLFバイトとは違い)文字そのまま
+    `"NewLine"`というラベルだった。"""
+    xml = (
+        f"<uast:SplitText {_SYSTEM_TEXT_XMLNS} "
+        'DisplayName="Split Brand Links into Enumerable" '
+        'Results="[EnumerableLinks]" Separator="NewLine" '
+        'SeparatorKey="NewLine" Source="[BrandLinks]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SplitTextNode)
+    assert node.source == VbExpr(text="BrandLinks")
+    assert node.separator == "NewLine"
+    assert node.separator_key == "NewLine"
+    assert node.results == VbExpr(text="EnumerableLinks")
+
+
+def test_combine_text_properties():
+    """知見249: `uast:CombineText`(タグ名限定GitHub検索で12件ヒット)。
+    実機`mhmdreda99/UipathProjects`の`randomweather/Main.xaml`で確認
+    した構成——`SplitText`と同じ`SeparatorKey="NewLine"`→文字そのまま
+    `"NewLine"`という直列化規約を2つ目の独立サンプルで再確認した。"""
+    xml = (
+        f"<uast:CombineText {_SYSTEM_TEXT_XMLNS} "
+        'DisplayName="Combine Text" Result="[Output_all]" '
+        'Separator="NewLine" SeparatorKey="NewLine" '
+        'Source="[parts]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CombineTextNode)
+    assert node.source == VbExpr(text="parts")
+    assert node.separator == "NewLine"
+    assert node.separator_key == "NewLine"
+    assert node.result == VbExpr(text="Output_all")
 
 
 def test_get_last_downloaded_file_unwraps_body_sequence():
