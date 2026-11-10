@@ -3047,3 +3047,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ui:Continue`(458件ヒット、`Break`と同じ無属性)と
      `ui:RepeatNumberOfTimesX`(265件ヒット、`ForEach`と同じ
      `ActivityAction<Int32>`本体構造)を次の候補として記録。
+
+184. **(完了、2026-11-10)** `ui:Continue`を新規実装(知見226)——
+     既実装の`Break`(知見18)と全く同じ属性無しの自己終了タグ、
+     タグ名限定検索で458件ヒット。`Break`の既存実装パターン
+     (`BreakNode`→`break`、ループ文脈の事前検証は行わずPython自身の
+     構文エラーに委ねる)をそのまま真似て`ContinueNode`→`continue`を
+     実装、新規インフラ不要。`ForEach`+`If`で特定の値だけ`Continue`
+     でスキップする構成を`exec()`経由で実際に実行し、残りのループ回
+     だけ処理が続行されることを確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`1件)、
+     UiPath関連テスト全1023件通過、リポジトリ全体で全2109件通過。
+     残る`ui:RepeatNumberOfTimesX`(265件ヒット、`ForEach`と同じ
+     `ActivityAction<Int32>`本体構造)を次の候補として記録。

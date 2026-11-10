@@ -43,6 +43,7 @@ from dump_daemon.uipath_dsl import (
     AssignNode,
     AttachWindowNode,
     BreakNode,
+    ContinueNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1449,6 +1450,37 @@ def test_while_loop():
     assert "while _vb_bool((lambda _t: _t[0] != _t[1])(_vb_cmp(x, 'done'))):" in code
     assert "break" in code
     _compiles(code)
+
+
+def test_continue_generates_python_continue():
+    """知見226: `ui:Continue`(`Break`と同じ属性無しの自己終了タグ)。
+    `exec()`経由で実際にループの残り処理をスキップすることを確認する。"""
+    wf = _wrap(
+        [
+            ForEachNode(
+                item_var="x",
+                values=Literal(value=[1, 2, 3]),
+                body=[
+                    IfNode(
+                        condition=VbExpr(text="x = 2"),
+                        then_body=[ContinueNode()],
+                    ),
+                    WriteLineNode(text=VbExpr(text="x")),
+                ],
+                type_arguments="x:Int32",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "continue" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().splitlines() == ["1", "3"]
 
 
 def test_try_catch():

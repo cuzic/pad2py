@@ -272,6 +272,18 @@ class BreakNode:
 
 
 @dataclass
+class ContinueNode:
+    """`<ui:Continue />`(知見226、`Break`(知見18)と同じ属性無しの
+    自己終了タグ、タグ名限定GitHub検索で458件ヒット)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+    (`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`
+    の`ControlFlows.xaml`等)いずれも確認した構成に完全一致。
+    Pythonの`continue`文に対応する——`Break`と同様、ループ外での
+    使用はPython自身の構文エラー(`SyntaxError`)に委ねる(事前の
+    文脈検証は行わない、既存の`BreakNode`実装と同じ判断)。"""
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -3313,6 +3325,7 @@ Node = (
     | WhileNode
     | DoWhileNode
     | BreakNode
+    | ContinueNode
     | ParallelNode
     | ClickNode
     | HoverNode

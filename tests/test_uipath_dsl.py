@@ -21,6 +21,7 @@ from dump_daemon.uipath_dsl import (
     AssignNode,
     AttachWindowNode,
     BreakNode,
+    ContinueNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -2906,6 +2907,17 @@ def test_break_and_parallel(main_wf):
     assert isinstance(parallel, ParallelNode)
     assert len(parallel.branches) == 1
     assert isinstance(parallel.branches[0], AssignNode)
+
+
+def test_continue_properties():
+    """知見226: `ui:Continue`(`Break`(知見18)と同じ属性無しの
+    自己終了タグ、タグ名限定GitHub検索で458件ヒット)。ground-truth・
+    実機(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`の`ControlFlows.xaml`等)いずれも`<ui:Continue />`に
+    完全一致。"""
+    xml = f"<ui:Continue {_UI_XMLNS} />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ContinueNode)
 
 
 def test_excel_application_scope(main_wf):

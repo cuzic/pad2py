@@ -10637,6 +10637,35 @@ test_uipath_codegen.py`2件)、UiPath関連テスト全1021件通過、
 53件ヒットのみ・個別活動は2〜8件ヒット——実機確認の「複数の独立
 リポジトリ」基準を満たさないため現時点では見送り)も調査済み。
 
+## 226. `ui:Continue`を新規実装——既実装の`Break`(知見18)と同じ属性無しの自己終了タグ、Pythonの`continue`文に1:1対応
+
+知見225で発見した次候補のうち最も単純な`ui:Continue`
+(タグ名限定検索で458件ヒット)に着手した。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`の
+`ControlFlows.xaml`・`Apress/Robotic-Process-Automation-Using-
+UiPath-StudioX`の`Chapter_3_SwitchRepeatActivitiesExercise/
+Main.xaml`等)いずれも`<ui:Continue />`(属性無しの自己終了タグ)に
+完全一致——既実装の`BreakNode`(知見18)と全く同じ構造。
+
+`BreakNode`の既存実装(`_generate_node`内で`isinstance(node,
+BreakNode): return [f"{prefix}break"]`、ループ文脈の事前検証は一切
+行わずPython自身の構文エラーに委ねる)をそのまま真似て、
+`ContinueNode`→`continue`を実装した。新規インフラは不要——
+パーサー側も`(UI_NS, "Continue"): lambda elem: ContinueNode()`の
+1行で済んだ(`Break`の`(UI_NS, "Break"): lambda elem: BreakNode()`と
+同じラムダ即値パターン)。
+
+`ForEach`+`If`を使い、`x = 2`の時だけ`Continue`でスキップする
+実機相当の構成を`exec()`経由で実際に実行し、残りのループ回だけ
+`WriteLine`が出力されることを確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`1件)、
+UiPath関連テスト全1023件通過、リポジトリ全体で全2109件通過
+(28件skip、変化無し)。
+
+残る`ui:RepeatNumberOfTimesX`(知見225で発見、265件ヒット、`ForEach`
+と同じ`ActivityAction<Int32>`本体構造)を次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
