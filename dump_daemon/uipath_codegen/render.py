@@ -55,11 +55,19 @@ class ScopeInfo:
     (最初に見つかった)表記への対応表——`Ident`レンダリング時にこの表記へ
     正規化する。`data_row_vars`/`data_table_columns`はまだ生成に使われて
     いない(今後の`row(...)`添字解消・DataTableスキーマ解決向けに用意した
-    フィールドで、知見126・117の設計課題に対応する将来の拡張用)。"""
+    フィールドで、知見126・117の設計課題に対応する将来の拡張用)。
+    `has_log_fields`(知見240)はこのワークフロー自身の木に`AddLogFields`/
+    `RemoveLogFields`が1つ以上あるかどうかの単純なフラグ——`True`の時だけ
+    `_generate_log_message_body`が関数ローカル`_log_fields`辞書参照コード
+    を追加する(既存の大多数のワークフローの`LogMessage`出力を一切変えない
+    ための後方互換ガード)。`data_table_columns`と同じ「ファイル単位でしか
+    解析しない」既知の限界を持つ——呼び出し元ワークフローの`AddLogFields`
+    は呼び出し先ファイルの`has_log_fields`には伝播しない。"""
 
     canonical_names: dict[str, str] = field(default_factory=dict)
     data_row_vars: frozenset[str] = frozenset()
     data_table_columns: dict[str, list[str] | None] = field(default_factory=dict)
+    has_log_fields: bool = False
 
 
 _ACTIVE_SCOPE: ContextVar[ScopeInfo | None] = ContextVar("uipath_codegen_scope", default=None)

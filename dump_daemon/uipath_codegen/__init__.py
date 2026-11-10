@@ -71,6 +71,8 @@ from ..uipath_dsl.types import (
     ReturnNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
+    AddLogFieldsNode,
+    RemoveLogFieldsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -328,8 +330,10 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
 
     data_row_vars: set[str] = set()
     data_table_columns: dict[str, list[str] | None] = {}
+    has_log_fields = False
 
     def on_node(obj) -> None:
+        nonlocal has_log_fields
         if isinstance(obj, VariableDecl):
             register_name(obj.name)
         elif isinstance(obj, ForEachNode):
@@ -340,6 +344,8 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
             if isinstance(obj.data_table, VbExpr):
                 register_name(obj.data_table.text)
                 data_table_columns[obj.data_table.text.lower()] = list(obj.columns)
+        elif isinstance(obj, (AddLogFieldsNode, RemoveLogFieldsNode)):
+            has_log_fields = True
 
     _walk_scope_sources(workflow.root, set(), on_node)
 
@@ -347,6 +353,7 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
         canonical_names=canonical_names,
         data_row_vars=frozenset(data_row_vars),
         data_table_columns=data_table_columns,
+        has_log_fields=has_log_fields,
     )
 
 
@@ -391,7 +398,8 @@ def generate_python(
     params = list(workflow.arguments.keys())
     name = func_name or _safe_func_name(workflow.class_name)
     header = f"def {name}({', '.join(params)}):"
-    with use_scope(_build_scope_info(workflow)):
+    scope = _build_scope_info(workflow)
+    with use_scope(scope):
         body = _generate_node(
             workflow.root, indent=1, invoke_resolver=invoke_resolver, out_arg_resolver=out_arg_resolver
         )
@@ -403,6 +411,12 @@ def generate_python(
             "parameters are always by-value; the caller will not see any updated value",
             *body,
         ]
+    if scope.has_log_fields:
+        # 知見240: `AddLogFields`/`RemoveLogFields`は関数ローカルな
+        # `_log_fields`辞書を参照する——`if`/`for`/`try`等の入れ子ブロック
+        # を跨いでも同じローカル変数を共有できるよう、関数本体の先頭
+        # (変数初期化より前)で1回だけ宣言する。
+        body = [f"{INDENT}_log_fields: dict[str, str] = {{}}", *body]
     body = _ensure_nonempty_suite(body, indent=1)
     imports = _collect_imports(body)
     lines = [*imports, ""] if imports else []
@@ -607,6 +621,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 解決先、知見229)も同様。
     if any(f"{_OUTLOOK_FIND_FOLDER_HELPER_NAME}(" in line for line in body):
         imports.append(_OUTLOOK_FIND_FOLDER_HELPER_SOURCE.rstrip("\n"))
+    # `_log_fields_suffix`(`LogMessage`→`_log_fields`辞書のサフィックス化、
+    # 知見240)も同様。
+    if any(f"{_LOG_FIELDS_SUFFIX_HELPER_NAME}(" in line for line in body):
+        imports.append(_LOG_FIELDS_SUFFIX_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -682,6 +700,10 @@ def _generate_node(
         return _generate_if(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, IfElseIfV2Node):
         return _generate_if_else_if_v2(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, AddLogFieldsNode):
+        return _generate_add_log_fields(node, indent)
+    if isinstance(node, RemoveLogFieldsNode):
+        return _generate_remove_log_fields(node, indent)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, RepeatNumberOfTimesXNode):
@@ -1140,6 +1162,53 @@ def _generate_if_else_if_v2(
             _generate_body(node.else_body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
         )
         lines.extend(else_body)
+    return lines
+
+
+def _generate_add_log_fields(node: AddLogFieldsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_add_log_fields_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_add_log_fields_body(node: AddLogFieldsNode, indent: int) -> list[str]:
+    """知見240: `AddLogFields.Fields`(`x:Key`付き辞書、`_xkey_dict_entries`
+    でパース済み)——関数ローカル`_log_fields`辞書(`generate_python()`が
+    `scope.has_log_fields`の時だけ関数先頭に宣言)へ`.update()`する。
+    値は`LogMessage`自体と同じ`_vb_cstr()`防御的変換(`Fields`は常に
+    `x:String`型の`InArgument`だが、既存の`LogMessage.Message`と同じ
+    一貫性のため)。"""
+    prefix = INDENT * indent
+    todo: list[str] = []
+    entries = []
+    for key, expr in node.fields.items():
+        value = _render_value_or_todo(expr, prefix, todo)
+        entries.append(f"{key!r}: {VB_CSTR_HELPER_NAME}({value})")
+    if todo:
+        return todo
+    return [f"{prefix}_log_fields.update({{{', '.join(entries)}}})"]
+
+
+def _generate_remove_log_fields(node: RemoveLogFieldsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_remove_log_fields_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_remove_log_fields_body(node: RemoveLogFieldsNode, indent: int) -> list[str]:
+    """知見240: `RemoveLogFields.Fields`(フィールド名の`List<InArgument
+    (x:String)>`、`_parse_property_element_list`でパース済み)——関数
+    ローカル`_log_fields`辞書から`.pop(key, None)`する(未存在キーの削除
+    は無害、.NET側が例外を投げるという記述は公式ドキュメントに無いため
+    無視して継続する実装を選ぶ)。"""
+    prefix = INDENT * indent
+    todo: list[str] = []
+    names = [_render_value_or_todo(expr, prefix, todo) for expr in node.fields]
+    if todo:
+        return todo
+    if not names:
+        return [f"{prefix}pass"]
+    lines = [f"{prefix}_log_fields.pop({name}, None)" for name in names]
     return lines
 
 
@@ -6913,6 +6982,18 @@ def _generate_terminate_workflow_body(
 # ——Python標準ライブラリ`logging`の対応メソッドへマッピングする。
 _LOG_LEVEL_METHODS = {"Info": "info", "Error": "error"}
 
+# 知見240: `AddLogFields`/`RemoveLogFields`が同じワークフロー内に1件以上
+# ある場合だけ(`scope.has_log_fields`、既存の`LogMessage`出力を変えない
+# 後方互換ガード)、関数ローカル`_log_fields`辞書の現在の内容を` | k=v,
+# ...`形のサフィックスへ変換してメッセージに付加する。
+_LOG_FIELDS_SUFFIX_HELPER_NAME = "_log_fields_suffix"
+_LOG_FIELDS_SUFFIX_HELPER_SOURCE = '''\
+def _log_fields_suffix(fields):
+    if not fields:
+        return ""
+    return " | " + ", ".join(f"{k}={v}" for k, v in fields.items())
+'''
+
 
 def _generate_log_message(node: LogMessageNode, indent: int) -> list[str]:
     prefix = INDENT * indent
@@ -6935,6 +7016,12 @@ def _generate_log_message_body(node: LogMessageNode, indent: int) -> list[str]:
     message = _render_value_or_todo(node.message, prefix, todo)
     if todo:
         return todo
+    scope = get_active_scope()
+    if scope is not None and scope.has_log_fields:
+        return [
+            f"{prefix}logging.{method}({VB_CSTR_HELPER_NAME}({message}) + "
+            f"{_LOG_FIELDS_SUFFIX_HELPER_NAME}(_log_fields))"
+        ]
     return [f"{prefix}logging.{method}({VB_CSTR_HELPER_NAME}({message}))"]
 
 

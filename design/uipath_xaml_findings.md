@@ -11317,6 +11317,76 @@ DisplayName="Body"`で明示的にラップされる(知見224の
 `tests/test_uipath_codegen.py`4件)、リポジトリ全体で全2187件
 通過(28件skip)。
 
+## 240. `ui:AddLogFields`/`ui:RemoveLogFields`を新規実装——関数ローカルな`_log_fields`辞書を導入しLogMessageへ条件付きで合流させる、既存のバックログの「ScopeInfoの自然な拡張」という予測は半分正しく半分誤りだった
+
+同じ7回目発見パスで最高の実機利用率(タグ名限定GitHub検索で
+`AddLogFields`1880件・`RemoveLogFields`918件ヒット)だった
+`ui:AddLogFields`/`ui:RemoveLogFields`に着手した。
+
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)はいずれも空
+(`AddLogFields.Fields`=`Dictionary<String, InArgument>`、
+`RemoveLogFields.Fields`=`List<InArgument(x:String)>`)のみで、
+populated時の直列化形は確認できなかった。GitHub code search
+(`gh api search/code`)で実機を探したところ、ヒットの大半が
+**公式`UiPath/Community.Activities`リポジトリ自身が配布する
+REFrameworkテンプレート**(`Templates/ReFrameWork/Main.xaml`・
+`Templates/ReFrameWork/Framework/SetTransactionStatus.xaml`)——
+Studioで新規ReFrameworkプロジェクトを作ると全員がそのまま持つ
+ボイラープレートで、サードパーティのコピーではなく最も権威的な
+実機ソースだった。これを直接取得して構造を確認した結果:
+
+- `AddLogFields.Fields`のpopulated形は`<scg:Dictionary>`ラッパー自体が
+  無くなり、各エントリが`x:Key`付き`<InArgument x:TypeArguments=
+  "x:String" x:Key="logF_BusinessProcessName">[VB式]</InArgument>`として
+  直接の子になる——知見104で`HttpClient.Headers`向けに実装した
+  `_xkey_dict_entries()`と**完全に同じ直列化パターン**で、新規パーサー
+  コードを1行も書かずに再利用できた。
+- `RemoveLogFields.Fields`のpopulated形は`<scg:List x:TypeArguments=
+  "InArgument(x:String)" Capacity="N">`配下に素のテキストの
+  フィールド名リテラル(`<InArgument x:TypeArguments="x:String">
+  logF_TransactionStatus</InArgument>`)が並ぶ——知見207・218の
+  `_parse_property_element_list()`が想定する形と完全一致、これも
+  再利用できた。
+
+公式ドキュメント確認済みの実行時意味論: `AddLogFields`で追加した
+フィールドは`RemoveLogFields`で明示的に削除されるまで、以降実行
+される全ての`LogMessage`の出力に付与され続ける——ブロックスコープ
+ではなく「実行がそこを通過した後」という命令的な持続。これは
+バックログ(知見238記録時)が予測した「既存の`ScopeInfo`/contextvars
+アーキテクチャの自然な拡張」を**半分だけ裏付けた**: 検証してみると
+既存の`ScopeInfo`(`data_table_columns`等)はコード生成時にのみ
+存在する静的な情報であり、`AddLogFields`が必要とするのは実行時に
+変化する動的な状態——似た名前の仕組みだが別物だった。実装は
+2段構成にした: (1) `ScopeInfo`に新フィールド`has_log_fields`
+(そのワークフロー自身の木に`AddLogFields`/`RemoveLogFields`が
+1つ以上あるかの静的フラグ)を追加——`True`の時だけ`generate_python()`
+が関数本体の先頭に`_log_fields: dict[str, str] = {}`を1行だけ宣言し、
+`_generate_log_message_body`がそのフラグを見て出力に`_log_fields_suffix
+(_log_fields)`(新規ヘルパー、非空なら` | k=v, ...`を付加)を合流
+させるかどうかを切り替える。(2) 実際のフィールド値の読み書き自体は
+`AddLogFields`→`_log_fields.update({...})`・`RemoveLogFields`→
+`_log_fields.pop(key, None)`という通常の関数ローカル変数の変更——
+Pythonの`if`/`for`/`try`等の入れ子ブロックは別スコープを作らないため、
+関数内のどこからでも同じ`_log_fields`を共有できる。`has_log_fields=
+False`(大多数のワークフロー)の場合は`LogMessage`の生成コードが
+一切変わらないため、既存の全`LogMessage`回帰テストに影響が無い
+後方互換設計になっている。
+
+フォーラム報告(未公式確認)によれば呼び出し先ワークフローにも
+フィールドが伝播するとされるが、本トランスパイラの`ScopeInfo`は
+ファイル単位で一度だけ構築されるため、ファイルを跨いだ伝播は
+意図的に未対応とした(既存の`data_table_columns`と同じ「ファイル
+単位でしか解析しない」既知の限界——`InvokeWorkflowFile`経由で
+呼び出し先ファイルの`LogMessage`にまで反映することは今回は
+やらない)。
+
+実機`UiPath/Community.Activities`のREFramework相当の構成
+(`AddLogFields`→`LogMessage`→`RemoveLogFields`→別の`LogMessage`)を
+`exec()`経由で実際に実行し、1つ目の`LogMessage`出力にフィールドが
+付与され、削除後の2つ目には付与されないことを確認した。回帰テスト
+追加(`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
+3件)、リポジトリ全体で全2194件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

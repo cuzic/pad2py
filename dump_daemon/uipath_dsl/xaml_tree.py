@@ -29,6 +29,8 @@ from .types import (
     ReturnNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
+    AddLogFieldsNode,
+    RemoveLogFieldsNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -498,6 +500,20 @@ def _parse_if_else_if_v2(elem: etree._Element) -> IfElseIfV2Node:
         then_body=_unwrap_body_sequence(then_elem),
         else_ifs=else_ifs,
         else_body=_unwrap_body_sequence(else_elem),
+    )
+
+
+def _parse_add_log_fields(elem: etree._Element) -> AddLogFieldsNode:
+    return AddLogFieldsNode(
+        display_name=_attr(elem, "DisplayName"),
+        fields=_xkey_dict_entries(_find_property_element(elem, "Fields")),
+    )
+
+
+def _parse_remove_log_fields(elem: etree._Element) -> RemoveLogFieldsNode:
+    return RemoveLogFieldsNode(
+        display_name=_attr(elem, "DisplayName"),
+        fields=_parse_property_element_list(elem, "Fields"),
     )
 
 
@@ -2832,6 +2848,8 @@ _DISPATCH = {
     (UI_NS, "Continue"): lambda elem: ContinueNode(),
     (UI_NS, "Return"): lambda elem: ReturnNode(display_name=_attr(elem, "DisplayName")),
     (UI_NS, "IfElseIfV2"): _parse_if_else_if_v2,
+    (UI_NS, "AddLogFields"): _parse_add_log_fields,
+    (UI_NS, "RemoveLogFields"): _parse_remove_log_fields,
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "Activate"): _parse_activate,

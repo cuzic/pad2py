@@ -3331,3 +3331,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      if/elif/elseの両方を`exec()`経由で実際に実行し確認した。
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`4件)、リポジトリ全体で全2187件通過。
+
+198. **(完了、2026-11-10)** `ui:AddLogFields`/`ui:RemoveLogFields`を
+     新規実装(知見240)——タグ名限定検索で1880/918件ヒット、今回の
+     発見パス全体で最高の実機利用率。実機は公式`UiPath/
+     Community.Activities`リポジトリ自身のREFrameworkテンプレート
+     (`Templates/ReFrameWork/Main.xaml`・`Framework/
+     SetTransactionStatus.xaml`)で確認——`AddLogFields.Fields`は
+     知見104の`HttpClient.Headers`と同じ`x:Key`付き直列化、
+     `RemoveLogFields.Fields`は知見207・218の`_parse_property_
+     element_list()`と同じ`<scg:List>`パターンで、いずれも既存
+     パーサーをそのまま再利用できた。実行時意味論(`RemoveLogFields`
+     まで以降の全`LogMessage`にフィールドが付与され続ける命令的な
+     持続)は、バックログが予測した「既存`ScopeInfo`の自然な拡張」
+     という読みを半分だけ裏付けた——静的な`ScopeInfo.has_log_fields`
+     フラグ(既存`LogMessage`テストへの後方互換ガード)と、関数ローカル
+     な`_log_fields`辞書(実行時の動的な状態、新規ヘルパー
+     `_log_fields_suffix`経由で`LogMessage`に合流)の2段構成で実装した。
+     ファイルを跨いだ(`InvokeWorkflowFile`経由の)フィールド伝播は
+     既存の`data_table_columns`と同じ理由で意図的に未対応。実機相当の
+     `AddLogFields`→`LogMessage`→`RemoveLogFields`→`LogMessage`の順序を
+     `exec()`経由で実際に実行し確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`3件)、
+     リポジトリ全体で全2194件通過。

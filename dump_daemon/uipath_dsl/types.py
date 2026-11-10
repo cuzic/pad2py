@@ -392,6 +392,65 @@ class IfElseIfV2Node:
 
 
 @dataclass
+class AddLogFieldsNode:
+    """`<ui:AddLogFields><ui:AddLogFields.Fields><InArgument
+    x:TypeArguments="x:String" x:Key="...">...</InArgument>...
+    </ui:AddLogFields.Fields></ui:AddLogFields>`(知見240、知見238と同じ
+    7回目発見パスでの候補、タグ名限定GitHub検索で1880件ヒット——今回の
+    発見パス全体で最も高い実機利用率)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)は空の`Fields=Dictionary<String,
+    InArgument>`のみ。実機は公式`UiPath/Community.Activities`リポジトリ
+    自身が配布するREFrameworkテンプレート(`Templates/ReFrameWork/
+    Main.xaml`)で確認——populated時は`<scg:Dictionary>`ラッパー自体が
+    無くなり各エントリが`x:Key`付き`<InArgument x:TypeArguments="x:String"
+    x:Key="logF_BusinessProcessName">[VB式]</InArgument>`として直接の子に
+    なる、知見104の`HttpClient.Headers`と同じ直列化パターン——既存の
+    `_xkey_dict_entries()`をそのまま再利用できた。
+
+    公式ドキュメント確認済みの実行時意味論: 以降実行される全ての
+    `Log Message`活動の出力に、`Remove Log Fields`で明示的に削除される
+    まで追加フィールドとして付与され続ける(ブロックスコープではなく
+    「実行がそこを通過した後」という命令的な持続——`If.Then`内で実行
+    されたかどうかに関わらない)。本トランスパイラは各ワークフローを
+    独立したPython関数として生成するため、関数ローカルな`_log_fields`
+    辞書(関数内のどこからでも`.update()`/`.pop()`で変更可能、
+    Pythonの関数ローカル変数は`if`/`for`/`try`等の入れ子ブロックを
+    跨いで共有されるため再現できる)として実装する——スレッドセーフな
+    真のアンビエントコンテキストではなく、ワークフロー単体の近似。
+    フォーラム報告(未公式確認)によれば呼び出し先ワークフローにも伝播
+    するとされるが、本トランスパイラの`ScopeInfo`はファイル単位で
+    一度だけ構築されるため、呼び出し元ファイルを跨いだ伝播は未対応
+    (既存の`data_table_columns`と同じ既知のファイル単位の限界)。"""
+
+    fields: dict[str, Expr] = field(default_factory=dict)
+    display_name: str | None = None
+
+
+@dataclass
+class RemoveLogFieldsNode:
+    """`<ui:RemoveLogFields><ui:RemoveLogFields.Fields><scg:List
+    x:TypeArguments="InArgument(x:String)"><InArgument
+    x:TypeArguments="x:String">fieldName</InArgument>...</scg:List>
+    </ui:RemoveLogFields.Fields></ui:RemoveLogFields>`(知見240、
+    `AddLogFields`の対になる削除活動、同じ発見パス——GitHubタグ名限定
+    検索で918件ヒット)。ground-truthは空の`Fields=List<InArgument
+    (x:String)>`のみ。実機は`AddLogFields`と同じ公式REFrameworkテンプ
+    レート(`Templates/ReFrameWork/Framework/SetTransactionStatus.xaml`)
+    で確認——`<scg:List x:TypeArguments="InArgument(x:String)"
+    Capacity="N">`配下に`<InArgument x:TypeArguments="x:String">
+    logF_TransactionStatus</InArgument>`形のフィールド名リテラル文字列が
+    直接の子として並ぶ、既存の`_parse_property_element_list()`
+    (知見207・218)が想定する`<scg:List>`+素のテキスト子要素パターンと
+    完全一致したため再利用できた。削除するフィールド名の集合を保持し、
+    `AddLogFieldsNode`と同じ関数ローカル`_log_fields`辞書から
+    `.pop(key, None)`する(無かった場合も無視、`.NET`側も未存在キーの
+    削除は無害と推定——例外発生を示す記述は公式ドキュメントに無い)。"""
+
+    fields: list[Expr] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -3899,6 +3958,8 @@ Node = (
     | ContinueNode
     | ReturnNode
     | IfElseIfV2Node
+    | AddLogFieldsNode
+    | RemoveLogFieldsNode
     | ParallelNode
     | ClickNode
     | HoverNode

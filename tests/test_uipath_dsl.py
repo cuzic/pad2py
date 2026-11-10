@@ -25,6 +25,8 @@ from dump_daemon.uipath_dsl import (
     ReturnNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
+    AddLogFieldsNode,
+    RemoveLogFieldsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3360,6 +3362,98 @@ def test_if_else_if_v2_populated_else_ifs():
     assert block.condition == VbExpr(text="isBusinessException")
     assert len(block.then_body) == 1
     assert isinstance(block.then_body[0], ContinueNode)
+
+
+def test_add_log_fields_properties():
+    """知見240: `ui:AddLogFields`(タグ名限定GitHub検索で1880件ヒット、
+    今回の発見パス全体で最も高い実機利用率)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)は空の`Fields=Dictionary<String,
+    InArgument>`のみ。実機は公式`UiPath/Community.Activities`の
+    REFrameworkテンプレート(`Templates/ReFrameWork/Main.xaml`)で確認
+    ——populated時は`<scg:Dictionary>`ラッパー自体が無くなり各エントリが
+    `x:Key`付き`<InArgument x:TypeArguments="x:String" x:Key="...">`
+    として直接の子になる(知見104の`HttpClient.Headers`と同じ
+    `_xkey_dict_entries`直列化パターン)。"""
+    xml = (
+        f"<ui:AddLogFields {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" DisplayName="Add Log Fields">'
+        "<ui:AddLogFields.Fields>"
+        '<InArgument x:TypeArguments="x:String" x:Key="logF_BusinessProcessName">'
+        '[Config("logF_BusinessProcessName").ToString]</InArgument>'
+        "</ui:AddLogFields.Fields>"
+        "</ui:AddLogFields>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AddLogFieldsNode)
+    assert node.fields == {
+        "logF_BusinessProcessName": VbExpr(text='Config("logF_BusinessProcessName").ToString')
+    }
+
+
+def test_add_log_fields_empty_fields():
+    """知見240: ground-truthの空`Fields`形
+    (`<scg:Dictionary x:TypeArguments="x:String, InArgument" />`、
+    子要素無しの自己終了タグ)も空dictとして正しくパースされることを
+    確認する。"""
+    xml = (
+        f"<ui:AddLogFields {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib">'
+        "<ui:AddLogFields.Fields>"
+        '<scg:Dictionary x:TypeArguments="x:String, InArgument" />'
+        "</ui:AddLogFields.Fields>"
+        "</ui:AddLogFields>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AddLogFieldsNode)
+    assert node.fields == {}
+
+
+def test_remove_log_fields_properties():
+    """知見240: `ui:RemoveLogFields`(`AddLogFields`の対、GitHubタグ名
+    限定検索で918件ヒット)。実機は同じ公式REFrameworkテンプレート
+    (`Templates/ReFrameWork/Framework/SetTransactionStatus.xaml`)で確認
+    ——`<scg:List x:TypeArguments="InArgument(x:String)" Capacity="N">`
+    配下に素のテキストのフィールド名リテラルが並ぶ、既存の
+    `_parse_property_element_list`(知見207・218)がそのまま対応する形。"""
+    xml = (
+        f"<ui:RemoveLogFields {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" '
+        'DisplayName="Remove Transaction log fields">'
+        "<ui:RemoveLogFields.Fields>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="2">'
+        '<InArgument x:TypeArguments="x:String">logF_TransactionStatus</InArgument>'
+        '<InArgument x:TypeArguments="x:String">logF_TransactionNumber</InArgument>'
+        "</scg:List>"
+        "</ui:RemoveLogFields.Fields>"
+        "</ui:RemoveLogFields>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveLogFieldsNode)
+    assert node.fields == [
+        Literal(value="logF_TransactionStatus"),
+        Literal(value="logF_TransactionNumber"),
+    ]
+
+
+def test_remove_log_fields_empty_fields():
+    """知見240: ground-truthの空`Fields`形
+    (`<scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />`)
+    も空リストとして正しくパースされることを確認する。"""
+    xml = (
+        f"<ui:RemoveLogFields {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib">'
+        "<ui:RemoveLogFields.Fields>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />'
+        "</ui:RemoveLogFields.Fields>"
+        "</ui:RemoveLogFields>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveLogFieldsNode)
+    assert node.fields == []
 
 
 def test_repeat_number_of_times_x_properties():

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import os
 import tempfile
 import zipfile
@@ -47,6 +48,8 @@ from dump_daemon.uipath_dsl import (
     ReturnNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
+    AddLogFieldsNode,
+    RemoveLogFieldsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -10224,6 +10227,76 @@ def test_log_message_with_unconfirmed_level_is_todo_not_guessed():
     wf = _wrap([LogMessageNode(message=Literal(value="x"), level="Warn")])
     code = generate_python(wf)
     assert "# TODO: Log Message with unconfirmed Level" in code
+    _compiles(code)
+
+
+def test_log_message_unaffected_when_add_log_fields_not_used():
+    """知見240: `AddLogFields`/`RemoveLogFields`が同じワークフロー内に
+    無い場合、`LogMessage`の生成コードは`_log_fields`関連コードを一切
+    追加しない(既存の全`LogMessage`テストとの後方互換性を保証する
+    `scope.has_log_fields`ガード)。"""
+    wf = _wrap([LogMessageNode(message=Literal(value="hello"), level="Info")])
+    code = generate_python(wf)
+    assert "_log_fields" not in code
+    assert "logging.info(_vb_cstr('hello'))" in code
+    _compiles(code)
+
+
+def test_add_log_fields_and_remove_log_fields_exec():
+    """知見240: `AddLogFields`(`x:Key`付き辞書→関数ローカル`_log_fields`
+    への`.update()`)・`LogMessage`(`_log_fields`が非空なら` | k=v`形の
+    サフィックスを付加)・`RemoveLogFields`(`.pop(key, None)`)を
+    実機`UiPath/Community.Activities`REFrameworkテンプレート
+    (`Main.xaml`/`SetTransactionStatus.xaml`)相当の順序で配置し、
+    `exec()`経由でログ出力に実際にフィールドが付加・削除されることを
+    確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                AddLogFieldsNode(fields={"logF_Proc": VbExpr(text="businessProcessName")}),
+                LogMessageNode(message=Literal(value="hello"), level="Info"),
+                RemoveLogFieldsNode(fields=[Literal(value="logF_Proc")]),
+                LogMessageNode(message=Literal(value="after remove"), level="Info"),
+            ]
+        ),
+        arguments={"businessProcessName": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "_log_fields: dict[str, str] = {}" in code
+    assert "_log_fields.update({'logF_Proc': _vb_cstr(businessProcessName)})" in code
+    assert "_log_fields.pop('logF_Proc', None)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    logger = logging.getLogger()
+    old_handlers = logger.handlers[:]
+    logger.handlers.clear()
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    logger.addHandler(handler)
+    old_level = logger.level
+    logger.setLevel(logging.INFO)
+    try:
+        namespace["Test"](businessProcessName="BP1")
+    finally:
+        logger.handlers.clear()
+        logger.handlers.extend(old_handlers)
+        logger.setLevel(old_level)
+    out = stream.getvalue()
+    assert "hello | logF_Proc=BP1" in out
+    assert "after remove\n" in out
+    assert "after remove |" not in out
+
+
+def test_remove_log_fields_with_empty_fields_generates_pass():
+    """知見240: ground-truthの空`Fields`形
+    (`<scg:List .../>`空、子要素無し)は何も`.pop()`する対象が無い——
+    空文での構文エラーを避けるため`pass`を生成する。"""
+    wf = _wrap([RemoveLogFieldsNode(fields=[])])
+    code = generate_python(wf)
+    assert "pass" in code
     _compiles(code)
 
 
