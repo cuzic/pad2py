@@ -11165,6 +11165,56 @@ Provider`/`DateTimeFormatProvider`等の複数`.Format`サブタイプに
 対応する小さなディスパッチテーブルが必要)を次の候補として記録
 する。
 
+## 237. `ui:FormatValue`を新規実装——GeneralNumberFormatProvider/CurrencyNumberFormatProviderは'{:,.Nf}'.format()で、DateTimeFormatProviderは.NETカスタム日付書式トークンをstrftime()書式へ変換して対応、実装中に未確認トークンがリテラルとして誤って素通しされるバグを発見・修正
+
+知見236で発見した最後の候補`ui:FormatValue`(タグ名限定検索で
+13件ヒット——数件は`AutoFor/uipath-ir-builder`の合成生成物のため
+独立の実機確認数は実質5〜6件とやや薄い)に着手した。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機(`psri981/Group8-300-762`
+の`Main.xaml`、`CurrencyNumberFormatProvider DecimalDigits="0"
+Symbol="$"`+直後の`grossString = genericVal`代入で入出力同じ変数
+へのインプレース変換であることを確認、`mtayyab153/RPA`の`HBL
+Reporting Date Format/Main.xaml`、`DateTimeFormatProvider
+Pattern="dddd, dd MMMM yyyy"`、いずれも`ForEachRow`内の実際に有効な
+実例で`CommentOut`無効化ではないことを独立に再取得・確認)で3種類
+の`.Format`サブタイプ構成を確認した。
+
+`GeneralNumberFormatProvider`/`CurrencyNumberFormatProvider`は
+`DecimalDigits`+`DecimalSeparator`+`GroupSeparator`(+`Currency`のみ
+`Symbol`)——ground-truth既定値`"."`/`","`以外は実機で一度も確認
+できず未対応。Pythonの`'{:,.Nf}'.format(_vb_cdbl(value))`
+(`Currency`はさらに`Symbol`を前置)に対応する。
+
+`DateTimeFormatProvider`は`Pattern`(.NETカスタム日付書式文字列)——
+`yyyy`/`yy`/`MMMM`/`MMM`/`MM`/`dddd`/`ddd`/`dd`のみ対応するトークン
+変換テーブル(`_convert_dotnet_date_pattern()`)を新規実装し、
+Pythonの`strftime()`書式へ変換する。**実装中に発見した罠**:
+最初の実装では.NETの予約済み書式指定子文字(`y`/`M`/`d`/`H`/`h`/
+`m`/`s`/`f`/`t`/`z`)のうち対応表に載っていない文字(`H`/`h`/`m`/
+`s`等、時刻系トークン)を「予約済み文字ではない」と誤認識して
+しまい、`"HH:mm:ss"`のような未対応パターンがリテラルテキストとして
+そのまま`strftime()`へ渡ってしまう(出力が実際の時刻値ではなく
+文字列`"HH:mm:ss"`そのものになる、サイレントに間違った結果を返す
+重大なバグ)ことを`exec()`での動作確認前に単体テストで発見・修正
+した——予約済み文字の判定セットを全ての.NET指定子文字に拡張し、
+未対応の指定子文字に遭遇した場合は確実に`# TODO`へ倒すよう修正。
+単独の`M`/`d`(ゼロ埋め無し、Windows/Linux間の移植性問題)・時刻系
+トークン・クォート付きリテラル(.NET構文、実機未確認)は未対応の
+まま`None`を返し呼び出し側が`# TODO`へ倒す。`Value`は既存の
+`.NET DateTime`→`datetime.datetime`表現(`File.GetLastWriteTime`→
+`datetime.datetime.fromtimestamp(...)`と同じ既存の確立済み表現)を
+前提とし`.strftime()`を直接呼ぶ。
+
+`exec()`経由で3種類全てのFormatProviderを実際に実行し(Currency・
+General・DateTime)、`_convert_dotnet_date_pattern()`ヘルパー自体も
+単体テストで未対応トークンの誤変換防止を確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+8件)、リポジトリ全体で全2179件通過(28件skip、変化無し)。
+
+これで6回目の発見パスで見つかった候補(`CheckTrue`/`CheckFalse`・
+`CreateDirectory`・`MergeDataTable`・`FormatValue`)全てに着手済み
+——次のtickで新規発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

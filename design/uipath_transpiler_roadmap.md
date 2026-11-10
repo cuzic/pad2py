@@ -3273,3 +3273,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
      test_uipath_codegen.py`4件)、リポジトリ全体で全2169件通過。
      残る`ui:FormatValue`(13件ヒット)を次の候補として記録。
+
+195. **(完了、2026-11-10)** `ui:FormatValue`を新規実装(知見237)——
+     タグ名限定検索で13件ヒット(やや薄い)。`.Format`配下の3種類の
+     子要素に対応: `GeneralNumberFormatProvider`/
+     `CurrencyNumberFormatProvider`は`'{:,.Nf}'.format(_vb_cdbl
+     (value))`(`Currency`は`Symbol`前置)、`DateTimeFormatProvider`
+     は新規実装の`_convert_dotnet_date_pattern()`でトークン変換
+     (`yyyy`/`MMMM`/`dddd`等、確認済みの範囲のみ)後に`.strftime()`。
+     **実装中に発見した罠**: 最初の実装では未対応の.NET指定子文字
+     (`H`/`h`/`m`/`s`等の時刻系トークン)が「予約済み文字ではない」
+     と誤認識され、`"HH:mm:ss"`のような未対応パターンがリテラル
+     テキストとしてそのまま`strftime()`へ渡ってしまう(サイレント
+     に間違った結果を返す)バグを`exec()`確認前の単体テストで発見・
+     修正——予約済み文字の判定セットを全指定子文字に拡張した。`Value`
+     は入出力同じ変数へのインプレース変換、既存の`.NET DateTime`→
+     `datetime.datetime`表現を前提とする。`exec()`経由で3種類全ての
+     FormatProviderを実際に実行し確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`8件)、
+     リポジトリ全体で全2179件通過。知見236の発見パスの候補は全て
+     着手済み——次のtickで新規発見パスが必要。

@@ -55,6 +55,7 @@ from dump_daemon.uipath_dsl import (
     CheckFalseNode,
     CreateDirectoryNode,
     MergeDataTableNode,
+    FormatValueNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -909,6 +910,46 @@ def test_merge_data_table_properties():
     assert node.destination == VbExpr(text="dt2")
     assert node.source == VbExpr(text="dt1")
     assert node.missing_schema_action == "Add"
+
+
+def test_format_value_currency_number_format_provider():
+    """知見237: `ui:FormatValue`(タグ名限定GitHub検索で13件ヒットと
+    やや薄い)。実機`psri981/Group8-300-762`の`Main.xaml`で確認した
+    `CurrencyNumberFormatProvider`構成——`CommentOut`無効化ではない
+    実際に有効な実例。"""
+    xml = (
+        f"<ui:FormatValue {_UI_XMLNS} "
+        'DisplayName="Format Value" Value="[genericVal]">'
+        "<ui:FormatValue.Format>"
+        '<ui:CurrencyNumberFormatProvider DecimalDigits="0" '
+        'DecimalSeparator="." GroupSeparator="," Symbol="$" />'
+        "</ui:FormatValue.Format>"
+        "</ui:FormatValue>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FormatValueNode)
+    assert node.value == VbExpr(text="genericVal")
+    assert node.format_kind == "CurrencyNumberFormatProvider"
+    assert node.decimal_digits == "0"
+    assert node.symbol == "$"
+
+
+def test_format_value_date_time_format_provider():
+    """知見237: 実機`mtayyab153/RPA`の`HBL Reporting Date Format/
+    Main.xaml`で確認した`DateTimeFormatProvider`構成——`ForEachRow`
+    内の実際に有効な実例(`CommentOut`無効化ではない)。"""
+    xml = (
+        f"<ui:FormatValue {_UI_XMLNS} "
+        'DisplayName="Format Value" Value="[tes]">'
+        "<ui:FormatValue.Format>"
+        '<ui:DateTimeFormatProvider Pattern="dddd, dd MMMM yyyy" />'
+        "</ui:FormatValue.Format>"
+        "</ui:FormatValue>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FormatValueNode)
+    assert node.format_kind == "DateTimeFormatProvider"
+    assert node.pattern == "dddd, dd MMMM yyyy"
 
 
 def test_excel_read_range_and_write_range():

@@ -61,6 +61,7 @@ from .types import (
     CheckFalseNode,
     CreateDirectoryNode,
     MergeDataTableNode,
+    FormatValueNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1845,6 +1846,42 @@ def _parse_merge_data_table(elem: etree._Element) -> MergeDataTableNode:
     )
 
 
+def _parse_format_value(elem: etree._Element) -> FormatValueNode:
+    format_elem = _find_property_element(elem, "Format")
+    format_kind: str | None = None
+    decimal_digits: str | None = None
+    decimal_separator: str | None = None
+    group_separator: str | None = None
+    symbol: str | None = None
+    pattern: str | None = None
+    if format_elem is not None:
+        children = _direct_children(format_elem)
+        if children:
+            child = children[0]
+            _, format_kind = _split_tag(child.tag)
+            if format_kind in (
+                "GeneralNumberFormatProvider",
+                "CurrencyNumberFormatProvider",
+            ):
+                decimal_digits = _attr(child, "DecimalDigits")
+                decimal_separator = _attr(child, "DecimalSeparator")
+                group_separator = _attr(child, "GroupSeparator")
+                if format_kind == "CurrencyNumberFormatProvider":
+                    symbol = _attr(child, "Symbol")
+            elif format_kind == "DateTimeFormatProvider":
+                pattern = _attr(child, "Pattern")
+    return FormatValueNode(
+        display_name=_attr(elem, "DisplayName"),
+        value=_attr_expr(elem, "Value") or _in_argument_property_expr(elem, "Value"),
+        format_kind=format_kind,
+        decimal_digits=decimal_digits,
+        decimal_separator=decimal_separator,
+        group_separator=group_separator,
+        symbol=symbol,
+        pattern=pattern,
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2842,6 +2879,7 @@ _DISPATCH = {
     (UI_NS, "CheckFalse"): _parse_check_false,
     (UI_NS, "CreateDirectory"): _parse_create_directory,
     (UI_NS, "MergeDataTable"): _parse_merge_data_table,
+    (UI_NS, "FormatValue"): _parse_format_value,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

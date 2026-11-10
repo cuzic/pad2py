@@ -102,6 +102,7 @@ from ..uipath_dsl.types import (
     CheckFalseNode,
     CreateDirectoryNode,
     MergeDataTableNode,
+    FormatValueNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -862,6 +863,8 @@ def _generate_node(
         return _generate_create_directory(node, indent)
     if isinstance(node, MergeDataTableNode):
         return _generate_merge_data_table(node, indent)
+    if isinstance(node, FormatValueNode):
+        return _generate_format_value(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5671,6 +5674,126 @@ def _generate_merge_data_table_body(
         f"{prefix}else:",
         f"{inner}{destination}.extend(list(_r) for _r in {source})",
     ]
+
+
+# 知見237: .NETカスタム日付書式トークン→Python`strftime()`書式
+# トークンの対応表——`DateTimeFormatProvider.Pattern`実機確認済みの
+# `"dddd, dd MMMM yyyy"`に必要なトークンのみ確認済みとして対応し、
+# 単独の`M`/`d`(ゼロ埋め無し、Windows/Linux間で`%-m`等の移植性問題
+# がある)・時刻系トークン(`HH`/`mm`/`ss`/`tt`等、実機未確認)は
+# 未対応のまま`_convert_dotnet_date_pattern()`が`None`を返すことで
+# コード生成側が`# TODO`へ倒す。
+_DOTNET_DATE_TOKEN_MAP = {
+    "yyyy": "%Y",
+    "yy": "%y",
+    "MMMM": "%B",
+    "MMM": "%b",
+    "MM": "%m",
+    "dddd": "%A",
+    "ddd": "%a",
+    "dd": "%d",
+}
+_DOTNET_DATE_SPECIFIER_CHARS = "yMdHhmsftz"
+
+
+def _convert_dotnet_date_pattern(pattern: str) -> str | None:
+    result: list[str] = []
+    i = 0
+    n = len(pattern)
+    while i < n:
+        ch = pattern[i]
+        if ch in _DOTNET_DATE_SPECIFIER_CHARS:
+            j = i
+            while j < n and pattern[j] == ch:
+                j += 1
+            token = pattern[i:j]
+            py_token = _DOTNET_DATE_TOKEN_MAP.get(token)
+            if py_token is None:
+                return None
+            result.append(py_token)
+            i = j
+        else:
+            result.append("%%" if ch == "%" else ch)
+            i += 1
+    return "".join(result)
+
+
+_FORMAT_VALUE_NUMBER_KINDS = (
+    "GeneralNumberFormatProvider",
+    "CurrencyNumberFormatProvider",
+)
+
+
+def _generate_format_value(node: FormatValueNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_format_value_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_format_value_body(node: FormatValueNode, indent: int) -> list[str]:
+    """知見237: `Value`は入出力同じ変数へのインプレース変換(実機
+    `psri981/Group8-300-762`で`FormatValue`直後に同じ変数を読む代入
+    を確認済み)。`GeneralNumberFormatProvider`/
+    `CurrencyNumberFormatProvider`は`'{:,.Nf}'.format(_vb_cdbl(value))`
+    (`Currency`はさらに`Symbol`を前置)、`DecimalSeparator`/
+    `GroupSeparator`はground-truth既定値`"."`/`","`以外は実機で一度も
+    確認できず未対応。`DateTimeFormatProvider`は`.strftime()`
+    (`Value`は既存の`.NET DateTime`→`datetime.datetime`表現が前提)。"""
+    prefix = INDENT * indent
+    if node.value is None:
+        return [f"{prefix}# TODO: FormatValue with no Value captured"]
+    if node.format_kind not in _FORMAT_VALUE_NUMBER_KINDS + ("DateTimeFormatProvider",):
+        return [
+            f"{prefix}# TODO: FormatValue with unconfirmed/unsupported "
+            f"Format type ({node.format_kind!r}) — only "
+            "GeneralNumberFormatProvider/CurrencyNumberFormatProvider/"
+            "DateTimeFormatProvider are confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    value = _render_value_or_todo(node.value, prefix, todo)
+    if todo:
+        return todo
+    if node.format_kind in _FORMAT_VALUE_NUMBER_KINDS:
+        if node.decimal_separator not in (None, "."):
+            return [
+                f"{prefix}# TODO: FormatValue with non-default "
+                f"DecimalSeparator ({node.decimal_separator!r}) — only "
+                "'.' is confirmed, refusing to guess"
+            ]
+        if node.group_separator not in (None, ","):
+            return [
+                f"{prefix}# TODO: FormatValue with non-default "
+                f"GroupSeparator ({node.group_separator!r}) — only ',' is "
+                "confirmed, refusing to guess"
+            ]
+        default_digits = (
+            "0" if node.format_kind == "CurrencyNumberFormatProvider" else "2"
+        )
+        decimal_digits = (
+            node.decimal_digits if node.decimal_digits is not None else default_digits
+        )
+        try:
+            digits_int = int(decimal_digits)
+        except ValueError:
+            return [
+                f"{prefix}# TODO: FormatValue with non-numeric "
+                f"DecimalDigits ({decimal_digits!r}) — refusing to guess"
+            ]
+        fmt_spec = "{:,." + str(digits_int) + "f}"
+        symbol_prefix = f"{node.symbol!r} + " if node.symbol else ""
+        return [
+            f"{prefix}{value} = {symbol_prefix}{fmt_spec!r}.format("
+            f"{VB_CDBL_HELPER_NAME}({value}))"
+        ]
+    if node.pattern is None:
+        return [f"{prefix}# TODO: FormatValue with no Pattern captured"]
+    py_pattern = _convert_dotnet_date_pattern(node.pattern)
+    if py_pattern is None:
+        return [
+            f"{prefix}# TODO: FormatValue with unsupported token in "
+            f"Pattern ({node.pattern!r}) — refusing to guess"
+        ]
+    return [f"{prefix}{value} = {value}.strftime({py_pattern!r})"]
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

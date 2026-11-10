@@ -2581,6 +2581,48 @@ class MergeDataTableNode:
 
 
 @dataclass
+class FormatValueNode:
+    """`<ui:FormatValue Value="...">`(知見237、`.Format`プロパティ
+    配下に`GeneralNumberFormatProvider`/`CurrencyNumberFormatProvider`/
+    `DateTimeFormatProvider`のいずれか1つの子要素を持つ、サブエージェ
+    ントによる6回目の新規発見パスで発見、タグ名限定GitHub検索で
+    13件ヒット——いくつかは`AutoFor/uipath-ir-builder`の合成生成物
+    のため独立の実機確認数は実質5〜6件とやや薄い)。`Value`は実機
+    (`psri981/Group8-300-762`の`Main.xaml`、`CurrencyNumberFormat
+    Provider DecimalDigits="0" Symbol="$"`+直後の`grossString =
+    genericVal`代入で確認)で入出力同じ変数へのインプレース変換
+    (フォーマット済み文字列への上書き)であることを確認した。
+
+    `GeneralNumberFormatProvider`/`CurrencyNumberFormatProvider`は
+    `DecimalDigits`+`DecimalSeparator`+`GroupSeparator`(+`Currency`
+    のみ`Symbol`)——ground-truth既定値`"."`/`","`以外は実機で一度も
+    確認できず未対応。Pythonの`'{:,.Nf}'.format(_vb_cdbl(value))`
+    (`Currency`はさらに`Symbol`を前置)に対応する。
+
+    `DateTimeFormatProvider`は`Pattern`(.NETカスタム日付書式文字列、
+    実機`mtayyab153/RPA`の`HBL Reporting Date Format/Main.xaml`で
+    `Pattern="dddd, dd MMMM yyyy"`を確認——`ForEachRow`内の実際に
+    有効な実例、`CommentOut`無効化ではない)——.NETの日付トークン
+    (`yyyy`/`yy`/`MMMM`/`MMM`/`MM`/`dddd`/`ddd`/`dd`のみ、確認済みの
+    範囲に限定)をPythonの`strftime()`書式トークンへ変換する。単独の
+    `M`/`d`(ゼロ埋め無し、Windows/Linux間で`%-m`等の移植性問題が
+    ある)・時刻系トークン(`HH`/`mm`/`ss`/`tt`等、実機未確認)・
+    クォート付きリテラル(.NET構文、実機未確認)は未対応。`Value`は
+    既存の`.NET DateTime`→`datetime.datetime`表現(`File.
+    GetLastWriteTime`→`datetime.datetime.fromtimestamp(...)`と同じ
+    既存の確立済み表現)を前提とし`.strftime()`を直接呼ぶ。"""
+
+    value: Expr = None
+    format_kind: str | None = None
+    decimal_digits: str | None = None
+    decimal_separator: str | None = None
+    group_separator: str | None = None
+    symbol: str | None = None
+    pattern: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3853,6 +3895,7 @@ Node = (
     | CheckFalseNode
     | CreateDirectoryNode
     | MergeDataTableNode
+    | FormatValueNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

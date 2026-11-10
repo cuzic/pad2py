@@ -76,6 +76,7 @@ from dump_daemon.uipath_dsl import (
     CheckFalseNode,
     CreateDirectoryNode,
     MergeDataTableNode,
+    FormatValueNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7889,6 +7890,134 @@ def test_merge_data_table_with_unconfirmed_missing_schema_action_is_todo_not_gue
         in code
     )
     _compiles(code)
+
+
+def test_format_value_currency_number_format_provider_prefixes_symbol():
+    """知見237: `ui:FormatValue`。実機`psri981/Group8-300-762`相当の
+    `CurrencyNumberFormatProvider`構成を`exec()`経由で実際に実行し、
+    `Value`が入出力同じ変数へインプレースでフォーマット済み文字列
+    へ上書きされることを確認する。"""
+    wf = _wrap(
+        [
+            FormatValueNode(
+                value=VbExpr(text="genericVal"),
+                format_kind="CurrencyNumberFormatProvider",
+                decimal_digits="0",
+                decimal_separator=".",
+                group_separator=",",
+                symbol="$",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(genericVal):")
+    code2 += "\n    return genericVal"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"](1234.5) == "$1,234"
+
+
+def test_format_value_general_number_format_provider_default_two_digits():
+    wf = _wrap(
+        [FormatValueNode(value=VbExpr(text="v"), format_kind="GeneralNumberFormatProvider")]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(v):")
+    code2 += "\n    return v"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"](1234.5) == "1,234.50"
+
+
+def test_format_value_date_time_format_provider_strftime():
+    """知見237: 実機`mtayyab153/RPA`相当の`DateTimeFormatProvider`
+    構成(`Pattern="dddd, dd MMMM yyyy"`)を`exec()`経由で実際に実行
+    し、.NETカスタム日付書式トークンがPythonの`strftime()`書式へ
+    正しく変換されることを確認する。"""
+    wf = _wrap(
+        [
+            FormatValueNode(
+                value=VbExpr(text="tes"),
+                format_kind="DateTimeFormatProvider",
+                pattern="dddd, dd MMMM yyyy",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(tes):")
+    code2 += "\n    return tes"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import datetime
+
+    assert namespace["Test"](datetime.datetime(2024, 3, 15)) == "Friday, 15 March 2024"
+
+
+def test_format_value_date_time_format_provider_declines_unsupported_tokens():
+    """知見237: 単独の`M`/`d`・時刻系トークン(`HH`/`mm`/`ss`等)は
+    実機未確認のため未対応——リテラルテキストとして誤って素通し
+    されないこと(文字単位の誤変換を防ぐガード)を確認する。"""
+    wf = _wrap(
+        [
+            FormatValueNode(
+                value=VbExpr(text="v"),
+                format_kind="DateTimeFormatProvider",
+                pattern="HH:mm:ss",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FormatValue with unsupported token in Pattern" in code
+    _compiles(code)
+
+
+def test_format_value_with_non_default_separator_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            FormatValueNode(
+                value=VbExpr(text="v"),
+                format_kind="GeneralNumberFormatProvider",
+                group_separator=".",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FormatValue with non-default GroupSeparator ('.')" in code
+    _compiles(code)
+
+
+def test_format_value_with_unconfirmed_format_kind_is_todo_not_guessed():
+    wf = _wrap([FormatValueNode(value=VbExpr(text="v"), format_kind=None)])
+    code = generate_python(wf)
+    assert "# TODO: FormatValue with unconfirmed/unsupported Format type" in code
+    _compiles(code)
+
+
+def test_format_value_with_no_value_is_todo():
+    wf = _wrap([FormatValueNode(value=None, format_kind="GeneralNumberFormatProvider")])
+    code = generate_python(wf)
+    assert "# TODO: FormatValue with no Value captured" in code
+    _compiles(code)
+
+
+def test_convert_dotnet_date_pattern_helper():
+    """知見237: `_convert_dotnet_date_pattern()`単体テスト——.NET
+    カスタム日付書式トークンの変換と、未確認トークン(単独`M`/`d`・
+    時刻系)が文字単位でリテラルとして誤って素通しされないことの
+    両方を確認する(実装中に`HH:mm:ss`がリテラルとして素通しされる
+    バグを`exec()`確認前に発見・修正した)。"""
+    from dump_daemon.uipath_codegen import _convert_dotnet_date_pattern
+
+    assert _convert_dotnet_date_pattern("dddd, dd MMMM yyyy") == "%A, %d %B %Y"
+    assert _convert_dotnet_date_pattern("yyyy-MM-dd") == "%Y-%m-%d"
+    assert _convert_dotnet_date_pattern("M/d/yyyy") is None
+    assert _convert_dotnet_date_pattern("HH:mm:ss") is None
+    assert _convert_dotnet_date_pattern("yyyy-MM-ddTHH:mm:ss") is None
 
 
 @pytest.mark.parametrize(
