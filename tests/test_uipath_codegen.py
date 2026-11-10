@@ -91,6 +91,7 @@ from dump_daemon.uipath_dsl import (
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
+    ExportPdfPageAsImageNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -4449,6 +4450,87 @@ def test_join_pdf_with_missing_properties_is_todo():
     wf = _wrap([JoinPdfNode(file_list=None, output_file_name=Literal(value="out.pdf"))])
     code = generate_python(wf)
     assert "# TODO: JoinPDF with missing FileList/OutputFileName" in code
+    _compiles(code)
+
+
+def test_export_pdf_page_as_image_generates_pymupdf_render_call():
+    """知見209: `ExportPDFPageAsImage`(`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`知見200・201と同じ`upap:`名前空間)。
+    `pymupdf`は`[project.optional-dependencies]`の`pdf-render`プラグイン
+    群(知見209の設計判断、本体`dependencies`には無い)——コード生成
+    自体はトランスパイラ側でのimportを必要としない(`pypdf`と同じ設計、
+    純粋な文字列生成)。"""
+    wf = _wrap(
+        [
+            ExportPdfPageAsImageNode(
+                file_name=Literal(value="in.pdf"),
+                output_file_name=Literal(value="out.png"),
+                page_number=Literal(value="2"),
+                image_dpi="150",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import pymupdf" in code
+    assert "pymupdf.open('in.pdf')" in code
+    assert "get_pixmap(dpi=round(_vb_cdbl('150')))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_export_pdf_page_as_image_renders_the_correct_page():
+    """知見209: `pymupdf`が実際にインストールされている場合のみ実行
+    する統合テスト(`dev`依存グループで確認済み、無い環境では自動
+    skip——`pdf-render`プラグインの「無くても他のテストは通る」設計を
+    確認する)。実際にreportlabで2ページPDFを生成し、2ページ目だけが
+    画像化されることを`exec()`経由で確認する。"""
+    pytest.importorskip("pymupdf")
+    reportlab_canvas = pytest.importorskip("reportlab.pdfgen.canvas")
+    from reportlab.lib.pagesizes import letter
+
+    pdf_path = tempfile.mktemp(suffix=".pdf")
+    out_path = tempfile.mktemp(suffix=".png")
+    c = reportlab_canvas.Canvas(pdf_path, pagesize=letter)
+    c.drawString(100, 700, "Page 1")
+    c.showPage()
+    c.drawString(100, 700, "Page 2")
+    c.showPage()
+    c.save()
+
+    wf = _wrap(
+        [
+            ExportPdfPageAsImageNode(
+                file_name=Literal(value=pdf_path),
+                output_file_name=Literal(value=out_path),
+                page_number=Literal(value="2"),
+                image_dpi="150",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    assert os.path.exists(out_path)
+    assert os.path.getsize(out_path) > 0
+
+
+def test_export_pdf_page_as_image_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            ExportPdfPageAsImageNode(
+                file_name=None,
+                output_file_name=Literal(value="out.png"),
+                page_number=Literal(value="1"),
+                image_dpi="150",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: ExportPDFPageAsImage with missing FileName/OutputFileName/"
+        "PageNumber" in code
+    )
     _compiles(code)
 
 

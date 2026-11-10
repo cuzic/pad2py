@@ -66,6 +66,7 @@ from dump_daemon.uipath_dsl import (
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
+    ExportPdfPageAsImageNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -1857,6 +1858,46 @@ def test_join_pdf_properties():
     assert isinstance(node, JoinPdfNode)
     assert node.file_list == VbExpr(text='{"PDF Sample2.pdf","Sample PDF file.pdf"}')
     assert node.output_file_name == Literal(value="Combined PDF File.pdf")
+
+
+def test_export_pdf_page_as_image_properties_with_dynamic_page_number():
+    """知見209: `ExportPDFPageAsImage`(`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`知見200・201と同じ`upap:`名前空間)。
+    実機`Sundsvallskommun/RPA_Sammanstallning-av-PDF`(実在のスウェーデン
+    自治体のRPAリポジトリ)で確認した構成——`PageNumber`が動的な
+    `[Index]`、`OutputFileName`が文字列連結式。"""
+    xml = (
+        f"<upap:ExportPDFPageAsImage {_PDF_XMLNS} "
+        'DisplayName="Export PDF Page As Image" FileName="[FilePathPDF]" '
+        'ImageDpi="150" OutputFileName="[TempMergeFolderPath + '
+        "&quot;tempImage&quot; + Index.ToString + &quot;.jpeg&quot;]\" "
+        'PageNumber="[Index]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExportPdfPageAsImageNode)
+    assert node.file_name == VbExpr(text="FilePathPDF")
+    assert node.output_file_name == VbExpr(
+        text='TempMergeFolderPath + "tempImage" + Index.ToString + ".jpeg"'
+    )
+    assert node.page_number == VbExpr(text="Index")
+    assert node.image_dpi == "150"
+
+
+def test_export_pdf_page_as_image_properties_with_literal_page_number():
+    """知見209: 実機`vajrang-b/UiPathIn30Days`で確認した、全て静的な
+    リテラル属性の構成。"""
+    xml = (
+        f"<upap:ExportPDFPageAsImage {_PDF_XMLNS} "
+        'DisplayName="PDF Document to image" FileName="sample.pdf" '
+        'ImageDpi="150" OutputFileName="Output\\pdfimage.png" '
+        'PageNumber="1" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExportPdfPageAsImageNode)
+    assert node.file_name == Literal(value="sample.pdf")
+    assert node.output_file_name == Literal(value="Output\\pdfimage.png")
+    assert node.page_number == Literal(value="1")
+    assert node.image_dpi == "150"
 
 
 def test_manage_pdf_password_with_new_owner_password():

@@ -124,6 +124,7 @@ from ..uipath_dsl.types import (
     SortDataTableNode,
     FilterDataTableNode,
     JoinDataTablesNode,
+    ExportPdfPageAsImageNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -409,6 +410,13 @@ def _collect_imports(body: list[str]) -> list[str]:
     # の依存(PAD側`pad_action_lib/pdf_actions.py`で既に実戦投入済み)。
     if any("pypdf.PdfReader(" in line for line in body):
         imports.append("import pypdf")
+    # `pymupdf`(`ExportPDFPageAsImage`→`pymupdf.open(...).get_pixmap(
+    # dpi=...).save(...)`変換先、知見209)も同様。`pyproject.toml`の
+    # `[project.optional-dependencies]`の`pdf-render`プラグイン群——
+    # `pypdf`と違い本体`dependencies`には無い、生成コードが参照する
+    # だけの「プラグイン」依存(知見209の設計判断)。
+    if any("pymupdf.open(" in line for line in body):
+        imports.append("import pymupdf")
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
@@ -675,6 +683,8 @@ def _generate_node(
         return _generate_extract_pdf_page_range(node, indent)
     if isinstance(node, JoinPdfNode):
         return _generate_join_pdf(node, indent)
+    if isinstance(node, ExportPdfPageAsImageNode):
+        return _generate_export_pdf_page_as_image(node, indent)
     if isinstance(node, ManagePdfPasswordNode):
         return _generate_manage_pdf_password(node, indent)
     if isinstance(node, WriteCsvFileNode):
@@ -3077,6 +3087,58 @@ def _generate_join_pdf_body(node: JoinPdfNode, indent: int) -> list[str]:
         f"{inner}_jp_writer.append(pypdf.PdfReader(_jp_path))",
         f'{prefix}with open({output_file_name}, "wb") as _jp_f:',
         f"{inner}_jp_writer.write(_jp_f)",
+    ]
+
+
+# 知見209: `ExportPDFPageAsImage`(`GetPDFPageCount`/`ExtractPDFPageRange`/
+# `JoinPDF`知見200・201と同じ`upap:`名前空間)。`pymupdf.open(FileName)
+# [PageNumber - 1].get_pixmap(dpi=ImageDpi).save(OutputFileName)`が直接
+# 対応する(`get_pixmap(dpi=...)`はPyMuPDF 1.19.2以降の公式API)。
+# `pymupdf`は本体`dependencies`ではなく`[project.optional-dependencies]`
+# の`pdf-render`プラグイン群(知見209の設計判断)——`pypdf`と同じく、
+# トランスパイラ本体はこれをimportしない、生成コードの文字列として
+# 埋め込むだけ(`_collect_imports`が`pymupdf.open(`の出現を検出して
+# `import pymupdf`を注入する)。
+def _generate_export_pdf_page_as_image(
+    node: ExportPdfPageAsImageNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_export_pdf_page_as_image_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_export_pdf_page_as_image_body(
+    node: ExportPdfPageAsImageNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if (
+        node.file_name is None
+        or node.output_file_name is None
+        or node.page_number is None
+    ):
+        return [
+            f"{prefix}# TODO: ExportPDFPageAsImage with missing FileName/"
+            "OutputFileName/PageNumber"
+        ]
+    if node.image_dpi is None:
+        return [f"{prefix}# TODO: ExportPDFPageAsImage with no ImageDpi captured"]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    output_file_name = _render_value_or_todo(node.output_file_name, prefix, todo)
+    page_number = _render_value_or_todo(node.page_number, prefix, todo)
+    if todo:
+        return todo
+    # `PageNumber`はPythonのlistインデックスとして使うため整数が必要
+    # ——知見182の`RemoveDataRow`と同じ`round(_vb_cdbl(x))`経由で変換
+    # する(素の`Literal`は文字列のため)。`ImageDpi`は属性値(素の文字列)
+    # のため同様に変換する。
+    return [
+        f"{prefix}_eppi_doc = pymupdf.open({file_name})",
+        f"{prefix}_eppi_page = _eppi_doc[round({VB_CDBL_HELPER_NAME}("
+        f"{page_number})) - 1]",
+        f"{prefix}_eppi_pix = _eppi_page.get_pixmap(dpi=round("
+        f"{VB_CDBL_HELPER_NAME}({node.image_dpi!r})))",
+        f"{prefix}_eppi_pix.save({output_file_name})",
     ]
 
 

@@ -2747,3 +2747,30 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全946
      件通過、リポジトリ全体で全2032件通過。知見195・179が記録していた
      DataTable操作ファミリーの保留3件がこれで全て解消した。
+
+167. **(完了、2026-11-10)** 「オプション依存プラグイン」の仕組みを
+     新設し`ui:ExportPDFPageAsImage`を新規実装(知見209)——知見193で
+     「実機確証が薄い」として保留していたが、GitHub再調査で実機2件の
+     確証を得た。実装にはPDFページラスタライズ用の新規サードパーティ
+     依存(`pypdf`はテキスト抽出のみで画像描画不可)が必要になった
+     ——これまでの全活動(知見196-208)が既存の確認済み依存だけで
+     済んでいたのに対し、初めてのケース。ユーザーと相談した結果、
+     本体`dependencies`に追加せず、`pyproject.toml`の
+     `[project.optional-dependencies]`に`pdf-render = ["pymupdf>=
+     1.24.0"]`という「プラグイン」グループを新設する方針にした。
+     重要な設計判断: トランスパイラ本体は生成コードが参照する
+     ライブラリを一切importする必要が無い(既存の`_collect_imports`
+     が生成コード本文の文字列パターンを検出してimport文を注入する
+     既存機構——`pypdf`と全く同じ設計をそのまま延長)、コード生成
+     自体に新しい実行時依存は不要。テスト用に`dev`依存グループにも
+     `pymupdf`を追加(`reportlab`と同じ「テスト専用」の位置付け)、
+     該当統合テストは`pytest.importorskip("pymupdf")`で未インストール
+     環境では自動skipする設計にした。`pymupdf.open(FileName)
+     [PageNumber - 1].get_pixmap(dpi=ImageDpi).save(OutputFileName)`
+     (`get_pixmap(dpi=...)`はPyMuPDF 1.19.2以降の公式API)で実装、
+     `import fitz`(非推奨)ではなく`import pymupdf`形を使う。実機
+     相当の構成を`exec()`経由で実際に実行して確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全951件通過、リポジトリ全体で全2037件
+     通過。`ExtractImagesFromPDF`(出力ファイル命名規則が未確認)は
+     未着手のまま、次の候補。

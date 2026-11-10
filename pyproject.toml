@@ -29,6 +29,20 @@ dependencies = [
     "requests>=2.34.2",
 ]
 
+[project.optional-dependencies]
+# 知見209: 生成されたPythonコードが参照するが、本体の`dependencies`には
+# 含めない「プラグイン」依存群。活動の生成コードが特定のサードパーティ
+# ライブラリを要求する場合(例: `ExportPDFPageAsImage`のPDFページ
+# ラスタライズ)、全ユーザーに強制せず、必要な利用者だけ
+# `pip install pad2py[pdf-render]`のように明示的に選べるようにする。
+# pad2py本体(トランスパイラ自身)はこれらを一切importしない——
+# `uipath_codegen`はこれらのライブラリ呼び出しを文字列として生成
+# するだけで、コード生成そのものに実行時のimportは不要(`pypdf`/
+# `openpyxl`と同じ既存の設計)。テストでの`exec()`検証用に`dev`
+# グループにも同じパッケージを追加する(無い場合は
+# `pytest.importorskip`で該当テストのみ自動skip)。
+pdf-render = ["pymupdf>=1.24.0"]
+
 [project.scripts]
 pad2py = "dump_daemon.pad2py_cli:main"
 
@@ -37,6 +51,7 @@ dev = [
     "pytest>=8.0.0",
     "pywinrm>=0.5.0",
     "reportlab>=5.1.0",
+    "pymupdf>=1.24.0",
 ]
 
 [build-system]

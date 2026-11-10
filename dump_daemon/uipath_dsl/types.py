@@ -1296,6 +1296,44 @@ class JoinPdfNode:
 
 
 @dataclass
+class ExportPdfPageAsImageNode:
+    """`<ExportPDFPageAsImage>`(知見209、`GetPDFPageCount`/
+    `ExtractPDFPageRange`/`JoinPDF`/`ManagePDFPassword`(知見200-202)と
+    同じ`upap:`名前空間)。元々は知見193で「実機確証が薄い」として
+    見送っていたが、本tickでGitHub検索を再実行したところ実機2件
+    (`Sundsvallskommun/RPA_Sammanstallning-av-PDF`——実在のスウェーデン
+    自治体のRPAリポジトリ・`vajrang-b/UiPathIn30Days`)で確証が得られ、
+    着手した。両実機で確認した構成は`FileName`+`ImageDpi`(両実機とも
+    `"150"`、ground-truthの既定値と一致)+`OutputFileName`+
+    `PageNumber`(単一ページ番号のみ、動的な`[Index]`/静的な`"1"`の両方
+    を確認——`ExtractPDFPageRange`のようなハイフン区切り範囲は無い)。
+
+    実装には本リポジトリに無いPDFページラスタライズ用ライブラリが必要
+    (`pypdf`はテキスト/構造抽出のみで画像描画は出来ない)。ユーザーと
+    相談し、全ユーザーに強制する本体`dependencies`への追加ではなく、
+    `pyproject.toml`の`[project.optional-dependencies]`
+    `pdf-render`グループ(`pymupdf`)という「プラグイン」依存として
+    追加する方針にした(知見209の設計判断、詳細は`design/
+    uipath_transpiler_roadmap.md`の該当エントリ参照)。生成コード自体は
+    `pypdf`と同じ既存の設計(`_collect_imports`がbody文字列から
+    `pymupdf.open(`の出現を検出して`import pymupdf`を注入)を踏襲する
+    ——トランスパイラ本体(`uipath_codegen`)はこのライブラリを一切
+    importしない、コード生成時に文字列として埋め込むだけ。
+
+    `pymupdf.open(FileName)[PageNumber - 1].get_pixmap(dpi=ImageDpi).
+    save(OutputFileName)`が直接対応する(`get_pixmap(dpi=...)`は
+    PyMuPDF 1.19.2以降の公式API、Web検索で確認済み)。`import fitz`は
+    PyMuPDF側で非推奨(`FutureWarning`)のため、現行の`import pymupdf`
+    形を使う。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    output_file_name: Expr = None
+    page_number: Expr = None
+    image_dpi: str | None = None
+
+
+@dataclass
 class ManagePdfPasswordNode:
     """`<ManagePDFPassword>`(知見202、`GetPDFPageCount`/
     `ExtractPDFPageRange`/`JoinPDF`(知見200・201)と同じ`upap:`
@@ -2793,6 +2831,7 @@ Node = (
     | GetPdfPageCountNode
     | ExtractPdfPageRangeNode
     | JoinPdfNode
+    | ExportPdfPageAsImageNode
     | ManagePdfPasswordNode
     | WriteCsvFileNode
     | InvokePowerShellNode

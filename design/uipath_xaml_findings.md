@@ -9904,6 +9904,71 @@ UiPath関連テスト全946件通過、リポジトリ全体で全2032件通過(
 (知見117・126・130)に加えて、予定していなかったこの3件も解消する
 という、想定を超えた再利用価値を持つことが確認できた。
 
+## 209. 「オプション依存プラグイン」の仕組みを新設し`ui:ExportPDFPageAsImage`を新規実装——知見193で「実機確証が薄い」として見送った活動をGitHub再調査で実機確証を得て着手、新規サードパーティ依存の追加をユーザーと相談し本体dependenciesではなくoptional-dependenciesの「プラグイン」群として解決
+
+知見193で「ground-truthの既定値のみで実機の非デフォルト値確認が無い」
+として保留していた`ExportPDFPageAsImage`/`ExtractImagesFromPDF`を、
+GitHub code searchを再実行して調査した結果、両方で実機の非デフォルト
+値確認が得られた。`ExportPDFPageAsImage`は実機2件
+(`Sundsvallskommun/RPA_Sammanstallning-av-PDF`——実在のスウェーデン
+自治体のRPAリポジトリ・`vajrang-b/UiPathIn30Days`)で`FileName`+
+`ImageDpi`(両実機とも`"150"`、ground-truthの既定値と一致)+
+`OutputFileName`+`PageNumber`(単一ページ番号、動的な`[Index]`/静的な
+`"1"`の両方を確認)という構成を確認した。
+
+**新しいアーキテクチャ課題**: この活動の実装には、本リポジトリに
+存在しないPDFページラスタライズ用ライブラリが必要だった(`pypdf`は
+テキスト/構造抽出のみで画像描画はできない)。これまでの全ての活動
+(知見196-208)は既存の確認済み依存(`pypdf`/`openpyxl`/PIL)を再利用
+するだけで済んでいたため、初めて「新規サードパーティ依存の追加」が
+必要になるケースだった。ユーザーに相談したところ、まず「見送る」
+との回答を得たが、続けて「依存追加が必要な機能についてはプラグイン
+での対応を可能にする仕組みにしたい」という方針が示された。
+
+この方針を受けて設計・実装したのが「オプション依存プラグイン」の
+仕組み: `pyproject.toml`の`[project.optional-dependencies]`に活動
+カテゴリ単位の名前付きグループ(`pdf-render = ["pymupdf>=1.24.0"]`)
+を追加し、本体`dependencies`には一切追加しない。重要な気付きは、
+トランスパイラ本体(`uipath_codegen`)が実際には**生成コードが参照
+するライブラリをimportする必要が無い**という点——既存の`pypdf`/
+`openpyxl`(coordinate計算部分を除く)も、コード生成処理自体は
+`"pypdf.PdfReader(...)"`という**文字列**を生成するだけで、`pypdf`
+自体をimportしてはいない。この既存の設計をそのまま延長し、
+`pymupdf`も同様に「`_collect_imports`が生成コード本文の`"pymupdf.
+open("`という文字列の出現を検出して`import pymupdf`を注入する」
+という既存のimport収集機構(知見で何度も使われてきた`_collect_imports`
+のパターンマッチング)にそのまま載せた——コード生成自体に新しい
+実行時依存は一切不要。テストでの`exec()`検証用には`dev`依存グループ
+に`pymupdf`を追加し(既存の`reportlab`と同じ「テスト専用」の位置
+付け)、該当する統合テストは`pytest.importorskip("pymupdf")`で
+インストールが無い環境では自動skipする設計にした——「プラグインが
+無くても他の全テストは通る」ことを確認済み。
+
+ライブラリ選定は`PyMuPDF`(ネイティブバイナリをwheelに内包、
+システム側に`poppler`等の追加インストールが不要)を`pdf2image`
+(`poppler-utils`というシステム側の別インストールが必要)より優先した
+——`uv add`で確認したところ`pymupdf==2.1`は`onnxruntime`/
+`pymupdf-layout`/`pymupdf4llm`等を伴う88MB超の大きめのインストール
+になることが分かったが、これは`dev`/`pdf-render`という明示的に
+選択した場合のみ発生し、本体の通常インストールには一切影響しない。
+
+実装は`pymupdf.open(FileName)[PageNumber - 1].get_pixmap(dpi=
+ImageDpi).save(OutputFileName)`が直接対応する(`get_pixmap(dpi=...)`
+はPyMuPDF 1.19.2以降の公式API、Web検索で確認済み)。`import fitz`
+(旧名)はPyMuPDF側で非推奨(`FutureWarning`)のため、現行の
+`import pymupdf`形を使う。実機相当の構成(reportlabで生成した2ページ
+PDFの2ページ目を画像化)を`exec()`経由で実際に実行し、正しいページが
+画像化されることを確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件、うち1件は
+`pytest.importorskip`付きの`exec()`統合テスト)、UiPath関連テスト全
+951件通過、リポジトリ全体で全2037件通過(28件skip、変化無し)。
+
+`ExtractImagesFromPDF`(同じ`pdf-render`プラグインで対応できる見込み
+だが、出力ファイルの命名規則が公式ドキュメントにも実機にも確認が
+無く——`ImageExtension`という未発見の属性の存在も判明——未確定の
+ままのため、別tickでの個別調査が必要)は今回は未着手のまま、次の
+実装候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
