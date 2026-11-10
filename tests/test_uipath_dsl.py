@@ -27,6 +27,7 @@ from dump_daemon.uipath_dsl import (
     IfElseIfV2Node,
     AddLogFieldsNode,
     RemoveLogFieldsNode,
+    DeserializeJsonNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3454,6 +3455,52 @@ def test_remove_log_fields_empty_fields():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, RemoveLogFieldsNode)
     assert node.fields == []
+
+
+def test_deserialize_json_properties():
+    """知見241: `ui:DeserializeJson<njl:JObject>`(タグ名限定GitHub検索で
+    1230件ヒット)。実機`andumorie/uipath-face-recognition-framework`の
+    `Main-Identify.xaml`相当の構成——`x:TypeArguments="njl:JObject"`+
+    `JsonObject`(出力変数名の素のVB式)+`JsonString`(入力)。"""
+    xml = (
+        f"<ui:DeserializeJson {_UI_XMLNS} "
+        'x:TypeArguments="njl:JObject" DisplayName="Deserialize JSON" '
+        'JsonObject="[DesResponse]" JsonString="[FormOutput]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeserializeJsonNode)
+    assert node.type_argument == "njl:JObject"
+    assert node.json_object == VbExpr(text="DesResponse")
+    assert node.json_string == VbExpr(text="FormOutput")
+
+
+def test_deserialize_json_with_csharp_expression_arguments_declines_to_none():
+    """知見241: `hknaksoy/AI-Powered-Document-Analyzer-UiPath`の
+    `Main.xaml`相当の構成——C#式言語プロジェクト(知見129・136で既に
+    確立済みの「`CSharpValue`/`CSharpReference`はでっち上げず`None`へ
+    倒す」既存方針)が`JsonObject`/`JsonString`をプロパティ要素形
+    (`<InArgument><CSharpReference>...</CSharpReference></InArgument>`)
+    で直列化する場合、両方とも`None`になることを確認する(新規コードは
+    一切不要、既存の`_in_argument_property_expr`がそのまま対応)。"""
+    xml = (
+        f"<ui:DeserializeJson {_UI_XMLNS} x:TypeArguments=\"njl:JObject\" "
+        'JsonSample="{x:Null}" DisplayName="Deserialize JSON">'
+        "<ui:DeserializeJson.JsonObject>"
+        '<OutArgument x:TypeArguments="njl:JObject">'
+        '<CSharpReference x:TypeArguments="njl:JObject">resp</CSharpReference>'
+        "</OutArgument>"
+        "</ui:DeserializeJson.JsonObject>"
+        "<ui:DeserializeJson.JsonString>"
+        '<InArgument x:TypeArguments="x:String">'
+        '<CSharpValue x:TypeArguments="x:String">responseString</CSharpValue>'
+        "</InArgument>"
+        "</ui:DeserializeJson.JsonString>"
+        "</ui:DeserializeJson>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeserializeJsonNode)
+    assert node.json_object is None
+    assert node.json_string is None
 
 
 def test_repeat_number_of_times_x_properties():

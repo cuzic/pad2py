@@ -50,6 +50,7 @@ from dump_daemon.uipath_dsl import (
     IfElseIfV2Node,
     AddLogFieldsNode,
     RemoveLogFieldsNode,
+    DeserializeJsonNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -10297,6 +10298,80 @@ def test_remove_log_fields_with_empty_fields_generates_pass():
     wf = _wrap([RemoveLogFieldsNode(fields=[])])
     code = generate_python(wf)
     assert "pass" in code
+    _compiles(code)
+
+
+def test_deserialize_json_jobject_exec():
+    """知見241: `ui:DeserializeJson<njl:JObject>`(`json.loads()`で
+    Python `dict`へ変換)。実機`base64ai/uipath-samples`の
+    `Base64.ai Facial Verification.xaml`相当の構成——
+    `formattedJson("matches").Count.ToString`という、知見126・203の
+    `DataRow`添字アクセス(`ScopeInfo.data_row_vars`)と全く同じ構文的
+    曖昧性を持つ`識別子(引数)`添字アクセスを、新規`ScopeInfo.
+    json_object_vars`で正しく`formattedJson['matches']`へ解決し、
+    `.Count`を既存の`.Length`と同じ`len()`マッピングで処理できることを
+    `exec()`経由で確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                DeserializeJsonNode(
+                    json_string=VbExpr(text="base64aiResponse"),
+                    json_object=VbExpr(text="formattedJson"),
+                    type_argument="njl:JObject",
+                ),
+                AssignNode(
+                    target=VbExpr(text="result"),
+                    value=VbExpr(text='formattedJson("matches").Count.ToString'),
+                ),
+            ]
+        ),
+        arguments={"base64aiResponse": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "import json" in code
+    assert "formattedJson = json.loads(base64aiResponse)" in code
+    assert "result = _vb_cstr(len(formattedJson['matches']))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    import json as _json
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return result", namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    out = namespace["Test"](_json.dumps({"matches": [1, 2, 3]}))
+    assert out == "3"
+
+
+def test_deserialize_json_non_jobject_type_arguments_is_todo():
+    """知見241: ground-truth・実機いずれも`x:TypeArguments="njl:JObject"`
+    以外は未確認——`njl:JArray`等の別の型引数は架空の変換をでっち上げず
+    `# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            DeserializeJsonNode(
+                json_string=VbExpr(text="x"),
+                json_object=VbExpr(text="y"),
+                type_argument="njl:JArray",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DeserializeJson with TypeArguments" in code
+    _compiles(code)
+
+
+def test_deserialize_json_with_missing_json_object_is_todo():
+    """知見241: `JsonObject`未捕捉(C#式言語プロジェクトでの
+    `CSharpReference`ネスト形、知見129・136)は`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            DeserializeJsonNode(
+                json_string=None, json_object=None, type_argument="njl:JObject"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DeserializeJson with no JsonObject captured" in code
     _compiles(code)
 
 

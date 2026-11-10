@@ -62,12 +62,18 @@ class ScopeInfo:
     を追加する(既存の大多数のワークフローの`LogMessage`出力を一切変えない
     ための後方互換ガード)。`data_table_columns`と同じ「ファイル単位でしか
     解析しない」既知の限界を持つ——呼び出し元ワークフローの`AddLogFields`
-    は呼び出し先ファイルの`has_log_fields`には伝播しない。"""
+    は呼び出し先ファイルの`has_log_fields`には伝播しない。
+    `json_object_vars`(知見241)は`DeserializeJson.JsonObject`で宣言された
+    変数名の集合——`data_row_vars`と全く同じ理由(VB.NETの`識別子(引数)`
+    添字構文が`DataRow`の列アクセスと`JObject`の辞書的添字アクセスで
+    構文上区別不能、知見126・203)で、`FuncCall`レンダリング時にこの
+    集合に名前があれば`base[key]`形の添字アクセスとして解釈する。"""
 
     canonical_names: dict[str, str] = field(default_factory=dict)
     data_row_vars: frozenset[str] = frozenset()
     data_table_columns: dict[str, list[str] | None] = field(default_factory=dict)
     has_log_fields: bool = False
+    json_object_vars: frozenset[str] = frozenset()
 
 
 _ACTIVE_SCOPE: ContextVar[ScopeInfo | None] = ContextVar("uipath_codegen_scope", default=None)
@@ -826,12 +832,18 @@ def _apply_chained_property(base: str, member: str) -> str:
         # 表現する」既存方針の延長で、`.Name`(ファイル名のみ、
         # ディレクトリ部分を除く)は`os.path.basename()`に対応する。
         return f"os.path.basename({base})"
-    if member_lower == "length":
+    if member_lower in ("length", "count"):
         # 知見133: `Directory.GetFiles(path).Length`(`dexbob/RPA_Example`
         # の実機XAML、`.Length`は括弧省略形)。配列(`String()`等)・文字列
         # (`String.Length`)いずれも.NETでは文字数/要素数を返す`Length`
         # プロパティで、Pythonの`len()`に同じ意味論で直接対応する
         # ——型による分岐は不要。
+        # 知見241: `.Count`(`ICollection`系——`JArray`/`List<T>`/
+        # `Dictionary<K,V>`等——の要素数、`base64ai/uipath-samples`の
+        # 実機XAML`formattedJson("matches").Count`で発見)も`.Length`と
+        # 同じ`len()`に対応する——`Length`は配列、`Count`はジェネリック
+        # コレクションという.NET側の呼び分けの違いはあるが、いずれも
+        # Pythonの`len()`が持つ単一の「要素数」概念に集約される。
         return f"len({base})"
     if member_lower in _CHAINED_PROPERTY_TRANSLATIONS:
         return f"{base}.{_CHAINED_PROPERTY_TRANSLATIONS[member_lower]}()"
@@ -1281,7 +1293,14 @@ def _render_func_call(node: FuncCall) -> str:
     # 前提にした直接アクセス)。引数が1個以外の場合はDataRowインデクサの
     # 実際の形と一致しないため対象外とし、下記の従来の判定へ委ねる。
     scope = _ACTIVE_SCOPE.get()
-    if scope is not None and len(args) == 1 and node.name.lower() in scope.data_row_vars:
+    if (
+        scope is not None
+        and len(args) == 1
+        and (
+            node.name.lower() in scope.data_row_vars
+            or node.name.lower() in scope.json_object_vars
+        )
+    ):
         return f"{_canonical_name(node.name)}[{args[0]}]"
     if "." in node.name:
         # 知見127: `mail_Category.Equals("x")`のような、関数呼び出しを

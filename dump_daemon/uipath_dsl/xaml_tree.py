@@ -31,6 +31,7 @@ from .types import (
     IfElseIfV2Node,
     AddLogFieldsNode,
     RemoveLogFieldsNode,
+    DeserializeJsonNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -514,6 +515,15 @@ def _parse_remove_log_fields(elem: etree._Element) -> RemoveLogFieldsNode:
     return RemoveLogFieldsNode(
         display_name=_attr(elem, "DisplayName"),
         fields=_parse_property_element_list(elem, "Fields"),
+    )
+
+
+def _parse_deserialize_json(elem: etree._Element) -> DeserializeJsonNode:
+    return DeserializeJsonNode(
+        display_name=_attr(elem, "DisplayName"),
+        type_argument=_attr(elem, "TypeArguments", X_NS) or _attr(elem, "TypeArguments"),
+        json_string=_attr_expr(elem, "JsonString") or _in_argument_property_expr(elem, "JsonString"),
+        json_object=_attr_expr(elem, "JsonObject") or _in_argument_property_expr(elem, "JsonObject"),
     )
 
 
@@ -2850,6 +2860,7 @@ _DISPATCH = {
     (UI_NS, "IfElseIfV2"): _parse_if_else_if_v2,
     (UI_NS, "AddLogFields"): _parse_add_log_fields,
     (UI_NS, "RemoveLogFields"): _parse_remove_log_fields,
+    (UI_NS, "DeserializeJson"): _parse_deserialize_json,
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "Activate"): _parse_activate,

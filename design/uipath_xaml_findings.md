@@ -11387,6 +11387,85 @@ False`(大多数のワークフロー)の場合は`LogMessage`の生成コード
 追加(`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
 3件)、リポジトリ全体で全2194件通過(28件skip)。
 
+## 241. `ui:DeserializeJson<njl:JObject>`を新規実装・`ui:TimeoutScope`は実行環境のWindows前提と両立する安全な先取り中断手段が無いため見送り——`GetFileInfoX`級の「未モデル化オブジェクトへの広いdot-access」懸念は実際には`DataRow`添字と同じ狭い構文的パターンだと判明した
+
+バックログに残っていた2件、`ui:DeserializeJson`(タグ名限定GitHub検索で
+1230件ヒット)と`ui:TimeoutScope`(134件ヒット)に着手した。
+
+**`ui:TimeoutScope`(見送り)**: 実機`RobotGod1/AgingCareSignOff.RPA.
+Uipath.Process`の`Project/ClosePrintPdf.xaml`で構造を確認——
+`ThrowExceptionAfter="00:00:20"`(既存の`_parse_timespan_literal_seconds`
+(知見151)がそのまま対応できる書式)+`TimeoutMessage`+`.Body`
+(`ActivityAction<Activity>`、`RetryScope`等と同じ既存パターン)、
+典型的な中身は`ui:InterruptibleWhile`(`While`の実体、知見14で既に
+`WhileNode`として対応済み——新規infra不要)によるポーリングループ。
+公式ドキュメント確認済み: タイムアウト時`System.TimeoutException`を
+投げる「実行時間を制限したスコープ」。
+
+実装を検討した3つの選択肢をいずれも見送った: (1) `signal.alarm`/
+`signal.setitimer`(Python標準のプリエンプティブ割り込み手段)は
+**Unix専用**——本トランスパイラの既存アクティビティ(`Click`/
+`TypeInto`等、`pywinauto`依存)が示す実際のデプロイ先(Windows GUI
+自動化)では`AttributeError`で即座にクラッシュする、つまり"動くことも
+ある近似"ではなく主要対象プラットフォームで**確実に壊れる**。
+(2) `threading.Thread.join(timeout=...)`による「ソフトタイムアウト」
+(ポータブルだが真の中断では無い)は、タイムアウト後もバックグラウンド
+スレッドが停止せず実行を続ける——UI操作(Click/TypeInto等)を含む
+Body内でこれが起きると、メインスレッドが既に次の処理に進んだ後も
+孤立スレッドが同じウィンドウを操作し続ける競合状態になり、通常の
+「近似だが安全」な妥協(`Parallel`の順次実行化等)より質的に危険。
+(3) 事後測定(Body完了後に経過時間を見て`TimeoutException`相当を投げる)
+は、実機で確認した唯一の具体例(無限/長時間ポーリングループを
+`ThrowExceptionAfter`で区切る)に対しては**全く機能しない**——
+ポーリングが終わるまで事後測定自体が実行されないため、正しく実装した
+ように見えて実際は何の保護にもならない、知見231の「動いているように
+見えて実は非原子的なtry/exceptをでっち上げるな」という既存の判断
+基準に抵触する。`DatabaseTransaction.UseTransaction=True`(知見231)
+と同じ「新規インフラ(ここでは協調的キャンセレーショントークンを
+Body内の全ブロッキング呼び出しへ伝播する仕組み)が無いと誠実な
+実装ができない」ケースと判断し、架空の安全策をでっち上げるより
+見送ることを選んだ。
+
+**`ui:DeserializeJson<njl:JObject>`(実装)**: 知見229で「`GetFileInfoX`/
+`GetFolderInfoX`と同種の『未モデル化の型付きオブジェクトへの広い
+dot-access』懸念」と注意深く記録されていたが、調べ直すと実際には
+もっと狭い範囲で済むことが判明した。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)でこの活動自体がジェネリック
+(`DeserializeJson<T>`、ファイル名`` DeserializeJson`1.xaml ``)だと確認
+——既定の`x:TypeArguments`は`njl:JObject`(`Newtonsoft.Json.Linq.
+JObject`)。実機複数件(`andumorie/uipath-face-recognition-framework`
+の`Main-Identify.xaml`、`base64ai/uipath-samples`の`Base64.ai Facial
+Verification.xaml`)でも`njl:JObject`のみ確認できた。
+
+決定的だったのは`base64ai/uipath-samples`の実際のダウンストリーム
+利用形: `formattedJson("matches").Count.ToString`。これは`識別子(引数)`
+添字構文で、`DataRow`の列アクセス(`row("col")`、知見126・203)と
+**構文的に全く同一**——つまり`GetFileInfoX`が引き返した「広い未確認の
+プロパティサーフェス」ではなく、既存の`ScopeInfo`ベースの型追跡
+機構(`data_row_vars`)をそのまま複製するだけで済む、狭い確認済みの
+パターンだった。新規`ScopeInfo.json_object_vars`フィールドを追加し、
+`render.py`の`FuncCall`分岐を`data_row_vars`と`json_object_vars`の
+どちらかに名前があれば添字アクセスと解釈するよう拡張(1行の条件
+追加のみ)。`.Count`(`ICollection`系の要素数)は既存の`.Length`→
+`len()`マッピング(知見133)に`"count"`を別名として追加するだけで
+対応できた——新しい分岐は不要。`JObject`自体はPythonの`dict`
+(`json.loads()`の戻り値)という素直な表現で、`GetFileInfoX`のような
+架空のラッパークラスは一切不要だった。
+
+`hknaksoy/AI-Powered-Document-Analyzer-UiPath`の実機サンプルは
+C#式言語プロジェクト(`CSharpReference`/`CSharpValue`、知見129・136で
+既に確立済みの「でっち上げず`None`へ倒す」既存方針)だったため、
+新規コード無しで正しく`None`へ倒れることを確認した——本活動固有の
+対応は不要で、既存のプロジェクト全体の既知の限界がそのまま適用される
+だけだった。`njl:JObject`以外の`x:TypeArguments`(カスタムPOCO等)は
+未確認のため`# TODO`へ倒す。
+
+実機`base64ai/uipath-samples`相当の`formattedJson("matches").Count.
+ToString`を`exec()`経由で実際に実行し、`json.loads()`で変換した
+`dict`への添字アクセス+`len()`が正しく動作することを確認した。
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`3件)、リポジトリ全体で全2199件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

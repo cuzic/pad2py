@@ -3354,3 +3354,29 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `exec()`経由で実際に実行し確認した。回帰テスト追加(`tests/
      test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`3件)、
      リポジトリ全体で全2194件通過。
+
+199. **(完了、2026-11-10)** `ui:DeserializeJson<njl:JObject>`を新規
+     実装・`ui:TimeoutScope`は見送り(知見241)。`TimeoutScope`
+     (134件ヒット)は実機`RobotGod1/AgingCareSignOff...`で
+     `ThrowExceptionAfter`+`TimeoutMessage`+`ActivityAction<Activity>`
+     Body構造を確認したが、本トランスパイラの実際のデプロイ先
+     (`pywinauto`依存、Windows GUI自動化)では`signal.alarm`が
+     `AttributeError`で確実に壊れ、スレッドベースのソフトタイムアウト
+     は孤立スレッドがUI操作を続ける競合状態を招き、事後測定は実機の
+     典型例(無限ポーリングループ)に対して何の保護にもならない——
+     3つの実装案いずれも`DatabaseTransaction.UseTransaction=True`
+     (知見231)と同じ「新規インフラ無しでは誠実な実装ができない」
+     ケースと判断し見送った。`DeserializeJson`(1230件ヒット)は
+     知見229が「`GetFileInfoX`級の未モデル化オブジェクト懸念」と
+     記録していたが、実機`base64ai/uipath-samples`の確認済み利用形
+     `formattedJson("matches").Count.ToString`が`DataRow`添字
+     (知見126・203)と構文的に同一だったため、新規`ScopeInfo.
+     json_object_vars`フィールド1つ(`data_row_vars`と同じ添字解決
+     ロジックを共有)+`.Count`を既存の`.Length`→`len()`マッピングへ
+     別名追加するだけで対応できた——架空のラッパークラスは不要、
+     `JObject`はPythonの`dict`(`json.loads()`の戻り値)に直接対応する。
+     C#式言語プロジェクトの実機サンプルは既存の知見129・136の
+     「でっち上げず`None`へ倒す」方針がそのまま適用され新規コード
+     不要だった。実機相当の式を`exec()`経由で実際に実行し確認した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`3件)、リポジトリ全体で全2199件通過。

@@ -451,6 +451,40 @@ class RemoveLogFieldsNode:
 
 
 @dataclass
+class DeserializeJsonNode:
+    """`<ui:DeserializeJson x:TypeArguments="njl:JObject" JsonString="..."
+    JsonObject="...">`(知見241、タグ名限定GitHub検索で1230件ヒット
+    ——知見229で「典型的な『未モデル化の型付きオブジェクトへの
+    ダウンストリームdot-access』問題、`GetFileInfoX`/`GetFolderInfoX`と
+    同種」と注意深く記録されていた活動)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)でジェネリック活動
+    (`DeserializeJson<T>`、ファイル名が`` DeserializeJson`1.xaml ``)
+    であることが判明——既定の`x:TypeArguments`は`njl:JObject`
+    (`Newtonsoft.Json.Linq.JObject`)。実機複数件(`andumorie/uipath-
+    face-recognition-framework`の`Main-Identify.xaml`、`base64ai/
+    uipath-samples`の`Base64.ai Facial Verification.xaml`)でも
+    `x:TypeArguments="njl:JObject"`のみ確認——他の型引数(カスタム
+    POCO等)は未確認のため対象外とする。
+
+    `base64ai/uipath-samples`で確認済みのダウンストリーム利用形
+    (`formattedJson("matches").Count.ToString`)により、
+    `GetFileInfoX`/`GetFolderInfoX`が引き返した「未確認の広いdot-access
+    サーフェス」懸念は実際には**狙い撃ちできる狭い範囲**だと判明した:
+    VB.NETの`識別子(引数)`添字構文(知見126・203の`DataRow`行アクセス
+    `row("col")`と構文的に同一、`ScopeInfo.json_object_vars`で型を
+    追跡して判別)+`.Count`(コレクション要素数、既存の`.Length`→
+    `len()`と同じ意味論)のみ対応する——JObjectの他のメンバ
+    (`.Properties()`・`.SelectToken(path)`等)は未確認のため見送る。
+    `JObject`→Python`dict`(`json.loads()`の戻り値)という素直な表現で、
+    `GetFileInfoX`のような架空のラッパークラスは不要。"""
+
+    json_string: Expr = None
+    json_object: Expr = None
+    type_argument: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -3960,6 +3994,7 @@ Node = (
     | IfElseIfV2Node
     | AddLogFieldsNode
     | RemoveLogFieldsNode
+    | DeserializeJsonNode
     | ParallelNode
     | ClickNode
     | HoverNode

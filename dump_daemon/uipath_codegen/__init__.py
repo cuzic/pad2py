@@ -73,6 +73,7 @@ from ..uipath_dsl.types import (
     IfElseIfV2Node,
     AddLogFieldsNode,
     RemoveLogFieldsNode,
+    DeserializeJsonNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -331,6 +332,7 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
     data_row_vars: set[str] = set()
     data_table_columns: dict[str, list[str] | None] = {}
     has_log_fields = False
+    json_object_vars: set[str] = set()
 
     def on_node(obj) -> None:
         nonlocal has_log_fields
@@ -346,6 +348,11 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
                 data_table_columns[obj.data_table.text.lower()] = list(obj.columns)
         elif isinstance(obj, (AddLogFieldsNode, RemoveLogFieldsNode)):
             has_log_fields = True
+        elif isinstance(obj, DeserializeJsonNode):
+            if isinstance(obj.json_object, VbExpr) and (obj.type_argument or "").lower().endswith(
+                "jobject"
+            ):
+                json_object_vars.add(obj.json_object.text.lower())
 
     _walk_scope_sources(workflow.root, set(), on_node)
 
@@ -354,6 +361,7 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
         data_row_vars=frozenset(data_row_vars),
         data_table_columns=data_table_columns,
         has_log_fields=has_log_fields,
+        json_object_vars=frozenset(json_object_vars),
     )
 
 
@@ -564,6 +572,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見119)も同様。
     if any("logging.info(" in line or "logging.error(" in line for line in body):
         imports.append("import logging")
+    # `json`(`DeserializeJson`→`json.loads(...)`変換先、知見241)も同様。
+    if any("json.loads(" in line for line in body):
+        imports.append("import json")
     # `subprocess`(`OpenApplication`→`subprocess.Popen(...)`変換先、
     # 知見154、`KillProcess`→`subprocess.run(...)`変換先、知見169)も
     # 同様。
@@ -704,6 +715,8 @@ def _generate_node(
         return _generate_add_log_fields(node, indent)
     if isinstance(node, RemoveLogFieldsNode):
         return _generate_remove_log_fields(node, indent)
+    if isinstance(node, DeserializeJsonNode):
+        return _generate_deserialize_json(node, indent)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, RepeatNumberOfTimesXNode):
@@ -1210,6 +1223,44 @@ def _generate_remove_log_fields_body(node: RemoveLogFieldsNode, indent: int) -> 
         return [f"{prefix}pass"]
     lines = [f"{prefix}_log_fields.pop({name}, None)" for name in names]
     return lines
+
+
+def _generate_deserialize_json(node: DeserializeJsonNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_deserialize_json_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_deserialize_json_body(node: DeserializeJsonNode, indent: int) -> list[str]:
+    """知見241: `ui:DeserializeJson<njl:JObject>`——`njl:JObject`
+    (`Newtonsoft.Json.Linq.JObject`、ground-truth・実機複数件で確認済みの
+    唯一の`x:TypeArguments`)のみ対応し、他の型引数(カスタムPOCO等、
+    未確認)は見送る。`JObject`はPythonの`dict`(`json.loads()`の戻り値)
+    として表現する——`GetFileInfoX`等と違い架空のラッパークラスは不要。
+    `JsonObject`(代入先)は`Assign.target`(知見136・137)と同じ厳格な
+    失敗モード——`render_expr`を直接呼び、例外発生時は代入文自体を
+    生成しない。"""
+    prefix = INDENT * indent
+    if node.json_object is None:
+        return [f"{prefix}# TODO: DeserializeJson with no JsonObject captured"]
+    if node.json_string is None:
+        return [f"{prefix}# TODO: DeserializeJson with no JsonString captured"]
+    type_arg = (node.type_argument or "").rsplit(":", 1)[-1].lower()
+    if type_arg != "jobject":
+        return [
+            f"{prefix}# TODO: DeserializeJson with TypeArguments="
+            f"{node.type_argument!r} — only njl:JObject (-> Python dict via "
+            "json.loads()) is confirmed, refusing to guess for other .NET types"
+        ]
+    try:
+        target = render_expr(node.json_object)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    todo: list[str] = []
+    json_string = _render_value_or_todo(node.json_string, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = json.loads({json_string})"]
 
 
 def _generate_for_each(
