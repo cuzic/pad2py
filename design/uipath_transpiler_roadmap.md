@@ -2729,3 +2729,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      5件)、UiPath関連テスト全942件通過、リポジトリ全体で全2028件
      通過。残る`JoinDataTables`は未着手、次の候補。
+
+166. **(完了、2026-11-10)** `ui:JoinDataTables`を新規実装(知見208)
+     ——知見195で保留した3件のうち最後の1件、これで3件全て解消した。
+     `JoinType="Inner"`(実機確認済みの唯一の値、`"Left"`/`"Full"`は
+     公式ドキュメントに記載はあるが実機未確認のため`# TODO`)+
+     `Operator="EQ"`(実機確認済みの唯一の値)+知見206/207と同じ
+     `ScopeInfo.data_table_columns`を両方のDataTableに要求。公式
+     ドキュメント(`docs.uipath.com/activities/other/latest/workflow/
+     join-data-tables`)で出力列の重複名解決規則(`DataTable2`側が
+     `DataTable1`と同名なら`_1`→`_2`...連番サフィックス)を確認し、
+     両テーブルの列リストが静的に既知なことを利用してコード生成時に
+     この解決を計算・結果をリテラル埋め込みする設計で実装(実行時の
+     解決ロジック不要)。実機2件相当の「蔵書とユーザーを共通のID列で
+     結合」構成(両テーブルにID列があり重複解決が必須)を`exec()`経由
+     で実際に実行して確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全946
+     件通過、リポジトリ全体で全2032件通過。知見195・179が記録していた
+     DataTable操作ファミリーの保留3件がこれで全て解消した。

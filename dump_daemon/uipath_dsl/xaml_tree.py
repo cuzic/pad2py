@@ -85,6 +85,8 @@ from .types import (
     SortDataTableNode,
     FilterDataTableNode,
     FilterOperationArgument,
+    JoinDataTablesNode,
+    JoinOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -891,6 +893,37 @@ def _parse_filter_data_table(elem: etree._Element) -> FilterDataTableNode:
         select_columns_mode=_attr(elem, "SelectColumnsMode"),
         filters=filters,
         select_columns=_parse_filter_data_table_select_columns(elem),
+    )
+
+
+def _parse_join_operation_argument(elem: etree._Element) -> JoinOperationArgument:
+    return JoinOperationArgument(
+        boolean_operator=_attr(elem, "BooleanOperator"),
+        operator=_attr(elem, "Operator"),
+        column1=_in_argument_property_expr(elem, "Column1"),
+        column1_type=_in_argument_type_arguments(elem, "Column1"),
+        column2=_in_argument_property_expr(elem, "Column2"),
+        column2_type=_in_argument_type_arguments(elem, "Column2"),
+    )
+
+
+def _parse_join_data_tables(elem: etree._Element) -> JoinDataTablesNode:
+    arguments: list[JoinOperationArgument] = []
+    args_elem = _find_property_element(elem, "Arguments")
+    if args_elem is not None:
+        for list_elem in _direct_children(args_elem):
+            for arg_elem in _direct_children(list_elem):
+                arguments.append(_parse_join_operation_argument(arg_elem))
+    return JoinDataTablesNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table1=_attr_expr(elem, "DataTable1")
+        or _in_argument_property_expr(elem, "DataTable1"),
+        data_table2=_attr_expr(elem, "DataTable2")
+        or _in_argument_property_expr(elem, "DataTable2"),
+        output_data_table=_attr_expr(elem, "OutputDataTable")
+        or _in_argument_property_expr(elem, "OutputDataTable"),
+        join_type=_attr(elem, "JoinType"),
+        arguments=arguments,
     )
 
 
@@ -2260,6 +2293,7 @@ _DISPATCH = {
     (UI_NS, "LookupDataTable"): _parse_lookup_data_table,
     (UI_NS, "SortDataTable"): _parse_sort_data_table,
     (UI_NS, "FilterDataTable"): _parse_filter_data_table,
+    (UI_NS, "JoinDataTables"): _parse_join_data_tables,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

@@ -279,8 +279,18 @@ DataTableへ変換——既存のDataTableを読まず新規に構築するた�
 対応、`SelectColumns`(列の投影)は未対応のまま`# TODO`。実機3件で新しい
 未確認属性`FilterRowsMode`(`"Keep"`/`"Remove"`)+`Column`が列名
 (`x:String`)/列インデックス(`x:Int32`)の2通りの型を持つことを発見
-(詳細は知見207参照)。**依然保留**: `JoinDataTables`(`Arguments`結合
-条件+`JoinType`)は未着手のまま、次の実装候補。
+(詳細は知見207参照)。
+
+**追記(知見208、2026-11-10、`JoinDataTables`完了——保留3件、解消)**:
+同じ`ScopeInfo.data_table_columns`を`DataTable1`/`DataTable2`両方に
+要求し、`JoinType="Inner"`+`Operator="EQ"`(両方実機確認済みの唯一の
+値)に対応。公式ドキュメントで確認した出力列の重複名解決規則
+(`DataTable2`側の同名列に`_1`→`_2`...連番サフィックス)をコード生成
+時に静的に計算して実装(詳細は知見208参照)。**これで知見195・知見179
+が記録していたDataTable操作ファミリーの保留3件
+(`SortDataTable`/`FilterDataTable`/`JoinDataTables`)が全て解消した**
+——知見203のScopeInfoアーキテクチャの再利用価値が当初の想定(知見117・
+126・130の3課題)を超えて広がったことを示す。
 
 **`row(...)`添字の変数スコープ追跡(知見74で見送り、知見126で実需要を
 確認・将来のアーキテクチャ候補)**: VB.NETの`識別子(引数)`構文は関数

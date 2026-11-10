@@ -97,6 +97,8 @@ from dump_daemon.uipath_dsl import (
     LookupDataTableNode,
     FilterDataTableNode,
     FilterOperationArgument,
+    JoinDataTablesNode,
+    JoinOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -3470,6 +3472,146 @@ def test_filter_data_table_declines_when_row_representation_is_unknown():
     code = generate_python(wf)
     assert "# TODO: FilterDataTable" in code
     assert "[_frow for _frow in" not in code
+    _compiles(code)
+
+
+def test_join_data_tables_inner_join_renames_duplicate_key_column():
+    """知見208: 実機2件(`TharakaMadushankaWanshathilaka/UiPath-Demo-
+    Data-Tables`・`SuatOzcan/UiPathRoboticProcessAutomation`)相当の
+    「蔵書とユーザーを共通の'ID'列でInner結合」——公式ドキュメントで
+    確認した重複列名解決規則(`DataTable2`側の`ID`が`ID_1`にリネーム
+    される)を実際に`exec()`で確認する。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(
+                data_table=VbExpr(text="OverdueBooks"), columns=["ID", "BookTitle"]
+            ),
+            AddDataRowNode(
+                data_table=VbExpr(text="OverdueBooks"),
+                array_row=VbExpr(text='{1, "Dune"}'),
+            ),
+            BuildDataTableNode(data_table=VbExpr(text="Users"), columns=["ID", "Name"]),
+            AddDataRowNode(
+                data_table=VbExpr(text="Users"), array_row=VbExpr(text='{1, "Alice"}')
+            ),
+            AddDataRowNode(
+                data_table=VbExpr(text="Users"), array_row=VbExpr(text='{2, "Bob"}')
+            ),
+            JoinDataTablesNode(
+                data_table1=VbExpr(text="OverdueBooks"),
+                data_table2=VbExpr(text="Users"),
+                output_data_table=VbExpr(text="BorrowedBooks"),
+                join_type="Inner",
+                arguments=[
+                    JoinOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column1=VbExpr(text='"ID"'),
+                        column1_type="x:String",
+                        column2=VbExpr(text='"ID"'),
+                        column2_type="x:String",
+                    )
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "['ID_1', 'Name']" in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(  # noqa: S102 - 信頼できる自作コード
+        code + "\n    return BorrowedBooks", namespace
+    )
+    assert namespace["Test"]() == [
+        {"ID": 1, "BookTitle": "Dune", "ID_1": 1, "Name": "Alice"}
+    ]
+
+
+def test_join_data_tables_declines_non_inner_join_type_and_unconfirmed_operator():
+    """知見208: `JoinType`が`"Inner"`以外(`"Left"`/`"Full"`は公式
+    ドキュメントに記載はあるが実機未確認)・`Operator`が`"EQ"`以外は
+    `# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="t1"), columns=["ID"]),
+            BuildDataTableNode(data_table=VbExpr(text="t2"), columns=["ID"]),
+            JoinDataTablesNode(
+                data_table1=VbExpr(text="t1"),
+                data_table2=VbExpr(text="t2"),
+                output_data_table=VbExpr(text="t3"),
+                join_type="Left",
+                arguments=[
+                    JoinOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column1=VbExpr(text='"ID"'),
+                        column1_type="x:String",
+                        column2=VbExpr(text='"ID"'),
+                        column2_type="x:String",
+                    )
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: JoinDataTables with JoinType 'Left'" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="t1"), columns=["ID"]),
+            BuildDataTableNode(data_table=VbExpr(text="t2"), columns=["ID"]),
+            JoinDataTablesNode(
+                data_table1=VbExpr(text="t1"),
+                data_table2=VbExpr(text="t2"),
+                output_data_table=VbExpr(text="t3"),
+                join_type="Inner",
+                arguments=[
+                    JoinOperationArgument(
+                        boolean_operator="And",
+                        operator="GT",
+                        column1=VbExpr(text='"ID"'),
+                        column1_type="x:String",
+                        column2=VbExpr(text='"ID"'),
+                        column2_type="x:String",
+                    )
+                ],
+            ),
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: JoinDataTables with Operator 'GT'" in code2
+    _compiles(code2)
+
+
+def test_join_data_tables_declines_when_row_representation_is_unknown():
+    """知見208: `DataTable1`/`DataTable2`どちらかが`BuildDataTable`由来
+    だと確認できない場合はlist行の可能性を排除できないため`# TODO`へ
+    倒す——知見206/207と同じ判断。"""
+    wf = _wrap(
+        [
+            JoinDataTablesNode(
+                data_table1=VbExpr(text="unknown_t1"),
+                data_table2=VbExpr(text="unknown_t2"),
+                output_data_table=VbExpr(text="t3"),
+                join_type="Inner",
+                arguments=[
+                    JoinOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column1=VbExpr(text='"ID"'),
+                        column1_type="x:String",
+                        column2=VbExpr(text='"ID"'),
+                        column2_type="x:String",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: JoinDataTables" in code
+    assert "_jrow1" not in code
     _compiles(code)
 
 

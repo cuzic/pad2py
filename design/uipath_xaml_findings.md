@@ -9849,6 +9849,61 @@ test_uipath_codegen.py`5件)、UiPath関連テスト全942件通過、リポジ�
 残る`JoinDataTables`(`Arguments`結合条件+`JoinType`)は未着手のまま、
 次の実装候補として記録する。
 
+## 208. `ui:JoinDataTables`を新規実装——知見195で保留した3件を全て解消、公式ドキュメントで出力列の重複名解決規則(`_1`→`_2`...連番サフィックス)を確認・実装
+
+知見206(`SortDataTable`)・知見207(`FilterDataTable`)に続き、知見195
+で保留した3件のうち最後の1件`JoinDataTables`に着手した——これで
+知見195・知見179が記録していたDataTable操作ファミリーの保留3件が
+全て解消した。
+
+ground-truthの属性構成は`Arguments`+`DataTable1`+`DataTable2`+
+`OutputDataTable`+`JoinType`(既定`"Inner"`)。実機3件
+(`TharakaMadushankaWanshathilaka/UiPath-Demo-Data-Tables`・
+`SuatOzcan/UiPathRoboticProcessAutomation`のVB実機2件——両方とも
+「蔵書(OverdueBooks)とユーザー(Users)を共通の`ID`列で結合する」という
+構造的に同一の構成、+`ShonHarsh/RPADev-S04P02-...`のC#実機1件、知見136
+の既存の安全な未対応経路でそのまま`None`に倒れることを確認)で検証した
+結果、`Arguments`(`scg:List<ui:JoinOperationArgument>`)の各要素は
+`BooleanOperator`(確認済み`"And"`のみ)+`Operator`(確認済み`"EQ"`
+のみ)+`Column1`/`Column2`(プロパティ要素形、実機では`x:String`型
+(列名)のみ確認——知見207の`FilterOperationArgument`と違い列インデックス
+の実例は無かった)。`Operand`に対応する属性は存在しない(比較対象が
+`Column2`であり定数値ではないため)。
+
+**出力列の重複名解決規則を公式ドキュメント(`docs.uipath.com/
+activities/other/latest/workflow/join-data-tables`)で確認**:
+`DataTable2`側の列が`DataTable1`(または既にリネーム済みの他の
+`DataTable2`列)と同名の場合、`_1`→`_2`→...という未使用の連番
+サフィックスを付与する(ドキュメント記載の例: `DataTable1`に`ID`/
+`ID_1`/`ID_2`があり`DataTable2`に`ID`がある場合、`DataTable2`の
+`ID`は`ID_3`になる)。実機3件全てが両テーブルに同名の結合キー列
+(`"ID"`)を持つため、この規則への対応は実装の必須要件だった。
+`JoinType`の値も同ドキュメントで確認: `"Inner"`(一致行のみ)・
+`"Left"`(`DataTable1`の全行保持)・`"Full"`(両方の全行保持)——実機
+3件は全て`"Inner"`のみ確認、`"Left"`/`"Full"`は実機未確認のため
+未対応のまま`# TODO`へ倒す。
+
+知見206/207と同じ`ScopeInfo.data_table_columns`で`DataTable1`/
+`DataTable2`両方のdict行+列スキーマが確認できる場合のみ対応する。
+列の重複名解決自体は、両テーブルの列リストがコード生成時に既に
+静的に分かっているため、**コード生成時にPythonで計算**し解決後の
+列名リストを生成コードへリテラルとして埋め込む(実行時の解決ロジック
+は不要、知見206のインデックス解決と同じ「静的に既知の情報は実行時
+コードではなくコード生成時に処理する」という設計判断)。
+
+実機2件相当の構成(`OverdueBooks`×`Users`、両方に`ID`列)を`exec()`
+経由で実際に実行し、`DataTable2`側の`ID`が`ID_1`に正しくリネームされ
+`Inner`結合の一致行のみが出力されることを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、
+UiPath関連テスト全946件通過、リポジトリ全体で全2032件通過(28件skip、
+変化無し)。
+
+**知見195・知見179が記録していたDataTable操作ファミリーの保留3件
+(`SortDataTable`/`FilterDataTable`/`JoinDataTables`)がこれで全て
+解消した**——知見203のScopeInfoアーキテクチャが当初の3つの設計課題
+(知見117・126・130)に加えて、予定していなかったこの3件も解消する
+という、想定を超えた再利用価値を持つことが確認できた。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

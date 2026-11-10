@@ -801,6 +801,56 @@ class FilterDataTableNode:
 
 
 @dataclass
+class JoinOperationArgument:
+    """`<ui:JoinOperationArgument>`(知見208、`JoinDataTablesNode.
+    arguments`の1要素)。実機3件(`TharakaMadushankaWanshathilaka/
+    UiPath-Demo-Data-Tables`・`SuatOzcan/UiPathRoboticProcessAutomation`
+    のVB実機2件+`ShonHarsh/RPADev-S04P02-...`のC#実機1件)で確認した
+    構成: `BooleanOperator`(確認済み"And"のみ)+`Operator`(確認済み
+    "EQ"のみ)+`Column1`/`Column2`(プロパティ要素形の`InArgument`、
+    実機では`x:TypeArguments="x:String"`のみ確認——`FilterOperationArgument`
+    と違い列インデックス(`x:Int32`)の実例は未確認)。`Operand`に対応する
+    属性は無い(Joinでは比較対象が`Column2`であり定数値ではないため)。"""
+
+    boolean_operator: str | None = None
+    operator: str | None = None
+    column1: Expr = None
+    column1_type: str | None = None
+    column2: Expr = None
+    column2_type: str | None = None
+
+
+@dataclass
+class JoinDataTablesNode:
+    """`<ui:JoinDataTables>`(知見208、知見195で保留した3件のうち最後の
+    1件。知見206/207と同じ`ScopeInfo.data_table_columns`で解消する)。
+    ground-truthの属性構成は`Arguments`+`DataTable1`+`DataTable2`+
+    `OutputDataTable`+`JoinType`(既定`"Inner"`)。
+
+    `JoinType`の値は公式ドキュメント(`docs.uipath.com/activities/
+    other/latest/workflow/join-data-tables`)で確認: `"Inner"`(条件に
+    一致する行のみ)・`"Left"`(`DataTable1`の全行を保持、一致しない
+    `DataTable2`側はNull)・`"Full"`(両方の全行を保持、一致しない側は
+    Null)——実機3件は全て`"Inner"`のみ確認、`"Left"`/`"Full"`は実機
+    未確認のため未対応。
+
+    **出力列の重複名解決規則(公式ドキュメントで確認)**: `DataTable2`側
+    の列名が`DataTable1`(または既にリネーム済みの他の`DataTable2`列)
+    と重複する場合、`_1`→`_2`→...という未使用の連番サフィックスを
+    付与する(例: `DataTable1`に`ID`/`ID_1`/`ID_2`があり`DataTable2`に
+    `ID`がある場合、`DataTable2`の`ID`は`ID_3`になる)。実機3件全てが
+    両テーブルに同名の結合キー列(`"ID"`)を持つため、この規則は
+    必須——実装時に直接検証した。"""
+
+    display_name: str | None = None
+    data_table1: Expr = None
+    data_table2: Expr = None
+    output_data_table: Expr = None
+    join_type: str | None = None
+    arguments: list[JoinOperationArgument] = field(default_factory=list)
+
+
+@dataclass
 class SaveImageNode:
     """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
     `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
@@ -2727,6 +2777,7 @@ Node = (
     | LookupDataTableNode
     | SortDataTableNode
     | FilterDataTableNode
+    | JoinDataTablesNode
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode

@@ -123,6 +123,7 @@ from ..uipath_dsl.types import (
     LookupDataTableNode,
     SortDataTableNode,
     FilterDataTableNode,
+    JoinDataTablesNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -712,6 +713,8 @@ def _generate_node(
         return _generate_sort_data_table(node, indent)
     if isinstance(node, FilterDataTableNode):
         return _generate_filter_data_table(node, indent)
+    if isinstance(node, JoinDataTablesNode):
+        return _generate_join_data_tables(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
@@ -2260,6 +2263,126 @@ def _generate_filter_data_table_body(node: FilterDataTableNode, indent: int) -> 
         cond_expr = f"not ({cond_expr})"
     return [
         f"{prefix}{output_data_table} = [_frow for _frow in {data_table} "
+        f"if {cond_expr}]"
+    ]
+
+
+def _dedupe_join_columns(cols1: list[str], cols2: list[str]) -> list[str]:
+    """知見208: `JoinDataTables`の出力列重複名解決規則(公式ドキュメント
+    `docs.uipath.com/activities/other/latest/workflow/join-data-tables`
+    で確認)——`DataTable2`側の列が`DataTable1`(または既にリネーム済み
+    の他の`DataTable2`列)と同名の場合、`_1`→`_2`→...という未使用の
+    連番サフィックスを付与する。`cols1`/`cols2`はコード生成時に`ScopeInfo`
+    から静的に分かっているため、この解決自体もコード生成時にPythonで
+    計算し、結果の列名リストを生成コードへリテラルとして埋め込む
+    (実行時の解決コードは不要)。"""
+    used = set(cols1)
+    result: list[str] = []
+    for col in cols2:
+        name = col
+        n = 1
+        while name in used:
+            name = f"{col}_{n}"
+            n += 1
+        used.add(name)
+        result.append(name)
+    return result
+
+
+def _generate_join_data_tables(node: JoinDataTablesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_join_data_tables_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_join_data_tables_body(node: JoinDataTablesNode, indent: int) -> list[str]:
+    """知見208: `JoinType="Inner"`(実機3件全てで確認、`"Left"`/`"Full"`
+    は公式ドキュメントに記載はあるが実機未確認のため未対応)+
+    `Operator="EQ"`(実機確認済みの唯一の値)のみに対応する。知見206/207
+    と同じ`ScopeInfo.data_table_columns`で`DataTable1`/`DataTable2`両方が
+    dict行と確認できる場合に限る。"""
+    prefix = INDENT * indent
+    if (
+        node.data_table1 is None
+        or node.data_table2 is None
+        or node.output_data_table is None
+    ):
+        return [
+            f"{prefix}# TODO: JoinDataTables with missing DataTable1/"
+            "DataTable2/OutputDataTable"
+        ]
+    if node.join_type != "Inner":
+        return [
+            f"{prefix}# TODO: JoinDataTables with JoinType "
+            f"{node.join_type!r} — only 'Inner' confirmed in real "
+            "samples, refusing to guess"
+        ]
+    if not node.arguments:
+        return [f"{prefix}# TODO: JoinDataTables with no Arguments captured"]
+    if not isinstance(node.data_table1, VbExpr) or not isinstance(
+        node.data_table2, VbExpr
+    ):
+        return [
+            f"{prefix}# TODO: JoinDataTables with non-identifier "
+            "DataTable1/DataTable2 — row representation cannot be "
+            "confirmed, refusing to guess"
+        ]
+    scope = get_active_scope()
+    cols1 = (
+        scope.data_table_columns.get(node.data_table1.text.lower()) if scope else None
+    )
+    cols2 = (
+        scope.data_table_columns.get(node.data_table2.text.lower()) if scope else None
+    )
+    if not cols1 or not cols2:
+        return [
+            f"{prefix}# TODO: JoinDataTables — DataTable1/DataTable2's "
+            "row representation (dict vs list) could not be confirmed "
+            "via BuildDataTable with a parsed column schema, refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    conditions: list[str] = []
+    for arg in node.arguments:
+        if arg.boolean_operator != "And":
+            return [
+                f"{prefix}# TODO: JoinDataTables with BooleanOperator "
+                f"{arg.boolean_operator!r} — only 'And' confirmed, "
+                "refusing to guess"
+            ]
+        if arg.operator != "EQ":
+            return [
+                f"{prefix}# TODO: JoinDataTables with Operator "
+                f"{arg.operator!r} — only 'EQ' confirmed in real "
+                "samples, refusing to guess"
+            ]
+        if arg.column1 is None or arg.column2 is None:
+            return [
+                f"{prefix}# TODO: JoinDataTables with missing Column1/Column2"
+            ]
+        if arg.column1_type != "x:String" or arg.column2_type != "x:String":
+            return [
+                f"{prefix}# TODO: JoinDataTables with Column1/Column2 "
+                f"type other than x:String ({arg.column1_type!r}/"
+                f"{arg.column2_type!r}) — not confirmed in real "
+                "samples, refusing to guess"
+            ]
+        col1 = _render_value_or_todo(arg.column1, prefix, todo)
+        col2 = _render_value_or_todo(arg.column2, prefix, todo)
+        conditions.append(f"(_jrow1[{col1}] == _jrow2[{col2}])")
+    if todo:
+        return todo
+    data_table1 = _render_value_or_todo(node.data_table1, prefix, todo)
+    data_table2 = _render_value_or_todo(node.data_table2, prefix, todo)
+    output_data_table = _render_value_or_todo(node.output_data_table, prefix, todo)
+    if todo:
+        return todo
+    renamed2 = _dedupe_join_columns(cols1, cols2)
+    cond_expr = " and ".join(conditions)
+    return [
+        f"{prefix}{output_data_table} = [{{**_jrow1, **dict(zip("
+        f"{renamed2!r}, [_jrow2[_jc] for _jc in {cols2!r}]))}} "
+        f"for _jrow1 in {data_table1} for _jrow2 in {data_table2} "
         f"if {cond_expr}]"
     ]
 

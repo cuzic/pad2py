@@ -72,6 +72,8 @@ from dump_daemon.uipath_dsl import (
     LookupDataTableNode,
     FilterDataTableNode,
     FilterOperationArgument,
+    JoinDataTablesNode,
+    JoinOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -1430,6 +1432,49 @@ def test_filter_data_table_properties_with_select_columns_and_multiple_filters()
     assert node.filters[0].operand == VbExpr(text="60.0")
     assert node.filters[1].column == VbExpr(text='"Salary"')
     assert node.filters[1].operand == VbExpr(text="70000.0")
+
+
+def test_join_data_tables_properties_with_duplicate_key_column():
+    """知見208: 実機2件(`TharakaMadushankaWanshathilaka/UiPath-Demo-
+    Data-Tables`・`SuatOzcan/UiPathRoboticProcessAutomation`)で確認した
+    「蔵書(OverdueBooks)とユーザー(Users)を共通の'ID'列でInner結合する」
+    構成——`BooleanOperator="And"`+`Operator="EQ"`+`Column1`/`Column2`
+    両方`x:String`型。"""
+    xml = (
+        f"<ui:JoinDataTables {_SCG_XMLNS} "
+        'DataTable1="[OverdueBooks]" DataTable2="[Users]" '
+        'DisplayName="Join Data Tables" JoinType="Inner" '
+        'OutputDataTable="[BarrowedBooks]">'
+        "<ui:JoinDataTables.Arguments>"
+        '<scg:List x:TypeArguments="ui:JoinOperationArgument" Capacity="4">'
+        '<ui:JoinOperationArgument Operand="{x:Null}" BooleanOperator="And" '
+        'Operator="EQ">'
+        "<ui:JoinOperationArgument.Column1>"
+        '<InArgument x:TypeArguments="x:String">["ID"]</InArgument>'
+        "</ui:JoinOperationArgument.Column1>"
+        "<ui:JoinOperationArgument.Column2>"
+        '<InArgument x:TypeArguments="x:String">["ID"]</InArgument>'
+        "</ui:JoinOperationArgument.Column2>"
+        "</ui:JoinOperationArgument>"
+        "</scg:List>"
+        "</ui:JoinDataTables.Arguments>"
+        "</ui:JoinDataTables>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, JoinDataTablesNode)
+    assert node.data_table1 == VbExpr(text="OverdueBooks")
+    assert node.data_table2 == VbExpr(text="Users")
+    assert node.output_data_table == VbExpr(text="BarrowedBooks")
+    assert node.join_type == "Inner"
+    assert len(node.arguments) == 1
+    arg = node.arguments[0]
+    assert isinstance(arg, JoinOperationArgument)
+    assert arg.boolean_operator == "And"
+    assert arg.operator == "EQ"
+    assert arg.column1 == VbExpr(text='"ID"')
+    assert arg.column1_type == "x:String"
+    assert arg.column2 == VbExpr(text='"ID"')
+    assert arg.column2_type == "x:String"
 
 
 def test_load_image_properties():
