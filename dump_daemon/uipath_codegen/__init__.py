@@ -107,6 +107,9 @@ from ..uipath_dsl.types import (
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
+    MarkMailAsReadXNode,
+    DeleteMailXNode,
+    MoveMailXNode,
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
@@ -584,6 +587,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見165)も同様。
     if any(f"{_SET_TOGGLE_STATE_HELPER_NAME}(" in line for line in body):
         imports.append(_SET_TOGGLE_STATE_HELPER_SOURCE.rstrip("\n"))
+    # `_outlook_find_folder`(`MoveMailX`→`MailItem.Move(...)`のフォルダ
+    # 解決先、知見229)も同様。
+    if any(f"{_OUTLOOK_FIND_FOLDER_HELPER_NAME}(" in line for line in body):
+        imports.append(_OUTLOOK_FIND_FOLDER_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -857,6 +864,12 @@ def _generate_node(
         return _generate_send_outlook_mail(node, indent)
     if isinstance(node, GetOutlookMailMessagesNode):
         return _generate_get_outlook_mail_messages(node, indent)
+    if isinstance(node, MarkMailAsReadXNode):
+        return _generate_mark_mail_as_read_x(node, indent)
+    if isinstance(node, DeleteMailXNode):
+        return _generate_delete_mail_x(node, indent)
+    if isinstance(node, MoveMailXNode):
+        return _generate_move_mail_x(node, indent)
     if isinstance(node, CommentNode):
         return _generate_comment(node, indent)
     if isinstance(node, CommentOutNode):
@@ -6660,6 +6673,109 @@ def _generate_get_outlook_mail_messages_body(
     else:
         lines.append(f"{prefix}{target} = list(_items)")
     return lines
+
+
+_MARK_MAIL_AS_READ_X_VALUES = {"Read": "False", "Unread": "True"}
+
+
+def _generate_mark_mail_as_read_x(
+    node: MarkMailAsReadXNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_mark_mail_as_read_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_mark_mail_as_read_x_body(
+    node: MarkMailAsReadXNode, indent: int
+) -> list[str]:
+    """知見229: `MailMessage`は`GetOutlookMailMessages`(知見120)が
+    `win32com.client`経由で生成する生のOutlook COM`MailItem`
+    オブジェクトそのもの——新規の型付きオブジェクトモデルは不要で、
+    `MailItem.UnRead`ブールプロパティ(Microsoft Learn確認済み)へ
+    直接代入するだけで済む。"""
+    prefix = INDENT * indent
+    if node.mail_message is None or node.mark_as is None:
+        return [
+            f"{prefix}# TODO: MarkMailAsReadX with missing MailMessage/MarkAs"
+        ]
+    if node.mark_as not in _MARK_MAIL_AS_READ_X_VALUES:
+        return [
+            f"{prefix}# TODO: MarkMailAsReadX with unrecognized MarkAs "
+            f"({node.mark_as!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    mail_message = _render_value_or_todo(node.mail_message, prefix, todo)
+    if todo:
+        return todo
+    unread = _MARK_MAIL_AS_READ_X_VALUES[node.mark_as]
+    return [f"{prefix}{mail_message}.UnRead = {unread}"]
+
+
+def _generate_delete_mail_x(node: DeleteMailXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_delete_mail_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_delete_mail_x_body(node: DeleteMailXNode, indent: int) -> list[str]:
+    """知見229: `MailItem.Delete()`(Microsoft Learn確認済み)に対応する。"""
+    prefix = INDENT * indent
+    if node.mail_message is None:
+        return [f"{prefix}# TODO: DeleteMailX with missing MailMessage"]
+    todo: list[str] = []
+    mail_message = _render_value_or_todo(node.mail_message, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{mail_message}.Delete()"]
+
+
+_OUTLOOK_FIND_FOLDER_HELPER_NAME = "_outlook_find_folder"
+_OUTLOOK_FIND_FOLDER_HELPER_SOURCE = '''\
+def _outlook_find_folder(root, name):
+    for f in root.Folders:
+        if f.Name == name:
+            return f
+    for f in root.Folders:
+        found = _outlook_find_folder(f, name)
+        if found is not None:
+            return found
+    return None
+'''
+
+
+def _generate_move_mail_x(node: MoveMailXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_move_mail_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_move_mail_x_body(node: MoveMailXNode, indent: int) -> list[str]:
+    """知見229: `MailFolder`の実際の解決アルゴリズムは公式ドキュメント
+    に明記が無い——実機の実例が常にInboxと同階層のトップレベル
+    フォルダだったことから、デフォルトストアのルート(`GetDefault
+    Folder(6).Parent`、`GetOutlookMailMessages`知見120のInbox取得と
+    同じ経路)を起点に`_outlook_find_folder`で再帰探索する。見つから
+    ない場合は`None`を返し、`MailItem.Move(None)`のCOMエラーに自然に
+    委ねる(フォールバック値を捏造しない既存方針、`TextToLeftRight`
+    等と同じ)。"""
+    prefix = INDENT * indent
+    if node.mail_message is None or node.mail_folder is None:
+        return [
+            f"{prefix}# TODO: MoveMailX with missing MailMessage/MailFolder"
+        ]
+    todo: list[str] = []
+    mail_message = _render_value_or_todo(node.mail_message, prefix, todo)
+    mail_folder = _render_value_or_todo(node.mail_folder, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_outlook = win32com.client.Dispatch('Outlook.Application')",
+        f"{prefix}_folder = {_OUTLOOK_FIND_FOLDER_HELPER_NAME}("
+        "_outlook.GetNamespace('MAPI').GetDefaultFolder(6).Parent, "
+        f"{VB_CSTR_HELPER_NAME}({mail_folder}))",
+        f"{prefix}{mail_message}.Move(_folder)",
+    ]
 
 
 def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:

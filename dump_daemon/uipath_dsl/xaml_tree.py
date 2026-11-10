@@ -68,6 +68,9 @@ from .types import (
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
+    MarkMailAsReadXNode,
+    DeleteMailXNode,
+    MoveMailXNode,
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
@@ -190,6 +193,15 @@ COMPRESSION_NS = (
 TEXT_MODIFICATIONS_NS = (
     "clr-namespace:UiPath.Core.Activities.TextModifications;"
     "assembly=UiPath.System.Activities"
+)
+# 知見229: `MarkMailAsReadX`/`DeleteMailX`/`MoveMailX`だけが使う、
+# `UiPath.Mail.Activities`パッケージ内の非`UI_NS`名前空間——`PDF_NS`/
+# `COMPRESSION_NS`/`TEXT_MODIFICATIONS_NS`と同じ理由(CLRネームスペース
+# 文字列そのものをXML名前空間URIとして使う形)で既存の
+# `(namespace, tag)`ディスパッチ機構のまま対応できる。
+MAIL_BUSINESS_NS = (
+    "clr-namespace:UiPath.Mail.Activities.Business;"
+    "assembly=UiPath.Mail.Activities"
 )
 
 
@@ -2297,6 +2309,33 @@ def _parse_get_outlook_mail_messages(elem: etree._Element) -> GetOutlookMailMess
     )
 
 
+def _parse_mark_mail_as_read_x(elem: etree._Element) -> MarkMailAsReadXNode:
+    return MarkMailAsReadXNode(
+        display_name=_attr(elem, "DisplayName"),
+        mail_message=_attr_expr(elem, "MailMessage")
+        or _in_argument_property_expr(elem, "MailMessage"),
+        mark_as=_attr(elem, "MarkAs"),
+    )
+
+
+def _parse_delete_mail_x(elem: etree._Element) -> DeleteMailXNode:
+    return DeleteMailXNode(
+        display_name=_attr(elem, "DisplayName"),
+        mail_message=_attr_expr(elem, "MailMessage")
+        or _in_argument_property_expr(elem, "MailMessage"),
+    )
+
+
+def _parse_move_mail_x(elem: etree._Element) -> MoveMailXNode:
+    return MoveMailXNode(
+        display_name=_attr(elem, "DisplayName"),
+        mail_message=_attr_expr(elem, "MailMessage")
+        or _in_argument_property_expr(elem, "MailMessage"),
+        mail_folder=_attr_expr(elem, "MailFolder")
+        or _in_argument_property_expr(elem, "MailFolder"),
+    )
+
+
 def _parse_send_mail(elem: etree._Element) -> SendMailNode:
     """知見116: `ui:SendMail`(DisplayName「Send SMTP Mail Message」/
     「Send SMTP Email」)。`Files`のpopulated判定は`_parse_send_outlook_mail`
@@ -2706,6 +2745,9 @@ _DISPATCH = {
     (UI_NS, "WordReplaceText"): _parse_word_replace_text,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
+    (MAIL_BUSINESS_NS, "MarkMailAsReadX"): _parse_mark_mail_as_read_x,
+    (MAIL_BUSINESS_NS, "DeleteMailX"): _parse_delete_mail_x,
+    (MAIL_BUSINESS_NS, "MoveMailX"): _parse_move_mail_x,
     (UI_NS, "SendMail"): _parse_send_mail,
     (UI_NS, "HttpClient"): _parse_http_client,
 }

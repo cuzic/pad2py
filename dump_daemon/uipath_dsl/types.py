@@ -3224,6 +3224,66 @@ class GetOutlookMailMessagesNode:
 
 
 @dataclass
+class MarkMailAsReadXNode:
+    """`<umab:MarkMailAsReadX MailMessage="..." MarkAs="..." />`(知見229、
+    `umab:` = `clr-namespace:UiPath.Mail.Activities.Business;
+    assembly=UiPath.Mail.Activities`——タグ名が`ui:`ではない点に注意。
+    タグ名限定GitHub検索で32件ヒット。ground-truth・実機複数件
+    (`MaxineXiong/Gmail-Automation-RPA`で`MarkAs="Read"`/`"Unread"`の
+    両方を確認)いずれも`MailMessage`+`MarkAs`の2属性のみ。
+
+    `MailMessage`は既実装の`GetOutlookMailMessages`(知見120、
+    `win32com.client`経由のOutlook COM `MailItem`オブジェクトを直接
+    `list()`で保持)が生成する変数そのもの——新規の型付きオブジェクト
+    モデルは不要で、Outlook COM API自身の`MailItem.UnRead`ブール
+    プロパティ(Microsoft Learn `Outlook.MailItem.UnRead`で確認済み)
+    へ直接代入するだけで済む。`MarkAs="Read"`→`UnRead = False`、
+    `"Unread"`→`UnRead = True`。"""
+
+    display_name: str | None = None
+    mail_message: Expr = None
+    mark_as: str | None = None
+
+
+@dataclass
+class DeleteMailXNode:
+    """`<umab:DeleteMailX MailMessage="..." />`(知見229、
+    `MarkMailAsReadX`と同じ`umab:`名前空間、タグ名限定GitHub検索で
+    31件ヒット)。ground-truth・実機複数件(`Apress/Robotic-Process-
+    Automation-Using-UiPath-StudioX`等)いずれも`MailMessage`のみの
+    単一属性。Outlook COM API自身の`MailItem.Delete()`メソッド
+    (Microsoft Learn確認済み)に対応する。"""
+
+    display_name: str | None = None
+    mail_message: Expr = None
+
+
+@dataclass
+class MoveMailXNode:
+    """`<umab:MoveMailX MailFolder="..." MailMessage="..." />`(知見229、
+    `MarkMailAsReadX`/`DeleteMailX`と同じ`umab:`名前空間、タグ名限定
+    GitHub検索で19件ヒット)。ground-truth・実機(`MaxineXiong/
+    Gmail-Automation-RPA`、`MailFolder="UiPath Test"`——Inboxと同じ
+    階層に並ぶトップレベルフォルダの表示名そのもの)いずれも
+    `MailFolder`+`MailMessage`の2属性のみ。
+
+    公式ドキュメント(WebSearch経由確認)では`MailFolder`の実際の
+    解決アルゴリズム(絶対パス?現在のフォルダからの相対?)は明記
+    されておらず、Studio側のフォルダピッカーUIが選んだ表示名の文字列
+    としか説明が無い——実機の実例が常にInboxと同階層のトップレベル
+    フォルダだったことから、デフォルトストアのルート(`GetDefault
+    Folder(6).Parent`、`GetOutlookMailMessages`知見120のInbox取得と
+    同じ経路から辿る)を起点に再帰探索する方針とした(`_outlook_
+    find_folder`ヘルパー、見つからない場合は`None`を返し`.Move(None)`
+    のCOMエラーに自然に委ねる——フォールバック値を捏造しない既存
+    方針、`TextToLeftRight`等と同じ)。"""
+
+    display_name: str | None = None
+    mail_message: Expr = None
+    mail_folder: Expr = None
+
+
+@dataclass
 class SendMailNode:
     """`<ui:SendMail>`(知見116、DisplayNameは「Send SMTP Mail Message」
     (1.24未満)/「Send SMTP Email」(1.24以降)——`SendOutlookMail`同様、
@@ -3516,6 +3576,9 @@ Node = (
     | ExcelAppendRangeNode
     | SendOutlookMailNode
     | GetOutlookMailMessagesNode
+    | MarkMailAsReadXNode
+    | DeleteMailXNode
+    | MoveMailXNode
     | SendMailNode
     | HttpClientNode
     | UnknownActivityNode

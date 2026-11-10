@@ -10760,6 +10760,50 @@ DeserializeJson`(1230件ヒットと破格だが、実機では`.SelectToken(...
 オブジェクト」懸念があり、スコープを絞った設計判断が先に必要)も
 発見済み——`umab:`メールトリオを次の候補として記録する。
 
+## 229. `umab:MarkMailAsReadX`・`umab:DeleteMailX`・`umab:MoveMailX`を新規実装——GetOutlookMailMessagesが生成する生のOutlook COM MailItemオブジェクトへの直接メソッド/プロパティ操作、新規の型付きオブジェクトモデルは一切不要だった
+
+知見228で発見した`umab:`(`UiPath.Mail.Activities.Business`)
+名前空間のメールトリオに着手した。タグ名限定検索で
+`MarkMailAsReadX`32件・`DeleteMailX`31件・`MoveMailX`19件ヒット。
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`MaxineXiong/Gmail-Automation-RPA`・`Apress/Robotic-Process-
+Automation-Using-UiPath-StudioX`)いずれも`MailMessage`(+
+`MarkMailAsReadX`は`MarkAs`∈{"Read","Unread"}、`MoveMailX`は
+`MailFolder`)のみの単純な属性構成。
+
+実装前に`GetOutlookMailMessages`(知見120)の既存実装を確認した
+ところ、`MailMessage`変数は**生のOutlook COM`MailItem`オブジェクト
+そのもの**(`win32com.client`経由で`list(_items)`した結果の各要素)
+だと判明——事前に懸念していた「新規の型付きオブジェクトモデルが
+必要かもしれない」という問題は実際には存在せず、Outlook COM API
+自身のプロパティ/メソッドを直接呼ぶだけで済んだ(Microsoft Learnで
+確認済み、`MailItem.UnRead`ブールプロパティ・`MailItem.Delete()`
+メソッド・`MailItem.Move(folder)`メソッド)。`MarkAs="Read"`→
+`UnRead = False`、`"Unread"`→`UnRead = True`。
+
+`MoveMailX`の`MailFolder`解決アルゴリズムは公式ドキュメントに
+明記が無く(「Move to」ピッカーUIで選んだ表示名としか説明が無い)、
+実機の実例が常にInboxと同階層のトップレベルフォルダだったことから、
+デフォルトストアのルート(`GetDefaultFolder(6).Parent`、
+`GetOutlookMailMessages`知見120のInbox取得と同じ経路)を起点に
+再帰探索するヘルパー`_outlook_find_folder`を新規実装した——既存の
+`_vb_cstr`/`_pywinauto_set_toggle_state`(知見165)と同じ「使用時のみ
+注入される複数行ヘルパー関数」パターンを再利用。見つからない場合は
+`None`を返し、`MailItem.Move(None)`のCOMエラーに自然に委ねる
+(フォールバック値を捏造しない既存方針)。
+
+`pywin32`がこのLinuxサンドボックスに無いため(`SendOutlookMail`/
+`GetOutlookMailMessages`の既存テストと同じ制約)、`MailItem`操作
+自体の`exec()`確認はできなかった——生成コードの文字列内容
+(`_compiles()`での構文確認込み)で代用した。ただし`_outlook_
+find_folder`ヘルパー自体は`win32com`に依存しない純粋なPython関数
+のため、生成されたヘルパー関数定義のソーステキストを直接`exec()`
+してモックフォルダ階層で探索ロジック(直接の子優先・再帰探索・
+見つからない場合`None`)を実際に確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、
+UiPath関連テスト全1040件通過、リポジトリ全体で全2129件通過
+(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

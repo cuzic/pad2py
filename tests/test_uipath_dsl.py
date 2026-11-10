@@ -56,6 +56,9 @@ from dump_daemon.uipath_dsl import (
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
+    MarkMailAsReadXNode,
+    DeleteMailXNode,
+    MoveMailXNode,
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
@@ -2532,6 +2535,59 @@ def test_get_outlook_mail_messages_properties():
     assert node.mark_as_read == "False"
     assert node.only_unread_messages == "False"
     assert node.top == Literal(value="30")
+
+
+_MAIL_BUSINESS_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:umab="clr-namespace:UiPath.Mail.Activities.Business;'
+    'assembly=UiPath.Mail.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_mark_mail_as_read_x_properties():
+    """知見229: `umab:MarkMailAsReadX`(`GetOutlookMailMessages`が生成
+    する`MailMessage`変数に対する兄弟操作、タグ名限定GitHub検索で
+    32件ヒット)。実機`MaxineXiong/Gmail-Automation-RPA`で確認した
+    `MarkAs="Read"`/`"Unread"`の両方。"""
+    xml = (
+        f"<umab:MarkMailAsReadX {_MAIL_BUSINESS_XMLNS} "
+        'DisplayName="Mark the current email as READ" '
+        'MailMessage="[CurrentMail]" MarkAs="Read" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MarkMailAsReadXNode)
+    assert node.mail_message == VbExpr(text="CurrentMail")
+    assert node.mark_as == "Read"
+
+
+def test_delete_mail_x_properties():
+    """知見229: `umab:DeleteMailX`(タグ名限定GitHub検索で31件ヒット)。
+    実機`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`で
+    確認した`MailMessage`のみの単一属性。"""
+    xml = (
+        f"<umab:DeleteMailX {_MAIL_BUSINESS_XMLNS} "
+        'DisplayName="Delete current email" MailMessage="[CurrentMail]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeleteMailXNode)
+    assert node.mail_message == VbExpr(text="CurrentMail")
+
+
+def test_move_mail_x_properties():
+    """知見229: `umab:MoveMailX`(タグ名限定GitHub検索で19件ヒット)。
+    実機`MaxineXiong/Gmail-Automation-RPA`で確認した
+    `MailFolder="UiPath Test"`——Inboxと同じ階層に並ぶトップレベル
+    フォルダの表示名そのもの。"""
+    xml = (
+        f"<umab:MoveMailX {_MAIL_BUSINESS_XMLNS} "
+        'DisplayName="Move the current email" MailFolder="UiPath Test" '
+        'MailMessage="[CurrentMail]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MoveMailXNode)
+    assert node.mail_message == VbExpr(text="CurrentMail")
+    assert node.mail_folder == Literal(value="UiPath Test")
 
 
 def test_invoke_workflow_file(main_wf):

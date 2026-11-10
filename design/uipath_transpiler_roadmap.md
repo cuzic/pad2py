@@ -3101,3 +3101,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `umab:`(`UiPath.Mail.Activities.Business`)名前空間の
      `MarkMailAsReadX`/`DeleteMailX`/`MoveMailX`トリオを次の候補と
      して記録。
+
+187. **(完了、2026-11-10)** `umab:MarkMailAsReadX`・`umab:DeleteMailX`・
+     `umab:MoveMailX`を新規実装(知見229)——タグ名限定検索で32件/
+     31件/19件ヒット。`MailMessage`は既実装の`GetOutlookMailMessages`
+     (知見120)が`win32com.client`経由で生成する生のOutlook COM
+     `MailItem`オブジェクトそのもの——新規の型付きオブジェクトモデル
+     は不要、Outlook COM API自身の`MailItem.UnRead`/`.Delete()`/
+     `.Move(folder)`(Microsoft Learn確認済み)へ直接対応するだけで
+     済んだ。`MoveMailX`の`MailFolder`解決は公式ドキュメントに
+     明記が無いため、デフォルトストアのルート(`GetDefaultFolder
+     (6).Parent`)を起点に再帰探索する新規ヘルパー`_outlook_
+     find_folder`(`_vb_cstr`等と同じ「使用時のみ注入される複数行
+     ヘルパー関数」パターン)を実装、見つからない場合は`None`を返し
+     `.Move(None)`のCOMエラーに自然に委ねる。`pywin32`非搭載のため
+     `MailItem`操作自体の`exec()`確認はできなかったが、`win32com`
+     非依存の`_outlook_find_folder`ヘルパー自体はソーステキストを
+     直接`exec()`してモックフォルダ階層で探索ロジックを確認した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`3件・`tests/
+     test_uipath_codegen.py`6件)、UiPath関連テスト全1040件通過、
+     リポジトリ全体で全2129件通過。

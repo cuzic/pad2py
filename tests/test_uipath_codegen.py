@@ -82,6 +82,9 @@ from dump_daemon.uipath_dsl import (
     GetAttributeNode,
     GetOcrTextNode,
     GetOutlookMailMessagesNode,
+    MarkMailAsReadXNode,
+    DeleteMailXNode,
+    MoveMailXNode,
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
@@ -8073,6 +8076,124 @@ def test_get_outlook_mail_messages_with_timeout_ms_is_todo_not_guessed():
     wf = _wrap([_get_outlook_mail_messages_node(timeout_ms=Literal(value="5000"))])
     code = generate_python(wf)
     assert "# TODO: Get Outlook Mail Messages with TimeoutMS set" in code
+    _compiles(code)
+
+
+def test_mark_mail_as_read_x_sets_unread_property():
+    """知見229: `umab:MarkMailAsReadX`。`MailMessage`は`Get
+    OutlookMailMessages`が生成する生のOutlook COM`MailItem`相当——
+    `pywin32`はこのLinuxサンドボックスに無いため(`SendOutlookMail`/
+    `GetOutlookMailMessages`の既存テストと同じ理由)、`exec()`はせず
+    生成コードの文字列を直接確認する。"""
+    wf = _wrap(
+        [MarkMailAsReadXNode(mail_message=VbExpr(text="CurrentMail"), mark_as="Read")]
+    )
+    code = generate_python(wf)
+    assert "CurrentMail.UnRead = False" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            MarkMailAsReadXNode(
+                mail_message=VbExpr(text="CurrentMail"), mark_as="Unread"
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "CurrentMail.UnRead = True" in code2
+    _compiles(code2)
+
+
+def test_mark_mail_as_read_x_declines_unrecognized_mark_as():
+    wf = _wrap(
+        [
+            MarkMailAsReadXNode(
+                mail_message=VbExpr(text="m"), mark_as="Flagged"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: MarkMailAsReadX with unrecognized MarkAs ('Flagged')" in code
+    _compiles(code)
+
+
+def test_delete_mail_x_calls_delete():
+    wf = _wrap([DeleteMailXNode(mail_message=VbExpr(text="CurrentMail"))])
+    code = generate_python(wf)
+    assert "CurrentMail.Delete()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_move_mail_x_finds_folder_and_moves():
+    """知見229: `_outlook_find_folder`ヘルパーが、デフォルトストアの
+    ルート(`GetDefaultFolder(6).Parent`)配下を再帰探索して
+    `MailFolder`と同名のフォルダを見つけ、`MailItem.Move(...)`へ渡す
+    生成コードを確認する(`pywin32`非搭載のため文字列確認のみ、
+    `SendOutlookMail`等の既存テストと同じ理由)。"""
+    wf = _wrap(
+        [
+            MoveMailXNode(
+                mail_message=VbExpr(text="CurrentMail"),
+                mail_folder=Literal(value="UiPath Test"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import win32com.client" in code
+    assert "_outlook = win32com.client.Dispatch('Outlook.Application')" in code
+    assert (
+        "_folder = _outlook_find_folder("
+        "_outlook.GetNamespace('MAPI').GetDefaultFolder(6).Parent, "
+        "_vb_cstr('UiPath Test'))" in code
+    )
+    assert "CurrentMail.Move(_folder)" in code
+    assert "def _outlook_find_folder(root, name):" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_outlook_find_folder_helper_recurses_and_returns_none_when_missing():
+    """知見229: `_outlook_find_folder`ヘルパー自体の探索ロジック
+    (直接の子から優先的に探し、無ければ再帰的に子の配下を探す、
+    見つからなければ`None`)を、生成されたヘルパー関数定義のソース
+    テキストをそのまま`exec()`してモックフォルダ階層で確認する——
+    `win32com`自体には依存しない純粋なPython関数のため実行できる。"""
+    wf = _wrap(
+        [
+            MoveMailXNode(
+                mail_message=VbExpr(text="m"),
+                mail_folder=Literal(value="UiPath Test"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    start = code.index("def _outlook_find_folder(root, name):")
+    end = code.index("\n\n", start)
+    helper_source = code[start:end]
+    namespace: dict[str, object] = {}
+    exec(helper_source, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    find_folder = namespace["_outlook_find_folder"]
+
+    class _FakeFolder:
+        def __init__(self, name, children=None):
+            self.Name = name
+            self.Folders = children or []
+
+    root = _FakeFolder(
+        "Mailbox",
+        [_FakeFolder("Inbox", [_FakeFolder("Archive")]), _FakeFolder("UiPath Test")],
+    )
+    assert find_folder(root, "UiPath Test").Name == "UiPath Test"
+    assert find_folder(root, "Archive").Name == "Archive"
+    assert find_folder(root, "Nonexistent") is None
+
+
+def test_move_mail_x_with_missing_properties_is_todo():
+    wf = _wrap([MoveMailXNode(mail_message=VbExpr(text="m"), mail_folder=None)])
+    code = generate_python(wf)
+    assert "# TODO: MoveMailX with missing MailMessage/MailFolder" in code
     _compiles(code)
 
 
