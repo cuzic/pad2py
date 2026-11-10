@@ -46,6 +46,7 @@ from dump_daemon.uipath_dsl import (
     GetUsernamePasswordXNode,
     GetEnvironmentFolderNode,
     GetProcessesNode,
+    ReadRangeNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1114,6 +1115,54 @@ def test_excel_append_range_properties():
     assert node.sheet_name == "Sheet1"
     assert node.data_table == VbExpr(text="checklogTable")
     assert node.display_name == "Append Range"
+
+
+def test_read_range_properties():
+    """知見256: `ui:ReadRange`(`ExcelApplicationScope`配下限定の
+    `ExcelReadRangeNode`とは別の、`WorkbookPath`を自分自身の属性として
+    持つスコープ無し"Workbook"系活動ファミリー、タグ名限定GitHub検索で
+    3904件ヒット——本調査で見つかった単独最高ヒット数)。実機
+    `PacktPublishing/Robotic-Process-Automation-Projects`の
+    `Chapter 02/ReadExcelRequest.xaml`で確認した属性構成——
+    `WorkbookPath`は動的VB式、`Range`はネストした空文字列`Literal`形。"""
+    xml = (
+        f"<ui:ReadRange {_UI_XMLNS} "
+        'AddHeaders="False" DataTable="[dtRequest]" DisplayName="Read Range" '
+        'SheetName="Sheet1" WorkbookPath="[RequestFilePath]">'
+        "<ui:ReadRange.Range>"
+        '<InArgument x:TypeArguments="x:String">'
+        '<Literal x:TypeArguments="x:String" Value="" />'
+        "</InArgument>"
+        "</ui:ReadRange.Range>"
+        "</ui:ReadRange>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadRangeNode)
+    assert node.workbook_path == VbExpr(text="RequestFilePath")
+    assert node.sheet_name == Literal(value="Sheet1")
+    assert node.add_headers == "False"
+    assert node.range == Literal(value="")
+    assert node.data_table == VbExpr(text="dtRequest")
+    assert node.display_name == "Read Range"
+
+
+def test_read_range_with_dynamic_sheet_name_and_null_range():
+    """知見256: `mihhdu/Enhanced-REFramework`の実機XAMLで確認した
+    2つ目の構成——`SheetName`が動的VB式(`"[sheet]"`)、`Range`が
+    属性直書きの`{x:Null}`形(ネストしたプロパティ要素ではない)。"""
+    xml = (
+        f"<ui:ReadRange {_UI_XMLNS} "
+        'Range="{x:Null}" AddHeaders="True" DataTable="[configTable]" '
+        'DisplayName="Read range settings" SheetName="[sheet]" '
+        'WorkbookPath="[in_configFile]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadRangeNode)
+    assert node.workbook_path == VbExpr(text="in_configFile")
+    assert node.sheet_name == VbExpr(text="sheet")
+    assert node.add_headers == "True"
+    assert node.range is None
+    assert node.data_table == VbExpr(text="configTable")
 
 
 def test_excel_write_cell_with_dynamic_cell_expression():

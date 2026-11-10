@@ -3657,3 +3657,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      既存1件を更新)、リポジトリ全体で全2296件通過。残る10回目
      発見パスの候補(`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の
      候補として記録。
+
+214. **(完了、2026-11-10)** `ui:ReadRange`を新規実装(知見256)
+     ——ユーザー要望(Excel/Word/マウスキーボード操作の網羅性向上)で
+     専用の調査パスを実施し発見。タグ名限定検索で3904件ヒット、
+     本調査史上(知見1〜255)最高ヒット数。`ExcelApplicationScope`
+     配下限定の既存`ExcelReadRangeNode`とは別の、`WorkbookPath`を
+     自分自身の属性として持つスコープ無し単独動作の"Workbook"系
+     活動ファミリーの最初の1件。既存の`openpyxl`基盤を再利用し、
+     自分自身で`load_workbook()`/`close()`する。`SheetName`は
+     既存のスコープ版の`str`限定制約と違い最初から`Expr`型
+     (動的VB式を実機確認済み)として対応。実際の`openpyxl`で
+     `exec()`経由の動作確認済み。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`7件)、
+     リポジトリ全体で全2324件通過(本活動の9件分の純増——このティック
+     の開始時点で別セッションが並行してOutlookモジュールを独立に
+     コミット済み、明示的パスリスト指定で衝突無く共存)。調査パスで
+     Word classic(`WordAppendText`等)・マウスキーボード系
+     (`ui:SetFocus`等)の候補も判明済み、次のティックで継続実装。

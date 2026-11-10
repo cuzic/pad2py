@@ -110,6 +110,7 @@ from ..uipath_dsl.types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ReadRangeNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1030,6 +1031,8 @@ def _generate_node(
         return _generate_open_browser(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ExcelApplicationScopeNode):
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, ReadRangeNode):
+        return _generate_read_range(node, indent)
     if isinstance(node, WordApplicationScopeNode):
         return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendMailNode):
@@ -7981,6 +7984,61 @@ def _generate_excel_append_range_in_scope(
         f"{prefix}for _row in _rows:",
         f"{inner}_ws.append(list(_row.values()))",
     ]
+
+
+# 知見256: `ui:ReadRange`——`ExcelApplicationScope`/`ExcelReadRange`
+# (知見97/115)とは別の、スコープ無し単独動作の"Workbook"系活動ファミリー。
+# `ExcelApplicationScopeNode`が確立した`openpyxl`基盤をそのまま
+# 再利用するが、スコープを介さず自分自身で`load_workbook()`/`close()`を
+# 行う(読み取り専用のone-shot操作のため保存不要)。
+def _generate_read_range(node: ReadRangeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_range_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_range_body(node: ReadRangeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.workbook_path is None:
+        return [f"{prefix}# TODO: Read Range with no WorkbookPath captured"]
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Read Range with no output DataTable captured"]
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: Read Range with no SheetName captured"]
+    if node.range is not None and not (
+        isinstance(node.range, Literal) and node.range.value == ""
+    ):
+        return [
+            f"{prefix}# TODO: Read Range with non-empty/non-literal Range "
+            f"({node.range!r}) — only the whole-used-range default is "
+            "confirmed, refusing to guess"
+        ]
+    add_headers = node.add_headers if node.add_headers is not None else "True"
+    if add_headers not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Read Range with unrecognized AddHeaders "
+            f"({node.add_headers!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    workbook_path = _render_value_or_todo(node.workbook_path, prefix, todo)
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    target = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_wb = openpyxl.load_workbook({workbook_path})",
+        f"{prefix}_ws = _wb[{VB_CSTR_HELPER_NAME}({sheet_name})]",
+        f"{prefix}_rows = list(_ws.iter_rows(values_only=True))",
+    ]
+    if add_headers == "True":
+        lines.append(
+            f"{prefix}{target} = [dict(zip(_rows[0], _r)) for _r in _rows[1:]] "
+            "if _rows else []"
+        )
+    else:
+        lines.append(f"{prefix}{target} = [list(_r) for _r in _rows]")
+    lines.append(f"{prefix}_wb.close()")
+    return lines
 
 
 # 知見102: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/

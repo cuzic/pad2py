@@ -12160,6 +12160,66 @@ test_uipath_codegen.py`7件、既存1件を実際の挙動に合わせて更新)
 リポジトリ全体で全2296件通過(28件skip)。残る10回目発見パスの
 候補(`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録する。
 
+## 256. `ui:ReadRange`を新規実装——ユーザー要望(Excel/Word/マウスキーボード操作の網羅性向上)に応える調査パスで発見した本調査史上最高ヒット数(3904件)の活動、`ExcelApplicationScope`配下限定の既存`ExcelReadRangeNode`とは別の、スコープ無し単独動作の"Workbook"系活動ファミリーの最初の1件
+
+ユーザーから「Excel とか Word とかの自動操作とか、マウスキーボード
+自動操作とかで網羅性を上げてほしい」という明示的な方針転換の依頼を
+受け、10回目発見パスの残り候補(`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)
+より優先してExcel classic・Word classic・マウスキーボード系UI
+Automationの3系統を専用の調査エージェントで調査した(`uix:`
+UIAutomation Next・`ueab:`/`ue:` Modern Excel系は既存の見送り判断
+(知見230)どおり対象外)。
+
+調査結果、Excel classic系で既存の`ExcelApplicationScopeNode`配下限定
+活動(`ExcelReadRange`/`ExcelWriteRange`/`ExcelReadCell`/
+`ExcelWriteCell`/`ExcelAppendRange`、いずれも知見97/115/117/119)とは
+別の、独立した"Workbook"系活動ファミリー(`WorkbookPath`を自分自身の
+属性として持ち、`ExcelApplicationScope`/ライブExcelプロセス無しで
+単独動作する——`ReadRange`/`WriteRange`/`ReadCell`/`WriteCell`等の
+兄弟活動群)の存在が判明した。`ui:ReadRange`はその筆頭格で、
+タグ名限定GitHub検索で3904件ヒット——本調査史上(知見1〜255)で
+見つかった単独最高ヒット数。
+
+実機2件(`PacktPublishing/Robotic-Process-Automation-Projects`の
+`Chapter 02/ReadExcelRequest.xaml`、`mihhdu/Enhanced-REFramework`の
+`Framework/InitAllSettings.xaml`)で独立に確認した構成——
+`WorkbookPath`(いずれも動的VB式、`[RequestFilePath]`/
+`[in_configFile]`)、`SheetName`(1件目`"Sheet1"`という静的リテラル、
+2件目`"[sheet]"`という動的VB式——`ExcelReadRangeNode.sheet_name`の
+既存の`str`限定制約(VbExpr未対応)とは違い、本活動は最初から
+`Expr`型として実装した)、`DataTable`(出力)、`AddHeaders`
+(`"False"`/`"True"`両方確認済み)、`Range`(1件目はネストした
+`<ui:ReadRange.Range><InArgument><Literal Value="" />`形、2件目は
+属性直書き`{x:Null}`形——いずれも空文字列相当で`ExcelReadRangeNode`
+と同じ「シート全体の使用範囲」を意味する既存の確認済み判断を
+継承)。
+
+`ExcelApplicationScopeNode`(知見97)が確立した`openpyxl`
+(ファイルベース、Excelプロセス不要)基盤をそのまま再利用するが、
+スコープ無しの単独活動のため自分自身で`openpyxl.load_workbook()`を
+呼び、読み取り後`.close()`する(スコープ版と違い保存不要——読み取り
+専用のone-shot操作)。`SheetName`が動的式の場合は`_vb_cstr()`経由で
+辞書キーとして解決する(スコープ版の`node.sheet_name!r`という
+リテラル限定の実装とは異なる、新しい対応範囲)。
+
+実際の`openpyxl`で生成したテスト用`.xlsx`ファイルに対して`exec()`
+経由で動作確認した——`AddHeaders="True"`時の辞書行リスト化、
+`AddHeaders="False"`時のリストのリスト化、動的`SheetName`経由の
+シート選択のいずれも実際に正しい値を返すことを確認した。
+
+調査エージェントは同じ調査パスでWord classic系(`WordAppendText`・
+`WordSaveAs`等)・マウスキーボード系(`ui:SetFocus`等)の候補も
+ランキング形式で報告済み——次のティック以降で実装を継続する。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`7件)。このティックの開始時点で別セッションが
+並行して`dump_daemon/pad_codegen`側のOutlookモジュール(知見208、
+コミット`cfa5bf9`)を同じ共有git作業ツリー上で独立にコミット済み
+——明示的なパスリスト指定(`git add`/`git commit -- <files>`)で
+自分の変更分のみをコミットし、相手のコミットと衝突しないことを確認
+した。両方を含むリポジトリ全体で全2324件通過(28件skip、本活動の
+9件分の純増)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

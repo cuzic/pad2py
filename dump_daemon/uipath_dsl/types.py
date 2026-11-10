@@ -4226,6 +4226,45 @@ class ExcelAppendRangeNode:
 
 
 @dataclass
+class ReadRangeNode:
+    """`<ui:ReadRange WorkbookPath="..." SheetName="..." DataTable="..."
+    AddHeaders="..." Range="..." />`(知見256、Excel/Word/マウスキーボード
+    網羅性向上の調査パスで発見、タグ名限定GitHub検索で3904件ヒット——
+    本調査で見つかった単独最高ヒット数)。`ExcelReadRangeNode`(知見115)
+    と同じ「シート全体の使用範囲を読む」活動だが、別の独立した
+    "Workbook"系活動ファミリー(`ExcelApplicationScope`配下限定ではなく、
+    `WorkbookPath`を自分自身の属性として持ち、ライブExcelプロセス/スコープ
+    無しで単独動作する)——`ReadCell`/`WriteRange`/`WriteCell`等、同じ
+    `WorkbookPath`単独指定パターンの兄弟活動が多数存在する。
+
+    実機2件(`PacktPublishing/Robotic-Process-Automation-Projects`の
+    `Chapter 02/ReadExcelRequest.xaml`、`mihhdu/Enhanced-REFramework`の
+    `Framework/InitAllSettings.xaml`)で確認した構成——`WorkbookPath`
+    (`[RequestFilePath]`/`[in_configFile]`、いずれも動的VB式)、
+    `SheetName`(`"Sheet1"`という静的リテラル、`"[sheet]"`という動的VB式の
+    両方を確認——`ExcelReadRangeNode.sheet_name`の既存の`str`限定制約
+    (VbExpr未対応)とは異なり、こちらは最初から動的式を実機確認済みのため
+    `Expr`型として対応する)、`DataTable`(出力)、`AddHeaders`
+    (`"False"`/`"True"`両方確認済み)、`Range`(属性`{x:Null}`または
+    ネストした`<ui:ReadRange.Range><InArgument><Literal Value="" />`
+    形——実機2件とも空文字列、`ExcelReadRangeNode`と同じ「シート全体の
+    使用範囲」を意味する既存の確認済み判断を継承)。
+
+    `ExcelApplicationScopeNode`(知見97)が既に確立した`openpyxl`
+    (ファイルベース、Excelプロセス不要)基盤を再利用するが、スコープ無しの
+    単独活動のため、自分自身で`openpyxl.load_workbook()`を呼んで読んだ
+    直後に`.close()`する(スコープ版と違い保存不要、読み取り専用の
+    one-shot操作)。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    range: Expr = None
+    add_headers: str | None = None
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendOutlookMailNode:
     """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
 
@@ -4770,6 +4809,7 @@ Node = (
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
+    | ReadRangeNode
     | SendOutlookMailNode
     | GetOutlookMailMessagesNode
     | MarkMailAsReadXNode

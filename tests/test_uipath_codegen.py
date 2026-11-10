@@ -70,6 +70,7 @@ from dump_daemon.uipath_dsl import (
     GetUsernamePasswordXNode,
     GetEnvironmentFolderNode,
     GetProcessesNode,
+    ReadRangeNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -11057,6 +11058,144 @@ def test_excel_append_range_with_no_sheet_name_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Excel Append Range with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_range_resolves_via_openpyxl_with_headers_exec(tmp_path):
+    """知見256: `ui:ReadRange`——`ExcelApplicationScope`配下限定の
+    `ExcelReadRangeNode`とは違い、自分自身の`WorkbookPath`で単独動作する
+    ことを実際の`openpyxl`で`exec()`経由で確認する。"""
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["name", "age"])
+    ws.append(["alice", 30])
+    path = str(tmp_path / "wb.xlsx")
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value=path),
+                sheet_name=Literal(value="Sheet1"),
+                range=Literal(value=""),
+                add_headers="True",
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert "import openpyxl" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return dt", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert ns["Test"]() == [{"name": "alice", "age": 30}]
+
+
+def test_read_range_without_headers_and_dynamic_sheet_name_exec(tmp_path):
+    """知見256: `SheetName`が動的VB式の場合でも`_vb_cstr()`経由で
+    シート選択できることを`exec()`経由で確認する。"""
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["name", "age"])
+    ws.append(["alice", 30])
+    path = str(tmp_path / "wb.xlsx")
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value=path),
+                sheet_name=VbExpr(text="sheetVar"),
+                add_headers="False",
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(sheetVar):")
+    ns: dict[str, object] = {}
+    exec(code2 + "\n    return dt", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert ns["Test"]("Sheet1") == [["name", "age"], ["alice", 30]]
+
+
+def test_read_range_with_no_workbook_path_is_todo():
+    wf = _wrap([ReadRangeNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Range with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_read_range_with_no_output_data_table_is_todo():
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                data_table=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Range with no output DataTable captured" in code
+    _compiles(code)
+
+
+def test_read_range_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=None,
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Range with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_range_with_populated_range_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                range=Literal(value="A1:C10"),
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Range with non-empty/non-literal Range" in code
+    _compiles(code)
+
+
+def test_read_range_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            ReadRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                range=Literal(value=""),
+                add_headers="True",
+                data_table=VbExpr(text="dt"),
+                display_name="Read Range",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Read Range" in code
     _compiles(code)
 
 
