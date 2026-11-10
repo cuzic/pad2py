@@ -191,6 +191,7 @@ from ..uipath_dsl.types import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    GetEnvironmentFolderNode,
     FindAndReplaceTextModificationNode,
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
@@ -828,6 +829,8 @@ def _generate_node(
         return _generate_get_environment_variable(node, indent)
     if isinstance(node, SetEnvironmentVariableNode):
         return _generate_set_environment_variable(node, indent)
+    if isinstance(node, GetEnvironmentFolderNode):
+        return _generate_get_environment_folder(node, indent)
     if isinstance(node, ModifyTextNode):
         return _generate_modify_text(node, indent)
     if isinstance(node, ReadTextFileNode):
@@ -2312,6 +2315,45 @@ def _generate_set_environment_variable_body(
         f"{prefix}os.environ[{VB_CSTR_HELPER_NAME}({name})] = "
         f"{VB_CSTR_HELPER_NAME}({value})"
     ]
+
+
+# 知見254: `.NET Environment.SpecialFolder`は21個の値を持つが、実機で
+# 確認できたのは3つのみ——それ以外はでっち上げず`# TODO`へ倒す。
+_SPECIAL_FOLDER_PATH_EXPRS = {
+    "UserProfile": "os.path.expanduser('~')",
+    "Desktop": "os.path.join(os.path.expanduser('~'), 'Desktop')",
+    "MyDocuments": "os.path.join(os.path.expanduser('~'), 'Documents')",
+}
+
+
+def _generate_get_environment_folder(
+    node: GetEnvironmentFolderNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_environment_folder_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_environment_folder_body(
+    node: GetEnvironmentFolderNode, indent: int
+) -> list[str]:
+    """知見254: `ui:GetEnvironmentFolder`——実機確認済みの3つの
+    `SpecialFolder`値(`UserProfile`/`Desktop`/`MyDocuments`)のみ
+    `os.path.expanduser("~")`+`os.path.join()`で対応する。"""
+    prefix = INDENT * indent
+    if node.folder_path is None:
+        return [f"{prefix}# TODO: GetEnvironmentFolder with no FolderPath captured"]
+    if node.special_folder not in _SPECIAL_FOLDER_PATH_EXPRS:
+        return [
+            f"{prefix}# TODO: GetEnvironmentFolder with SpecialFolder "
+            f"{node.special_folder!r} — only the confirmed \"UserProfile\"/"
+            '"Desktop"/"MyDocuments" values are implemented, refusing to guess'
+        ]
+    try:
+        target = render_expr(node.folder_path)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    return [f"{prefix}{target} = {_SPECIAL_FOLDER_PATH_EXPRS[node.special_folder]}"]
 
 
 def _generate_find_and_replace_text_modification_line(

@@ -3567,6 +3567,43 @@ class SetEnvironmentVariableNode:
 
 
 @dataclass
+class GetEnvironmentFolderNode:
+    """`<ui:GetEnvironmentFolder FolderPath="..." SpecialFolder="..." />`
+    (知見254、10回目発見パスの残り候補、タグ名限定GitHub検索で88件
+    ヒット)。`GetEnvironmentVariable`(知見215)とは別のタグ——
+    `GetEnvironmentVariableNode`と混同しないこと。
+
+    実機4件(`flindersuni/rpa-Flinders.Foundation`の
+    `GetCommonDataDirectory.xaml`→`SpecialFolder="MyDocuments"`、
+    `lezwon/uipath_deoldify`の`Main.xaml`→`SpecialFolder="UserProfile"`、
+    `kconstantej/UiPath_RPA_KenConstante`の`Main.xaml`→
+    `SpecialFolder="MyDocuments"`)+ground-truth
+    (`SpecialFolder="Desktop"`、既定値)で確認した3つの値のみ対応する
+    ——`SpecialFolder`は.NETの`Environment.SpecialFolder`列挙型で、
+    公式ドキュメント(WebFetch経由確認)によれば21個の値が存在するが、
+    実機で確認できたのは`Desktop`/`MyDocuments`/`UserProfile`の3つ
+    だけのため、それ以外(`ProgramFiles`・`ApplicationData`等)は
+    `# TODO`へ倒す——でっち上げたパス対応を用意しない。
+
+    `FolderPath`(出力)は.NETの`Environment.GetFolderPath()`が返す
+    絶対パス文字列——Windows環境での確認済みマッピング
+    (`UserProfile`→`C:\\Users\\<user>`、`Desktop`/`MyDocuments`→その
+    直下の`Desktop`/`Documents`サブフォルダ)をPython標準の
+    `os.path.expanduser("~")`+`os.path.join()`で再現する(新規依存
+    不要、本プロジェクトの実デプロイ対象であるWindows上で正確に
+    一致する組み込みAPIの組み合わせ)。公式ドキュメントは「フォルダが
+    解決できない場合は空文字列を返し例外を投げない」と明記するが、
+    `os.path.expanduser()`はホームディレクトリが解決できない稀な
+    状況でも入力をそのまま返すだけで例外を投げない——`os.environ`
+    スナップショットに依存する`GetEnvironmentVariable`(知見215)と
+    同種の「公式の正確な既定ではないが実用上十分」という判断。"""
+
+    display_name: str | None = None
+    folder_path: Expr = None
+    special_folder: str | None = None
+
+
+@dataclass
 class FindAndReplaceTextModificationNode:
     """`<ucat:FindAndReplaceTextModification SearchText="..."
     ReplaceText="..." MatchCase="..." />`(知見224、`ui:ModifyText`
@@ -4661,6 +4698,7 @@ Node = (
     | TextToLeftRightNode
     | GetEnvironmentVariableNode
     | SetEnvironmentVariableNode
+    | GetEnvironmentFolderNode
     | FindAndReplaceTextModificationNode
     | TrimTextModificationNode
     | ToUpperLowerTextModificationNode

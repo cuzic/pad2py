@@ -44,6 +44,7 @@ from dump_daemon.uipath_dsl import (
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
+    GetEnvironmentFolderNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3581,6 +3582,23 @@ def test_set_environment_variable_properties():
     assert isinstance(node, SetEnvironmentVariableNode)
     assert node.name == Literal(value="MY_VAR")
     assert node.value == VbExpr(text="someValue")
+
+
+def test_get_environment_folder_properties():
+    """知見254: `ui:GetEnvironmentFolder`(`GetEnvironmentVariable`とは
+    別のタグ)。実機`flindersuni/rpa-Flinders.Foundation`の
+    `GetCommonDataDirectory.xaml`で確認した`SpecialFolder="MyDocuments"`
+    +`FolderPath`(出力)の構成。"""
+    xml = (
+        f"<ui:GetEnvironmentFolder {_UI_XMLNS} "
+        'DisplayName="Get Environment Folder" '
+        'FolderPath="[rpaCommonDataDir]" SpecialFolder="MyDocuments" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetEnvironmentFolderNode)
+    assert node.folder_path == VbExpr(text="rpaCommonDataDir")
+    assert node.special_folder == "MyDocuments"
+    assert node.display_name == "Get Environment Folder"
 
 
 _TEXT_MODIFICATIONS_XMLNS = (

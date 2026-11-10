@@ -3620,3 +3620,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      5件)、リポジトリ全体で全2284件通過。残る10回目発見パスの候補
      (`ui:GetEnvironmentFolder`・`ui:GetProcesses`・
      `ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録。
+
+212. **(完了、2026-11-10)** `ui:GetEnvironmentFolder`を新規実装
+     (知見254)——タグ名限定検索で88件ヒット、`ui:
+     GetEnvironmentVariable`(知見215)とは別タグ。実機4件+
+     ground-truthで確認できた`SpecialFolder`値は`MyDocuments`/
+     `UserProfile`/`Desktop`の3つのみ(.NET`Environment.
+     SpecialFolder`は21個の値を持つが、それ以外は実機未確認のため
+     `# TODO`へ倒す)。`os.path.expanduser("~")`+`os.path.join()`で
+     対応——新規依存不要、既存の`"os.path."`インポートトリガーが
+     そのまま効く。実機1件は`FolderPath`をC#の`CSharpReference`
+     要素(VBの`InArgument`/`Literal`ではない)で表現していた
+     エッジケースも見つけたが、`folder_path=None`として正しく
+     `# TODO`へ倒れることを確認し、C#式サポートの追加は見送った。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2288件通過。
+     残る10回目発見パスの候補(`ui:GetProcesses`・
+     `ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録。

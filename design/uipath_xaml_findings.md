@@ -12046,6 +12046,53 @@ test_uipath_codegen.py`5件)、リポジトリ全体で全2284件通過
 `ui:GetProcesses`・`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補
 として記録する。
 
+## 254. `ui:GetEnvironmentFolder`を新規実装——`GetEnvironmentVariable`とは別のタグ、実機確認できた3つの`SpecialFolder`値だけに絞って対応した
+
+10回目発見パスの残り候補のうち`ui:GetEnvironmentFolder`
+(タグ名限定GitHub検索で88件ヒット)に着手した。`ui:
+GetEnvironmentVariable`(知見215)とは別のタグ名——混同しないよう
+データクラス名も`GetEnvironmentFolderNode`と明確に分けた。
+
+実機4件(`flindersuni/rpa-Flinders.Foundation`の
+`GetCommonDataDirectory.xaml`、`lezwon/uipath_deoldify`の
+`Main.xaml`、`kconstantej/UiPath_RPA_KenConstante`の`Main.xaml`、
+`sccrpagit/Auto-Generate-LE-Weekly-Report-Without-Excel`の
+`Main.xaml`)+ground-truth(`marcelocruzrpa/uipath-ai-skills`の
+`SpecialFolder="Desktop"`、既定値)を独立に取得・確認した。確認できた
+`SpecialFolder`の値は`MyDocuments`(2件)/`UserProfile`(1件)/
+`Desktop`(ground-truthのみ)の3つだけ——公式ドキュメント
+(`docs.uipath.com/activities/other/latest/workflow/
+get-environment-folder`、WebFetch経由確認)によれば`.NET
+Environment.SpecialFolder`は合計21個の値を持つが、実機では3つ以外
+一度も見たことがないため、残りは`# TODO`へ倒す(でっち上げた
+パス対応を用意しない、知見248以来の一貫した方針)。
+
+公式ドキュメントは「フォルダが解決できない場合は例外を投げず空
+文字列を返す」と明記していたが、実機サンプルではこのケースは
+一度も観測されておらず、対応するPython APIの`os.path.
+expanduser("~")`もホームディレクトリ不明時に入力をそのまま返す
+だけで例外を投げない——挙動の整合性を個別に確認せず素直に委ねた。
+`UserProfile`→`os.path.expanduser("~")`、`Desktop`/`MyDocuments`→
+その直下の`Desktop`/`Documents`サブフォルダ(`os.path.join()`)という
+マッピングは、Windows上での`.NET Environment.GetFolderPath()`の
+実際の戻り値(`C:\Users\<user>`/`C:\Users\<user>\Desktop`/
+`C:\Users\<user>\Documents`)と確認済みで一致する標準ライブラリ
+API——新規依存は不要、既存の`"os.path."`トリガー文字列で`import os`
+が注入される(新規トリガー追加も不要)。
+
+調査中に見つけた興味深いエッジケース:
+`kconstantej/UiPath_RPA_KenConstante`の実機サンプルは
+`FolderPath`をC#の`CSharpReference`要素(プロパティ要素形式、
+VBの`InArgument`/`Literal`ではない)で表現していた——本トランスパイラ
+はVB式専用のため、このケースは`folder_path=None`として正しく
+`# TODO`へ倒れる(新たにC#式サポートを追加する判断はしていない、
+この1件のみの観測のため見送り)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`4件)、リポジトリ全体で全2288件通過
+(28件skip)。残る10回目発見パスの候補(`ui:GetProcesses`・
+`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

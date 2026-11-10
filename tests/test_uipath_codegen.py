@@ -68,6 +68,7 @@ from dump_daemon.uipath_dsl import (
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
+    GetEnvironmentFolderNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -12720,6 +12721,54 @@ def test_set_environment_variable_with_missing_properties_is_todo():
     wf = _wrap([SetEnvironmentVariableNode(name=Literal(value="X"), value=None)])
     code = generate_python(wf)
     assert "# TODO: SetEnvironmentVariable with missing Name/Value" in code
+    _compiles(code)
+
+
+def test_get_environment_folder_resolves_confirmed_special_folders_exec():
+    """知見254: `ui:GetEnvironmentFolder`——実機確認済みの3つの
+    `SpecialFolder`値のみ`os.path.expanduser("~")`+`os.path.join()`で
+    対応することを`exec()`経由で確認する。"""
+    import os
+
+    for special_folder, expected in (
+        ("UserProfile", os.path.expanduser("~")),
+        ("Desktop", os.path.join(os.path.expanduser("~"), "Desktop")),
+        ("MyDocuments", os.path.join(os.path.expanduser("~"), "Documents")),
+    ):
+        wf = _wrap(
+            [
+                GetEnvironmentFolderNode(
+                    folder_path=VbExpr(text="p"),
+                    special_folder=special_folder,
+                )
+            ]
+        )
+        code = generate_python(wf)
+        assert "import os" in code
+        assert "# TODO" not in code
+        _compiles(code)
+        ns: dict[str, object] = {}
+        exec(code + "\n    return p", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+        assert ns["Test"]() == expected
+
+
+def test_get_environment_folder_with_unconfirmed_special_folder_is_todo():
+    wf = _wrap(
+        [
+            GetEnvironmentFolderNode(
+                folder_path=VbExpr(text="p"), special_folder="ProgramFiles"
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetEnvironmentFolder with SpecialFolder" in code
+    _compiles(code)
+
+
+def test_get_environment_folder_with_no_folder_path_is_todo():
+    wf = _wrap([GetEnvironmentFolderNode(folder_path=None, special_folder="Desktop")])
+    code = generate_python(wf)
+    assert "# TODO: GetEnvironmentFolder with no FolderPath captured" in code
     _compiles(code)
 
 

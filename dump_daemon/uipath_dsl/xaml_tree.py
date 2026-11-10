@@ -154,6 +154,7 @@ from .types import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    GetEnvironmentFolderNode,
     FindAndReplaceTextModificationNode,
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
@@ -2311,6 +2312,17 @@ def _parse_set_environment_variable(
     )
 
 
+def _parse_get_environment_folder(
+    elem: etree._Element,
+) -> GetEnvironmentFolderNode:
+    return GetEnvironmentFolderNode(
+        display_name=_attr(elem, "DisplayName"),
+        folder_path=_attr_expr(elem, "FolderPath")
+        or _in_argument_property_expr(elem, "FolderPath"),
+        special_folder=_attr_or_none(elem, "SpecialFolder"),
+    )
+
+
 def _parse_find_and_replace_text_modification(
     elem: etree._Element,
 ) -> FindAndReplaceTextModificationNode:
@@ -3173,6 +3185,7 @@ _DISPATCH = {
     (UI_NS, "TextToLeftRight"): _parse_text_to_left_right,
     (UI_NS, "GetEnvironmentVariable"): _parse_get_environment_variable,
     (UI_NS, "SetEnvironmentVariable"): _parse_set_environment_variable,
+    (UI_NS, "GetEnvironmentFolder"): _parse_get_environment_folder,
     (UI_NS, "ModifyText"): _parse_modify_text,
     (
         TEXT_MODIFICATIONS_NS,
