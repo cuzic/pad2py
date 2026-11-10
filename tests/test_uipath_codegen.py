@@ -95,6 +95,8 @@ from dump_daemon.uipath_dsl import (
     Literal,
     LoadImageNode,
     LookupDataTableNode,
+    FilterDataTableNode,
+    FilterOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -3278,6 +3280,197 @@ def test_sort_data_table_declines_column_index_and_data_column():
     code2 = generate_python(wf2)
     assert "# TODO: SortDataTable with DataColumn set" in code2
     _compiles(code2)
+
+
+def test_filter_data_table_empty_operator_with_column_index_removes_matching_rows():
+    """知見207: 実機`cameronmcnz/uipath-tutorials`の`DeleteEmpty`相当
+    ——`Operator="EMPTY"`+`Column`が列インデックス(`x:Int32`)+
+    `FilterRowsMode="Remove"`で、該当列が空/Noneの行を除去する。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Name", "Age"]),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Bob", 42}'), data_table=VbExpr(text="dt")
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"", 20}'), data_table=VbExpr(text="dt")
+            ),
+            FilterDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Remove",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="EMPTY",
+                        column=Literal(value="0"),
+                        column_type="x:Int32",
+                    )
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return dt2", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() == [{"Name": "Bob", "Age": 42}]
+
+
+def test_filter_data_table_multiple_and_filters_with_string_columns_keeps_matching_rows():
+    """知見207: 実機`PacktPublishing/Robotic-Process-Automation-RPA-
+    for-Developers`相当——`Operator="GTE"`を2件`BooleanOperator="And"`
+    で結合+`Column`が列名(`x:String`)+`FilterRowsMode="Keep"`で、両方
+    の条件を満たす行だけを残す。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(
+                data_table=VbExpr(text="dt"), columns=["Name", "Age", "Salary"]
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Alice", 65, 80000}'),
+                data_table=VbExpr(text="dt"),
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Bob", 30, 50000}'),
+                data_table=VbExpr(text="dt"),
+            ),
+            FilterDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Keep",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="GTE",
+                        column=VbExpr(text='"Age"'),
+                        column_type="x:String",
+                        operand=VbExpr(text="60.0"),
+                    ),
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column=VbExpr(text='"Name"'),
+                        column_type="x:String",
+                        operand=VbExpr(text='"Alice"'),
+                    ),
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return dt2", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() == [{"Name": "Alice", "Age": 65, "Salary": 80000}]
+
+
+def test_filter_data_table_declines_select_columns():
+    """知見207: `SelectColumns`(列の投影)は本活動で未対応のまま
+    ——`Filters`条件のみが実装範囲。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            FilterDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Keep",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column=VbExpr(text='"Age"'),
+                        column_type="x:String",
+                        operand=VbExpr(text="30.0"),
+                    )
+                ],
+                select_columns=[VbExpr(text='"Age"')],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FilterDataTable with SelectColumns set" in code
+    _compiles(code)
+
+
+def test_filter_data_table_declines_unconfirmed_operator_and_boolean_operator():
+    """知見207: `Operator`(EQ/GTE/EMPTY以外)・`BooleanOperator`
+    ("And"以外)は実機で非確認のため`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            FilterDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Keep",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="LT",
+                        column=VbExpr(text='"Age"'),
+                        column_type="x:String",
+                        operand=VbExpr(text="30.0"),
+                    )
+                ],
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FilterDataTable with Operator 'LT'" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            FilterDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Keep",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="Or",
+                        operator="EQ",
+                        column=VbExpr(text='"Age"'),
+                        column_type="x:String",
+                        operand=VbExpr(text="30.0"),
+                    )
+                ],
+            ),
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: FilterDataTable with BooleanOperator 'Or'" in code2
+    _compiles(code2)
+
+
+def test_filter_data_table_declines_when_row_representation_is_unknown():
+    """知見207: 対象`DataTable`が`BuildDataTable`由来だと確認できない
+    場合はlist行の可能性を排除できないため`# TODO`へ倒す——知見206の
+    `SortDataTable`と同じ判断。"""
+    wf = _wrap(
+        [
+            FilterDataTableNode(
+                data_table=VbExpr(text="unknown_dt"),
+                output_data_table=VbExpr(text="dt2"),
+                filter_rows_mode="Keep",
+                filters=[
+                    FilterOperationArgument(
+                        boolean_operator="And",
+                        operator="EQ",
+                        column=VbExpr(text='"Age"'),
+                        column_type="x:String",
+                        operand=VbExpr(text="30.0"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FilterDataTable" in code
+    assert "[_frow for _frow in" not in code
+    _compiles(code)
 
 
 def test_remove_data_row_with_row_index_deletes_by_position():

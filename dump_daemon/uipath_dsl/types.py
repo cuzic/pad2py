@@ -754,6 +754,53 @@ class SortDataTableNode:
 
 
 @dataclass
+class FilterOperationArgument:
+    """`<ui:FilterOperationArgument>`(知見207、`FilterDataTableNode.
+    filters`の1要素)。実機3件(`PacktPublishing/Robotic-Process-
+    Automation-RPA-for-Developers`・`cameronmcnz/uipath-tutorials`・
+    `allenlooplee/RPABook`)で確認した構成: `BooleanOperator`(確認済み
+    "And"のみ)+`Operator`(確認済み"EQ"/"GTE"/"EMPTY"の3種)+`Column`
+    (プロパティ要素形の`InArgument`、`x:TypeArguments`が`x:String`なら
+    列名・`x:Int32`なら列インデックスの2通りを実機で確認)+`Operand`
+    (比較値、`EMPTY`では未設定)。"""
+
+    boolean_operator: str | None = None
+    operator: str | None = None
+    column: Expr = None
+    column_type: str | None = None
+    operand: Expr = None
+
+
+@dataclass
+class FilterDataTableNode:
+    """`<ui:FilterDataTable>`(知見207、知見195で「列名ベースの値
+    アクセスが本質的に必要」として保留した3件の1件。知見206の
+    `SortDataTable`と同じ`ScopeInfo.data_table_columns`で解消する)。
+    ground-truth(`UiPath.System.Activities/25.10`)の属性構成は
+    `DataTable`+`Filters`+`OutputDataTable`+`SelectColumns`+
+    `SelectColumnsMode`(既定`"Remove"`)に加え、実機で`FilterRowsMode`
+    (確認済み"Keep"/"Remove"の両方)という追加属性を発見した。
+
+    実機3件で`OutputDataTable`が`DataTable`と**同じ変数**を指定する
+    ケース(インプレース上書き、2/3件)と**別の変数**を指定するケース
+    (1/3件)の両方を確認した——知見206の`SortDataTable`とは違い、
+    インプレース上書きが実際に使われている。`SelectColumns`は3/3件中
+    2件で「未選択」(`<x:Null/>`という単一null要素のリスト、Studioの
+    シリアライズ上の「空リスト」の表現)、1件で実際の列名3件
+    (`SelectColumnsMode="Keep"`と組み合わせ)を指定していた——後者の
+    列選択(列の投影)は本活動では未対応のまま`# TODO`へ倒す(対応する
+    `Filters`条件のみが今回の実装範囲)。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    output_data_table: Expr = None
+    filter_rows_mode: str | None = None
+    select_columns_mode: str | None = None
+    filters: list[FilterOperationArgument] = field(default_factory=list)
+    select_columns: list[Expr] = field(default_factory=list)
+
+
+@dataclass
 class SaveImageNode:
     """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
     `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
@@ -2679,6 +2726,7 @@ Node = (
     | LoadImageNode
     | LookupDataTableNode
     | SortDataTableNode
+    | FilterDataTableNode
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode

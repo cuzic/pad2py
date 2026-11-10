@@ -83,6 +83,8 @@ from .types import (
     LoadImageNode,
     LookupDataTableNode,
     SortDataTableNode,
+    FilterDataTableNode,
+    FilterOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -819,6 +821,76 @@ def _parse_sort_data_table(elem: etree._Element) -> SortDataTableNode:
         column_index=_attr_expr(elem, "ColumnIndex"),
         data_column=_attr_expr(elem, "DataColumn"),
         sort_order=_attr(elem, "SortOrder") or _attr(elem, "Order"),
+    )
+
+
+def _in_argument_type_arguments(elem: etree._Element, prop_name: str) -> str | None:
+    """`<X.PropName><InArgument x:TypeArguments="...">...</InArgument>
+    </X.PropName>`の`x:TypeArguments`属性を取り出す(知見207、
+    `FilterOperationArgument.Column`が列名(`x:String`)か列インデックス
+    (`x:Int32`)かを判別するために必要——`_in_argument_property_expr`は
+    値のみ返すため別ヘルパーとして分離)。"""
+    prop_elem = _find_property_element(elem, prop_name)
+    if prop_elem is None:
+        return None
+    children = _direct_children(prop_elem)
+    if not children:
+        return None
+    return _attr(children[0], "TypeArguments", X_NS) or _attr(children[0], "TypeArguments")
+
+
+def _parse_filter_operation_argument(elem: etree._Element) -> FilterOperationArgument:
+    return FilterOperationArgument(
+        boolean_operator=_attr(elem, "BooleanOperator"),
+        operator=_attr(elem, "Operator"),
+        column=_in_argument_property_expr(elem, "Column"),
+        column_type=_in_argument_type_arguments(elem, "Column"),
+        operand=_attr_expr(elem, "Operand") or _in_argument_property_expr(elem, "Operand"),
+    )
+
+
+def _parse_filter_data_table_select_columns(elem: etree._Element) -> list[Expr]:
+    """知見207: `<ui:FilterDataTable.SelectColumns><scg:List ...>`配下。
+    実機で「未選択」を意味する単一の`<x:Null/>`要素(空リストの代わりの
+    シリアライズ形)を確認したため、これは結果から除外する(実際の列名
+    要素のみ収集する)。"""
+    prop_elem = _find_property_element(elem, "SelectColumns")
+    result: list[Expr] = []
+    if prop_elem is None:
+        return result
+    for list_elem in _direct_children(prop_elem):
+        for item in _direct_children(list_elem):
+            _, local = _split_tag(item.tag)
+            if local == "Null":
+                continue
+            nested = _direct_children(item)
+            if nested:
+                value = _attr(nested[0], "Value")
+                expr = _parse_expr(value) if value is not None else None
+            else:
+                expr = _parse_expr(item.text)
+            if expr is not None:
+                result.append(expr)
+    return result
+
+
+def _parse_filter_data_table(elem: etree._Element) -> FilterDataTableNode:
+    filters: list[FilterOperationArgument] = []
+    filters_elem = _find_property_element(elem, "Filters")
+    if filters_elem is not None:
+        for list_elem in _direct_children(filters_elem):
+            for op_elem in _direct_children(list_elem):
+                filters.append(_parse_filter_operation_argument(op_elem))
+    return FilterDataTableNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=_attr_expr(elem, "DataTable")
+        or _in_argument_property_expr(elem, "DataTable"),
+        output_data_table=_attr_expr(elem, "OutputDataTable")
+        or _in_argument_property_expr(elem, "OutputDataTable"),
+        filter_rows_mode=_attr(elem, "FilterRowsMode"),
+        select_columns_mode=_attr(elem, "SelectColumnsMode"),
+        filters=filters,
+        select_columns=_parse_filter_data_table_select_columns(elem),
     )
 
 
@@ -2187,6 +2259,7 @@ _DISPATCH = {
     (UI_NS, "LoadImage"): _parse_load_image,
     (UI_NS, "LookupDataTable"): _parse_lookup_data_table,
     (UI_NS, "SortDataTable"): _parse_sort_data_table,
+    (UI_NS, "FilterDataTable"): _parse_filter_data_table,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

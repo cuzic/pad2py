@@ -70,6 +70,8 @@ from dump_daemon.uipath_dsl import (
     Literal,
     LoadImageNode,
     LookupDataTableNode,
+    FilterDataTableNode,
+    FilterOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -1317,6 +1319,117 @@ def test_sort_data_table_prefers_sort_order_attribute_over_order_alias():
     assert node.output_data_table == VbExpr(text="dataTable")
     assert node.column_name == Literal(value="Name")
     assert node.sort_order == "Ascending"
+
+
+_SCG_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+    'xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_filter_data_table_properties_with_string_columns_and_no_select_columns():
+    """知見207: 実機`cameronmcnz/uipath-tutorials`(`DeleteEmpty/Main.
+    xaml`)で確認した構成——`Operator="EMPTY"`+`Column`が`x:Int32`型
+    (列インデックス)+`Operand`無し+`SelectColumns`が単一の`<x:Null/>`
+    (「未選択」のシリアライズ形、`select_columns`は空リストになる)。"""
+    xml = (
+        f"<ui:FilterDataTable {_SCG_XMLNS} "
+        'DataTable="[ExtractDataTable]" DisplayName="Filter Data Table" '
+        'FilterRowsMode="Remove" OutputDataTable="[ExtractDataTable]" '
+        'SelectColumnsMode="Keep">'
+        "<ui:FilterDataTable.Filters>"
+        '<scg:List x:TypeArguments="ui:FilterOperationArgument" Capacity="4">'
+        '<ui:FilterOperationArgument Operand="{x:Null}" BooleanOperator="And" '
+        'Operator="EMPTY">'
+        "<ui:FilterOperationArgument.Column>"
+        '<InArgument x:TypeArguments="x:Int32">[0]</InArgument>'
+        "</ui:FilterOperationArgument.Column>"
+        "</ui:FilterOperationArgument>"
+        "</scg:List>"
+        "</ui:FilterDataTable.Filters>"
+        "<ui:FilterDataTable.SelectColumns>"
+        '<scg:List x:TypeArguments="InArgument" Capacity="4">'
+        "<x:Null/>"
+        "</scg:List>"
+        "</ui:FilterDataTable.SelectColumns>"
+        "</ui:FilterDataTable>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FilterDataTableNode)
+    assert node.data_table == VbExpr(text="ExtractDataTable")
+    assert node.output_data_table == VbExpr(text="ExtractDataTable")
+    assert node.filter_rows_mode == "Remove"
+    assert node.select_columns_mode == "Keep"
+    assert node.select_columns == []
+    assert len(node.filters) == 1
+    filt = node.filters[0]
+    assert isinstance(filt, FilterOperationArgument)
+    assert filt.boolean_operator == "And"
+    assert filt.operator == "EMPTY"
+    assert filt.column == VbExpr(text="0")
+    assert filt.column_type == "x:Int32"
+    assert filt.operand is None
+
+
+def test_filter_data_table_properties_with_select_columns_and_multiple_filters():
+    """知見207: 実機`PacktPublishing/Robotic-Process-Automation-RPA-
+    for-Developers`(`Section 6/DataManipulation_DataTables.xaml`)で
+    確認した構成——`Operator="GTE"`を2件`BooleanOperator="And"`で結合、
+    `Column`が`x:String`型(列名)+`Operand`が`x:Double`型、
+    `SelectColumns`に実際の列名3件+`OutputDataTable`が`DataTable`とは
+    別の変数。"""
+    xml = (
+        f"<ui:FilterDataTable {_SCG_XMLNS} "
+        'DataTable="[dt]" DisplayName="Filter data table" '
+        'FilterRowsMode="Keep" OutputDataTable="[dtProcessed]" '
+        'SelectColumnsMode="Keep">'
+        "<ui:FilterDataTable.Filters>"
+        '<scg:List x:TypeArguments="ui:FilterOperationArgument" Capacity="4">'
+        '<ui:FilterOperationArgument BooleanOperator="And" Operator="GTE">'
+        "<ui:FilterOperationArgument.Column>"
+        '<InArgument x:TypeArguments="x:String">["Age"]</InArgument>'
+        "</ui:FilterOperationArgument.Column>"
+        "<ui:FilterOperationArgument.Operand>"
+        '<InArgument x:TypeArguments="x:Double">[60.0]</InArgument>'
+        "</ui:FilterOperationArgument.Operand>"
+        "</ui:FilterOperationArgument>"
+        '<ui:FilterOperationArgument BooleanOperator="And" Operator="GTE">'
+        "<ui:FilterOperationArgument.Column>"
+        '<InArgument x:TypeArguments="x:String">["Salary"]</InArgument>'
+        "</ui:FilterOperationArgument.Column>"
+        "<ui:FilterOperationArgument.Operand>"
+        '<InArgument x:TypeArguments="x:Double">[70000.0]</InArgument>'
+        "</ui:FilterOperationArgument.Operand>"
+        "</ui:FilterOperationArgument>"
+        "</scg:List>"
+        "</ui:FilterDataTable.Filters>"
+        "<ui:FilterDataTable.SelectColumns>"
+        '<scg:List x:TypeArguments="InArgument" Capacity="4">'
+        '<InArgument x:TypeArguments="x:String">["Name"]</InArgument>'
+        '<InArgument x:TypeArguments="x:String">["Age"]</InArgument>'
+        '<InArgument x:TypeArguments="x:String">["Salary"]</InArgument>'
+        "</scg:List>"
+        "</ui:FilterDataTable.SelectColumns>"
+        "</ui:FilterDataTable>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FilterDataTableNode)
+    assert node.data_table == VbExpr(text="dt")
+    assert node.output_data_table == VbExpr(text="dtProcessed")
+    assert node.filter_rows_mode == "Keep"
+    assert node.select_columns == [
+        VbExpr(text='"Name"'),
+        VbExpr(text='"Age"'),
+        VbExpr(text='"Salary"'),
+    ]
+    assert len(node.filters) == 2
+    assert node.filters[0].column == VbExpr(text='"Age"')
+    assert node.filters[0].column_type == "x:String"
+    assert node.filters[0].operand == VbExpr(text="60.0")
+    assert node.filters[1].column == VbExpr(text='"Salary"')
+    assert node.filters[1].operand == VbExpr(text="70000.0")
 
 
 def test_load_image_properties():

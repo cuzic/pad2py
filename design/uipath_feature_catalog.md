@@ -271,10 +271,16 @@ DataTableへ変換——既存のDataTableを読まず新規に構築するた�
 揃い、実装完了した。`ColumnName`指定+対象`DataTable`が`BuildDataTable`
 由来で列スキーマが確認できる場合のみ対応、`ColumnIndex`/`DataColumn`・
 スコープ情報が無い場合は`# TODO`。実機で`SortOrder`と`Order`が**両方
-同時に**直列化される新しい版差も発見(詳細は知見206参照)。**依然
-保留**: `FilterDataTable`/`JoinDataTables`は`Filters`コレクション/
-`Arguments`結合条件という`SortDataTable`より複雑な入力構造を持つため
-未着手のまま、次の実装候補。
+同時に**直列化される新しい版差も発見(詳細は知見206参照)。
+
+**追記(知見207、2026-11-10、`FilterDataTable`完了)**: 同じ
+`ScopeInfo.data_table_columns`を要求し、`Filters`条件(`Operator`∈
+{EQ,GTE,EMPTY}、`BooleanOperator="And"`のみ、複数条件はAND結合)に
+対応、`SelectColumns`(列の投影)は未対応のまま`# TODO`。実機3件で新しい
+未確認属性`FilterRowsMode`(`"Keep"`/`"Remove"`)+`Column`が列名
+(`x:String`)/列インデックス(`x:Int32`)の2通りの型を持つことを発見
+(詳細は知見207参照)。**依然保留**: `JoinDataTables`(`Arguments`結合
+条件+`JoinType`)は未着手のまま、次の実装候補。
 
 **`row(...)`添字の変数スコープ追跡(知見74で見送り、知見126で実需要を
 確認・将来のアーキテクチャ候補)**: VB.NETの`識別子(引数)`構文は関数

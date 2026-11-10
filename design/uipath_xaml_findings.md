@@ -9794,6 +9794,61 @@ test_uipath_codegen.py`4件、うち1件は`exec()`経由で生成コードを
 入力構造(`Filters`コレクション・`Arguments`結合条件)を持つため、
 今回の調査・実装はまだ着手していない——次の実装候補として記録する。
 
+## 207. `ui:FilterDataTable`を新規実装——知見195で保留した3件のうち2件目を知見206と同じScopeInfoアーキテクチャで解消、実機3件で`FilterRowsMode`という新しい未確認属性+`Column`の列名/列インデックス2通りの型を発見
+
+知見206に続き、知見195で保留した3件のうち`FilterDataTable`に着手
+した。ground-truth(`UiPath.System.Activities/25.10`)の属性構成は
+`DataTable`+`Filters`+`OutputDataTable`+`SelectColumns`+
+`SelectColumnsMode`(既定`"Remove"`)。
+
+実機3件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+Developers`・`cameronmcnz/uipath-tutorials`の`DeleteEmpty/Main.xaml`
+・`allenlooplee/RPABook`の`src/Demo7/Main.xaml`)で構成を検証した結果:
+
+- **新しい未確認属性`FilterRowsMode`を発見**(ground-truthには存在
+  せず、3件全てで確認): 値`"Keep"`(条件に一致する行を残す)/
+  `"Remove"`(一致する行を除去する)の両方を実機で確認。cameron
+  サンプルはファイル名自体が`DeleteEmpty`(空行を削除)で、
+  `FilterRowsMode="Remove"`+`Operator="EMPTY"`という意図と一致する。
+- `Filters`(`scg:List<ui:FilterOperationArgument>`)の各要素は
+  `BooleanOperator`(確認済み`"And"`のみ)+`Operator`(確認済み
+  `"EQ"`/`"GTE"`/`"EMPTY"`の3種、複数条件は全てANDで結合)+`Column`
+  (プロパティ要素形の`InArgument`、**`x:TypeArguments`が`x:String`
+  なら列名・`x:Int32`なら列インデックスの2通りを実機で確認**)+
+  `Operand`(比較値、`EMPTY`では未設定)。
+- `OutputDataTable`は知見206の`SortDataTable`とは違い、実機3件中2件で
+  `DataTable`と**同じ変数**(インプレース上書き)、1件で別変数という
+  両方のパターンを確認した。
+- `SelectColumns`は3件中2件が「未選択」(`<x:Null/>`という単一null
+  要素のリスト、Studioの「空リスト」のシリアライズ形)、1件
+  (Packtサンプル)が実際の列名3件(`SelectColumnsMode="Keep"`との
+  組み合わせ)を指定していた。
+
+知見206の`SortDataTable`と同じ`ScopeInfo.data_table_columns`(対象
+`DataTable`が`BuildDataTable`由来で列スキーマが確認できる場合)を
+要求し、`Filters`条件のみに対応(複数条件はANDで結合、`Keep`は一致
+行を残す・`Remove`は一致行を除去)。列インデックス指定(`x:Int32`)は
+`columns[index]`という静的に既知の列リストへのインデックスとして
+解決するため、動的な式でも対応できる(`round(_vb_cdbl(...))`で知見182
+と同じ整数変換を経由——素のVB`Literal`は文字列のため)。`SelectColumns`
+(列の投影)は本tickでは未対応のまま`# TODO`へ倒す——`Filters`条件の
+実装のみに範囲を絞った。
+
+Packtサンプルの実際の属性(`<InArgument x:TypeArguments="...">`要素の
+`TypeArguments`)を読み取るために`x:`名前空間付き属性アクセスが必要
+だった(知見21以来の`X_NS`定数を再利用)——最初の実装では無名前空間で
+読んでいたため`column_type`が常に`None`になるバグをテストで検出・
+修正した。
+
+実機3件相当の構成(EMPTY+列インデックス+Remove、EQ+GTE+列名+Keep)を
+`exec()`経由で実際に実行し、正しい行が残る/除去されることを確認した。
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`5件)、UiPath関連テスト全942件通過、リポジトリ
+全体で全2028件通過(28件skip、変化無し)。
+
+残る`JoinDataTables`(`Arguments`結合条件+`JoinType`)は未着手のまま、
+次の実装候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

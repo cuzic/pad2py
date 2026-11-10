@@ -122,6 +122,7 @@ from ..uipath_dsl.types import (
     LoadImageNode,
     LookupDataTableNode,
     SortDataTableNode,
+    FilterDataTableNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -709,6 +710,8 @@ def _generate_node(
         return _generate_lookup_data_table(node, indent)
     if isinstance(node, SortDataTableNode):
         return _generate_sort_data_table(node, indent)
+    if isinstance(node, FilterDataTableNode):
+        return _generate_filter_data_table(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
@@ -2148,6 +2151,116 @@ def _generate_sort_data_table_body(node: SortDataTableNode, indent: int) -> list
     return [
         f"{prefix}{output_data_table} = sorted({data_table}, "
         f"key=lambda _row: _row[{column_name}], reverse={reverse})"
+    ]
+
+
+_FILTER_DATA_TABLE_BOOLEAN_OPERATORS = {"And"}
+_FILTER_DATA_TABLE_BINARY_OPERATORS = {"EQ": "==", "GTE": ">="}
+_FILTER_DATA_TABLE_UNARY_OPERATORS = {"EMPTY"}
+
+
+def _generate_filter_data_table(node: FilterDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_filter_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_filter_data_table_body(node: FilterDataTableNode, indent: int) -> list[str]:
+    """知見207: `ColumnName`/`SelectColumns`投影は未対応——`Filters`
+    条件(`BooleanOperator="And"`+`Operator`∈{EQ,GTE,EMPTY}、実機確認
+    済みの3値のみ)のみに対応する。`SortDataTable`(知見206)と同じ
+    `ScopeInfo.data_table_columns`で対象`DataTable`がdict行と確認
+    できる場合に限る。"""
+    prefix = INDENT * indent
+    if node.data_table is None or node.output_data_table is None:
+        return [
+            f"{prefix}# TODO: FilterDataTable with missing DataTable/"
+            "OutputDataTable"
+        ]
+    if node.filter_rows_mode not in ("Keep", "Remove"):
+        return [
+            f"{prefix}# TODO: FilterDataTable with unrecognized "
+            f"FilterRowsMode ({node.filter_rows_mode!r}) — refusing to guess"
+        ]
+    if node.select_columns:
+        return [
+            f"{prefix}# TODO: FilterDataTable with SelectColumns set — "
+            "column projection not yet implemented, refusing to guess"
+        ]
+    if not node.filters:
+        return [f"{prefix}# TODO: FilterDataTable with no Filters captured"]
+    if not isinstance(node.data_table, VbExpr):
+        return [
+            f"{prefix}# TODO: FilterDataTable with non-identifier "
+            "DataTable — row representation cannot be confirmed, "
+            "refusing to guess"
+        ]
+    scope = get_active_scope()
+    columns = (
+        scope.data_table_columns.get(node.data_table.text.lower()) if scope else None
+    )
+    if not columns:
+        return [
+            f"{prefix}# TODO: FilterDataTable — DataTable's row "
+            "representation (dict vs list) could not be confirmed via "
+            "BuildDataTable with a parsed column schema, refusing to guess"
+        ]
+    todo: list[str] = []
+    conditions: list[str] = []
+    for filt in node.filters:
+        if filt.boolean_operator not in _FILTER_DATA_TABLE_BOOLEAN_OPERATORS:
+            return [
+                f"{prefix}# TODO: FilterDataTable with BooleanOperator "
+                f"{filt.boolean_operator!r} — only 'And' confirmed, "
+                "refusing to guess"
+            ]
+        if (
+            filt.operator not in _FILTER_DATA_TABLE_BINARY_OPERATORS
+            and filt.operator not in _FILTER_DATA_TABLE_UNARY_OPERATORS
+        ):
+            return [
+                f"{prefix}# TODO: FilterDataTable with Operator "
+                f"{filt.operator!r} — not confirmed in real samples, "
+                "refusing to guess"
+            ]
+        if filt.column is None:
+            return [f"{prefix}# TODO: FilterDataTable with missing filter Column"]
+        if filt.column_type == "x:Int32":
+            col_index = _render_value_or_todo(filt.column, prefix, todo)
+            # `Literal`は常に文字列として保持されるため、知見182の
+            # `RemoveDataRow`と同じ`round(_vb_cdbl(x))`経由で整数化する
+            # (素の文字列をlistインデックスに使うとTypeErrorになる)。
+            col_access = f"{columns!r}[round({VB_CDBL_HELPER_NAME}({col_index}))]"
+        elif filt.column_type == "x:String":
+            col_access = _render_value_or_todo(filt.column, prefix, todo)
+        else:
+            return [
+                f"{prefix}# TODO: FilterDataTable with unrecognized filter "
+                f"Column type ({filt.column_type!r}) — refusing to guess"
+            ]
+        if filt.operator in _FILTER_DATA_TABLE_UNARY_OPERATORS:
+            conditions.append(f"(_frow[{col_access}] in (None, ''))")
+        else:
+            if filt.operand is None:
+                return [
+                    f"{prefix}# TODO: FilterDataTable with missing Operand "
+                    f"for Operator {filt.operator!r}"
+                ]
+            operand = _render_value_or_todo(filt.operand, prefix, todo)
+            op_py = _FILTER_DATA_TABLE_BINARY_OPERATORS[filt.operator]
+            conditions.append(f"(_frow[{col_access}] {op_py} {operand})")
+    if todo:
+        return todo
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    output_data_table = _render_value_or_todo(node.output_data_table, prefix, todo)
+    if todo:
+        return todo
+    cond_expr = " and ".join(conditions)
+    if node.filter_rows_mode == "Remove":
+        cond_expr = f"not ({cond_expr})"
+    return [
+        f"{prefix}{output_data_table} = [_frow for _frow in {data_table} "
+        f"if {cond_expr}]"
     ]
 
 

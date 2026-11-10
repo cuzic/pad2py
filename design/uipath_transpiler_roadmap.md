@@ -2715,3 +2715,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`4件)、
      UiPath関連テスト全935件通過、リポジトリ全体で全2021件通過。
      残る`FilterDataTable`/`JoinDataTables`は未着手、次の候補。
+
+165. **(完了、2026-11-10)** `ui:FilterDataTable`を新規実装(知見207)
+     ——知見195で保留した3件のうち2件目。知見206と同じ`ScopeInfo.
+     data_table_columns`を要求し、`Filters`条件(`BooleanOperator=
+     "And"`+`Operator`∈{EQ,GTE,EMPTY}、複数条件はAND結合)のみに対応、
+     `SelectColumns`(列の投影)は未対応のまま`# TODO`。実機3件で新しい
+     未確認属性`FilterRowsMode`(`"Keep"`/`"Remove"`)を発見し、
+     `Column`が列名(`x:String`)/列インデックス(`x:Int32`)の2通りの
+     型を持つことも確認——列インデックスは静的に既知の列リストへの
+     インデックスとして解決し動的な式にも対応する。実機相当の構成を
+     `exec()`経由で実際に実行して正しさを確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     5件)、UiPath関連テスト全942件通過、リポジトリ全体で全2028件
+     通過。残る`JoinDataTables`は未着手、次の候補。
