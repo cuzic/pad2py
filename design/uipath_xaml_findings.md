@@ -10525,6 +10525,72 @@ UiPath関連テスト全1011件通過、リポジトリ全体で全2097件通過
 モデル化していないため実装は見送り)も調査済み。`ModifyText`を
 次の候補として記録する。
 
+## 224. `ui:ModifyText`を新規実装——`ucat:`名前空間の子活動3種(`FindAndReplace`/`Trim`/`ToUpperLower`TextModification)を`Body`配下に持つコンテナ型活動、文字列を線形に通す単純な処理のため未対応の子が1つでもあれば全体を`# TODO`へ倒す方針を採用
+
+知見223で次候補とした`ModifyText`(タグ名限定検索で167件ヒット)に
+着手した。ground-truth(`marcelocruzrpa/uipath-ai-skills`の
+`studio-ground-truth`、`<ui:ModifyText OutputText="{x:Null}"
+SourceText="{x:Null}">`)・実機複数件(`Apress/Robotic-Process-
+Automation-Using-UiPath-StudioX`の`Chapter_3-
+TextManipulationExercise/Main.xaml`等)で確認した構造は
+`SourceText`+`OutputText`の2属性と`.Body`配下`ActivityAction`
+(`DelegateInArgument`無し、`ForEach`(知見5)と違い反復変数を束縛
+しない単純な形)+`Sequence`。既存の`_unwrap_body_sequence`/
+`_find_activity_action`ヘルパー(知見5・158)をそのまま再利用できた。
+
+`Body`内の子活動は`ui:`ではなく`clr-namespace:UiPath.Core.
+Activities.TextModifications;assembly=UiPath.System.Activities`
+(`ucat:`)という5番目の非`UI_NS`名前空間——`PDF_NS`(`upap:`)・
+`COMPRESSION_NS`(`uascw:`)・`uast:`(知見220、`ChangeCase`等)とも
+異なる。これらの子活動はツールボックス上の独立した活動ではなく
+`ModifyText`専用のため、既存の`(namespace, tag)``_DISPATCH`機構に
+そのまま追加できたが、コード生成側では通常の文(`_generate_node`)
+としては扱わず、`SourceText`から始まる1つの文字列変数を子の順番に
+線形に通して最後に`OutputText`へ代入する専用のディスパッチ
+(`_generate_modify_text_child_lines`)を別に実装した。
+
+実機で確認した3種の子活動:
+- `FindAndReplaceTextModification`: `SearchText`+`ReplaceText`+
+  任意の`MatchCase`(`"True"`時のみ実機で確認、省略時は公式
+  ドキュメント(`find-and-replace`ページ、WebSearch経由確認)で
+  既定`False`=大文字小文字を区別しない一致と確認済み)。`SearchText`
+  はプレーンな文字列検索(`Replace`/`IsMatch`(知見213・220)の
+  正規表現とは違う)——`re.escape()`で特殊文字を無効化した
+  `re.sub()`を使う。**実装中に発見した罠**: `re.sub(pattern, repl,
+  string, count, flags)`は`re.search()`/`re.match()`と引数順が違い
+  第4位置引数が`flags`ではなく`count`——`re.IGNORECASE`を位置引数で
+  渡すとそれが`count=2`と解釈され、大文字小文字の区別が一切効かない
+  まま先頭2件だけに置換が制限されるという無言の誤動作になる
+  (`exec()`での動作確認中に発見、`flags=`キーワード引数で明示する
+  修正が必要だった)。置換文字列は`\1`等の.NET側に無い逆参照記法と
+  誤解釈されないよう`lambda`経由で渡す。
+- `TrimTextModification`: 実機複数件で常に属性無し(`TrimType`等の
+  左右限定オプションは一度も確認できず)——`.NET
+  String.Trim()`(引数無し)相当、Pythonの`str.strip()`に対応する。
+- `ToUpperLowerTextModification`: `ModificationType`属性、実機
+  (`ptrielisabeth/RPA-Robotic-Process-Automation-`)で
+  `"Lowercase"`を確認、公式ドキュメント(`to-upper-lower-text-
+  modifications`ページ)の説明と活動名からもう一方の値
+  `"Uppercase"`も対になると判断、2値のみ対応。`UseCurrentCulture`
+  (カルチャ依存の大文字小文字変換)オプションは実機で一度も確認
+  できず未対応——常にPythonの`str.upper()`/`str.lower()`
+  (カルチャ非依存)を使う。
+
+実機ヒット0件の`CombineTextModification`や未確認の設定値を持つ
+子活動が1つでもあれば、途中の変換だけ欠落した誤った文字列を
+`OutputText`へ渡してしまわないよう、`ModifyText`全体を`# TODO`へ
+倒す(部分適用はしない)方針を採用した——`FilterDataTable`の
+`SelectColumns`省略時の全体decline(知見207)と同じ「部分的に
+正しいより全体を拒否」という既存の判断の延長。
+
+実機相当の構成(`FindAndReplace`→`Trim`→`ToUpperLower`の順、
+`MatchCase`省略時の既定動作、`MatchCase="True"`時の大文字小文字
+区別、空`Body`時のそのまま転送)を`exec()`経由で実際に実行し、
+全て正しく動作することを確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`5件)、
+UiPath関連テスト全1018件通過、リポジトリ全体で全2104件通過
+(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

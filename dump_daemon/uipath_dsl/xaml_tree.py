@@ -116,6 +116,10 @@ from .types import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    FindAndReplaceTextModificationNode,
+    TrimTextModificationNode,
+    ToUpperLowerTextModificationNode,
+    ModifyTextNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -171,6 +175,15 @@ PDF_NS = "clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.Activities
 # 既存の`(namespace, tag)`ディスパッチ機構のまま対応できる。
 COMPRESSION_NS = (
     "clr-namespace:UiPath.Activities.System.Compression.Workflow;"
+    "assembly=UiPath.System.Activities"
+)
+# 知見224: `ui:ModifyText`の`Body`配下の子活動(`FindAndReplace`/
+# `Trim`/`ToUpperLower`TextModification)だけが使う、`PDF_NS`/
+# `COMPRESSION_NS`とも`uast:`(知見220、`ChangeCase`等)とも異なる
+# 5番目の非`UI_NS`名前空間——これらはツールボックスの独立した
+# 活動ではなく`ModifyText`内部専用の子活動のため`ui:`配下に無い。
+TEXT_MODIFICATIONS_NS = (
+    "clr-namespace:UiPath.Core.Activities.TextModifications;"
     "assembly=UiPath.System.Activities"
 )
 
@@ -1861,6 +1874,46 @@ def _parse_set_environment_variable(
     )
 
 
+def _parse_find_and_replace_text_modification(
+    elem: etree._Element,
+) -> FindAndReplaceTextModificationNode:
+    return FindAndReplaceTextModificationNode(
+        display_name=_attr(elem, "DisplayName"),
+        search_text=_attr_expr(elem, "SearchText")
+        or _in_argument_property_expr(elem, "SearchText"),
+        replace_text=_attr_expr(elem, "ReplaceText")
+        or _in_argument_property_expr(elem, "ReplaceText"),
+        match_case=_attr(elem, "MatchCase"),
+    )
+
+
+def _parse_trim_text_modification(elem: etree._Element) -> TrimTextModificationNode:
+    return TrimTextModificationNode(display_name=_attr(elem, "DisplayName"))
+
+
+def _parse_to_upper_lower_text_modification(
+    elem: etree._Element,
+) -> ToUpperLowerTextModificationNode:
+    return ToUpperLowerTextModificationNode(
+        display_name=_attr(elem, "DisplayName"),
+        modification_type=_attr(elem, "ModificationType"),
+    )
+
+
+def _parse_modify_text(elem: etree._Element) -> ModifyTextNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return ModifyTextNode(
+        display_name=_attr(elem, "DisplayName"),
+        source_text=_attr_expr(elem, "SourceText")
+        or _in_argument_property_expr(elem, "SourceText"),
+        output_text=_attr_expr(elem, "OutputText")
+        or _in_argument_property_expr(elem, "OutputText"),
+        body=body,
+    )
+
+
 def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -2559,6 +2612,16 @@ _DISPATCH = {
     (UI_NS, "TextToLeftRight"): _parse_text_to_left_right,
     (UI_NS, "GetEnvironmentVariable"): _parse_get_environment_variable,
     (UI_NS, "SetEnvironmentVariable"): _parse_set_environment_variable,
+    (UI_NS, "ModifyText"): _parse_modify_text,
+    (
+        TEXT_MODIFICATIONS_NS,
+        "FindAndReplaceTextModification",
+    ): _parse_find_and_replace_text_modification,
+    (TEXT_MODIFICATIONS_NS, "TrimTextModification"): _parse_trim_text_modification,
+    (
+        TEXT_MODIFICATIONS_NS,
+        "ToUpperLowerTextModification",
+    ): _parse_to_upper_lower_text_modification,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,

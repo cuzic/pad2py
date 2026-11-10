@@ -2565,6 +2565,79 @@ class SetEnvironmentVariableNode:
 
 
 @dataclass
+class FindAndReplaceTextModificationNode:
+    """`<ucat:FindAndReplaceTextModification SearchText="..."
+    ReplaceText="..." MatchCase="..." />`(知見224、`ui:ModifyText`
+    専用の子活動、`TEXT_MODIFICATIONS_NS`名前空間)。実機多数
+    (`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`・
+    `ok-omes-escrow/...`等)で`SearchText`+`ReplaceText`+任意の
+    `MatchCase`(`"True"`時のみ現れる、省略時は公式ドキュメント
+    (WebSearch経由確認、`find-and-replace`ページ)で既定`False`
+    =大文字小文字を区別しない一致と確認済み)を確認した。`SearchText`
+    はプレーンな文字列検索(正規表現ではない、`Replace`/`IsMatch`
+    (知見213・220)とは違う)——`re.escape()`で正規表現特殊文字を
+    無効化した上で`re.sub()`(`MatchCase`に応じて`re.IGNORECASE`
+    有無)を使う、置換文字列側は`lambda`経由で渡し`\\1`等の.NET側に
+    無い逆参照記法として誤解釈されないようにする。"""
+
+    display_name: str | None = None
+    search_text: Expr = None
+    replace_text: Expr = None
+    match_case: str | None = None
+
+
+@dataclass
+class TrimTextModificationNode:
+    """`<ucat:TrimTextModification />`(知見224、`ui:ModifyText`専用の
+    子活動)。実機複数件で常に属性無し(`TrimType`等の左右限定オプション
+    は実機で一度も確認できず)——.NETの`String.Trim()`(引数無し、
+    前後の空白文字を全て除去)相当、Pythonの`str.strip()`に対応する。"""
+
+    display_name: str | None = None
+
+
+@dataclass
+class ToUpperLowerTextModificationNode:
+    """`<ucat:ToUpperLowerTextModification ModificationType="..." />`
+    (知見224、`ui:ModifyText`専用の子活動)。実機
+    (`ptrielisabeth/RPA-Robotic-Process-Automation-`)で
+    `ModificationType="Lowercase"`を確認、公式ドキュメント
+    (`to-upper-lower-text-modifications`ページ、WebSearch経由確認)の
+    「大文字/小文字のどちらかへ変換する」説明と活動名自体から
+    もう一方の値`"Uppercase"`も対になると判断、2値のみ対応
+    (それ以外・未指定は`# TODO`)。`UseCurrentCulture`(カルチャ依存の
+    大文字小文字変換)オプションは実機で一度も確認できず未対応——
+    常にPythonの`str.upper()`/`str.lower()`(カルチャ非依存)を使う。"""
+
+    display_name: str | None = None
+    modification_type: str | None = None
+
+
+@dataclass
+class ModifyTextNode:
+    """`<ui:ModifyText SourceText="..." OutputText="...">`(知見224、
+    タグ名限定GitHub検索で167件ヒット)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`の`studio-ground-truth`、
+    `<ui:ModifyText OutputText="{x:Null}" SourceText="{x:Null}">`)・
+    実機複数件(`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`等)で確認した構造——`SourceText`/`OutputText`の2属性と
+    `.Body`配下`ActivityAction`(`DelegateInArgument`無し、`ForEach`
+    (知見5)と違い反復変数を束縛しない)+`Sequence`(`body`、`ActivityAction`
+    周りの抽出は既存の`_unwrap_body_sequence`/`_find_activity_action`
+    ヘルパーを再利用)。`ExcelApplicationScope`のようなリソース/接続
+    スコープではなく、`SourceText`を起点に`body`内の各子活動
+    (`FindAndReplaceTextModification`/`TrimTextModification`/
+    `ToUpperLowerTextModification`のみ対応——`CombineTextModification`
+    は実機ヒット0件のため未対応)を順番に適用し`OutputText`へ代入する
+    「文字列を線形に通す」単純な処理のため、実装の複雑さは低い。"""
+
+    display_name: str | None = None
+    source_text: Expr = None
+    output_text: Expr = None
+    body: list[Node] = field(default_factory=list)
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -3297,6 +3370,10 @@ Node = (
     | TextToLeftRightNode
     | GetEnvironmentVariableNode
     | SetEnvironmentVariableNode
+    | FindAndReplaceTextModificationNode
+    | TrimTextModificationNode
+    | ToUpperLowerTextModificationNode
+    | ModifyTextNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

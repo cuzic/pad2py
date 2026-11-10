@@ -3005,3 +3005,27 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ui:GetFileInfoX`/`ui:GetFolderInfoX`(単一不透明型オブジェクト
      出力、ダウンストリームの任意プロパティアクセス未モデル化のため
      見送り)も調査済み——`ModifyText`を次の候補として記録。
+
+182. **(完了、2026-11-10)** `ui:ModifyText`を新規実装(知見224)——
+     文字列に`Body`配下の子活動(5番目の非`UI_NS`名前空間`ucat:`
+     ="UiPath.Core.Activities.TextModifications")を順番に適用する
+     コンテナ型活動、タグ名限定検索で167件ヒット。`SourceText`+
+     `OutputText`+`.Body`→`ActivityAction`(`DelegateInArgument`無し)
+     →`Sequence`、既存の`_unwrap_body_sequence`/`_find_activity_action`
+     ヘルパーを再利用。実機確認済みの子活動3種のみ対応:
+     `FindAndReplaceTextModification`(プレーン文字列検索、
+     `re.escape()`+`re.sub()`、`MatchCase`省略時は既定`False`=
+     大文字小文字を区別しない)、`TrimTextModification`
+     (`str.strip()`)、`ToUpperLowerTextModification`
+     (`ModificationType`∈{`"Lowercase"`,`"Uppercase"`}、
+     `str.lower()`/`str.upper()`)。未対応の子が1つでもあれば部分
+     適用せず全体を`# TODO`へ倒す(`FilterDataTable`の`SelectColumns`
+     省略時の全体decline、知見207と同じ判断)。**実装中に`re.sub()`の
+     第4位置引数が`count`であり`flags`ではないこと
+     (`re.search()`/`re.match()`とは引数順が異なる)を発見**——
+     `re.IGNORECASE`を位置引数で渡すと大文字小文字の区別が一切効かず
+     先頭2件だけに置換が制限される無言の誤動作になっていた、
+     `exec()`での動作確認中に捕捉し`flags=`キーワード引数で修正。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`5件)、UiPath関連テスト全1018件通過、
+     リポジトリ全体で全2104件通過。

@@ -153,6 +153,10 @@ from ..uipath_dsl.types import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    FindAndReplaceTextModificationNode,
+    TrimTextModificationNode,
+    ToUpperLowerTextModificationNode,
+    ModifyTextNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -686,6 +690,8 @@ def _generate_node(
         return _generate_get_environment_variable(node, indent)
     if isinstance(node, SetEnvironmentVariableNode):
         return _generate_set_environment_variable(node, indent)
+    if isinstance(node, ModifyTextNode):
+        return _generate_modify_text(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -1912,6 +1918,92 @@ def _generate_set_environment_variable_body(
         f"{prefix}os.environ[{VB_CSTR_HELPER_NAME}({name})] = "
         f"{VB_CSTR_HELPER_NAME}({value})"
     ]
+
+
+def _generate_find_and_replace_text_modification_line(
+    node: FindAndReplaceTextModificationNode, var_name: str, prefix: str
+) -> list[str] | None:
+    """知見224: `SearchText`はプレーンな文字列検索(正規表現ではない)
+    ——`re.escape()`で特殊文字を無効化してから`re.sub()`を使う。
+    `MatchCase`省略時は公式ドキュメント確認済みの既定`False`
+    (大文字小文字を区別しない)として`re.IGNORECASE`を付ける。
+    置換文字列は`lambda`経由で渡し、`\\1`等の.NET側に無い逆参照記法
+    として`re.sub()`に誤解釈されないようにする。"""
+    if node.search_text is None or node.replace_text is None:
+        return None
+    if node.match_case not in (None, "True", "False"):
+        return None
+    todo: list[str] = []
+    search = _render_value_or_todo(node.search_text, prefix, todo)
+    replace = _render_value_or_todo(node.replace_text, prefix, todo)
+    if todo:
+        return None
+    flags = "" if node.match_case == "True" else ", flags=re.IGNORECASE"
+    return [
+        f"{prefix}{var_name} = re.sub(re.escape({VB_CSTR_HELPER_NAME}({search})), "
+        f"lambda _m: {VB_CSTR_HELPER_NAME}({replace}), {var_name}{flags})"
+    ]
+
+
+def _generate_to_upper_lower_text_modification_line(
+    node: ToUpperLowerTextModificationNode, var_name: str, prefix: str
+) -> list[str] | None:
+    if node.modification_type == "Lowercase":
+        return [f"{prefix}{var_name} = {var_name}.lower()"]
+    if node.modification_type == "Uppercase":
+        return [f"{prefix}{var_name} = {var_name}.upper()"]
+    return None
+
+
+def _generate_modify_text_child_lines(
+    child: Node, var_name: str, prefix: str
+) -> list[str] | None:
+    if isinstance(child, FindAndReplaceTextModificationNode):
+        return _generate_find_and_replace_text_modification_line(
+            child, var_name, prefix
+        )
+    if isinstance(child, TrimTextModificationNode):
+        return [f"{prefix}{var_name} = {var_name}.strip()"]
+    if isinstance(child, ToUpperLowerTextModificationNode):
+        return _generate_to_upper_lower_text_modification_line(child, var_name, prefix)
+    return None
+
+
+def _generate_modify_text(node: ModifyTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_modify_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_modify_text_body(node: ModifyTextNode, indent: int) -> list[str]:
+    """知見224: `SourceText`を起点に`body`内の各子活動
+    (`FindAndReplaceTextModification`/`TrimTextModification`/
+    `ToUpperLowerTextModification`)を順番に適用し`OutputText`へ
+    代入する——`ExcelApplicationScope`のようなリソース/接続スコープ
+    ではなく文字列を線形に通す単純な処理。未対応の子活動
+    (`CombineTextModification`等、実機ヒット0件のため未対応)や
+    未確認の設定値が1つでもあれば、途中の変換だけ欠落した誤った
+    文字列を`OutputText`へ渡してしまわないよう、活動全体を
+    `# TODO`へ倒す(部分適用はしない)。"""
+    prefix = INDENT * indent
+    if node.source_text is None or node.output_text is None:
+        return [f"{prefix}# TODO: ModifyText with missing SourceText/OutputText"]
+    todo: list[str] = []
+    source_text = _render_value_or_todo(node.source_text, prefix, todo)
+    output_text = _render_value_or_todo(node.output_text, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}_mod_text = {VB_CSTR_HELPER_NAME}({source_text})"]
+    for child in node.body:
+        child_lines = _generate_modify_text_child_lines(child, "_mod_text", prefix)
+        if child_lines is None:
+            return [
+                f"{prefix}# TODO: ModifyText with unsupported or unconfirmed "
+                f"child modification ({type(child).__name__})"
+            ]
+        lines.extend(child_lines)
+    lines.append(f"{prefix}{output_text} = _mod_text")
+    return lines
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:

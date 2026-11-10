@@ -102,6 +102,10 @@ from dump_daemon.uipath_dsl import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    FindAndReplaceTextModificationNode,
+    TrimTextModificationNode,
+    ToUpperLowerTextModificationNode,
+    ModifyTextNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -2823,6 +2827,69 @@ def test_set_environment_variable_properties():
     assert isinstance(node, SetEnvironmentVariableNode)
     assert node.name == Literal(value="MY_VAR")
     assert node.value == VbExpr(text="someValue")
+
+
+_TEXT_MODIFICATIONS_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+    'xmlns:ucat="clr-namespace:UiPath.Core.Activities.TextModifications;'
+    'assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_modify_text_wraps_find_and_replace_trim_and_case_children():
+    """知見224: `ui:ModifyText`。実機
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`
+    `Chapter_3-TextManipulationExercise/Main.xaml`で確認した構成——
+    `SourceText`/`OutputText`+`.Body`配下`ActivityAction`
+    (`DelegateInArgument`無し)+`Sequence`に`FindAndReplace`/`Trim`/
+    `ToUpperLower`TextModificationを順番に並べる。"""
+    xml = (
+        f"<ui:ModifyText {_TEXT_MODIFICATIONS_XMLNS} "
+        'DisplayName="Modify Text" OutputText="[Saved]" SourceText="[Raw]">'
+        "<ui:ModifyText.Body>"
+        "<ActivityAction>"
+        '<Sequence DisplayName="Do">'
+        '<ucat:FindAndReplaceTextModification DisplayName="Find and '
+        'replace text" ReplaceText="_" SearchText="%" />'
+        '<ucat:TrimTextModification DisplayName="Trim text" />'
+        '<ucat:ToUpperLowerTextModification '
+        'DisplayName="Text to Upper/Lowercase" '
+        'ModificationType="Lowercase" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:ModifyText.Body>"
+        "</ui:ModifyText>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ModifyTextNode)
+    assert node.source_text == VbExpr(text="Raw")
+    assert node.output_text == VbExpr(text="Saved")
+    assert len(node.body) == 3
+    find_replace, trim, case = node.body
+    assert isinstance(find_replace, FindAndReplaceTextModificationNode)
+    assert find_replace.search_text == Literal(value="%")
+    assert find_replace.replace_text == Literal(value="_")
+    assert find_replace.match_case is None
+    assert isinstance(trim, TrimTextModificationNode)
+    assert isinstance(case, ToUpperLowerTextModificationNode)
+    assert case.modification_type == "Lowercase"
+
+
+def test_find_and_replace_text_modification_with_match_case():
+    """知見224: `MatchCase="True"`が実機(`ok-omes-escrow/...`)で確認
+    できた唯一の非既定値——省略時は公式ドキュメント確認済みの既定
+    `False`(大文字小文字を区別しない一致)。"""
+    xml = (
+        f"<ucat:FindAndReplaceTextModification {_TEXT_MODIFICATIONS_XMLNS} "
+        'MatchCase="True" ReplaceText="[Config(&quot;x&quot;).ToString]" '
+        'SearchText="&lt;ProcessName&gt;" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FindAndReplaceTextModificationNode)
+    assert node.match_case == "True"
+    assert node.search_text == Literal(value="<ProcessName>")
 
 
 def test_invoke_code(main_wf):

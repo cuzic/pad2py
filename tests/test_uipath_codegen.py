@@ -128,6 +128,10 @@ from dump_daemon.uipath_dsl import (
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
     SetEnvironmentVariableNode,
+    FindAndReplaceTextModificationNode,
+    TrimTextModificationNode,
+    ToUpperLowerTextModificationNode,
+    ModifyTextNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -10140,6 +10144,133 @@ def test_set_environment_variable_with_missing_properties_is_todo():
     wf = _wrap([SetEnvironmentVariableNode(name=Literal(value="X"), value=None)])
     code = generate_python(wf)
     assert "# TODO: SetEnvironmentVariable with missing Name/Value" in code
+    _compiles(code)
+
+
+def test_modify_text_applies_children_in_order():
+    """知見224: `ui:ModifyText`。実機
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`相当の
+    `FindAndReplace`→`Trim`→`ToUpperLower`の順を`exec()`経由で実際に
+    実行し、`SourceText`→`OutputText`への線形な文字列変換を確認する。
+    `MatchCase`省略時は公式ドキュメント確認済みの既定(大文字小文字を
+    区別しない一致)で動作することも確認する。"""
+    wf = _wrap(
+        [
+            ModifyTextNode(
+                source_text=VbExpr(text="Raw"),
+                output_text=VbExpr(text="Saved"),
+                body=[
+                    FindAndReplaceTextModificationNode(
+                        search_text=Literal(value="%"),
+                        replace_text=Literal(value="_"),
+                    ),
+                    TrimTextModificationNode(),
+                    ToUpperLowerTextModificationNode(modification_type="Lowercase"),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "re.sub(" in code
+    assert "flags=re.IGNORECASE" in code
+    assert ".strip()" in code
+    assert ".lower()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(Raw):")
+    code2 += "\n    return Saved"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("  HELLO%WORLD  ") == "hello_world"
+
+
+def test_modify_text_find_and_replace_match_case_true_is_case_sensitive():
+    """知見224: `MatchCase="True"`は実機で確認できた唯一の非既定値——
+    `re.sub()`の第4位置引数が`count`であり`flags`ではないことを発見し
+    (`re.search()`とは引数順が異なる既知のPython標準ライブラリの罠)、
+    `flags=`キーワード引数で明示する必要があった。大文字小文字を区別
+    する一致になることを`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            ModifyTextNode(
+                source_text=VbExpr(text="Raw"),
+                output_text=VbExpr(text="Saved"),
+                body=[
+                    FindAndReplaceTextModificationNode(
+                        search_text=Literal(value="abc"),
+                        replace_text=Literal(value="X"),
+                        match_case="True",
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "flags=re.IGNORECASE" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(Raw):")
+    code2 += "\n    return Saved"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("ABCdef abc") == "ABCdef X"
+
+
+def test_modify_text_with_empty_body_is_pass_through():
+    wf = _wrap(
+        [
+            ModifyTextNode(
+                source_text=VbExpr(text="Raw"),
+                output_text=VbExpr(text="Saved"),
+                body=[],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(Raw):")
+    code2 += "\n    return Saved"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("hello") == "hello"
+
+
+def test_modify_text_declines_unsupported_child_without_partial_application():
+    """知見224: 未対応の子活動(`CombineTextModification`等)が1つでも
+    あれば、途中の変換だけ欠落した誤った文字列を`OutputText`へ渡して
+    しまわないよう、活動全体を`# TODO`へ倒す(部分適用はしない)方針を
+    確認する。"""
+    wf = _wrap(
+        [
+            ModifyTextNode(
+                source_text=VbExpr(text="Raw"),
+                output_text=VbExpr(text="Saved"),
+                body=[
+                    TrimTextModificationNode(),
+                    UnknownActivityNode(
+                        tag="ucat:CombineTextModification",
+                        display_name=None,
+                        attrs={},
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: ModifyText with unsupported or unconfirmed child "
+        "modification (UnknownActivityNode)" in code
+    )
+    assert ".strip()" not in code
+    _compiles(code)
+
+
+def test_modify_text_with_missing_properties_is_todo():
+    wf = _wrap(
+        [ModifyTextNode(source_text=None, output_text=VbExpr(text="Saved"), body=[])]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ModifyText with missing SourceText/OutputText" in code
     _compiles(code)
 
 
