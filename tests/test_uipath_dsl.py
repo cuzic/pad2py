@@ -101,6 +101,7 @@ from dump_daemon.uipath_dsl import (
     MatchesNode,
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
+    SetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -2806,6 +2807,22 @@ def test_get_environment_variable_properties():
     assert isinstance(node, GetEnvironmentVariableNode)
     assert node.variable == Literal(value="MachineName")
     assert node.variable_value == VbExpr(text="machine")
+
+
+def test_set_environment_variable_properties():
+    """知見223: `ui:SetEnvironmentVariable`(`GetEnvironmentVariable`の
+    兄弟活動)。ground-truth(`Name="{x:Null}" Value="{x:Null}"`)・
+    UiPath公式ドキュメントいずれも`Name`/`Value`の2つのInArgumentのみ
+    で、常にOS環境変数として設定する(`Get`側と違い2経路判断は無い)。"""
+    xml = (
+        f"<ui:SetEnvironmentVariable {_UI_XMLNS} "
+        'DisplayName="Set environment variable" Name="MY_VAR" '
+        'Value="[someValue]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SetEnvironmentVariableNode)
+    assert node.name == Literal(value="MY_VAR")
+    assert node.value == VbExpr(text="someValue")
 
 
 def test_invoke_code(main_wf):

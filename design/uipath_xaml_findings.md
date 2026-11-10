@@ -10484,6 +10484,47 @@ test_uipath_codegen.py`3件)、UiPath関連テスト全1002件通過、リポジ
 `tests/test_uipath_codegen.py`4件)、UiPath関連テスト全1008件通過、
 リポジトリ全体で全2094件通過(28件skip、変化無し)。
 
+## 223. `ui:SetEnvironmentVariable`を新規実装——`GetEnvironmentVariable`(知見215)の兄弟活動、常にOS環境変数として設定するだけで2経路判断が無いため動的`Name`も問題なく対応できる
+
+サブエージェントによる調査(`ModifyText`/`GetFileInfoX`/
+`GetFolderInfoX`の調査と並行して依頼)で発見した、`Get
+EnvironmentVariable`の未実装の兄弟活動。タグ名限定検索
+(`"ui:SetEnvironmentVariable"`)で96件ヒット。ground-truth
+(`<ui:SetEnvironmentVariable Name="{x:Null}" Value="{x:Null}" />`)・
+UiPath公式ドキュメント(`UiPath/skills`リポジトリの
+`uipath-rpa/references/activity-docs/UiPath.System.Activities/26.4/
+activities/SetEnvironmentVariable.md`)いずれも確認した構成は
+`Name`+`Value`の2つのInArgumentのみ、設定項目・出力無し。
+
+`GetEnvironmentVariable`(知見215)は`System.Environment`の既知
+プロパティ名(`MachineName`等)かOS環境変数かの2経路判断があり、
+`Variable`が動的式の場合はどちらの経路か事前判断できず`# TODO`へ
+倒していたが、`SetEnvironmentVariable`にはその区別が無く常にOS
+環境変数として書き込むだけ——そのため`Name`が動的式でも曖昧さが無く
+問題なく対応できる、`Get`側より単純な実装になった。
+`os.environ[name] = value`に対応する(プロセス内スコープのみ、
+Windows固有のUser-levelレジストリへの永続化までは再現しない、
+`GetEnvironmentVariable`知見215と同種の判断)。
+
+`_collect_imports()`の既存の`os.environ.`トリガーは`os.environ[`
+(ブラケット記法)にはマッチしないことを発見——新たに`"os.environ["`
+を別条件として追加した(既存の`os`インポートの条件分岐自体は
+共有)。`exec()`経由で実際の`os.environ`への書き込みを確認し
+(テスト後に`finally`で確実にクリーンアップ)、回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`2件)、
+UiPath関連テスト全1011件通過、リポジトリ全体で全2097件通過
+(28件skip、変化無し)。
+
+同じ調査で`ui:ModifyText`(167件ヒット、`ucat:`名前空間の子活動
+——`FindAndReplaceTextModification`/`TrimTextModification`/
+`ToUpperLowerTextModification`——を`Body`配下に持つコンテナ型活動、
+実装推奨)と`ui:GetFileInfoX`/`ui:GetFolderInfoX`(それぞれ108件/
+107件ヒット、`System.IO.FileInfo`/`DirectoryInfo`相当の単一不透明
+型オブジェクトを出力する——スカラー値への分解は無いと確認、
+ダウンストリームでの任意プロパティアクセスを本トランスパイラが
+モデル化していないため実装は見送り)も調査済み。`ModifyText`を
+次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

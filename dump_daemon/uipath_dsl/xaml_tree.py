@@ -115,6 +115,7 @@ from .types import (
     MatchesNode,
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
+    SetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -1850,6 +1851,16 @@ def _parse_get_environment_variable(
     )
 
 
+def _parse_set_environment_variable(
+    elem: etree._Element,
+) -> SetEnvironmentVariableNode:
+    return SetEnvironmentVariableNode(
+        display_name=_attr(elem, "DisplayName"),
+        name=_attr_expr(elem, "Name") or _in_argument_property_expr(elem, "Name"),
+        value=_attr_expr(elem, "Value") or _in_argument_property_expr(elem, "Value"),
+    )
+
+
 def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -2547,6 +2558,7 @@ _DISPATCH = {
     (UI_NS, "Matches"): _parse_matches,
     (UI_NS, "TextToLeftRight"): _parse_text_to_left_right,
     (UI_NS, "GetEnvironmentVariable"): _parse_get_environment_variable,
+    (UI_NS, "SetEnvironmentVariable"): _parse_set_environment_variable,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,

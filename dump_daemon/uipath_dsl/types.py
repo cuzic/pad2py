@@ -2544,6 +2544,27 @@ class GetEnvironmentVariableNode:
 
 
 @dataclass
+class SetEnvironmentVariableNode:
+    """`<ui:SetEnvironmentVariable Name="..." Value="..." />`(知見223、
+    `GetEnvironmentVariable`(知見215)の兄弟活動、タグ名限定GitHub検索
+    で96件ヒット)。ground-truth(`<ui:SetEnvironmentVariable
+    Name="{x:Null}" Value="{x:Null}" />`)・UiPath公式ドキュメント
+    (`UiPath/skills`リポジトリの`activity-docs/UiPath.System.Activities/
+    .../SetEnvironmentVariable.md`)いずれも`Name`/`Value`の2つの
+    InArgumentのみで設定項目・出力無し、常にOS環境変数として
+    設定する(`GetEnvironmentVariable`の`System.Environment`既知
+    プロパティ名との2経路判断は無い——書き込みは常にOS環境変数
+    のみ)。`os.environ[name] = value`に対応する——プロセス内
+    スコープのみで、Windows固有のUser-levelレジストリへの永続化までは
+    再現しない(`GetEnvironmentVariable`知見215と同種の「公式の正確な
+    既定ではないが実用上十分」という判断)。"""
+
+    display_name: str | None = None
+    name: Expr = None
+    value: Expr = None
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -3275,6 +3296,7 @@ Node = (
     | MatchesNode
     | TextToLeftRightNode
     | GetEnvironmentVariableNode
+    | SetEnvironmentVariableNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

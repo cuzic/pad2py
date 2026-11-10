@@ -2987,3 +2987,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      未確認のため`# TODO`。回帰テスト追加(`tests/test_uipath_dsl.py`
      2件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全
      1008件通過、リポジトリ全体で全2094件通過。
+
+181. **(完了、2026-11-10)** `ui:SetEnvironmentVariable`を新規実装
+     (知見223)——`GetEnvironmentVariable`(知見215)の兄弟活動、タグ
+     名限定検索で96件ヒット。`Name`+`Value`の2つのInArgumentのみ、
+     常にOS環境変数として設定するだけで`System.Environment`既知
+     プロパティ名との2経路判断が無いため、`Get`側と違い動的`Name`も
+     問題なく対応できる。`os.environ[name] = value`に対応する
+     (プロセス内スコープのみ)。`_collect_imports()`の既存
+     `os.environ.`トリガーがブラケット記法`os.environ[`にはマッチ
+     しないことを発見、別条件として追加した。`exec()`経由で実際の
+     書き込みを確認(テスト後に`finally`でクリーンアップ)。回帰
+     テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`2件)、UiPath関連テスト全1011件通過、
+     リポジトリ全体で全2097件通過。同じ調査で`ui:ModifyText`
+     (`ucat:`名前空間の子を持つコンテナ型、実装推奨)と
+     `ui:GetFileInfoX`/`ui:GetFolderInfoX`(単一不透明型オブジェクト
+     出力、ダウンストリームの任意プロパティアクセス未モデル化のため
+     見送り)も調査済み——`ModifyText`を次の候補として記録。

@@ -152,6 +152,7 @@ from ..uipath_dsl.types import (
     MatchesNode,
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
+    SetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -479,12 +480,13 @@ def _collect_imports(body: list[str]) -> list[str]:
     # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
     # `ForEachFolder`変換先、知見190)も同じ`os`モジュールのため同じ
     # 条件にまとめる。
-    # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)も
+    # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)・
+    # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)も
     # 同じ`os`モジュールのため同じ条件にまとめる。
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
         or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
-        or "os.rename(" in line or "os.environ." in line
+        or "os.rename(" in line or "os.environ." in line or "os.environ[" in line
         for line in body
     ):
         imports.append("import os")
@@ -682,6 +684,8 @@ def _generate_node(
         return _generate_text_to_left_right(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
         return _generate_get_environment_variable(node, indent)
+    if isinstance(node, SetEnvironmentVariableNode):
+        return _generate_set_environment_variable(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -1876,6 +1880,38 @@ def _generate_get_environment_variable_body(
     if special is not None:
         return [f"{prefix}{target} = {special}"]
     return [f"{prefix}{target} = os.environ.get({name!r})"]
+
+
+def _generate_set_environment_variable(
+    node: SetEnvironmentVariableNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_set_environment_variable_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_set_environment_variable_body(
+    node: SetEnvironmentVariableNode, indent: int
+) -> list[str]:
+    """知見223: `GetEnvironmentVariable`(知見215)と違い、常にOS環境
+    変数として設定するだけで`System.Environment`既知プロパティ名との
+    2経路判断が無い——`Name`が動的式でも曖昧さが無いため、`Get`側とは
+    違い動的`Name`も問題なく対応できる。`os.environ[name] = value`に
+    対応する(プロセス内スコープのみ、知見215と同種の判断)。"""
+    prefix = INDENT * indent
+    if node.name is None or node.value is None:
+        return [
+            f"{prefix}# TODO: SetEnvironmentVariable with missing Name/Value"
+        ]
+    todo: list[str] = []
+    name = _render_value_or_todo(node.name, prefix, todo)
+    value = _render_value_or_todo(node.value, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}os.environ[{VB_CSTR_HELPER_NAME}({name})] = "
+        f"{VB_CSTR_HELPER_NAME}({value})"
+    ]
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:

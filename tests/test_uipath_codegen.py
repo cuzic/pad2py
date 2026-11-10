@@ -127,6 +127,7 @@ from dump_daemon.uipath_dsl import (
     MatchesNode,
     TextToLeftRightNode,
     GetEnvironmentVariableNode,
+    SetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -10103,6 +10104,43 @@ def test_get_environment_variable_declines_osversion_and_dynamic_variable():
     code2 = generate_python(wf2)
     assert "# TODO: GetEnvironmentVariable with a dynamic Variable" in code2
     _compiles(code2)
+
+
+def test_set_environment_variable_sets_os_environ():
+    """知見223: `ui:SetEnvironmentVariable`(`GetEnvironmentVariable`の
+    兄弟活動)。`Get`側と違い常にOS環境変数として設定するだけで2経路
+    判断が無いため、動的`Name`でも問題なく対応できる——`exec()`経由で
+    実際に`os.environ`へ値が設定されることを確認する。"""
+    wf = _wrap(
+        [
+            SetEnvironmentVariableNode(
+                name=VbExpr(text="varName"),
+                value=VbExpr(text="varValue"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.environ[" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(varName, varValue):")
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import os
+
+    try:
+        namespace["Test"]("PAD2PY_TEST_SET_ENV_VAR", "hello")
+        assert os.environ.get("PAD2PY_TEST_SET_ENV_VAR") == "hello"
+    finally:
+        os.environ.pop("PAD2PY_TEST_SET_ENV_VAR", None)
+
+
+def test_set_environment_variable_with_missing_properties_is_todo():
+    wf = _wrap([SetEnvironmentVariableNode(name=Literal(value="X"), value=None)])
+    code = generate_python(wf)
+    assert "# TODO: SetEnvironmentVariable with missing Name/Value" in code
+    _compiles(code)
 
 
 def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:
