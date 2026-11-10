@@ -56,6 +56,8 @@ from dump_daemon.uipath_dsl import (
     NavigateToNode,
     GetFromClipboardNode,
     DeserializeJsonArrayNode,
+    CopyFolderXNode,
+    MoveFolderXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -5809,6 +5811,210 @@ def test_move_file_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: MoveFile with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_copy_folder_x_copies_nested_into_existing_destination_exec():
+    """知見246: `ui:CopyFolderX`——`CopyFile`のフォルダ版、
+    `shutil.copytree()`に対応する。公式ドキュメント確認済みの
+    `Overwrite`の意味論(「宛先に`From`と同じ名前の既存フォルダが
+    あれば置き換える」)により、`To`が既存ディレクトリの場合は`From`
+    のbasenameを付加する——実際の一時ディレクトリへ`exec()`経由で
+    コピーし、ネストした配置になることを確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                CopyFolderXNode(
+                    from_=VbExpr(text="src"),
+                    to=VbExpr(text="dest_container"),
+                    include_subfolders="True",
+                    overwrite="True",
+                )
+            ]
+        ),
+        arguments={"src": "InArgument(x:String)", "dest_container": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "shutil.copytree(_src, _dest, dirs_exist_ok=True)" in code
+    assert "import shutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        with open(os.path.join(src, "a.txt"), "w") as f:
+            f.write("hello")
+        dest_container = os.path.join(tmp, "container")
+        os.makedirs(dest_container)
+        namespace: dict[str, object] = {}
+        exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+        namespace["Test"](src=src, dest_container=dest_container)
+        assert os.path.exists(os.path.join(dest_container, "src", "a.txt"))
+
+
+def test_copy_folder_x_with_overwrite_false_raises_on_existing_destination_exec():
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                CopyFolderXNode(
+                    from_=VbExpr(text="src"),
+                    to=VbExpr(text="dest_container"),
+                    include_subfolders="True",
+                    overwrite="False",
+                )
+            ]
+        ),
+        arguments={"src": "InArgument(x:String)", "dest_container": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "if os.path.exists(_dest):" in code
+    assert "raise FileExistsError(_dest)" in code
+    _compiles(code)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        dest_container = os.path.join(tmp, "container")
+        os.makedirs(os.path.join(dest_container, "src"))
+        namespace: dict[str, object] = {}
+        exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+        with pytest.raises(FileExistsError):
+            namespace["Test"](src=src, dest_container=dest_container)
+
+
+def test_copy_folder_x_with_include_subfolders_false_is_todo():
+    """知見246: `IncludeSubfolders="False"`時の意味論は未確認
+    (実機・ground-truthいずれも`"True"`のみ)——でっち上げず`# TODO`
+    へ倒す。"""
+    wf = _wrap(
+        [
+            CopyFolderXNode(
+                from_=Literal(value="a"),
+                to=Literal(value="b"),
+                include_subfolders="False",
+                overwrite="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CopyFolderX with IncludeSubfolders" in code
+    _compiles(code)
+
+
+def test_copy_folder_x_with_from_resource_is_todo():
+    wf = _wrap(
+        [
+            CopyFolderXNode(
+                from_=Literal(value="a"),
+                to=Literal(value="b"),
+                include_subfolders="True",
+                overwrite="True",
+                from_resource=VbExpr(text="res"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CopyFolderX with FromResource/ToResource set" in code
+    _compiles(code)
+
+
+def test_copy_folder_x_with_continue_on_error_is_todo():
+    wf = _wrap(
+        [
+            CopyFolderXNode(
+                from_=Literal(value="a"),
+                to=Literal(value="b"),
+                include_subfolders="True",
+                overwrite="True",
+                continue_on_error=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CopyFolderX with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_copy_folder_x_with_missing_from_or_to_is_todo():
+    wf = _wrap([CopyFolderXNode(from_=None, to=Literal(value="b"))])
+    code = generate_python(wf)
+    assert "# TODO: CopyFolderX with missing From/To" in code
+    _compiles(code)
+
+
+def test_move_folder_x_moves_nested_into_existing_destination_exec():
+    """知見246: `ui:MoveFolderX`——`MoveFile`のフォルダ版、
+    `shutil.move()`に対応する。`IncludeSubfolders`は無い
+    (ground-truth・実機いずれも確認済み)。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                MoveFolderXNode(
+                    from_=VbExpr(text="src"),
+                    to=VbExpr(text="dest_container"),
+                    overwrite="True",
+                )
+            ]
+        ),
+        arguments={"src": "InArgument(x:String)", "dest_container": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "shutil.move(_src, _dest)" in code
+    assert "import shutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        with open(os.path.join(src, "b.txt"), "w") as f:
+            f.write("world")
+        dest_container = os.path.join(tmp, "archive")
+        os.makedirs(dest_container)
+        namespace: dict[str, object] = {}
+        exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+        namespace["Test"](src=src, dest_container=dest_container)
+        assert os.path.exists(os.path.join(dest_container, "src", "b.txt"))
+        assert not os.path.exists(src)
+
+
+def test_move_folder_x_with_overwrite_false_checks_existence():
+    wf = _wrap(
+        [
+            MoveFolderXNode(
+                from_=Literal(value="a"),
+                to=Literal(value="b"),
+                overwrite="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if os.path.exists(_dest):" in code
+    assert "raise FileExistsError(_dest)" in code
+    _compiles(code)
+
+
+def test_move_folder_x_with_continue_on_error_is_todo():
+    wf = _wrap(
+        [
+            MoveFolderXNode(
+                from_=Literal(value="a"),
+                to=Literal(value="b"),
+                overwrite="True",
+                continue_on_error=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: MoveFolderX with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_move_folder_x_with_missing_from_or_to_is_todo():
+    wf = _wrap([MoveFolderXNode(from_=None, to=Literal(value="b"))])
+    code = generate_python(wf)
+    assert "# TODO: MoveFolderX with missing From/To" in code
     _compiles(code)
 
 

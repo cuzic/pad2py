@@ -36,6 +36,8 @@ from .types import (
     NavigateToNode,
     GetFromClipboardNode,
     DeserializeJsonArrayNode,
+    CopyFolderXNode,
+    MoveFolderXNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -1438,6 +1440,29 @@ def _parse_move_file(elem: etree._Element) -> MoveFileNode:
         overwrite=_attr_or_none(elem, "Overwrite"),
         destination_resource=_attr_expr(elem, "DestinationResource"),
         path_resource=_attr_expr(elem, "PathResource"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_copy_folder_x(elem: etree._Element) -> CopyFolderXNode:
+    return CopyFolderXNode(
+        from_=_attr_expr(elem, "From"),
+        to=_attr_expr(elem, "To"),
+        include_subfolders=_attr_or_none(elem, "IncludeSubfolders"),
+        overwrite=_attr_or_none(elem, "Overwrite"),
+        from_resource=_attr_expr(elem, "FromResource"),
+        to_resource=_attr_expr(elem, "ToResource"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_move_folder_x(elem: etree._Element) -> MoveFolderXNode:
+    return MoveFolderXNode(
+        from_=_attr_expr(elem, "From"),
+        to=_attr_expr(elem, "To"),
+        overwrite=_attr_or_none(elem, "Overwrite"),
         continue_on_error=_attr_expr(elem, "ContinueOnError"),
         display_name=_attr(elem, "DisplayName"),
     )
@@ -2931,6 +2956,8 @@ _DISPATCH = {
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "MoveFile"): _parse_move_file,
+    (UI_NS, "CopyFolderX"): _parse_copy_folder_x,
+    (UI_NS, "MoveFolderX"): _parse_move_folder_x,
     (UI_NS, "PathExists"): _parse_path_exists,
     (UI_NS, "FileExistsX"): _parse_file_exists_x,
     (UI_NS, "FolderExistsX"): _parse_folder_exists_x,

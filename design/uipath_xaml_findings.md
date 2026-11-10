@@ -11646,6 +11646,51 @@ formattedJson))`へ変換されることを確認した。実機相当の両方�
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`4件、
 知見244の専用テスト含む)、リポジトリ全体で全2219件通過(28件skip)。
 
+## 246. `ui:CopyFolderX`・`ui:MoveFolderX`を新規実装——既存の`CopyFile`/`MoveFile`のフォルダ版、公式ドキュメント確認済みの`Overwrite`の意味論から`To`の「既存ディレクトリならbasenameを付加する」解決ロジックを安全に転用できると判断した
+
+同じ8回目発見パスのTier 2候補(弱めの実機利用率、タグ名限定GitHub
+検索で24/28件ヒット)だった`ui:CopyFolderX`/`ui:MoveFolderX`に着手
+した——これで8回目発見パスの全候補(知見242〜246)が完了した。
+
+実機3件(`RobotGod1/IndianaOverheadAdjustment.RPA.Uipath.Process`の
+`Project/SetUpEnvironmentIfNeeded.xaml`、`Masbahul-bari/UiPath`の
+`moveANDcopy/copy.xaml`、公式`Apress/Robotic-Process-Automation-
+Using-UiPath-StudioX`の`Chapter_9_FolderActivitiesExercise/
+Main.xaml`)で独立に再取得・確認——`CopyFolderX`は`From`/`To`/
+`Overwrite`(`CopyFile`知見117と同じ)+`IncludeSubfolders`(実機・
+ground-truth既定値いずれも`"True"`のみ確認、`"False"`時の意味論は
+未確認のため見送り)。`MoveFolderX`は`From`/`To`/`Overwrite`のみ
+——`IncludeSubfolders`が無い(ground-truth・実機いずれも確認済み、
+移動はフォルダの中身全体を常に対象とするため選択の余地が無いと
+推定)。`ContinueOnError`はground-truthには無いが実機サンプルに
+存在する(知見197等で繰り返し確認済みの「ground-truthは非網羅的」
+パターン、公式ドキュメントでも標準の共通プロパティとして確認)。
+
+`To`が既存ディレクトリの場合の正確な意味論(`From`自体を`To`という
+正確な新しい名前へリネームするのか、`To`配下へ`From`のbasenameで
+ネストするのか)は実機サンプルの静的検査だけでは確定できなかった
+——WebFetch経由で公式ドキュメントの`Overwrite`の説明文(「宛先に
+`From`と同じ名前の既存フォルダがあればそれを置き換える」)を直接
+確認し、これが「`To`は格納先ディレクトリで、`From`のbasenameで
+その配下に配置される」という構造を documented behaviorとして
+確定的に裏付けていると判断した——これにより、既存の`CopyFile`/
+`MoveFile`が既に持つ「移動先/コピー先が既存のディレクトリなら
+ファイル名(ここではフォルダ名)を付加する」解決ロジックを安全に
+再利用できた。`shutil.copytree()`/`shutil.move()`(それぞれ`CopyFile`
+の`shutil.copy()`・`MoveFile`の`shutil.move()`に対応するフォルダ版の
+標準API)に対応する。`Overwrite="True"`は`dirs_exist_ok=True`
+(既存ファイルを上書きしつつマージ——宛先に`From`に無い余分なファイル
+が残り続ける既知の限界、完全な削除→再作成ではない、ドキュメントの
+「replaced」という表現との厳密な一致は未確認)、`"False"`は
+`CopyFile`/`MoveFile`と同じ明示的な事前存在チェック。
+
+実際の一時ディレクトリへの読み書きを`exec()`経由で行い、ネストした
+配置(`To/From_basename/...`)・`Overwrite=False`時の`FileExistsError`
+のいずれも実際のファイルシステム操作で確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`10件)、
+リポジトリ全体で全2231件通過(28件skip)。8回目発見パスはこれで
+完了——バックログは再び空になった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

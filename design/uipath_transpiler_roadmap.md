@@ -3452,3 +3452,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      確認した。実機相当の両方の構成を`exec()`経由で実際に実行し確認
      した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`4件)、リポジトリ全体で全2219件通過。
+
+204. **(完了、2026-11-10)** `ui:CopyFolderX`・`ui:MoveFolderX`を
+     新規実装(知見246)——タグ名限定検索で24/28件ヒット、8回目発見
+     パスの最後のTier 2候補。実機3件(`RobotGod1/
+     IndianaOverheadAdjustment.RPA.Uipath.Process`・`Masbahul-bari/
+     UiPath`・公式`Apress/Robotic-Process-Automation-Using-UiPath-
+     StudioX`)で確認——既存の`CopyFile`/`MoveFile`(知見117・188)の
+     フォルダ版、`shutil.copytree()`/`shutil.move()`に対応する。
+     `To`が既存ディレクトリの場合の正確な意味論(リネームかネスト
+     配置か)は実機サンプルの静的検査だけでは確定できなかったため、
+     WebFetch経由で公式ドキュメントの`Overwrite`の説明文(「宛先に
+     `From`と同じ名前の既存フォルダがあれば置き換える」)を直接確認
+     し、既存の`CopyFile`/`MoveFile`の「移動先/コピー先が既存の
+     ディレクトリならファイル名(フォルダ名)を付加する」解決ロジック
+     を安全に再利用できると判断した。`CopyFolderX`の`IncludeSubfolders`
+     は実機・ground-truth既定値いずれも`"True"`のみ確認——
+     `MoveFolderX`には無い(移動は常にフォルダ全体が対象)。実際の
+     一時ディレクトリへの読み書きを`exec()`経由で行い、ネストした
+     配置・`Overwrite=False`時の`FileExistsError`のいずれも実際の
+     ファイルシステム操作で確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`10件)、
+     リポジトリ全体で全2231件通過。8回目発見パスはこれで完了
+     ——バックログは再び空になった。

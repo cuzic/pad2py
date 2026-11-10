@@ -32,6 +32,8 @@ from dump_daemon.uipath_dsl import (
     NavigateToNode,
     GetFromClipboardNode,
     DeserializeJsonArrayNode,
+    CopyFolderXNode,
+    MoveFolderXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -2611,6 +2613,44 @@ def test_move_file_properties():
     assert node.destination == Literal(value="processed")
     assert node.overwrite == "False"
     assert node.continue_on_error is None
+
+
+def test_copy_folder_x_properties():
+    """知見246: `ui:CopyFolderX`(`CopyFile`(知見117)のフォルダ版、
+    タグ名限定GitHub検索で24件ヒット)。実機
+    `RobotGod1/IndianaOverheadAdjustment.RPA.Uipath.Process`の
+    `Project/SetUpEnvironmentIfNeeded.xaml`で確認した実例。"""
+    xml = (
+        f"<ui:CopyFolderX {_UI_XMLNS} ContinueOnError=\"{{x:Null}}\" "
+        'DisplayName="Copy Folder" From="External_Config_Files" '
+        'IncludeSubfolders="True" Overwrite="True" '
+        'To="[in_Config(&quot;ProcessRootFolder&quot;).ToString()]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CopyFolderXNode)
+    assert node.from_ == Literal(value="External_Config_Files")
+    assert node.to == VbExpr(text='in_Config("ProcessRootFolder").ToString()')
+    assert node.include_subfolders == "True"
+    assert node.overwrite == "True"
+    assert node.continue_on_error is None
+
+
+def test_move_folder_x_properties():
+    """知見246: `ui:MoveFolderX`(`MoveFile`(知見188)のフォルダ版、
+    タグ名限定GitHub検索で28件ヒット)。実機公式`Apress/Robotic-
+    Process-Automation-Using-UiPath-StudioX`の
+    `Chapter_9_FolderActivitiesExercise/Main.xaml`で確認した実例
+    ——`CopyFolderX`と違い`IncludeSubfolders`が無い。"""
+    xml = (
+        f"<ui:MoveFolderX {_UI_XMLNS} DisplayName=\"Move Folder\" "
+        'From="C:\\BookSamples\\Chapter_09\\Resumes\\20200909" '
+        'Overwrite="True" To="C:\\BookSamples\\Chapter_09\\Archive" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MoveFolderXNode)
+    assert node.from_ == Literal(value="C:\\BookSamples\\Chapter_09\\Resumes\\20200909")
+    assert node.to == Literal(value="C:\\BookSamples\\Chapter_09\\Archive")
+    assert node.overwrite == "True"
 
 
 def test_path_exists_with_file_path_type():

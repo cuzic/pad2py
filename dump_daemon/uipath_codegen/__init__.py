@@ -78,6 +78,8 @@ from ..uipath_dsl.types import (
     NavigateToNode,
     GetFromClipboardNode,
     DeserializeJsonArrayNode,
+    CopyFolderXNode,
+    MoveFolderXNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -529,7 +531,7 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 同様。
     if any(
         "shutil.copy(" in line or "shutil.move(" in line or "shutil.rmtree(" in line
-        or "shutil.unpack_archive(" in line
+        or "shutil.unpack_archive(" in line or "shutil.copytree(" in line
         for line in body
     ):
         imports.append("import shutil")
@@ -936,6 +938,10 @@ def _generate_node(
         return _generate_copy_file(node, indent)
     if isinstance(node, MoveFileNode):
         return _generate_move_file(node, indent)
+    if isinstance(node, CopyFolderXNode):
+        return _generate_copy_folder_x(node, indent)
+    if isinstance(node, MoveFolderXNode):
+        return _generate_move_folder_x(node, indent)
     if isinstance(node, PathExistsNode):
         return _generate_path_exists(node, indent)
     if isinstance(node, FileExistsXNode):
@@ -6185,6 +6191,114 @@ def _generate_move_file_body(node: MoveFileNode, indent: int) -> list[str]:
     lines = [
         f"{prefix}_src = {path}",
         f"{prefix}_dest = {destination}",
+        f"{prefix}if os.path.isdir(_dest):",
+        f"{INDENT * (indent + 1)}_dest = os.path.join(_dest, os.path.basename(_src))",
+    ]
+    if node.overwrite == "False":
+        lines.append(f"{prefix}if os.path.exists(_dest):")
+        lines.append(f"{INDENT * (indent + 1)}raise FileExistsError(_dest)")
+    lines.append(f"{prefix}shutil.move(_src, _dest)")
+    return lines
+
+
+def _generate_copy_folder_x(node: CopyFolderXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_copy_folder_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_copy_folder_x_body(node: CopyFolderXNode, indent: int) -> list[str]:
+    """知見246: `ui:CopyFolderX`——`CopyFile`(知見117)のフォルダ版、
+    `shutil.copytree()`に対応する。`To`が既存ディレクトリの場合は
+    `From`のbasenameを付加する(`CopyFile`と同じ解決ロジック、公式
+    ドキュメント確認済みの`Overwrite`の意味論「宛先に`From`と同じ名前
+    の既存フォルダがあれば置き換える」とも整合する)。`Overwrite=
+    "True"`は`dirs_exist_ok=True`(既存ファイルを上書きしつつマージ
+    ——宛先に`From`に無い余分なファイルが残り続ける既知の限界、
+    完全な削除→再作成ではない)、`"False"`は`CopyFile`と同じ明示的な
+    事前存在チェック。"""
+    prefix = INDENT * indent
+    if node.from_ is None or node.to is None:
+        return [f"{prefix}# TODO: CopyFolderX with missing From/To"]
+    if node.from_resource is not None or node.to_resource is not None:
+        return [
+            f"{prefix}# TODO: CopyFolderX with FromResource/ToResource set "
+            "— Integration Service resource handling not confirmed, refusing "
+            "to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: CopyFolderX with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.include_subfolders != "True":
+        return [
+            f"{prefix}# TODO: CopyFolderX with IncludeSubfolders "
+            f"{node.include_subfolders!r} — only the confirmed \"True\" "
+            "default is implemented, refusing to guess False's semantics"
+        ]
+    if node.overwrite not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: CopyFolderX with unrecognized/unset Overwrite "
+            f"({node.overwrite!r}) — true default behavior not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    from_ = _render_value_or_todo(node.from_, prefix, todo)
+    to = _render_value_or_todo(node.to, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_src = {from_}",
+        f"{prefix}_dest = {to}",
+        f"{prefix}if os.path.isdir(_dest):",
+        f"{INDENT * (indent + 1)}_dest = os.path.join(_dest, os.path.basename(_src))",
+    ]
+    if node.overwrite == "False":
+        lines.append(f"{prefix}if os.path.exists(_dest):")
+        lines.append(f"{INDENT * (indent + 1)}raise FileExistsError(_dest)")
+        lines.append(f"{prefix}shutil.copytree(_src, _dest)")
+    else:
+        lines.append(f"{prefix}shutil.copytree(_src, _dest, dirs_exist_ok=True)")
+    return lines
+
+
+def _generate_move_folder_x(node: MoveFolderXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_move_folder_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_move_folder_x_body(node: MoveFolderXNode, indent: int) -> list[str]:
+    """知見246: `ui:MoveFolderX`——`MoveFile`(知見188)のフォルダ版、
+    `shutil.move()`に対応する(`IncludeSubfolders`無し、ground-truth・
+    実機いずれも確認済み)。`MoveFile`と同じ「移動先が既存のディレク
+    トリなら`From`のbasenameを付加する」解決ロジック+`Overwrite=
+    "False"`時の事前存在チェックをそのまま再利用する。"""
+    prefix = INDENT * indent
+    if node.from_ is None or node.to is None:
+        return [f"{prefix}# TODO: MoveFolderX with missing From/To"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: MoveFolderX with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.overwrite not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: MoveFolderX with unrecognized/unset Overwrite "
+            f"({node.overwrite!r}) — true default behavior not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    from_ = _render_value_or_todo(node.from_, prefix, todo)
+    to = _render_value_or_todo(node.to, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_src = {from_}",
+        f"{prefix}_dest = {to}",
         f"{prefix}if os.path.isdir(_dest):",
         f"{INDENT * (indent + 1)}_dest = os.path.join(_dest, os.path.basename(_src))",
     ]

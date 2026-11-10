@@ -1885,6 +1885,68 @@ class MoveFileNode:
 
 
 @dataclass
+class CopyFolderXNode:
+    """`<ui:CopyFolderX From="..." To="..." IncludeSubfolders="True"
+    Overwrite="True" ContinueOnError="..." />`(知見246、8回目発見パス
+    のTier 2候補、タグ名限定GitHub検索で24件ヒット——弱めの実機利用率
+    だが実機3件(`RobotGod1/IndianaOverheadAdjustment.RPA.Uipath.
+    Process`の`Project/SetUpEnvironmentIfNeeded.xaml`、
+    `Masbahul-bari/UiPath`の`moveANDcopy/copy.xaml`、公式`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`の
+    `Chapter_9_FolderActivitiesExercise/Main.xaml`)で独立に確認、
+    一貫して同じ属性構成)で確認済み。`CopyFile`(知見117)のフォルダ版
+    ——`From`/`To`/`Overwrite`は`CopyFile`と同じ、`IncludeSubfolders`
+    (実機・ground-truth既定値いずれも`"True"`のみ確認、`"False"`時の
+    意味論は未確認のため見送る)が新規。`FromResource`/`ToResource`
+    (ground-truthのみ、`CopyFile`の`DestinationResource`/`PathResource`
+    と同じIntegration Service連携用と推定)は未確認のため見送る。
+    `ContinueOnError`はground-truthには無いが実機サンプルに存在する
+    (知見197等で繰り返し確認済みの「ground-truthは非網羅的」パターン)
+    ——公式ドキュメント(WebSearch経由確認)でも標準の共通プロパティ
+    として記載されている。
+
+    公式ドキュメント確認済みの`Overwrite`の意味論(「宛先に`From`と
+    同じ名前の既存フォルダがあれば置き換える」)から、`To`は`CopyFile`
+    の`Destination`と同じ「既存ディレクトリならその配下に`From`の
+    basenameで配置する」解決ロジックがそのまま適用できると判断した
+    ——`shutil.copytree()`(`CopyFile`の`shutil.copy()`に対応する
+    フォルダ版の標準API)を使う。"""
+
+    from_: Expr = None
+    to: Expr = None
+    include_subfolders: str | None = None
+    overwrite: str | None = None
+    from_resource: Expr = None
+    to_resource: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class MoveFolderXNode:
+    """`<ui:MoveFolderX From="..." To="..." Overwrite="True" />`
+    (知見246、`CopyFolderX`の対になる移動活動、タグ名限定GitHub検索で
+    28件ヒット)。`MoveFile`(知見188)のフォルダ版——ground-truth・
+    実機(公式`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`の`Chapter_9_FolderActivitiesExercise/Main.xaml`)いずれも
+    `IncludeSubfolders`が無い(`CopyFolderX`と違い、移動はフォルダの
+    中身全体を常に対象とするため選択の余地が無いと推定)。`shutil.
+    move()`(`MoveFile`に対応するフォルダ版の標準API)を使う——
+    `MoveFile`と同じ「移動先が既存のディレクトリなら`From`のbasenameを
+    付加する」解決ロジック+`Overwrite="False"`時の事前存在チェックを
+    そのまま再利用する。`ContinueOnError`は実機未確認だが
+    `CopyFolderX`と対になる活動のため同じく見送る側に倒す
+    (`MoveFile`/`CopyFile`が同じプロパティを共有するのと対称的な
+    判断)。"""
+
+    from_: Expr = None
+    to: Expr = None
+    overwrite: str | None = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class PathExistsNode:
     """`<ui:PathExists>`(知見188、`UiPath.System.Activities`、GitHub
     code searchで558件ヒット)。`UiPath/skills`公式リポジトリのStudio
@@ -4113,6 +4175,8 @@ Node = (
     | NavigateToNode
     | GetFromClipboardNode
     | DeserializeJsonArrayNode
+    | CopyFolderXNode
+    | MoveFolderXNode
     | ParallelNode
     | ClickNode
     | HoverNode
