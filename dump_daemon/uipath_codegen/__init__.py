@@ -74,6 +74,8 @@ from ..uipath_dsl.types import (
     AddLogFieldsNode,
     RemoveLogFieldsNode,
     DeserializeJsonNode,
+    GoBackNode,
+    NavigateToNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -845,6 +847,10 @@ def _generate_node(
         return _generate_close_tab(node, indent)
     if isinstance(node, RefreshBrowserNode):
         return _generate_refresh_browser(node, indent)
+    if isinstance(node, GoBackNode):
+        return _generate_go_back(node, indent)
+    if isinstance(node, NavigateToNode):
+        return _generate_navigate_to(node, indent)
     if isinstance(node, TypeIntoNode):
         return _generate_type_into(node, indent)
     if isinstance(node, SendHotkeyNode):
@@ -4621,6 +4627,59 @@ def _generate_refresh_browser_body(node: RefreshBrowserNode, indent: int) -> lis
             "variable reference not modeled, refusing to guess"
         ]
     return [f"{prefix}send_keys('{{F5}}')"]
+
+
+def _generate_go_back(node: GoBackNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_go_back_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_go_back_body(node: GoBackNode, indent: int) -> list[str]:
+    """知見242: `ui:GoBack`。`RefreshBrowser`(知見175)と全く同じ
+    `Browser`属性構成——`{x:Null}`(既定、現在アタッチ中のブラウザ)
+    の場合のみ主要ブラウザ共通の`Alt+Left`(履歴を1つ戻る)に対応する。"""
+    prefix = INDENT * indent
+    if node.browser is not None:
+        return [
+            f"{prefix}# TODO: GoBack with Browser set "
+            f"({_describe_expr_for_comment(node.browser)}) — UiBrowser "
+            "variable reference not modeled, refusing to guess"
+        ]
+    return [f"{prefix}send_keys('%{{LEFT}}')"]
+
+
+def _generate_navigate_to(node: NavigateToNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_navigate_to_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_navigate_to_body(node: NavigateToNode, indent: int) -> list[str]:
+    """知見242: `ui:NavigateTo`。`Browser`が`{x:Null}`の場合のみ対応
+    (実機3件いずれも`{x:Null}`、変数参照の実例は`GoBack`と違い未確認
+    だが同じ`# TODO`方針を予防的に適用する)——`Ctrl+L`でアドレスバーへ
+    フォーカスし、`Url`を`TypeInto`(知見110)と同じ
+    `_pywinauto_type_keys_escape()`でエスケープしてから`{ENTER}`で
+    確定する。"""
+    prefix = INDENT * indent
+    if node.browser is not None:
+        return [
+            f"{prefix}# TODO: NavigateTo with Browser set "
+            f"({_describe_expr_for_comment(node.browser)}) — UiBrowser "
+            "variable reference not modeled, refusing to guess"
+        ]
+    if node.url is None:
+        return [f"{prefix}# TODO: NavigateTo with no Url captured"]
+    todo: list[str] = []
+    url = _render_value_or_todo(node.url, prefix, todo)
+    if todo:
+        return todo
+    url_arg = f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}({VB_CSTR_HELPER_NAME}({url}))"
+    return [
+        f"{prefix}send_keys('^l')",
+        f"{prefix}send_keys({url_arg} + '{{ENTER}}')",
+    ]
 
 
 # `pywinauto`の`type_keys()`は`~^%+(){}`を独自の特殊キー構文として解釈する

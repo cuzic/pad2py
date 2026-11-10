@@ -11466,6 +11466,61 @@ ToString`を`exec()`経由で実際に実行し、`json.loads()`で変換した
 回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
 test_uipath_codegen.py`3件)、リポジトリ全体で全2199件通過(28件skip)。
 
+## 242. `ui:GoBack`・`ui:NavigateTo`を新規実装——サブエージェントによる8回目の新規発見パスで発見、いずれも既存の`RefreshBrowser`/`TypeInto`パターンの直接の延長で新規インフラ不要だった
+
+知見241の完了でバックログが完全に空になったため、新しいサブエージェント
+発見パス(8回目)を起動——ground-truth全件リストとの差分ではなく
+`gh api search/code`によるタグ名限定検索+実機2件以上の個別フェッチ
+確認という、知見238以降確立済みの手法をそのまま踏襲した。報告された
+候補群を独立に再検証した上で、最も低リスク・高確信度だった2件
+(`GoBack`・`NavigateTo`)に着手した。
+
+**`ui:GoBack`**(タグ名限定検索で88件ヒット): 実機2件
+(`DfDganeshh/DomainChecker`の`Framework/Process.xaml`、
+`piyushagarwal08/JU-Notes`の`UiPath/ACME_Testing/Main.xaml`)で独立に
+再取得・確認——`RefreshBrowser`(知見175)と属性構成が完全に同型
+(`Browser`のみ、`{x:Null}`/変数参照の両方が実在)。`Browser={x:Null}`
+の場合、主要ブラウザ共通の標準ショートカット`Alt+Left`(履歴を1つ
+戻る)に対応する——`RefreshBrowser`の`{F5}`と全く同じ`keyboard.
+send_keys()`経路(pywinautoの`.venv`ソース`keyboard.py`のCODES
+グラマーで`{LEFT}`(特殊キー)・`%`(Alt修飾子)いずれも確認済み)。
+兄弟活動`ui:GoForward`は5件ヒットのみ(`GoBack`の88件と比べ著しく
+薄い実機利用率)のため今回は見送った。
+
+**`ui:NavigateTo`**(タグ名限定検索で423件ヒット——今回の発見パスで
+最高の実機利用率): 実機3件(`CsKoushik9/Google-Search-using-RPA`の
+`GoogleSearch.xaml`、`lin8231/762-impl`の`FindPHEVs.xaml`×2)で独立に
+再取得・確認——`Browser`(常に`{x:Null}`、変数参照の実例は`GoBack`と
+違い未確認だが予防的に同じ`# TODO`方針を適用)+`Url`(静的リテラル・
+動的VB式連結の両方)。`Ctrl+L`でアドレスバーへフォーカスし、`Url`を
+`TypeInto`(知見110)の既存`_pywinauto_type_keys_escape()`ヘルパーで
+エスケープしてから`{ENTER}`で確定する、という新規ヘルパー不要の
+実装。実機サンプルのURLクエリ文字列に`+`が現れる実例を確認済み
+(pywinautoの特殊キー構文と衝突する文字)だったため、エスケープ無しの
+素の文字列送信は正確性リスクがあると判断し既存ヘルパーを再利用した。
+
+このサブエージェント発見パスは`ui:GetFromClipboard`(86件ヒット、
+既存の`SetToClipboard`の逆方向、`pyperclip.paste()`に対応——次tickの
+良い候補)・`ui:DeserializeJsonArray`(142件ヒット、知見241の
+`DeserializeJson<njl:JObject>`の兄弟で`json_object_vars`機構がそのまま
+一般化できると確認済み)・`ui:CopyFolderX`/`ui:MoveFolderX`
+(24/28件ヒット、既存の`CopyFile`/`MoveFile`の直接の延長だが実機
+多様性の確証がやや薄い)を次の候補として記録。`ui:CheckBox`
+(299件の生ヒットだが実際には無関係なWPFコントロールライブラリの
+誤検出と判明)・`ui:InjectJsScript`(実機確認したが`ScriptCode`が
+外部`.js`ファイル+ブラウザ内実行が必要——本トランスパイラが
+`pywinauto`専用でDOM/JSエンジンを持たないため`uix:`/`ueab:`と同じ
+構造的な壁、見送り)は明確に対象外と確定した。`ForEachRow`
+(6072件の生ヒットで一見巨大に見えたが、既に`ForEach`として実装済み
+——知見118参照、再調査不要)という偽陽性も記録。
+
+実機確認済みのURLエスケープ(`+`→`{+}`)を`exec()`経由ではなく
+(`pywinauto`自体がこのサンドボックス環境ではX11無しで`import`に
+失敗するため、既存の`CloseTab`/`RefreshBrowser`と同じ理由で文字列
+検証に留める)ヘルパー関数単体の直接呼び出しで確認した。回帰テスト
+追加(`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
+5件)、リポジトリ全体で全2208件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

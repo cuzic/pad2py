@@ -2146,6 +2146,56 @@ class RefreshBrowserNode:
 
 
 @dataclass
+class GoBackNode:
+    """`<ui:GoBack Browser="..." />`(知見242、サブエージェントによる
+    8回目の新規発見パスで発見、タグ名限定GitHub検索で88件ヒット)。
+    `RefreshBrowser`(知見175)と属性構成・意味論が完全に同型——
+    `Target`/`Selector`を一切持たない、唯一の属性は`Browser`
+    (`UiBrowser`型変数への参照)。実機2件(`DfDganeshh/DomainChecker`
+    の`Framework/Process.xaml`、`piyushagarwal08/JU-Notes`の
+    `UiPath/ACME_Testing/Main.xaml`)で確認した値は`{x:Null}`
+    (「現在アタッチ中のブラウザ」を暗黙に指す)と動的VB式変数参照の
+    両方——`RefreshBrowser`と全く同じパターン。
+
+    `Browser`が`{x:Null}`の場合、意味論は「ブラウザの履歴を1つ戻る」
+    になり、主要ブラウザ共通の標準キーボードショートカット`Alt+Left`
+    で実現できる(pywinautoの`.venv`ソース`keyboard.py`のCODESグラマーで
+    `{LEFT}`(特殊キー)・`%`(Altの修飾子記法)いずれも確認済み)——
+    `RefreshBrowser`の`{F5}`と同じ`keyboard.send_keys()`経路を再利用
+    する。`Browser`が変数参照の場合は`RefreshBrowser`と同じ理由で
+    `# TODO`へ倒す。兄弟活動`ui:GoForward`はGitHub検索で5件ヒットのみ
+    (`GoBack`の88件と比べ著しく薄い実機利用率)のため今回は対象外。"""
+
+    browser: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class NavigateToNode:
+    """`<ui:NavigateTo Browser="..." Url="..." />`(知見242、同じ8回目
+    発見パス、タグ名限定GitHub検索で423件ヒット——今回の発見パスで
+    最高の実機利用率)。実機3件(`CsKoushik9/Google-Search-using-RPA`
+    の`GoogleSearch.xaml`、`lin8231/762-impl`の`FindPHEVs.xaml`×2、
+    いずれも動的VB式`Url`+静的リテラル`Url`の両方を確認)で`Browser`は
+    常に`{x:Null}`——`GoBack`と違い変数参照の実例は未確認(見つかれば
+    同じ`RefreshBrowser`/`GoBack`パターンの`# TODO`へ倒す)。
+
+    `Browser`が`{x:Null}`の場合、意味論は「現在のページで指定URLへ
+    遷移する」——主要ブラウザ共通の標準キーボードショートカット
+    `Ctrl+L`(アドレスバーへフォーカス)に続けてURLを入力し`Enter`で
+    確定する、という`GoBack`/`RefreshBrowser`と同じグローバル
+    `keyboard.send_keys()`経路の延長。URL文字列自体は`TypeInto`
+    (知見110)と同じ`_pywinauto_type_keys_escape()`(`~^%+(){}`の
+    pywinauto特殊構文エスケープ)を再利用する——URLのクエリ文字列に
+    `+`/`(`/`)`等が現れる実例が確認済みのため、エスケープ無しでは
+    `type_keys`相当の誤動作リスクがある。"""
+
+    browser: Expr = None
+    url: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class TypeIntoNode:
     """`<ui:TypeInto>`。`selector`は`ui:TypeInto.Target`配下の`ui:Target`
     要素の`Selector`属性(`ClickNode`と同じ構造)。
@@ -3995,6 +4045,8 @@ Node = (
     | AddLogFieldsNode
     | RemoveLogFieldsNode
     | DeserializeJsonNode
+    | GoBackNode
+    | NavigateToNode
     | ParallelNode
     | ClickNode
     | HoverNode

@@ -3380,3 +3380,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      不要だった。実機相当の式を`exec()`経由で実際に実行し確認した。
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`3件)、リポジトリ全体で全2199件通過。
+
+200. **(完了、2026-11-10)** `ui:GoBack`・`ui:NavigateTo`を新規実装
+     (知見242)——サブエージェントによる8回目の新規発見パス
+     (`gh api search/code`タグ名限定検索+実機2件以上の個別フェッチ
+     確認)で発見。タグ名限定検索で88/423件ヒット。`GoBack`は
+     既存の`RefreshBrowser`(知見175)と属性構成が完全に同型
+     (`Browser`のみ)——`{x:Null}`の場合、主要ブラウザ共通の
+     `Alt+Left`に対応する(`RefreshBrowser`の`{F5}`と同じ
+     `keyboard.send_keys()`経路)。`NavigateTo`は`Browser`
+     (`{x:Null}`)+`Url`——`Ctrl+L`でアドレスバーへフォーカスし、
+     `TypeInto`(知見110)の既存`_pywinauto_type_keys_escape()`
+     ヘルパーをそのまま再利用して`Url`をエスケープしてから
+     `{ENTER}`で確定する。両方とも新規インフラ不要、既存パターンの
+     直接の延長。同じ発見パスで`ui:GetFromClipboard`(86件ヒット)・
+     `ui:DeserializeJsonArray`(142件ヒット)・`ui:CopyFolderX`/
+     `ui:MoveFolderX`(24/28件ヒット)を次の候補として記録。
+     `ui:CheckBox`(無関係なWPFコントロールの誤検出)・
+     `ui:InjectJsScript`(ブラウザ内JS実行エンジンが必要、`uix:`/
+     `ueab:`と同じ構造的な壁)は対象外と確定。回帰テスト追加
+     (`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
+     5件)、リポジトリ全体で全2208件通過。

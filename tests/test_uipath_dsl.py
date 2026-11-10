@@ -28,6 +28,8 @@ from dump_daemon.uipath_dsl import (
     AddLogFieldsNode,
     RemoveLogFieldsNode,
     DeserializeJsonNode,
+    GoBackNode,
+    NavigateToNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1350,6 +1352,54 @@ def test_refresh_browser_with_browser_variable_reference():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, RefreshBrowserNode)
     assert node.browser == VbExpr(text="browser")
+
+
+def test_go_back_properties():
+    """知見242: `ui:GoBack`(タグ名限定GitHub検索で88件ヒット)。
+    `RefreshBrowser`(知見175)と同じ属性構成——実機
+    `DfDganeshh/DomainChecker`の`Framework/Process.xaml`で確認した
+    `{x:Null}`の実例。"""
+    xml = f'<ui:GoBack {_UI_XMLNS} Browser="{{x:Null}}" DisplayName="Go Back" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GoBackNode)
+    assert node.browser is None
+    assert node.display_name == "Go Back"
+
+
+def test_go_back_with_browser_variable_reference():
+    """実機`piyushagarwal08/JU-Notes`の`UiPath/ACME_Testing/Main.xaml`で
+    確認した変数参照の実例。"""
+    xml = f'<ui:GoBack {_UI_XMLNS} Browser="[ACME]" DisplayName="Go Back" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GoBackNode)
+    assert node.browser == VbExpr(text="ACME")
+
+
+def test_navigate_to_with_literal_url():
+    """知見242: `ui:NavigateTo`(タグ名限定GitHub検索で423件ヒット——
+    8回目発見パス全体で最高の実機利用率)。実機`lin8231/762-impl`の
+    `FindPHEVs.xaml`で確認した静的リテラル`Url`の実例、`Browser`は
+    常に`{x:Null}`。"""
+    xml = (
+        f"<ui:NavigateTo {_UI_XMLNS} Browser=\"{{x:Null}}\" "
+        'DisplayName="Navigate To" Url="https://www.trademe.co.nz/a/motors" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, NavigateToNode)
+    assert node.browser is None
+    assert node.url == Literal(value="https://www.trademe.co.nz/a/motors")
+
+
+def test_navigate_to_with_vb_expression_url():
+    """実機`CsKoushik9/Google-Search-using-RPA`の`GoogleSearch.xaml`で
+    確認した動的VB式`Url`の実例(文字列連結)。"""
+    xml = (
+        f"<ui:NavigateTo {_UI_XMLNS} Browser=\"{{x:Null}}\" "
+        'DisplayName="Navigate To" Url="[&quot;http://localhost/search?q=&quot;+search]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, NavigateToNode)
+    assert node.url == VbExpr(text='"http://localhost/search?q="+search')
 
 
 def test_close_application_selector_and_properties():

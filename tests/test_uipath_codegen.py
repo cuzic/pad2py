@@ -51,6 +51,8 @@ from dump_daemon.uipath_dsl import (
     AddLogFieldsNode,
     RemoveLogFieldsNode,
     DeserializeJsonNode,
+    GoBackNode,
+    NavigateToNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -6430,6 +6432,77 @@ def test_refresh_browser_with_browser_variable_reference_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: RefreshBrowser with Browser set" in code
     assert "send_keys" not in code
+    _compiles(code)
+
+
+def test_go_back_sends_alt_left_via_global_send_keys():
+    """知見242: `ui:GoBack`(タグ名限定GitHub検索で88件ヒット)。
+    `RefreshBrowser`(知見175)と同じ経路で、主要ブラウザ共通の標準
+    キーボードショートカット`Alt+Left`(履歴を1つ戻る)を送る。"""
+    wf = _wrap([GoBackNode()])
+    code = generate_python(wf)
+    assert "send_keys('%{LEFT}')" in code
+    assert "from pywinauto.keyboard import send_keys" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_go_back_with_browser_variable_reference_is_todo_not_guessed():
+    """知見242: `Browser`が`UiBrowser`型変数への参照(実機
+    `piyushagarwal08/JU-Notes`で確認済みの`[ACME]`)の場合は、
+    `RefreshBrowser`と同じ理由で`# TODO`へ倒す。"""
+    wf = _wrap([GoBackNode(browser=VbExpr(text="browser"))])
+    code = generate_python(wf)
+    assert "# TODO: GoBack with Browser set" in code
+    assert "send_keys" not in code
+    _compiles(code)
+
+
+def test_navigate_to_with_literal_url_exec():
+    """知見242: `ui:NavigateTo`(タグ名限定GitHub検索で423件ヒット)。
+    `Ctrl+L`でアドレスバーへフォーカスし、`TypeInto`(知見110)と同じ
+    `_pywinauto_type_keys_escape()`でエスケープした`Url`を入力して
+    `Enter`で確定する。`pywinauto`自体はこのサンドボックス(Linux、
+    X11無し)では`import`すら失敗するため(既存の`CloseTab`/
+    `RefreshBrowser`のテストも同じ理由で`exec()`せず文字列検証のみに
+    留めている)、エスケープ処理自体は生成コードを介さず
+    `_pywinauto_type_keys_escape`ヘルパーを直接呼んで検証する——
+    クエリ文字列に含まれる`+`がpywinautoの特殊キー構文と衝突しない
+    よう`{+}`へエスケープされることを確認する。"""
+    wf = _wrap([NavigateToNode(url=Literal(value="https://example.com/?a=1+2"))])
+    code = generate_python(wf)
+    assert "send_keys('^l')" in code
+    assert (
+        "send_keys(_pywinauto_type_keys_escape(_vb_cstr("
+        "'https://example.com/?a=1+2')) + '{ENTER}')"
+    ) in code
+    assert "# TODO" not in code
+    _compiles(code)
+    from dump_daemon.uipath_codegen import _TYPE_KEYS_ESCAPE_HELPER_SOURCE
+
+    helper_ns: dict[str, object] = {}
+    exec(_TYPE_KEYS_ESCAPE_HELPER_SOURCE, helper_ns)  # noqa: S102 - 信頼できる自作コード
+    assert helper_ns["_pywinauto_type_keys_escape"]("https://example.com/?a=1+2") == (
+        "https://example.com/?a=1{+}2"
+    )
+
+
+def test_navigate_to_with_browser_variable_reference_is_todo_not_guessed():
+    """知見242: `Browser`が変数参照の実例は未確認だが、`RefreshBrowser`/
+    `GoBack`と同じ`# TODO`方針を予防的に適用する。"""
+    wf = _wrap(
+        [NavigateToNode(browser=VbExpr(text="browser"), url=Literal(value="x"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: NavigateTo with Browser set" in code
+    assert "send_keys" not in code
+    _compiles(code)
+
+
+def test_navigate_to_with_no_url_is_todo():
+    wf = _wrap([NavigateToNode(url=None)])
+    code = generate_python(wf)
+    assert "# TODO: NavigateTo with no Url captured" in code
     _compiles(code)
 
 

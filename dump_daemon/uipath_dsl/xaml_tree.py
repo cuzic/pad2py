@@ -32,6 +32,8 @@ from .types import (
     AddLogFieldsNode,
     RemoveLogFieldsNode,
     DeserializeJsonNode,
+    GoBackNode,
+    NavigateToNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -1583,6 +1585,21 @@ def _parse_refresh_browser(elem: etree._Element) -> RefreshBrowserNode:
     )
 
 
+def _parse_go_back(elem: etree._Element) -> GoBackNode:
+    return GoBackNode(
+        browser=_attr_expr(elem, "Browser"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_navigate_to(elem: etree._Element) -> NavigateToNode:
+    return NavigateToNode(
+        browser=_attr_expr(elem, "Browser"),
+        url=_attr_expr(elem, "Url") or _in_argument_property_expr(elem, "Url"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_type_into(elem: etree._Element) -> TypeIntoNode:
     selector = _target_selector(elem)
     # `Activate`/`ActivateBefore`の表記揺れ(`TypeIntoNode`のdocstring参照)。
@@ -2917,6 +2934,8 @@ _DISPATCH = {
     (UI_NS, "RemoveDuplicateRows"): _parse_remove_duplicate_rows,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
+    (UI_NS, "GoBack"): _parse_go_back,
+    (UI_NS, "NavigateTo"): _parse_navigate_to,
     (UI_NS, "SetFocus"): _parse_activate,
     (UI_NS, "TypeInto"): _parse_type_into,
     (UI_NS, "TypeSecureText"): _parse_type_secure_text,
