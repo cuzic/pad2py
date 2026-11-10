@@ -23,6 +23,8 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    IfElseIfBlockNode,
+    IfElseIfV2Node,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3283,6 +3285,81 @@ def test_return_properties():
     xml = f"<ui:Return {_UI_XMLNS} />"
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ReturnNode)
+
+
+def test_if_else_if_v2_simple_if_else():
+    """知見239: `ui:IfElseIfV2`(タグ名限定GitHub検索で390件ヒット)。
+    実機`vajrang-b/UiPathIn30Days`(`Task30/Main.xaml`等)相当の構成——
+    `Condition`+`.Then`+`.Else`はあるが`.ElseIfs`
+    (`BindingList<ui:IfElseIfBlock>`)が常に空のif/else構成。`.Then`/
+    `.Else`は`If.Then`/`.Else`(知見5、複数ステップの時だけラップ)とは
+    異なり実機では常に`Sequence`でラップされる。"""
+    xml = (
+        f"<ui:IfElseIfV2 {_UI_XMLNS} "
+        'xmlns:sc="clr-namespace:System.ComponentModel;assembly=System.ComponentModel.TypeConverter" '
+        'Condition="[CInt(CurrentRow(0))&lt;100]" DisplayName="Else if">'
+        "<ui:IfElseIfV2.Else>"
+        '<Sequence DisplayName="Else"><ui:Break /></Sequence>'
+        "</ui:IfElseIfV2.Else>"
+        "<ui:IfElseIfV2.ElseIfs>"
+        '<sc:BindingList x:TypeArguments="ui:IfElseIfBlock" AllowEdit="True" '
+        'AllowNew="True" AllowRemove="True" RaiseListChangedEvents="True" />'
+        "</ui:IfElseIfV2.ElseIfs>"
+        "<ui:IfElseIfV2.Then>"
+        '<Sequence DisplayName="Then"><ui:Continue /></Sequence>'
+        "</ui:IfElseIfV2.Then>"
+        "</ui:IfElseIfV2>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, IfElseIfV2Node)
+    assert node.condition == VbExpr(text="CInt(CurrentRow(0))<100")
+    assert len(node.then_body) == 1
+    assert isinstance(node.then_body[0], ContinueNode)
+    assert node.else_ifs == []
+    assert len(node.else_body) == 1
+    assert isinstance(node.else_body[0], BreakNode)
+
+
+def test_if_else_if_v2_populated_else_ifs():
+    """知見239: `ui:IfElseIfV2.ElseIfs`が実際に1件以上の
+    `ui:IfElseIfBlock BlockType="ElseIf"`を含むif/elif/else構成。
+    実機`HarshShindeTR/APISanity/Main.xaml`・`SagarYelmarTR/
+    TaxCaddy_sanity/Main.xaml`で確認済みの構造。`IfElseIfBlock.Then`は
+    単一アクティビティでも常に`Sequence DisplayName="Body"`で明示的に
+    ラップされる(知見224の`ModifyText`と同じ「常にラップ」構造)。"""
+    xml = (
+        f"<ui:IfElseIfV2 {_UI_XMLNS} "
+        'xmlns:sc="clr-namespace:System.ComponentModel;assembly=System.ComponentModel.TypeConverter" '
+        'Condition="[in_Dispatcher]" DisplayName="Else If">'
+        "<ui:IfElseIfV2.Else>"
+        '<Sequence DisplayName="Else"><ui:Break /></Sequence>'
+        "</ui:IfElseIfV2.Else>"
+        "<ui:IfElseIfV2.ElseIfs>"
+        '<sc:BindingList x:TypeArguments="ui:IfElseIfBlock" AllowEdit="True" '
+        'AllowNew="True" AllowRemove="True" RaiseListChangedEvents="True">'
+        '<ui:IfElseIfBlock BlockType="ElseIf" Condition="[isBusinessException]" '
+        'DisplayName="If else if block">'
+        "<ui:IfElseIfBlock.Then>"
+        '<Sequence DisplayName="Body"><ui:Continue /></Sequence>'
+        "</ui:IfElseIfBlock.Then>"
+        "</ui:IfElseIfBlock>"
+        "</sc:BindingList>"
+        "</ui:IfElseIfV2.ElseIfs>"
+        "<ui:IfElseIfV2.Then>"
+        '<Sequence DisplayName="Then"><ui:Break /></Sequence>'
+        "</ui:IfElseIfV2.Then>"
+        "</ui:IfElseIfV2>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, IfElseIfV2Node)
+    assert node.condition == VbExpr(text="in_Dispatcher")
+    assert len(node.else_ifs) == 1
+    block = node.else_ifs[0]
+    assert isinstance(block, IfElseIfBlockNode)
+    assert block.display_name == "If else if block"
+    assert block.condition == VbExpr(text="isBusinessException")
+    assert len(block.then_body) == 1
+    assert isinstance(block.then_body[0], ContinueNode)
 
 
 def test_repeat_number_of_times_x_properties():

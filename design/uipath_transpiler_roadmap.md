@@ -3313,3 +3313,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ui:AddLogFields`(1880件ヒット)・`ui:TimeoutScope`(134件
      ヒット、プリエンプティブ割り込みのインフラ設計判断が必要)を
      次の候補として記録。
+
+197. **(完了、2026-11-10)** `ui:IfElseIfV2`を新規実装(知見239)——
+     タグ名限定検索で390件ヒット、知見238と同じ7回目発見パスで
+     見つかった現代的な複数分岐if/elif/else構造。`Condition`
+     (トップレベルif)+`.Then`+`.ElseIfs`(`BindingList<ui:
+     IfElseIfBlock>`、実機では空または1件以上)+`.Else`——
+     `vajrang-b/UiPathIn30Days`で`.ElseIfs`が空の単純if/else構成、
+     `HarshShindeTR/APISanity`・`SagarYelmarTR/TaxCaddy_sanity`で
+     `.ElseIfs`に`BlockType="ElseIf"`が1件以上入ったif/elif/else
+     構成を実機確認した。Pythonの`if/elif*/else`に直接対応する——
+     `_generate_if`と同じ厳格な条件式失敗モード(`If.Condition`
+     (知見61・155)と同じ)をトップレベル・`ElseIfs`各要素両方の
+     `Condition`に適用する。副次的に発見した別物のレガシー活動
+     `ui:IfElseIf`(`.ConditionBlocks`統合リスト構造)は今回の
+     スコープ外として実装対象から除外した。単純if/else・
+     if/elif/elseの両方を`exec()`経由で実際に実行し確認した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2187件通過。

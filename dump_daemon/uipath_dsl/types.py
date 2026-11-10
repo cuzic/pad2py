@@ -341,6 +341,57 @@ class ReturnNode:
 
 
 @dataclass
+class IfElseIfBlockNode:
+    """`<ui:IfElseIfBlock BlockType="ElseIf" Condition="..."
+    DisplayName="...">`(知見239、`ui:IfElseIfV2.ElseIfs`
+    (`BindingList<ui:IfElseIfBlock>`)の要素——単独のトップレベル
+    活動としては登場しない、`IfElseIfV2Node`専用の補助データクラス
+    のため`Node`合併型には加えない)。`BlockType`は`.ElseIfs`配下では
+    実機確認済みの値が常に`"ElseIf"`のみ(他の値は未確認のため
+    保持しない)。`Condition`はプレーンな属性(`InArgument`ラップ形は
+    実機未確認)、`.Then`は`If.Then`/`IfElseIfV2.Then`と違い実機では
+    常に`Sequence`でラップされる(単一アクティビティでも`Sequence
+    DisplayName="Body"`が明示される、知見224の`ModifyText`と同じ
+    「常にラップ」構造)ため`_unwrap_body_sequence`で対応する。"""
+
+    condition: Expr = None
+    then_body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
+class IfElseIfV2Node:
+    """`<ui:IfElseIfV2 Condition="...">`(知見239、サブエージェントに
+    よる7回目の新規発見パスで発見、タグ名限定GitHub検索で390件
+    ヒット)。ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機
+    複数件(`vajrang-b/UiPathIn30Days`の`Task30/Main.xaml`等、
+    `.ElseIfs`が常に空のif/else構成——`HarshShindeTR/APISanity`・
+    `SagarYelmarTR/TaxCaddy_sanity`の`Main.xaml`、`.ElseIfs`配下に
+    `BlockType="ElseIf"`の`ui:IfElseIfBlock`が実際に1件以上入った
+    if/elif/else構成を確認、いずれも`CommentOut`無効化ではない)で
+    構造を確認した——`Condition`(トップレベル)+`.Then`+`.ElseIfs`
+    (`BindingList<ui:IfElseIfBlock>`、実機では空または1件以上)+
+    `.Else`。
+
+    .NETの現代的な複数分岐if/elif/else構文——`Condition`
+    (トップレベルif)が真なら`.Then`、`.ElseIfs`を先頭から順に評価し
+    最初に真になったブロックの`.Then`、どれも偽なら`.Else`を実行する
+    ——Pythonの`if/elif*/else`に直接対応する。`.Then`/`.Else`は実機
+    では常に`Sequence`でラップされる(`ModifyText`知見224と同じ
+    「常にラップ」構造、`If`の「複数ステップの時だけラップ」知見5
+    とは異なる)ため`_unwrap_body_sequence`で対応する。`Condition`式
+    の変換失敗時は`If`(知見5・61・155)と同じ厳格な失敗モード
+    (`NotImplementedError`をそのまま伝播)——反復対象・条件式を誤って
+    推測すると分岐全体が誤るため。"""
+
+    condition: Expr = None
+    then_body: list["Node"] = field(default_factory=list)
+    else_ifs: list[IfElseIfBlockNode] = field(default_factory=list)
+    else_body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -3847,6 +3898,7 @@ Node = (
     | BreakNode
     | ContinueNode
     | ReturnNode
+    | IfElseIfV2Node
     | ParallelNode
     | ClickNode
     | HoverNode

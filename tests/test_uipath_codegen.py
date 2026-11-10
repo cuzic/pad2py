@@ -45,6 +45,8 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    IfElseIfBlockNode,
+    IfElseIfV2Node,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1367,6 +1369,102 @@ def test_if_with_unparseable_condition_raises():
     """条件式は値より厳格——でっち上げた真偽値で分岐全体を誤らせるより
     コード生成自体を失敗させる(`pad_codegen`のIfActionRecordと同じ方針)。"""
     wf = _wrap([IfNode(condition=VbExpr(text='$"broken'), then_body=[])])
+    with pytest.raises(NotImplementedError):
+        generate_python(wf)
+
+
+def test_if_else_if_v2_then_elif_else_exec():
+    """知見239: `ui:IfElseIfV2`——`Condition`(トップレベルif)+`.Then`+
+    `.ElseIfs`(1件以上の`ui:IfElseIfBlock`)+`.Else`はPythonの
+    `if/elif*/else`に直接対応する。`_generate_if`と同じ厳格な条件式
+    失敗モード(モジュールdocstring参照)を`.ElseIfs`各要素の
+    `Condition`にも適用する。"""
+    wf = _wrap(
+        [
+            IfElseIfV2Node(
+                condition=VbExpr(text="x=1"),
+                then_body=[WriteLineNode(text=Literal(value="then"))],
+                else_ifs=[
+                    IfElseIfBlockNode(
+                        condition=VbExpr(text="x=2"),
+                        then_body=[WriteLineNode(text=Literal(value="elseif1"))],
+                    )
+                ],
+                else_body=[WriteLineNode(text=Literal(value="else"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if _vb_bool(" in code
+    assert "elif _vb_bool(" in code
+    assert "else:" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    for xval, expected in [(1, "then"), (2, "elseif1"), (3, "else")]:
+        namespace: dict[str, object] = {"x": xval}
+        exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            namespace["Test"]()
+        assert stdout.getvalue().strip() == expected
+
+
+def test_if_else_if_v2_empty_else_ifs_behaves_like_plain_if_else():
+    """知見239: 実機`vajrang-b/UiPathIn30Days`相当——`.ElseIfs`
+    (`BindingList<ui:IfElseIfBlock>`)が常に空の単純if/else構成でも
+    `elif`無しの`if/else`として正しく動作する。"""
+    wf = _wrap(
+        [
+            IfElseIfV2Node(
+                condition=VbExpr(text="x<100"),
+                then_body=[WriteLineNode(text=Literal(value="then"))],
+                else_ifs=[],
+                else_body=[WriteLineNode(text=Literal(value="else"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    func_body = code.split("def Test():", 1)[1]
+    assert not any(line.strip().startswith("elif ") for line in func_body.splitlines())
+    _compiles(code)
+    namespace: dict[str, object] = {"x": 5}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "then"
+    namespace = {"x": 500}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().strip() == "else"
+
+
+def test_if_else_if_v2_with_unparseable_condition_raises():
+    """知見239: `IfElseIfV2.Condition`も`If.Condition`(知見61・155)と
+    同じ厳格な失敗モード——誤った真偽値で分岐全体を誤らせるよりコード
+    生成自体を失敗させる。"""
+    wf = _wrap([IfElseIfV2Node(condition=VbExpr(text='$"broken'), then_body=[])])
+    with pytest.raises(NotImplementedError):
+        generate_python(wf)
+
+
+def test_if_else_if_v2_else_if_block_with_unparseable_condition_raises():
+    """知見239: `.ElseIfs`配下の各`ui:IfElseIfBlock.Condition`も同じ
+    厳格な失敗モードを適用する——トップレベル`Condition`だけ厳格で
+    `ElseIfs`側だけ緩いと、特定の分岐でだけ黒箱化してしまうため。"""
+    wf = _wrap(
+        [
+            IfElseIfV2Node(
+                condition=VbExpr(text="x=1"),
+                then_body=[],
+                else_ifs=[
+                    IfElseIfBlockNode(condition=VbExpr(text='$"broken'), then_body=[])
+                ],
+            )
+        ]
+    )
     with pytest.raises(NotImplementedError):
         generate_python(wf)
 

@@ -11261,6 +11261,62 @@ Excel.Activities classic(非`ueab:`)系・Mail.Activities
 (POP3/IMAP/Exchange/Lotus Notes系、いずれも未確認プロトコル
 クライアント実装が必要)は今回は検証不足のため見送り。
 
+## 239. `ui:IfElseIfV2`を新規実装——同じ7回目発見パスで見つかった現代的な複数分岐if/elif/else構造、`Condition`+`.Then`+`.ElseIfs`(`BindingList<ui:IfElseIfBlock>`)+`.Else`がPythonの`if/elif*/else`に直接対応する
+
+知見238と同じ7回目新規発見パスで候補に挙がった`ui:IfElseIfV2`
+(タグ名限定GitHub検索で390件ヒット)に着手した。
+
+ground-truth(`marcelocruzrpa/uipath-ai-skills`、
+`UiPath.System.Activities/25.10/IfElseIfV2.xaml`)はこの
+スナップショットではルートタグに`Condition`属性が付いておらず
+——またも「ground-truthは実機の全属性を網羅しない」という
+これまでの教訓(知見228等で既に複数回確認済み)を再確認する
+結果となった——実機複数件での確認を優先した。
+
+`vajrang-b/UiPathIn30Days`(`Task30/Main.xaml`120行目付近、
+`ForEachRow.Body`内)で`Condition="[CInt(CurrentRow(0))<100]"`
+付きの実際の使用を確認、`.Then`/`.Else`は値を持つが`.ElseIfs`
+(`BindingList<ui:IfElseIfBlock>`)は空——同リポジトリの他3件
+(Task14×2、LeapYearSequence)も同様に`.ElseIfs`が空だった
+(単純なif/else用途ではユーザーは`.ElseIfs`を使わず、必要なら
+`IfElseIfV2`を`.Then`内にネストする代替パターンも
+`anmv921/uipath-zoho/Main.xaml`で確認)。
+
+`.ElseIfs`が実際に1件以上の`ui:IfElseIfBlock BlockType="ElseIf"`
+を含む実機構成は`"ui:IfElseIfV2.ElseIfs"`限定検索で
+`HarshShindeTR/APISanity/Main.xaml`・`SagarYelmarTR/
+TaxCaddy_sanity/Main.xaml`で確認(いずれも`CommentOut`無効化
+ではない)。両者とも`BlockType`は`"ElseIf"`のみ、`Condition`は
+プレーンな属性、`.Then`は単一アクティビティでも常に`Sequence
+DisplayName="Body"`で明示的にラップされる(知見224の
+`ModifyText`と同じ「常にラップ」構造、`If.Then`/`.Else`の
+「複数ステップの時だけラップ」(知見5)とは異なる)。
+
+探索中に副次的に見つかった別物の`ui:IfElseIf`(レガシー活動、
+`MorisMwai/LeapYear-ControlFlows-UiPath/Main.xaml`で確認、単一の
+`.ConditionBlocks``BindingList<ui:IfElseIfBlock>`に`BlockType`
+"If"/"Else"混在という`IfElseIfV2`とは全く異なる構造)は今回の
+スコープ外として実装対象から明確に除外した。
+
+`types.py`に`IfElseIfBlockNode`(単独のトップレベル活動としては
+登場しない`IfElseIfV2Node`専用の補助データクラスのため`Node`
+合併型には加えない)・`IfElseIfV2Node`を追加。`xaml_tree.py`に
+`_parse_if_else_if_block`/`_parse_if_else_if_v2`を追加、
+`_unwrap_body_sequence`で`.Then`/`.ElseIfs`各要素の`.Then`/
+`.Else`を処理する。`uipath_codegen`に`_generate_if_else_if_v2`を
+追加——`_generate_if`と全く同じ構造で、`Condition`
+(トップレベル)を`if`、`.ElseIfs`各要素の`Condition`を先頭から
+順に`elif`、`.Else`が存在する場合のみ`else`として生成する。
+`If.Condition`(知見61・155)と同じ厳格な失敗モードを
+トップレベル・`ElseIfs`各要素の両方の`Condition`に適用する
+(どちらか一方だけ緩めると分岐の一部だけが黒箱化するため)。
+
+単純if/else(`.ElseIfs`空)・if/elif/else(`.ElseIfs`1件)の両方を
+`exec()`経由で実際に実行し、分岐が正しく選択されることを確認した。
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`4件)、リポジトリ全体で全2187件
+通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

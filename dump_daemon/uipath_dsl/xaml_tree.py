@@ -27,6 +27,8 @@ from .types import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    IfElseIfBlockNode,
+    IfElseIfV2Node,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -466,6 +468,36 @@ def _parse_if(elem: etree._Element) -> IfNode:
         condition=_condition_expr(elem, "Condition"),
         then_body=_single_body(then_elem),
         else_body=_single_body(else_elem),
+    )
+
+
+def _parse_if_else_if_block(elem: etree._Element) -> IfElseIfBlockNode:
+    then_elem = _find_property_element(elem, "Then")
+    return IfElseIfBlockNode(
+        display_name=_attr(elem, "DisplayName"),
+        condition=_condition_expr(elem, "Condition"),
+        then_body=_unwrap_body_sequence(then_elem),
+    )
+
+
+def _parse_if_else_if_v2(elem: etree._Element) -> IfElseIfV2Node:
+    then_elem = _find_property_element(elem, "Then")
+    else_elem = _find_property_element(elem, "Else")
+    else_ifs_elem = _find_property_element(elem, "ElseIfs")
+    else_ifs: list[IfElseIfBlockNode] = []
+    if else_ifs_elem is not None:
+        binding_lists = _direct_children(else_ifs_elem)
+        if binding_lists:
+            for block_elem in _direct_children(binding_lists[0]):
+                _, local = _split_tag(block_elem.tag)
+                if local == "IfElseIfBlock":
+                    else_ifs.append(_parse_if_else_if_block(block_elem))
+    return IfElseIfV2Node(
+        display_name=_attr(elem, "DisplayName"),
+        condition=_condition_expr(elem, "Condition"),
+        then_body=_unwrap_body_sequence(then_elem),
+        else_ifs=else_ifs,
+        else_body=_unwrap_body_sequence(else_elem),
     )
 
 
@@ -2799,6 +2831,7 @@ _DISPATCH = {
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Continue"): lambda elem: ContinueNode(),
     (UI_NS, "Return"): lambda elem: ReturnNode(display_name=_attr(elem, "DisplayName")),
+    (UI_NS, "IfElseIfV2"): _parse_if_else_if_v2,
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "Activate"): _parse_activate,

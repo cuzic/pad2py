@@ -69,6 +69,8 @@ from ..uipath_dsl.types import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    IfElseIfBlockNode,
+    IfElseIfV2Node,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -678,6 +680,8 @@ def _generate_node(
         return _generate_input_dialog(node, indent)
     if isinstance(node, IfNode):
         return _generate_if(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, IfElseIfV2Node):
+        return _generate_if_else_if_v2(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, RepeatNumberOfTimesXNode):
@@ -1096,6 +1100,40 @@ def _generate_if(
         _generate_body(node.then_body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
     )
     lines.extend(then_body)
+    if node.else_body:
+        lines.append(f"{prefix}else:")
+        else_body = _ensure_nonempty_suite(
+            _generate_body(node.else_body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+        )
+        lines.extend(else_body)
+    return lines
+
+
+def _generate_if_else_if_v2(
+    node: IfElseIfV2Node, indent: int, invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見239: `ui:IfElseIfV2`。`Condition`(トップレベルif)+`.Then`+
+    `.ElseIfs`(`BindingList<ui:IfElseIfBlock>`、各要素も`Condition`+
+    `.Then`を持つ)+`.Else`——Pythonの`if/elif*/else`に直接対応する。
+    `_generate_if`と同じ厳格な失敗モードを全ての`Condition`(トップレベル
+    ・各`ElseIfs`要素)に適用する(モジュールdocstring参照)——分岐の
+    どこか1箇所でも誤って推測すると、その後続の`elif`/`else`評価全体が
+    ずれるため。"""
+    prefix = INDENT * indent
+    cond = render_expr(node.condition)
+    lines = [f"{prefix}if {VB_BOOL_HELPER_NAME}({cond}):"]
+    then_body = _ensure_nonempty_suite(
+        _generate_body(node.then_body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+    )
+    lines.extend(then_body)
+    for block in node.else_ifs:
+        block_cond = render_expr(block.condition)
+        lines.append(f"{prefix}elif {VB_BOOL_HELPER_NAME}({block_cond}):")
+        block_body = _ensure_nonempty_suite(
+            _generate_body(block.then_body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+        )
+        lines.extend(block_body)
     if node.else_body:
         lines.append(f"{prefix}else:")
         else_body = _ensure_nonempty_suite(
