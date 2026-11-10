@@ -93,6 +93,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     WriteTextFileNode,
     ExtractFilesNode,
+    CompressFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -1772,6 +1773,45 @@ def test_extract_files_properties():
     assert node.file is None
     assert node.destination_folder_info is None
     assert node.password is None
+
+
+def test_compress_files_properties_with_folder_content():
+    """知見218: `uascw:CompressFiles`(`ExtractFiles`と同じ名前空間)。
+    実機`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の
+    `Chapter_9_CompressedFileActivtiesExercise`で確認した構成——
+    `ContentToArchive`にフォルダパス1件、`Password`/
+    `ResourcesToArchive`/`CompressedResource`は常に`{x:Null}`、
+    `EncryptionAlgorithm`/`SecurePassword`/
+    `AllowDuplicateContentNames`は実機XAMLに属性自体が無い。"""
+    xml = (
+        '<uascw:CompressFiles '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:uascw="clr-namespace:UiPath.Activities.System.Compression.'
+        'Workflow;assembly=UiPath.System.Activities" '
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=mscorlib" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" '
+        'Password="{x:Null}" CodePage="Default" '
+        'CompressedFileName="C:\\out.zip" CompressionLevel="Normal" '
+        'DisplayName="Compress/Zip Files" OverrideExistingFile="True">'
+        "<uascw:CompressFiles.ContentToArchive>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="4">'
+        '<InArgument x:TypeArguments="x:String">C:\\MoveForward</InArgument>'
+        "</scg:List>"
+        "</uascw:CompressFiles.ContentToArchive>"
+        "</uascw:CompressFiles>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CompressFilesNode)
+    assert node.content_to_archive == [Literal(value="C:\\MoveForward")]
+    assert node.compressed_file_name == Literal(value="C:\\out.zip")
+    assert node.code_page == "Default"
+    assert node.compression_level == "Normal"
+    assert node.override_existing_file == "True"
+    assert node.password is None
+    assert node.secure_password is None
+    assert node.encryption_algorithm is None
+    assert node.allow_duplicate_content_names is None
 
 
 def test_clear_data_table_properties():

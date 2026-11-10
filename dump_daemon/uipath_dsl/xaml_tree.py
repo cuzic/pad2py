@@ -107,6 +107,7 @@ from .types import (
     ReadTextFileNode,
     WriteTextFileNode,
     ExtractFilesNode,
+    CompressFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -871,25 +872,9 @@ def _parse_filter_data_table_select_columns(elem: etree._Element) -> list[Expr]:
     """知見207: `<ui:FilterDataTable.SelectColumns><scg:List ...>`配下。
     実機で「未選択」を意味する単一の`<x:Null/>`要素(空リストの代わりの
     シリアライズ形)を確認したため、これは結果から除外する(実際の列名
-    要素のみ収集する)。"""
-    prop_elem = _find_property_element(elem, "SelectColumns")
-    result: list[Expr] = []
-    if prop_elem is None:
-        return result
-    for list_elem in _direct_children(prop_elem):
-        for item in _direct_children(list_elem):
-            _, local = _split_tag(item.tag)
-            if local == "Null":
-                continue
-            nested = _direct_children(item)
-            if nested:
-                value = _attr(nested[0], "Value")
-                expr = _parse_expr(value) if value is not None else None
-            else:
-                expr = _parse_expr(item.text)
-            if expr is not None:
-                result.append(expr)
-    return result
+    要素のみ収集する)。知見218で`_parse_property_element_list()`へ
+    一般化、本関数はそれに委譲する薄いラッパー。"""
+    return _parse_property_element_list(elem, "SelectColumns")
 
 
 def _parse_filter_data_table(elem: etree._Element) -> FilterDataTableNode:
@@ -1732,6 +1717,54 @@ def _parse_extract_files(elem: etree._Element) -> ExtractFilesNode:
     )
 
 
+def _parse_property_element_list(elem: etree._Element, prop_name: str) -> list[Expr]:
+    """`<X.PropName><scg:List ...>item1 item2...</scg:List></X.PropName>`
+    形の汎用パーサー(知見207の`_parse_filter_data_table_select_columns`
+    を一般化)。「未選択」を意味する`<x:Null/>`要素は結果から除外する。"""
+    prop_elem = _find_property_element(elem, prop_name)
+    result: list[Expr] = []
+    if prop_elem is None:
+        return result
+    for list_elem in _direct_children(prop_elem):
+        for item in _direct_children(list_elem):
+            _, local = _split_tag(item.tag)
+            if local == "Null":
+                continue
+            nested = _direct_children(item)
+            if nested:
+                value = _attr(nested[0], "Value")
+                expr = _parse_expr(value) if value is not None else None
+            else:
+                expr = _parse_expr(item.text)
+            if expr is not None:
+                result.append(expr)
+    return result
+
+
+def _parse_compress_files(elem: etree._Element) -> CompressFilesNode:
+    return CompressFilesNode(
+        display_name=_attr(elem, "DisplayName"),
+        content_to_archive=_parse_property_element_list(elem, "ContentToArchive"),
+        compressed_file_name=_attr_expr(elem, "CompressedFileName")
+        or _in_argument_property_expr(elem, "CompressedFileName"),
+        compressed_file_info=_attr_expr(elem, "CompressedFileInfo")
+        or _in_argument_property_expr(elem, "CompressedFileInfo"),
+        compressed_resource=_attr_expr(elem, "CompressedResource")
+        or _in_argument_property_expr(elem, "CompressedResource"),
+        resources_to_archive=_attr_expr(elem, "ResourcesToArchive")
+        or _in_argument_property_expr(elem, "ResourcesToArchive"),
+        password=_attr_expr(elem, "Password")
+        or _in_argument_property_expr(elem, "Password"),
+        secure_password=_attr_expr(elem, "SecurePassword")
+        or _in_argument_property_expr(elem, "SecurePassword"),
+        code_page=_attr(elem, "CodePage"),
+        compression_level=_attr(elem, "CompressionLevel"),
+        encryption_algorithm=_attr(elem, "EncryptionAlgorithm"),
+        override_existing_file=_attr(elem, "OverrideExistingFile"),
+        allow_duplicate_content_names=_attr(elem, "AllowDuplicateContentNames"),
+    )
+
+
 def _parse_is_match(elem: etree._Element) -> IsMatchNode:
     return IsMatchNode(
         display_name=_attr(elem, "DisplayName"),
@@ -2397,6 +2430,7 @@ _DISPATCH = {
     (PDF_NS, "ExportPDFPageAsImage"): _parse_export_pdf_page_as_image,
     (PDF_NS, "ExtractImagesFromPDF"): _parse_extract_images_from_pdf,
     (COMPRESSION_NS, "ExtractFiles"): _parse_extract_files,
+    (COMPRESSION_NS, "CompressFiles"): _parse_compress_files,
     (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,

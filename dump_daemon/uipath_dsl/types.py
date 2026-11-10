@@ -2299,6 +2299,60 @@ class ExtractFilesNode:
 
 
 @dataclass
+class CompressFilesNode:
+    """`<uascw:CompressFiles>`(知見218、`ExtractFiles`(知見217)と同じ
+    `uascw:`名前空間)。ground-truthの属性構成は`CompressedFileInfo`+
+    `CompressedFileName`+`CompressedResource`+`Password`+
+    `ResourcesToArchive`+`SecurePassword`+
+    `AllowDuplicateContentNames`(既定`"False"`)+`CodePage`(既定
+    `"Default"`)+`CompressionLevel`(既定`"Normal"`)+
+    `EncryptionAlgorithm`(既定`"Classic"`)+
+    `OverrideExistingFile`(既定`"True"`)+プロパティ要素形の
+    `ContentToArchive`(`scg:List<InArgument(x:String)>`、圧縮対象の
+    ファイル/フォルダパスのリスト)——11属性+1リストと多い。
+
+    実機1件(`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`の`Chapter_9_CompressedFileActivtiesExercise`——書籍の
+    圧縮活動専用の演習章)で確認した構成は`ContentToArchive`(フォルダ
+    パス1件)+`CompressedFileName`(フラット文字列、出力zipパス)+
+    `CodePage="Default"`+`CompressionLevel="Normal"`+
+    `OverrideExistingFile="True"`のみ——`Password`/`ResourcesToArchive`
+    /`CompressedResource`は`{x:Null}`、`EncryptionAlgorithm`/
+    `SecurePassword`/`AllowDuplicateContentNames`は実機XAMLに属性
+    自体が無い(既定値のまま変更されず、Studioが省略した)。
+    `CompressedFileInfo`(出力、`FileInfo`オブジェクトと推測)は
+    `[Saved.Values(Of FileInfo)("...")]`という複雑なVB式で設定されて
+    いたが未モデル化。
+
+    フォーラム調査(公式ドキュメントには記載無し)で確認: `Content
+    ToArchive`にフォルダパスを渡すと、そのフォルダの**中身**がzipの
+    トップレベルに入る(フォルダ自身の名前はアーカイブ内に含まれない
+    ——「エンクロージングフォルダが失われる」という複数の実機報告と
+    一致)。サブフォルダ構造自体は保持される。Pythonの`zipfile`
+    (標準ライブラリ)で、ファイルパスはそのまま・フォルダパスは
+    `os.walk()`+`os.path.relpath()`(フォルダ自身を基準とした相対
+    パス)でこの挙動を再現する。`Password`/`SecurePassword`(`zipfile`
+    標準では暗号化zipの作成は不可、`pyzipper`——既存の確認済み依存
+    ——なら理論上可能だが実機確証が無いため見送り)・確認済み以外の
+    `EncryptionAlgorithm`/`AllowDuplicateContentNames`設定時は
+    `# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    content_to_archive: list[Expr] = field(default_factory=list)
+    compressed_file_name: Expr = None
+    compressed_file_info: Expr = None
+    compressed_resource: Expr = None
+    resources_to_archive: Expr = None
+    password: Expr = None
+    secure_password: Expr = None
+    code_page: str | None = None
+    compression_level: str | None = None
+    encryption_algorithm: str | None = None
+    override_existing_file: str | None = None
+    allow_duplicate_content_names: str | None = None
+
+
+@dataclass
 class IsMatchNode:
     """`<ui:IsMatch>`(知見213、GitHub code searchで「`ui:IsMatch`」
     (タグ名限定、`IsMatch`単体では一般的なWPF/XAMLアプリとの偽陽性が
@@ -3076,6 +3130,7 @@ Node = (
     | ReadTextFileNode
     | WriteTextFileNode
     | ExtractFilesNode
+    | CompressFilesNode
     | IsMatchNode
     | GetEnvironmentVariableNode
     | InvokeCodeNode

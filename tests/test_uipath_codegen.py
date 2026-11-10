@@ -119,6 +119,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     WriteTextFileNode,
     ExtractFilesNode,
+    CompressFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -4073,6 +4074,91 @@ def test_extract_files_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: ExtractFiles with missing FileToExtract/DestinationFolder" in code
+    _compiles(code)
+
+
+def test_compress_files_zips_folder_without_enclosing_folder_name():
+    """知見218: `uascw:CompressFiles`(`ExtractFiles`と同じ名前空間)。
+    フォーラム確認済みの挙動——`ContentToArchive`のフォルダパスは、
+    そのフォルダ自身の名前をアーカイブに含めず、中身をトップレベルに
+    展開する(サブフォルダ構造は保持)。実際にフォルダ+単独ファイルを
+    圧縮し、zipの中身を確認する。"""
+    src_dir = tempfile.mkdtemp()
+    os.makedirs(os.path.join(src_dir, "sub"), exist_ok=True)
+    with open(os.path.join(src_dir, "a.txt"), "w") as f:
+        f.write("A")
+    with open(os.path.join(src_dir, "sub", "b.txt"), "w") as f:
+        f.write("B")
+    standalone = tempfile.mktemp(suffix=".txt")
+    with open(standalone, "w") as f:
+        f.write("C")
+    out_zip = tempfile.mktemp(suffix=".zip")
+
+    wf = _wrap(
+        [
+            CompressFilesNode(
+                content_to_archive=[Literal(value=src_dir), Literal(value=standalone)],
+                compressed_file_name=Literal(value=out_zip),
+                code_page="Default",
+                compression_level="Normal",
+                override_existing_file="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "zipfile.ZipFile(" in code
+    assert "import zipfile" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    with zipfile.ZipFile(out_zip) as zf:
+        names = sorted(zf.namelist())
+    assert names == sorted(["a.txt", "sub/b.txt", os.path.basename(standalone)])
+
+
+def test_compress_files_declines_password_and_unconfirmed_options():
+    """知見218: `Password`/`SecurePassword`(`zipfile`標準では暗号化zip
+    作成は不可)・確認済み以外の`CompressionLevel`/`EncryptionAlgorithm`
+    は`# TODO`へ倒す。"""
+    base_kwargs = dict(
+        content_to_archive=[Literal(value="dir1")],
+        compressed_file_name=Literal(value="out.zip"),
+        code_page="Default",
+        compression_level="Normal",
+        override_existing_file="True",
+    )
+
+    wf = _wrap([CompressFilesNode(**base_kwargs, password=VbExpr(text="pwd"))])
+    code = generate_python(wf)
+    assert "# TODO: CompressFiles with Password/SecurePassword set" in code
+    _compiles(code)
+
+    wf2 = _wrap([CompressFilesNode(**{**base_kwargs, "compression_level": "Maximum"})])
+    code2 = generate_python(wf2)
+    assert "# TODO: CompressFiles with CompressionLevel 'Maximum'" in code2
+    _compiles(code2)
+
+    wf3 = _wrap(
+        [CompressFilesNode(**{**base_kwargs, "encryption_algorithm": "AES256"})]
+    )
+    code3 = generate_python(wf3)
+    assert "# TODO: CompressFiles with EncryptionAlgorithm 'AES256'" in code3
+    _compiles(code3)
+
+
+def test_compress_files_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            CompressFilesNode(
+                content_to_archive=[],
+                compressed_file_name=Literal(value="out.zip"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CompressFiles with no ContentToArchive captured" in code
     _compiles(code)
 
 

@@ -10291,6 +10291,54 @@ Pythonの`shutil.unpack_archive()`(標準ライブラリ)がzip/tar系の
 
 残る`uascw:CompressFiles`は未着手のまま、次の実装候補として記録する。
 
+## 218. `uascw:CompressFiles`を新規実装——フォーラム調査で「フォルダ圧縮時はフォルダ自身の名前がアーカイブに含まれない」という未公式ドキュメント化の挙動を確認、知見207の列選択リストパーサーを汎用化して再利用
+
+知見217の`ExtractFiles`と対になる`uascw:CompressFiles`に着手した。
+ground-truthの属性構成は`CompressedFileInfo`+`CompressedFileName`+
+`CompressedResource`+`Password`+`ResourcesToArchive`+
+`SecurePassword`+`AllowDuplicateContentNames`+`CodePage`+
+`CompressionLevel`+`EncryptionAlgorithm`+`OverrideExistingFile`+
+プロパティ要素形の`ContentToArchive`(`scg:List<InArgument(x:String)>`
+——圧縮対象のファイル/フォルダパスのリスト)。11属性+1リストと多い。
+
+実機1件(`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の
+`Chapter_9_CompressedFileActivtiesExercise`——書籍の圧縮活動専用の
+演習章)で確認した構成は`ContentToArchive`(フォルダパス1件)+
+`CompressedFileName`+`CodePage="Default"`+
+`CompressionLevel="Normal"`+`OverrideExistingFile="True"`のみ——
+`Password`/`ResourcesToArchive`/`CompressedResource`は`{x:Null}`、
+`EncryptionAlgorithm`/`SecurePassword`/`AllowDuplicateContentNames`
+は実機XAMLに属性自体が無かった(既定値のままStudioが省略)。
+
+**フォーラム調査(公式ドキュメントには記載無し)で確認した重要な
+挙動**: `ContentToArchive`にフォルダパスを渡すと、そのフォルダの
+**中身**がzipのトップレベルに入り、フォルダ自身の名前はアーカイブ内
+に含まれない(複数の実機ユーザー報告——「エンクロージングフォルダが
+失われる」——と一致)。サブフォルダ構造自体は保持される。Pythonの
+`zipfile`(標準ライブラリ)で、ファイルパスはそのまま追加・フォルダ
+パスは`os.walk()`+`os.path.relpath()`(フォルダ自身を基準とした
+相対パス)でこの挙動を再現した——実際にフォルダ+単独ファイルを圧縮
+し、zip内のエントリ名を確認して検証済み。
+
+実装中に`ContentToArchive`(`scg:List`配下のプロパティ要素リスト)の
+パース処理が、知見207で`FilterDataTable.SelectColumns`用に実装した
+パーサーと構造的に同一だったため、`_parse_property_element_list()`
+という汎用ヘルパーへ一般化し、両方がこれに委譲するよう整理した。
+
+`Password`/`SecurePassword`(`zipfile`標準では暗号化zipの作成は不可、
+`pyzipper`——既存の確認済み依存——なら理論上可能だが実機確証が無い
+ため見送り)・確認済み以外の`CodePage`/`CompressionLevel`/
+`EncryptionAlgorithm`/`OverrideExistingFile`/
+`AllowDuplicateContentNames`設定時は`# TODO`へ倒す。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件、うち1件は実際のzip作成+エントリ名検証の
+統合テスト)、UiPath関連テスト全988件通過、リポジトリ全体で全2074件
+通過(28件skip、変化無し)。
+
+これで知見216が発見した`uascw:`名前空間の圧縮活動2件
+(`ExtractFiles`/`CompressFiles`)の両方に着手済みとなった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

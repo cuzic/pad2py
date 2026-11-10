@@ -144,6 +144,7 @@ from ..uipath_dsl.types import (
     ReadTextFileNode,
     WriteTextFileNode,
     ExtractFilesNode,
+    CompressFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -464,6 +465,10 @@ def _collect_imports(body: list[str]) -> list[str]:
         for line in body
     ):
         imports.append("import shutil")
+    # `zipfile`(`CompressFiles`→`zipfile.ZipFile(...)`変換先、知見218)
+    # も同様。
+    if any("zipfile.ZipFile(" in line for line in body):
+        imports.append("import zipfile")
     # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)・
     # `os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`(Recursive=
     # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
@@ -660,6 +665,8 @@ def _generate_node(
         return _generate_write_text_file(node, indent)
     if isinstance(node, ExtractFilesNode):
         return _generate_extract_files(node, indent)
+    if isinstance(node, CompressFilesNode):
+        return _generate_compress_files(node, indent)
     if isinstance(node, IsMatchNode):
         return _generate_is_match(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
@@ -1526,6 +1533,98 @@ def _generate_extract_files_body(node: ExtractFilesNode, indent: int) -> list[st
         return todo
     return [
         f"{prefix}shutil.unpack_archive({file_to_extract}, {destination_folder})"
+    ]
+
+
+def _generate_compress_files(node: CompressFilesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_compress_files_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_compress_files_body(node: CompressFilesNode, indent: int) -> list[str]:
+    """知見218: 実機確認済みの構成(`CodePage="Default"`・
+    `CompressionLevel="Normal"`・`OverrideExistingFile="True"`・
+    `Password`/`SecurePassword`未設定)のみ対応。`ContentToArchive`の
+    各要素がフォルダパスの場合、フォーラム調査で確認した挙動
+    (フォルダ自身の名前はアーカイブ内に含まれず、中身がトップレベルに
+    展開される)を`os.walk()`+`os.path.relpath()`で再現する。"""
+    prefix = INDENT * indent
+    if node.compressed_file_info is not None:
+        return [
+            f"{prefix}# TODO: CompressFiles with CompressedFileInfo "
+            "captured — output FileInfo semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.compressed_resource is not None or node.resources_to_archive is not None:
+        return [
+            f"{prefix}# TODO: CompressFiles with CompressedResource/"
+            "ResourcesToArchive set — not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    if node.password is not None or node.secure_password is not None:
+        return [
+            f"{prefix}# TODO: CompressFiles with Password/"
+            "SecurePassword set — encrypted archive creation not "
+            "confirmed in real samples, refusing to guess"
+        ]
+    if node.code_page not in (None, "Default"):
+        return [
+            f"{prefix}# TODO: CompressFiles with CodePage "
+            f"{node.code_page!r} — not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    if node.compression_level not in (None, "Normal"):
+        return [
+            f"{prefix}# TODO: CompressFiles with CompressionLevel "
+            f"{node.compression_level!r} — not confirmed in real "
+            "samples, refusing to guess"
+        ]
+    if node.encryption_algorithm not in (None, "Classic"):
+        return [
+            f"{prefix}# TODO: CompressFiles with EncryptionAlgorithm "
+            f"{node.encryption_algorithm!r} — not confirmed in real "
+            "samples, refusing to guess"
+        ]
+    if node.override_existing_file not in (None, "True"):
+        return [
+            f"{prefix}# TODO: CompressFiles with OverrideExistingFile "
+            f"{node.override_existing_file!r} — only 'True' confirmed "
+            "in real samples, refusing to guess"
+        ]
+    if node.allow_duplicate_content_names not in (None, "False"):
+        return [
+            f"{prefix}# TODO: CompressFiles with "
+            f"AllowDuplicateContentNames {node.allow_duplicate_content_names!r} "
+            "— not confirmed in real samples, refusing to guess"
+        ]
+    if not node.content_to_archive:
+        return [f"{prefix}# TODO: CompressFiles with no ContentToArchive captured"]
+    if node.compressed_file_name is None:
+        return [f"{prefix}# TODO: CompressFiles with no CompressedFileName captured"]
+    todo: list[str] = []
+    items = [
+        _render_value_or_todo(item, prefix, todo) for item in node.content_to_archive
+    ]
+    compressed_file_name = _render_value_or_todo(
+        node.compressed_file_name, prefix, todo
+    )
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    inner3 = INDENT * (indent + 3)
+    return [
+        f"{prefix}with zipfile.ZipFile({compressed_file_name}, \"w\") as _cf_zip:",
+        f"{inner}for _cf_item in [{', '.join(items)}]:",
+        f"{inner2}if os.path.isdir(_cf_item):",
+        f"{inner3}for _cf_root, _cf_dirs, _cf_files in os.walk(_cf_item):",
+        f"{inner3}{INDENT}for _cf_fn in _cf_files:",
+        f"{inner3}{INDENT * 2}_cf_full = os.path.join(_cf_root, _cf_fn)",
+        f"{inner3}{INDENT * 2}_cf_zip.write(_cf_full, "
+        "os.path.relpath(_cf_full, _cf_item))",
+        f"{inner2}else:",
+        f"{inner3}_cf_zip.write(_cf_item, os.path.basename(_cf_item))",
     ]
 
 

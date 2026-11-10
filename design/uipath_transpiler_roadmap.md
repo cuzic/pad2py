@@ -2908,3 +2908,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      3件)、UiPath関連テスト全984件通過、リポジトリ全体で全2070件
      通過。残る`uascw:CompressFiles`は未着手、次の候補。
+
+176. **(完了、2026-11-10)** `uascw:CompressFiles`を新規実装(知見218)
+     ——`ExtractFiles`と対になる圧縮側、これで知見216が発見した
+     `uascw:`名前空間の圧縮活動2件両方に着手済みとなった。フォーラム
+     調査で「フォルダ圧縮時、フォルダ自身の名前はアーカイブに含まれ
+     ず中身がトップレベルに展開される(サブフォルダ構造は保持)」という
+     未公式ドキュメント化の挙動を確認、`zipfile`(標準ライブラリ)の
+     `os.walk()`+`os.path.relpath()`で再現し実際にzip作成して検証
+     した。実装中に`ContentToArchive`のリストパース処理が知見207の
+     `FilterDataTable.SelectColumns`パーサーと構造的に同一だったため
+     `_parse_property_element_list()`という汎用ヘルパーへ一般化し、
+     両方がこれに委譲するよう整理した。`Password`/`SecurePassword`
+     (`zipfile`標準では暗号化zip作成不可)・確認済み以外の
+     `CompressionLevel`/`EncryptionAlgorithm`等は`# TODO`。回帰テスト
+     追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全988件通過、リポジトリ全体で全2074件
+     通過。
