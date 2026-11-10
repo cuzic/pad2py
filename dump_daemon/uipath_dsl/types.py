@@ -2547,6 +2547,40 @@ class CreateDirectoryNode:
 
 
 @dataclass
+class MergeDataTableNode:
+    """`<ui:MergeDataTable Destination="..." Source="..."
+    MissingSchemaAction="Add" />`(知見236、`JoinDataTables`/
+    `SortDataTable`等と同じDataTable表現の延長、サブエージェントに
+    よる6回目の新規発見パスで発見、タグ名限定GitHub検索で319件
+    ヒット)。ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機
+    (`HarshadRanganathan/uipath-learning`の`Excel & Data Tables/
+    Excel_Merge_Sheets_Approach_1.xaml`、`Destination="[dt2]"`/
+    `Source="[dt1]"`→`Destination="[dt3]"`/`Source="[dt2]"`という
+    連鎖マージ、`CommentOut`無効化ではないことを独立に再取得・確認)
+    いずれも`Destination`+`Source`+`MissingSchemaAction="Add"`のみ。
+
+    .NET`DataTable.Merge(sourceTable)`は呼び出し先(`Destination`)を
+    インプレースで変更するインスタンスメソッド(新規テーブルを返す
+    のではない)——`Destination`の`list[dict]`/`list[list]`表現
+    (知見114/115)を`.extend()`でインプレース拡張することで同じ
+    参照共有の意味論を再現する。`DataTable.Merge()`は行を値コピー
+    する(参照共有ではない)ため、dict行は浅いコピー(`dict(_r)`)で
+    追加する——`Source`側の後続変更が`Destination`側に伝播しない
+    ことを保証する。`MissingSchemaAction`∈{Add, Ignore, Error,
+    AddWithKey}(.NET公式enum確認済み)のうち実機は常に`"Add"`——
+    本トランスパイラのDataTable表現(dict行、固定スキーマ無し)は
+    そもそも列の追加を自動的に許容するため`"Add"`の意味論が
+    `.extend()`だけで自然に成立する。他の値(`Error`/`Ignore`/
+    `AddWithKey`——列制約の強制やキー基準の重複排除が必要)は未対応。
+    """
+
+    destination: Expr = None
+    source: Expr = None
+    missing_schema_action: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3818,6 +3852,7 @@ Node = (
     | CheckTrueNode
     | CheckFalseNode
     | CreateDirectoryNode
+    | MergeDataTableNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

@@ -75,6 +75,7 @@ from dump_daemon.uipath_dsl import (
     CheckTrueNode,
     CheckFalseNode,
     CreateDirectoryNode,
+    MergeDataTableNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7816,6 +7817,77 @@ def test_create_directory_with_continue_on_error_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: CreateDirectory with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_merge_data_table_appends_source_rows_into_destination_in_place():
+    """知見236: `ui:MergeDataTable`。実機`HarshadRanganathan/
+    uipath-learning`相当の連鎖マージ構成を`exec()`経由で実際に実行
+    し、`Destination`がインプレースで拡張されること、行が値コピー
+    (参照共有ではない)されること——`Source`側を事後に変更しても
+    `Destination`側へ伝播しないこと——を確認する。"""
+    wf = _wrap(
+        [
+            MergeDataTableNode(
+                destination=VbExpr(text="dt2"),
+                source=VbExpr(text="dt1"),
+                missing_schema_action="Add",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "dt2.extend(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(dt1, dt2):")
+    code2 += "\n    return dt2"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    dt1 = [{"a": 1}, {"a": 2}]
+    dt2 = [{"a": 0}]
+    result = namespace["Test"](dt1, dt2)
+    assert result is dt2
+    assert result == [{"a": 0}, {"a": 1}, {"a": 2}]
+    dt1[0]["a"] = 999
+    assert result == [{"a": 0}, {"a": 1}, {"a": 2}]
+
+
+def test_merge_data_table_handles_list_rows():
+    wf = _wrap(
+        [MergeDataTableNode(destination=VbExpr(text="dt2"), source=VbExpr(text="dt1"))]
+    )
+    code = generate_python(wf)
+    code2 = code.replace("def Test():", "def Test(dt1, dt2):")
+    code2 += "\n    return dt2"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    dt1 = [[1, 2]]
+    dt2 = [[3, 4]]
+    assert namespace["Test"](dt1, dt2) == [[3, 4], [1, 2]]
+
+
+def test_merge_data_table_with_missing_properties_is_todo():
+    wf = _wrap([MergeDataTableNode(destination=None, source=VbExpr(text="s"))])
+    code = generate_python(wf)
+    assert "# TODO: MergeDataTable with missing Destination/Source" in code
+    _compiles(code)
+
+
+def test_merge_data_table_with_unconfirmed_missing_schema_action_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            MergeDataTableNode(
+                destination=VbExpr(text="d"),
+                source=VbExpr(text="s"),
+                missing_schema_action="Error",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: MergeDataTable with unconfirmed MissingSchemaAction ('Error')"
+        in code
+    )
     _compiles(code)
 
 

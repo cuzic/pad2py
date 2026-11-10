@@ -60,6 +60,7 @@ from .types import (
     CheckTrueNode,
     CheckFalseNode,
     CreateDirectoryNode,
+    MergeDataTableNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1833,6 +1834,17 @@ def _parse_create_directory(elem: etree._Element) -> CreateDirectoryNode:
     )
 
 
+def _parse_merge_data_table(elem: etree._Element) -> MergeDataTableNode:
+    return MergeDataTableNode(
+        display_name=_attr(elem, "DisplayName"),
+        destination=_attr_expr(elem, "Destination")
+        or _in_argument_property_expr(elem, "Destination"),
+        source=_attr_expr(elem, "Source")
+        or _in_argument_property_expr(elem, "Source"),
+        missing_schema_action=_attr(elem, "MissingSchemaAction"),
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2829,6 +2841,7 @@ _DISPATCH = {
     (UI_NS, "CheckTrue"): _parse_check_true,
     (UI_NS, "CheckFalse"): _parse_check_false,
     (UI_NS, "CreateDirectory"): _parse_create_directory,
+    (UI_NS, "MergeDataTable"): _parse_merge_data_table,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

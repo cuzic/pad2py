@@ -54,6 +54,7 @@ from dump_daemon.uipath_dsl import (
     CheckTrueNode,
     CheckFalseNode,
     CreateDirectoryNode,
+    MergeDataTableNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -891,6 +892,23 @@ def test_create_directory_properties():
     assert node.path == VbExpr(text="screenshotFileInfo.DirectoryName")
     assert node.continue_on_error is None
     assert node.output is None
+
+
+def test_merge_data_table_properties():
+    """知見236: `ui:MergeDataTable`(`JoinDataTables`等と同じDataTable
+    表現の延長、タグ名限定GitHub検索で319件ヒット)。実機
+    `HarshadRanganathan/uipath-learning`の`Excel & Data Tables/
+    Excel_Merge_Sheets_Approach_1.xaml`で確認した連鎖マージ構成。"""
+    xml = (
+        f"<ui:MergeDataTable {_UI_XMLNS} "
+        'Destination="[dt2]" DisplayName="Merge data table" '
+        'MissingSchemaAction="Add" Source="[dt1]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, MergeDataTableNode)
+    assert node.destination == VbExpr(text="dt2")
+    assert node.source == VbExpr(text="dt1")
+    assert node.missing_schema_action == "Add"
 
 
 def test_excel_read_range_and_write_range():

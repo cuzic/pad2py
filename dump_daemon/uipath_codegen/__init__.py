@@ -101,6 +101,7 @@ from ..uipath_dsl.types import (
     CheckTrueNode,
     CheckFalseNode,
     CreateDirectoryNode,
+    MergeDataTableNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -859,6 +860,8 @@ def _generate_node(
         return _generate_check_false(node, indent)
     if isinstance(node, CreateDirectoryNode):
         return _generate_create_directory(node, indent)
+    if isinstance(node, MergeDataTableNode):
+        return _generate_merge_data_table(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5625,6 +5628,49 @@ def _generate_create_directory_body(
     if todo:
         return todo
     return [f"{prefix}os.makedirs({VB_CSTR_HELPER_NAME}({path}), exist_ok=True)"]
+
+
+def _generate_merge_data_table(node: MergeDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_merge_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_merge_data_table_body(
+    node: MergeDataTableNode, indent: int
+) -> list[str]:
+    """知見236: .NET`DataTable.Merge(sourceTable)`は呼び出し先
+    (`Destination`)をインプレースで変更するインスタンスメソッド——
+    `.extend()`で同じ参照共有の意味論を再現する。行は値コピー
+    (`.NET`公式の挙動、参照共有ではない)されるため、dict行は
+    `dict(_r)`で浅いコピーしてから追加する(`Source`側の後続変更が
+    `Destination`側に伝播しないことを保証)。`MissingSchemaAction`は
+    実機確認済みの`"Add"`のみ対応——本トランスパイラのDataTable表現
+    (dict行、固定スキーマ無し)はそもそも列の追加を自動的に許容する
+    ため`"Add"`の意味論が`.extend()`だけで自然に成立する。"""
+    prefix = INDENT * indent
+    if node.destination is None or node.source is None:
+        return [
+            f"{prefix}# TODO: MergeDataTable with missing Destination/Source"
+        ]
+    if node.missing_schema_action not in (None, "Add"):
+        return [
+            f"{prefix}# TODO: MergeDataTable with unconfirmed "
+            f"MissingSchemaAction ({node.missing_schema_action!r}) — only "
+            "'Add' is confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    destination = _render_value_or_todo(node.destination, prefix, todo)
+    source = _render_value_or_todo(node.source, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}if {source} and isinstance({source}[0], dict):",
+        f"{inner}{destination}.extend(dict(_r) for _r in {source})",
+        f"{prefix}else:",
+        f"{inner}{destination}.extend(list(_r) for _r in {source})",
+    ]
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

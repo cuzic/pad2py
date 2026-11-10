@@ -3255,3 +3255,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_codegen.py`4件)、リポジトリ全体で全2164件通過。
      残る`ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`
      (13件ヒット)を次の候補として記録。
+
+194. **(完了、2026-11-10)** `ui:MergeDataTable`を新規実装(知見236)
+     ——タグ名限定検索で319件ヒット。`Destination`+`Source`+
+     `MissingSchemaAction`(実機常に`"Add"`、.NET公式enumは
+     `{Add, Ignore, Error, AddWithKey}`)。.NET`DataTable.Merge
+     (sourceTable)`は呼び出し先をインプレースで変更するインスタンス
+     メソッドのため、`Destination`の`list`表現を`.extend()`で拡張
+     することで同じ参照共有の意味論を再現——さらに行を値コピー
+     (参照共有ではない)する.NETの挙動に合わせ、dict行は`dict(_r)`
+     で浅いコピーしてから追加する(単純な`.extend(source)`だと
+     `Source`側の事後変更が`Destination`側へ伝播してしまうという
+     実装中に気づいた罠)。本トランスパイラのDataTable表現(固定
+     スキーマ無し)はそもそも列追加を自動的に許容するため`"Add"`
+     の意味論が`.extend()`だけで自然に成立する。`exec()`経由で
+     dict行・list行・連鎖マージ・`Source`事後変更の非伝播を確認
+     した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2169件通過。
+     残る`ui:FormatValue`(13件ヒット)を次の候補として記録。

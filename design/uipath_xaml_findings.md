@@ -11124,6 +11124,47 @@ TakeScreenshot.xaml`、`Path="[screenshotFileInfo.DirectoryName]"`
 残る`ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`(13件
 ヒットとやや薄い)を次の候補として記録する。
 
+## 236. `ui:MergeDataTable`を新規実装——.NET DataTable.Merge()はインプレース変更+値コピーのインスタンスメソッドのため.extend(dict(_r) for _r in source)で参照共有無しの正確な意味論を再現する
+
+知見235で発見した次候補の`ui:MergeDataTable`(タグ名限定検索で
+319件ヒット)に着手した。ground-truth(`marcelocruzrpa/
+uipath-ai-skills`)・実機(`HarshadRanganathan/uipath-learning`の
+`Excel & Data Tables/Excel_Merge_Sheets_Approach_1.xaml`、
+`Destination="[dt2]"`/`Source="[dt1]"`→`Destination="[dt3]"`/
+`Source="[dt2]"`という連鎖マージ、`CommentOut`無効化ではないことを
+独立に再取得・確認)いずれも`Destination`+`Source`+
+`MissingSchemaAction="Add"`のみ。
+
+公式ドキュメント(WebSearch経由確認)で`MissingSchemaAction`は
+.NET公式enum`{Add, Ignore, Error, AddWithKey}`に対応するUiPath側の
+プロパティと確認——実機は常に`"Add"`のみ。本トランスパイラの
+DataTable表現(`list[dict]`、知見114/115、固定スキーマ無し)は
+そもそも列の追加を自動的に許容するため、`"Add"`の意味論は
+`.extend()`だけで自然に成立する——他の値(`Error`/`Ignore`/
+`AddWithKey`、列制約の強制やキー基準の重複排除が必要)は未対応。
+
+実装上の重要な判断: .NET`DataTable.Merge(sourceTable)`は呼び出し先
+(`Destination`)を**インプレースで変更する**インスタンスメソッド
+(新規テーブルを返すのではない)——`Destination`の`list`表現を
+`.extend()`で拡張することで同じ参照共有の意味論を再現した。
+さらに.NETの`DataTable.Merge()`は行を**値コピー**する(参照共有
+ではない)ため、dict行は`dict(_r)`で浅いコピーしてから追加する
+——これにより`Source`側を事後に変更しても`Destination`側へ
+伝播しないことを保証する(単純な`.extend(source)`だとdict
+オブジェクト自体を共有してしまい、.NETの実際の挙動と食い違う
+という実装中に気づいた罠)。
+
+`exec()`経由でdict行・list行の両方、連鎖マージ(実機相当の構成)、
+`Source`を事後に変更しても`Destination`へ伝播しないことを実際に
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`4件)、リポジトリ全体で全2169件通過
+(28件skip、変化無し)。
+
+残る`ui:FormatValue`(13件ヒットとやや薄い、`CurrencyNumberFormat
+Provider`/`DateTimeFormatProvider`等の複数`.Format`サブタイプに
+対応する小さなディスパッチテーブルが必要)を次の候補として記録
+する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
