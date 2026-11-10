@@ -3475,3 +3475,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`10件)、
      リポジトリ全体で全2231件通過。8回目発見パスはこれで完了
      ——バックログは再び空になった。
+
+205. **(完了、2026-11-10)** `ui:StartProcess`を新規実装(知見247)
+     ——タグ名限定検索で458件ヒット、9回目発見パス。実機2件
+     (`cameronmcnz/uipath-tutorials`・`ShonHarsh/UiPath-Program-
+     Start-Up-Bot`)で確認——`.NET Process.Start()`相当のOSレベル
+     プロセス起動、`FileName`+`Arguments`+`WorkingDirectory`。
+     サブエージェントの1位候補`ui:TypeSecureText`は独立再検証で
+     既に知見158で実装済みと判明(別のNode型`TypeIntoNode`を再利用
+     する設計のため、`Node`サブクラス名ベースの除外リストに載って
+     いなかった既知の穴)——2位の`StartProcess`へ進んだ。`Arguments`
+     は既存の`OpenApplicationNode`(知見154)と同じ理由(Windows
+     コマンドライン分割規則未確認)で見送るが、`WorkingDirectory`は
+     `subprocess.Popen()`の`cwd`引数という曖昧性の無い概念のため
+     確信を持って対応した。`ExecutionType`は確認済みの既定値
+     `"Asynchronous"`のみ対応。`subprocess.Popen`自体をモックして
+     `exec()`経由で実際に呼ばれる引数を確認した。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     7件)、リポジトリ全体で全2239件通過。

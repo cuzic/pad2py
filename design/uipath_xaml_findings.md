@@ -11691,6 +11691,54 @@ ground-truth既定値いずれも`"True"`のみ確認、`"False"`時の意味論
 リポジトリ全体で全2231件通過(28件skip)。8回目発見パスはこれで
 完了——バックログは再び空になった。
 
+## 247. `ui:StartProcess`を新規実装——既存の`OpenApplicationNode`の`Arguments`見送り判断をそのまま継承しつつ、曖昧性の無い`WorkingDirectory`は確信を持って対応した
+
+9回目新規発見パス(今回も`gh api search/code`タグ名限定検索+実機2件
+以上の個別フェッチ確認という確立済み手法)で見つかった`ui:
+StartProcess`(タグ名限定GitHub検索で458件ヒット)に着手した。
+
+サブエージェントの報告は候補をTier別に分けた上で、1位に`ui:
+TypeSecureText`を挙げていたが、独立に再検証した結果これは**既に
+知見158で実装済み**(`TypeIntoNode`を再利用する設計のため、
+`Node`サブクラス名の一覧から作った除外リストに載っていなかった
+——「別のNode型を再利用して実装された活動は除外リストに現れない」
+という発見パス運用上の既知の穴を記録)と判明し、2位の`ui:
+StartProcess`へ進んだ。
+
+実機2件(`cameronmcnz/uipath-tutorials`の`Xample07/Main.xaml`、
+`ShonHarsh/UiPath-Program-Start-Up-Bot`の`Methods/
+Process_StartProcess.xaml`——後者はC#式言語プロジェクトで、既存の
+知見129・136の「でっち上げず`None`へ倒す」方針がそのまま適用され
+新規コード不要だった)で独立に再取得・確認——`FileName`+
+`Arguments`(常に`{x:Null}`または未確認の変数参照)+
+`WorkingDirectory`(常に`{x:Null}`)。公式ドキュメント(WebFetch経由
+確認)で`ExecutionType`(既定`Asynchronous`、他に`Synchronous`——
+`Timeout`付きで完了を待つ、既定30000ms)+`ContinueOnError`も確認した
+が、実機2件いずれも`ExecutionType`/`Timeout`属性自体が無い(既定値)。
+
+`.NET Process.Start()`相当のOSレベルプロセス起動活動——GitHub
+ground-truthコーパスには`StartProcess.xaml`自体が存在せず(25.10
+スナップショットには`BeginProcess.xaml`のみ、これは別の活動
+——`ProcessName`+`UsePackage`による別のUiPathプロセス呼び出しで、
+知見227で見送った`InvokeProcess`と同じ「OSサブプロセス起動ではない」
+カテゴリ、無関係)——ground-truthが無い状態で公式ドキュメントの
+直接確認が特に重要だった。
+
+`Arguments`は既存の`OpenApplicationNode`(知見154)が「Windowsコマンド
+ライン引数の分割規則が未確認」として設定時に全体を見送っているのと
+全く同じ理由・同じ判断を継承した。一方`WorkingDirectory`は
+`subprocess.Popen()`の`cwd`引数という単純で曖昧性の無い概念のため
+確信を持って対応した(`OpenApplicationNode`は`WorkingDirectory`も
+見送っているが、これは単に優先順位の問題でこの活動固有の制約では
+無いと判断——`StartProcess`では対応する)。`ExecutionType`は確認済み
+の既定値`"Asynchronous"`のみ対応、`"Synchronous"`は実機未確認のため
+見送る。
+
+`subprocess.Popen`自体をモックして`exec()`経由で実際に呼ばれる引数
+(`FileName`単体・`WorkingDirectory`付きの両方)を確認した。回帰テスト
+追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+7件)、リポジトリ全体で全2239件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

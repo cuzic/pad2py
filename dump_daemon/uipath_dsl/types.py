@@ -3730,6 +3730,44 @@ class OpenApplicationNode:
 
 
 @dataclass
+class StartProcessNode:
+    """`<ui:StartProcess FileName="..." Arguments="..."
+    WorkingDirectory="..." ExecutionType="..." Timeout="..."
+    ContinueOnError="..." />`(知見247、9回目発見パスで発見、タグ名
+    限定GitHub検索で458件ヒット)。`UiPath.System.Activities`の
+    `.NET Process.Start()`相当のOSレベルプロセス起動活動——`ui:
+    BeginProcess`(別のUiPath活動、`ProcessName`+`UsePackage`による
+    別のUiPathプロセス呼び出しで全く別物、知見227の`InvokeProcess`と
+    同じ「OSサブプロセス起動ではない」カテゴリ)とは無関係。実機2件
+    (`cameronmcnz/uipath-tutorials`の`Xample07/Main.xaml`、`ShonHarsh/
+    UiPath-Program-Start-Up-Bot`の`Methods/Process_StartProcess.xaml`
+    ——後者はC#式言語プロジェクトで、既存の知見129・136の
+    「でっち上げず`None`へ倒す」方針がそのまま適用される)で確認済み
+    ——`FileName`+`Arguments`(常に`{x:Null}`または未確認の変数参照、
+    実機で非nullの具体的な文字列値は未確認)+`WorkingDirectory`
+    (常に`{x:Null}`)。
+
+    公式ドキュメント(WebSearch経由確認)で`ExecutionType`
+    (既定`Asynchronous`、他に`Synchronous`——`Timeout`付きで完了を
+    待つ)+`Timeout`(既定30000ms、`Synchronous`時のみ意味を持つ)+
+    `ContinueOnError`も確認したが、実機2件いずれも`ExecutionType`/
+    `Timeout`属性自体が無い(既定値のAsynchronous)。`Arguments`は
+    既存の`OpenApplicationNode`(知見154)が「Windowsコマンドライン
+    引数の分割規則が未確認」として`Arguments`設定時に全体を見送って
+    いるのと同じ理由・同じ判断で見送る——`FileName`のみ(+確信を
+    持って対応できる`WorkingDirectory`、`subprocess.Popen()`の`cwd`
+    引数に直接対応する単純な概念のため)をサポートする。"""
+
+    file_name: Expr = None
+    arguments: Expr = None
+    working_directory: Expr = None
+    execution_type: str | None = None
+    timeout: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class OpenBrowserNode:
     """`<ui:OpenBrowser Url="..." BrowserType="...">...</ui:OpenBrowser>`
     (知見168、知見167で発見、GitHub code searchで2648件ヒット——
@@ -4177,6 +4215,7 @@ Node = (
     | DeserializeJsonArrayNode
     | CopyFolderXNode
     | MoveFolderXNode
+    | StartProcessNode
     | ParallelNode
     | ClickNode
     | HoverNode

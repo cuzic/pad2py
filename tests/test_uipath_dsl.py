@@ -34,6 +34,7 @@ from dump_daemon.uipath_dsl import (
     DeserializeJsonArrayNode,
     CopyFolderXNode,
     MoveFolderXNode,
+    StartProcessNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3909,6 +3910,25 @@ def test_open_application_dynamic_file_name_and_nullable_attrs():
     assert node.timeout_ms is None
     assert node.continue_on_error is None
     assert node.body == []
+
+
+def test_start_process_properties():
+    """知見247: `ui:StartProcess`(タグ名限定GitHub検索で458件ヒット)。
+    `.NET Process.Start()`相当のOSレベルプロセス起動——実機
+    `cameronmcnz/uipath-tutorials`の`Xample07/Main.xaml`で確認した
+    実例。"""
+    xml = (
+        f"<ui:StartProcess {_UI_XMLNS} Arguments=\"{{x:Null}}\" "
+        'WorkingDirectory="{x:Null}" DisplayName="Start Process" '
+        'FileName="[file.ToString]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, StartProcessNode)
+    assert node.file_name == VbExpr(text="file.ToString")
+    assert node.arguments is None
+    assert node.working_directory is None
+    assert node.execution_type is None
+    assert node.continue_on_error is None
 
 
 def test_open_browser_url_and_browser_type():

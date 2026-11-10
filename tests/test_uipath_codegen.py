@@ -58,6 +58,7 @@ from dump_daemon.uipath_dsl import (
     DeserializeJsonArrayNode,
     CopyFolderXNode,
     MoveFolderXNode,
+    StartProcessNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -8879,6 +8880,112 @@ def test_open_application_child_todo_still_surfaces():
     code = generate_python(wf)
     assert "subprocess.Popen(" in code
     assert "# TODO: unsupported in v1 codegen: InvokeCodeNode" in code
+    _compiles(code)
+
+
+def test_start_process_launches_via_subprocess_popen_exec():
+    """知見247: `ui:StartProcess`。`FileName`のみ(確認済みの単純な
+    場合)は`subprocess.Popen([...])`で実際に起動する——`subprocess.
+    Popen`自体をモックして`exec()`経由で実際に呼ばれる引数を確認する。"""
+    wf = _wrap([StartProcessNode(file_name=Literal(value="notepad.exe"))])
+    code = generate_python(wf)
+    assert "subprocess.Popen([_vb_cstr('notepad.exe')])" in code
+    assert "import subprocess" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with unittest.mock.patch("subprocess.Popen") as mock_popen:
+        namespace["Test"]()
+    mock_popen.assert_called_once_with(["notepad.exe"])
+
+
+def test_start_process_with_working_directory_exec():
+    """知見247: `WorkingDirectory`は`subprocess.Popen()`の`cwd`引数に
+    直接対応する単純な概念のため確信を持って対応する(`OpenApplication`
+    (知見154)が`Arguments`と同じ理由で見送っている属性だが、こちらは
+    曖昧性が無いため見送らない)。"""
+    wf = _wrap(
+        [
+            StartProcessNode(
+                file_name=Literal(value="a.exe"),
+                working_directory=Literal(value="C:\\work"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "subprocess.Popen([_vb_cstr('a.exe')], cwd='C:\\\\work')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with unittest.mock.patch("subprocess.Popen") as mock_popen:
+        namespace["Test"]()
+    mock_popen.assert_called_once_with(["a.exe"], cwd="C:\\work")
+
+
+def test_start_process_display_name_becomes_a_comment():
+    wf = _wrap(
+        [StartProcessNode(file_name=Literal(value="notepad.exe"), display_name="Start Process")]
+    )
+    code = generate_python(wf)
+    assert "# Start Process" in code
+    assert "subprocess.Popen(" in code
+    _compiles(code)
+
+
+def test_start_process_with_no_file_name_is_todo_not_guessed():
+    wf = _wrap([StartProcessNode(file_name=None)])
+    code = generate_python(wf)
+    assert "# TODO: StartProcess with no FileName captured" in code
+    _compiles(code)
+
+
+def test_start_process_with_arguments_is_todo_not_guessed():
+    """知見247: `Arguments`は既存の`OpenApplicationNode`(知見154)と
+    同じ理由(Windowsコマンドライン引数の分割規則が未確認)で設定時は
+    全体を見送る。"""
+    wf = _wrap(
+        [
+            StartProcessNode(
+                file_name=Literal(value="notepad.exe"),
+                arguments=VbExpr(text="args"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: StartProcess with Arguments set" in code
+    assert "subprocess.Popen" not in code
+    _compiles(code)
+
+
+def test_start_process_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            StartProcessNode(
+                file_name=Literal(value="notepad.exe"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: StartProcess with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_start_process_with_synchronous_execution_type_is_todo_not_guessed():
+    """知見247: `ExecutionType="Synchronous"`(`Timeout`付きで完了を
+    待つ)は実機での利用例が未確認のため見送る。"""
+    wf = _wrap(
+        [
+            StartProcessNode(
+                file_name=Literal(value="notepad.exe"),
+                execution_type="Synchronous",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: StartProcess with ExecutionType" in code
     _compiles(code)
 
 

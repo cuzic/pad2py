@@ -80,6 +80,7 @@ from ..uipath_dsl.types import (
     DeserializeJsonArrayNode,
     CopyFolderXNode,
     MoveFolderXNode,
+    StartProcessNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -960,6 +961,8 @@ def _generate_node(
         return _generate_attach_window(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, OpenApplicationNode):
         return _generate_open_application(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, StartProcessNode):
+        return _generate_start_process(node, indent)
     if isinstance(node, OpenBrowserNode):
         return _generate_open_browser(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ExcelApplicationScopeNode):
@@ -6879,6 +6882,58 @@ def _generate_open_application_body(
         lines.append(f"{prefix}# Attach window: {node.selector}")
     lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
     return lines
+
+
+def _generate_start_process(node: StartProcessNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_start_process_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_start_process_body(node: StartProcessNode, indent: int) -> list[str]:
+    """知見247: `ui:StartProcess`——`.NET Process.Start()`相当の
+    OSレベルプロセス起動。`Arguments`は既存の`OpenApplicationNode`
+    (知見154)と同じ理由(Windowsコマンドライン引数の分割規則が未確認)
+    で設定時は全体を見送る。`WorkingDirectory`は`subprocess.Popen()`
+    の`cwd`引数に直接対応する単純な概念のため確信を持って対応する。
+    `ExecutionType`は公式ドキュメント確認済みの既定値`Asynchronous`
+    のみ対応(`Synchronous`は実機未確認のため見送る)。"""
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: StartProcess with no FileName captured"]
+    if node.arguments is not None:
+        return [
+            f"{prefix}# TODO: StartProcess with Arguments set "
+            f"({_describe_expr_for_comment(node.arguments)}) — Windows "
+            "command-line splitting semantics not confirmed, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: StartProcess with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if node.execution_type not in (None, "Asynchronous"):
+        return [
+            f"{prefix}# TODO: StartProcess with ExecutionType "
+            f"{node.execution_type!r} — only the confirmed \"Asynchronous\" "
+            "default is implemented, Synchronous wait-with-Timeout semantics "
+            "not confirmed in the wild, refusing to guess"
+        ]
+    try:
+        file_name = render_expr(node.file_name)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    todo: list[str] = []
+    kwargs = ""
+    if node.working_directory is not None:
+        working_directory = _render_value_or_todo(node.working_directory, prefix, todo)
+        kwargs = f", cwd={working_directory}"
+    if todo:
+        return todo
+    return [
+        f"{prefix}subprocess.Popen([{VB_CSTR_HELPER_NAME}({file_name})]{kwargs})"
+    ]
 
 
 # 知見168: `ui:OpenBrowser`(GitHub code searchで2648件ヒット)。

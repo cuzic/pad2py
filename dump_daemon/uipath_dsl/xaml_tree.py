@@ -38,6 +38,7 @@ from .types import (
     DeserializeJsonArrayNode,
     CopyFolderXNode,
     MoveFolderXNode,
+    StartProcessNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -2485,6 +2486,19 @@ def _parse_open_application(elem: etree._Element) -> OpenApplicationNode:
     )
 
 
+def _parse_start_process(elem: etree._Element) -> StartProcessNode:
+    return StartProcessNode(
+        file_name=_attr_expr(elem, "FileName") or _in_argument_property_expr(elem, "FileName"),
+        arguments=_attr_expr(elem, "Arguments") or _in_argument_property_expr(elem, "Arguments"),
+        working_directory=_attr_expr(elem, "WorkingDirectory")
+        or _in_argument_property_expr(elem, "WorkingDirectory"),
+        execution_type=_attr_or_none(elem, "ExecutionType"),
+        timeout=_attr_expr(elem, "Timeout"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_open_browser(elem: etree._Element) -> OpenBrowserNode:
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
@@ -3045,6 +3059,7 @@ _DISPATCH = {
     (UI_NS, "WindowScope"): _parse_window_scope,
     (UI_NS, "BrowserScope"): _parse_browser_scope,
     (UI_NS, "OpenApplication"): _parse_open_application,
+    (UI_NS, "StartProcess"): _parse_start_process,
     (UI_NS, "OpenBrowser"): _parse_open_browser,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
