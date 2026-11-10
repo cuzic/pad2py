@@ -51,6 +51,8 @@ from dump_daemon.uipath_dsl import (
     DatabaseTransactionNode,
     ExtractTextNode,
     GetLastDownloadedFileNode,
+    CheckTrueNode,
+    CheckFalseNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -843,6 +845,33 @@ def test_get_last_downloaded_file_unwraps_body_sequence():
     assert node.file_resource is None
     assert len(node.body) == 1
     assert isinstance(node.body[0], SendHotkeyNode)
+
+
+def test_check_true_and_check_false_properties():
+    """知見234: `ui:CheckTrue`/`ui:CheckFalse`(タグ名限定GitHub検索で
+    303件/33件ヒット)。実機`flindersuni/rpa-Flinders.Helpers`の
+    `LoginToFlindersDashboard/Main.xaml`で確認した属性構成——
+    `Expression`+`ErrorMessage`の2属性のみ。"""
+    true_xml = (
+        f"<ui:CheckTrue {_UI_XMLNS} "
+        'DisplayName="Check True" ErrorMessage="[processMessage]" '
+        'Expression="[processSuccessful]" />'
+    )
+    true_node = parse_activity(etree.fromstring(true_xml))
+    assert isinstance(true_node, CheckTrueNode)
+    assert true_node.expression == VbExpr(text="processSuccessful")
+    assert true_node.error_message == VbExpr(text="processMessage")
+
+    false_xml = (
+        f"<ui:CheckFalse {_UI_XMLNS} "
+        'DisplayName="Check False" '
+        'ErrorMessage="A credential name must be supplied" '
+        'Expression="[String.IsNullOrWhiteSpace(credentialName)]" />'
+    )
+    false_node = parse_activity(etree.fromstring(false_xml))
+    assert isinstance(false_node, CheckFalseNode)
+    assert false_node.expression == VbExpr(text="String.IsNullOrWhiteSpace(credentialName)")
+    assert false_node.error_message == Literal(value="A credential name must be supplied")
 
 
 def test_excel_read_range_and_write_range():

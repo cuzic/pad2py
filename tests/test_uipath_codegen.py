@@ -72,6 +72,8 @@ from dump_daemon.uipath_dsl import (
     DatabaseTransactionNode,
     ExtractTextNode,
     GetLastDownloadedFileNode,
+    CheckTrueNode,
+    CheckFalseNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7696,6 +7698,71 @@ def test_get_last_downloaded_file_with_missing_properties_is_todo():
     code = generate_python(wf)
     assert "# TODO: GetLastDownloadedFile with missing DownloadFolder/File" in code
     _compiles(code)
+
+
+def test_check_true_raises_when_expression_is_false():
+    """知見234: `ui:CheckTrue`。実機`flindersuni/rpa-Flinders.Helpers`
+    相当の構成(ログイン成否チェック)を`exec()`経由で実際に実行し、
+    式がfalseの場合のみ`ErrorMessage`付きの例外を投げることを確認
+    する。"""
+    wf = _wrap(
+        [
+            CheckTrueNode(
+                expression=VbExpr(text="processSuccessful"),
+                error_message=VbExpr(text="processMessage"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if not _vb_bool(processSuccessful):" in code
+    assert "raise Exception(_vb_cstr(processMessage))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace(
+        "def Test():", "def Test(processSuccessful, processMessage):"
+    )
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"](True, "login failed")
+    with pytest.raises(Exception, match="login failed"):
+        namespace["Test"](False, "login failed")
+
+
+def test_check_false_raises_when_expression_is_true():
+    """知見234: `ui:CheckFalse`。実機`flindersuni/rpa-Flinders.Helpers`
+    相当の構成(必須入力の未入力チェック)を`exec()`経由で実際に実行し、
+    式がtrueの場合のみ`ErrorMessage`付きの例外を投げることを確認
+    する。"""
+    wf = _wrap(
+        [
+            CheckFalseNode(
+                expression=VbExpr(text="x"),
+                error_message=Literal(value="must be supplied"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "if _vb_bool(x):" in code
+    assert "raise Exception(_vb_cstr('must be supplied'))" in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(x):")
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"](False)
+    with pytest.raises(Exception, match="must be supplied"):
+        namespace["Test"](True)
+
+
+def test_check_true_and_check_false_with_missing_properties_is_todo():
+    wf = _wrap([CheckTrueNode(expression=None, error_message=VbExpr(text="m"))])
+    code = generate_python(wf)
+    assert "# TODO: CheckTrue with missing Expression/ErrorMessage" in code
+    _compiles(code)
+
+    wf2 = _wrap([CheckFalseNode(expression=VbExpr(text="x"), error_message=None)])
+    code2 = generate_python(wf2)
+    assert "# TODO: CheckFalse with missing Expression/ErrorMessage" in code2
+    _compiles(code2)
 
 
 @pytest.mark.parametrize(

@@ -11035,6 +11035,63 @@ test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件)、
 UiPath関連テスト全1058件通過、リポジトリ全体で全2155件通過
 (28件skip、変化無し)。
 
+## 234. `ui:CheckTrue`・`ui:CheckFalse`を新規実装——式の真偽に応じてErrorMessage付きの例外を投げるだけの単純な活動、UIAutomationNext(`uix:`)名前空間全体を今後の候補から除外する教訓も確定
+
+サブエージェントによる6回目の新規発見パス(今回は「個々の候補ごとに
+実機2件以上のXAML本文を実際に取得して読み、`CommentOut`無効化・
+`uix:`要素記述子依存の両方を明示確認すること」という厳格な方法論を
+事前に要求——前回tickで`uix:NMouseScroll`の「実機は常に裸」という
+誤った主張を独立検証で発見した反省を踏まえた対策)で発見した
+`ui:CheckTrue`(タグ名限定検索で303件ヒット)・`ui:CheckFalse`
+(33件ヒット、`CheckTrue`の反転版)に着手した。
+
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`flindersuni/rpa-Flinders.Helpers`の`LoginToFlindersDashboard/
+Main.xaml`、`CheckFalse`で「認証情報名が未入力の場合は例外を投げる」
+・`CheckTrue`で「ログイン処理が失敗した場合は例外を投げる」という
+注釈付き実例を独立に再取得・確認)いずれも`Expression`(ブール式)
++`ErrorMessage`の2属性のみ——サブエージェントの報告通りで、追加の
+独立検証でも裏付けが取れた(前回tickの教訓を踏まえ、今回は委ねず
+自分で最低1件を直接確認した)。
+
+公式ドキュメント(WebSearch経由確認、`check-true`/`check-false`
+ページ)で「式がfalse(`CheckTrue`)/true(`CheckFalse`)の場合、
+カスタムメッセージ付きの例外を実行時に投げる」と確認済み——.NET側
+の正確な例外型(コミュニティ情報では`CheckPointException`が既定の
+可能性があるが未確定、`BusinessRuleException`も選択可能という
+機能要望スレッドあり)は未確認のため、既存の`_EXCEPTION_TYPE_MAP`
+の未知型フォールバックと同じ汎用`Exception`で代用する。`Expression`
+のブール変換は`If`/`While`(知見61)と同じ既存の`_vb_bool()`ヘルパー
+を再利用——両活動は条件の真偽が反転するだけの共通コード生成関数
+(`_check_true_false_family_body`)で対応した。
+
+`exec()`経由で両活動を実際に実行し、`CheckTrue`は式がTrueなら無害
+・Falseなら`ErrorMessage`付きの例外、`CheckFalse`はその逆の動作を
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、リポジトリ全体で全2159件通過
+(28件skip、変化無し)。
+
+同じ発見パスで`ui:CreateDirectory`(1760件ヒット、`CopyFile`/
+`MoveFile`の兄弟活動、`os.makedirs(path, exist_ok=True)`で対応
+見込み)・`ui:MergeDataTable`(319件ヒット、`JoinDataTables`等と
+同じDataTable表現の延長で対応見込み)・`ui:FormatValue`(13件
+ヒットとやや薄いが、`CurrencyNumberFormatProvider`/
+`DateTimeFormatProvider`等の複数`FormatProvider`サブタイプに
+対応する小さなディスパッチテーブルが必要)も発見済み——次の候補
+として記録する。`ui:FindChildren`(198件ヒットと有望に見えたが、
+出力の`Children`が`ui:ForEach x:TypeArguments="ui:UiElement"`の
+ダウンストリームでドット記法アクセスされる`UiElement`型付き
+オブジェクトを要求すると実機で確認——`GetFileInfoX`等と同種の
+「未モデル化の型付きオブジェクト」問題のため見送り)も調査済み。
+
+**UIAutomationNext(`uix:`)名前空間全体を、専用の要素記述子オブジェクト
+モデル(`uix:SearchedElement`/`uix:TargetAnchorable`)という大規模な
+インフラ投資が無い限り今後の候補から除外する**という方針を今回の
+サブエージェント指示で確定した(知見233で発見した`uix:NMouseScroll`の
+誤った「実機は常に裸」主張の反省を踏まえ、`NClick`/`NTypeInto`等の
+「Modern」系UI Automation活動全般に同じ制約が及ぶことを明文化)——
+`ueab:`(Modern Excel)系の既存の見送り判断(知見230)と同じ扱い。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

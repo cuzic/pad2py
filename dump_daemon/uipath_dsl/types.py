@@ -2475,6 +2475,47 @@ class GetLastDownloadedFileNode:
 
 
 @dataclass
+class CheckTrueNode:
+    """`<ui:CheckTrue Expression="..." ErrorMessage="..." />`(知見234、
+    公式表示名「Check True」、サブエージェントによる6回目の新規発見
+    パスで発見、タグ名限定GitHub検索で303件ヒット)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機複数件(`flindersuni/
+    rpa-Flinders.Helpers`の`LoginToFlindersDashboard/Main.xaml`、
+    `Expression="[processSuccessful]"`+`ErrorMessage="[processMessage]"`
+    ——「ログイン処理が失敗した場合は例外を投げる」という注釈付き)
+    いずれも`Expression`(ブール式)+`ErrorMessage`の2属性のみ。
+
+    公式ドキュメント(WebSearch経由確認、`check-true`ページ)で
+    「式がfalseの場合、カスタムメッセージ付きの例外を実行時に投げる」
+    と確認済み——.NET側の正確な例外型(コミュニティ情報では
+    `CheckPointException`が既定の可能性があるが未確定)は未確認の
+    ため、既存の`_EXCEPTION_TYPE_MAP`の未知型フォールバックと同じ
+    汎用`Exception`で代用する。`Expression`のブール変換は`If`/`While`
+    (知見61)と同じ`_vb_bool()`ヘルパーを再利用する。"""
+
+    expression: Expr = None
+    error_message: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class CheckFalseNode:
+    """`<ui:CheckFalse Expression="..." ErrorMessage="..." />`(知見234、
+    `CheckTrue`の反転版、公式表示名「Check False」、タグ名限定GitHub
+    検索で33件ヒット)。ground-truth・実機(`flindersuni/
+    rpa-Flinders.Helpers`、`Expression="[String.IsNullOrWhiteSpace(
+    credentialName)]"`——「認証情報名が未入力の場合は例外を投げる」
+    という注釈付き)いずれも`CheckTrue`と全く同じ`Expression`+
+    `ErrorMessage`の2属性構成。公式ドキュメント確認済みの「式がtrueの
+    場合、カスタムメッセージ付きの例外を実行時に投げる」——`CheckTrue`
+    とは条件の真偽が反転するだけの意味論。"""
+
+    expression: Expr = None
+    error_message: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3743,6 +3784,8 @@ Node = (
     | DatabaseTransactionNode
     | ExtractTextNode
     | GetLastDownloadedFileNode
+    | CheckTrueNode
+    | CheckFalseNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

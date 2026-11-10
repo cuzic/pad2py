@@ -98,6 +98,8 @@ from ..uipath_dsl.types import (
     DatabaseTransactionNode,
     ExtractTextNode,
     GetLastDownloadedFileNode,
+    CheckTrueNode,
+    CheckFalseNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -850,6 +852,10 @@ def _generate_node(
         return _generate_get_last_downloaded_file(
             node, indent, invoke_resolver, out_arg_resolver
         )
+    if isinstance(node, CheckTrueNode):
+        return _generate_check_true(node, indent)
+    if isinstance(node, CheckFalseNode):
+        return _generate_check_false(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5533,6 +5539,49 @@ def _generate_get_last_downloaded_file_body(
         ]
     )
     return lines
+
+
+def _check_true_false_family_body(
+    node: CheckTrueNode | CheckFalseNode, indent: int, activity_label: str, negate: bool
+) -> list[str]:
+    """知見234: `CheckTrue`/`CheckFalse`共通のコード生成——公式
+    ドキュメント確認済みの「式がfalse(`CheckTrue`)/true(`CheckFalse`)
+    の場合、カスタムメッセージ付きの例外を実行時に投げる」に対応する。
+    .NET側の正確な例外型(コミュニティ情報では`CheckPointException`が
+    既定の可能性があるが未確定)は未確認のため、既存の
+    `_EXCEPTION_TYPE_MAP`の未知型フォールバックと同じ汎用`Exception`
+    で代用する。`Expression`のブール変換は`If`/`While`(知見61)と
+    同じ`_vb_bool()`を再利用する。"""
+    prefix = INDENT * indent
+    if node.expression is None or node.error_message is None:
+        return [
+            f"{prefix}# TODO: {activity_label} with missing Expression/"
+            "ErrorMessage"
+        ]
+    todo: list[str] = []
+    expression = _render_value_or_todo(node.expression, prefix, todo)
+    error_message = _render_value_or_todo(node.error_message, prefix, todo)
+    if todo:
+        return todo
+    cond = f"{VB_BOOL_HELPER_NAME}({expression})"
+    if negate:
+        cond = f"not {cond}"
+    return [
+        f"{prefix}if {cond}:",
+        f"{INDENT * (indent + 1)}raise Exception({VB_CSTR_HELPER_NAME}({error_message}))",
+    ]
+
+
+def _generate_check_true(node: CheckTrueNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _check_true_false_family_body(node, indent, "CheckTrue", negate=True)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_check_false(node: CheckFalseNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _check_true_false_family_body(node, indent, "CheckFalse", negate=False)
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

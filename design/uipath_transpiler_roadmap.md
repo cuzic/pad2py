@@ -3215,3 +3215,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      重要性の実例として記録。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全
      1058件通過、リポジトリ全体で全2155件通過。
+
+192. **(完了、2026-11-10)** `ui:CheckTrue`・`ui:CheckFalse`を新規実装
+     (知見234)——タグ名限定検索で303件/33件ヒット。`Expression`
+     (ブール式)+`ErrorMessage`の2属性のみ、公式ドキュメント確認済み
+     の「式がfalse(`CheckTrue`)/true(`CheckFalse`)の場合、カスタム
+     メッセージ付きの例外を実行時に投げる」に対応する——正確な.NET
+     例外型は未確認のため既存の`_EXCEPTION_TYPE_MAP`の未知型
+     フォールバックと同じ汎用`Exception`で代用、`Expression`の
+     ブール変換は`If`/`While`(知見61)の`_vb_bool()`を再利用し両活動
+     共通のコード生成関数で対応した。`exec()`経由で両方向の真偽
+     組み合わせを実際に実行し確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、
+     リポジトリ全体で全2159件通過。**今回の発見パスでは「候補ごとに
+     実機2件以上のXAML本文を実際に取得し`CommentOut`無効化・`uix:`
+     要素記述子依存を明示確認する」という厳格な方法論を事前に要求**
+     (前tickの`uix:NMouseScroll`誤認の反省)——これにより
+     UIAutomationNext(`uix:`)名前空間全体を今後の候補から除外する
+     方針を確定した(`ueab:`Modern Excel系、知見230と同じ扱い)。
+     同じ発見パスで`ui:CreateDirectory`(1760件ヒット)・
+     `ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`(13件ヒット)
+     を次の候補として記録。

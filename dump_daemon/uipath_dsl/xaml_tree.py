@@ -57,6 +57,8 @@ from .types import (
     DatabaseTransactionNode,
     ExtractTextNode,
     GetLastDownloadedFileNode,
+    CheckTrueNode,
+    CheckFalseNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1799,6 +1801,26 @@ def _parse_get_last_downloaded_file(
     )
 
 
+def _parse_check_true(elem: etree._Element) -> CheckTrueNode:
+    return CheckTrueNode(
+        display_name=_attr(elem, "DisplayName"),
+        expression=_attr_expr(elem, "Expression")
+        or _in_argument_property_expr(elem, "Expression"),
+        error_message=_attr_expr(elem, "ErrorMessage")
+        or _in_argument_property_expr(elem, "ErrorMessage"),
+    )
+
+
+def _parse_check_false(elem: etree._Element) -> CheckFalseNode:
+    return CheckFalseNode(
+        display_name=_attr(elem, "DisplayName"),
+        expression=_attr_expr(elem, "Expression")
+        or _in_argument_property_expr(elem, "Expression"),
+        error_message=_attr_expr(elem, "ErrorMessage")
+        or _in_argument_property_expr(elem, "ErrorMessage"),
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2792,6 +2814,8 @@ _DISPATCH = {
     (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
     (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
     (UI_NS, "GetLastDownloadedFile"): _parse_get_last_downloaded_file,
+    (UI_NS, "CheckTrue"): _parse_check_true,
+    (UI_NS, "CheckFalse"): _parse_check_false,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,
