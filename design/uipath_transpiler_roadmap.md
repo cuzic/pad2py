@@ -3293,3 +3293,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`8件)、
      リポジトリ全体で全2179件通過。知見236の発見パスの候補は全て
      着手済み——次のtickで新規発見パスが必要。
+
+196. **(完了、2026-11-10)** `ui:Return`を新規実装(知見238)——
+     タグ名限定検索で82件ヒット。サブエージェントが今回初めて
+     「`UiPath.System.Activities`のground-truth全件リストと既実装
+     リストの体系的な差分」という調査手法を採用、`IfElseIfV2`/
+     `Return`/`AddLogFields`/`TimeoutScope`等の候補を発見した。
+     `<ui:Return />`(属性無しの自己終了タグ、`Break`/`Continue`と
+     同じ構造)。公式ドキュメント確認済みの「エラー無しでワーク
+     フローをその時点で終了する」——本トランスパイラが各ワーク
+     フローを独立したPython関数として生成する既存アーキテクチャの
+     ため、Pythonの`return`文(値無し)に直接対応する。Libraryプロ
+     ジェクト内での呼び出し元への終了伝播という.NET側特有の制約は
+     本トランスパイラのライブラリ非インライン展開モデルのため該当
+     しない。`If.Then`内の早期終了構成を`exec()`経由で実際に実行し
+     確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`1件)、リポジトリ全体で全2181件
+     通過。同じ発見パスで`ui:IfElseIfV2`(390件ヒット)・
+     `ui:AddLogFields`(1880件ヒット)・`ui:TimeoutScope`(134件
+     ヒット、プリエンプティブ割り込みのインフラ設計判断が必要)を
+     次の候補として記録。

@@ -11215,6 +11215,52 @@ General・DateTime)、`_convert_dotnet_date_pattern()`ヘルパー自体も
 `CreateDirectory`・`MergeDataTable`・`FormatValue`)全てに着手済み
 ——次のtickで新規発見パスが必要。
 
+## 238. `ui:Return`を新規実装——サブエージェントによる7回目の新規発見パス(ground-truth全件リストと既実装リストの体系的な差分という新しい調査手法)で発見、各ワークフローを独立したPython関数として生成する既存アーキテクチャによりPythonのreturn文に直接対応する
+
+サブエージェントによる7回目の新規発見パス(今回は個別のアド
+ホックなキーワード検索ではなく、`UiPath.System.Activities`の
+ground-truth活動全件リスト——143件確認——と既実装活動リストの
+体系的な差分という新しい調査手法を採用、Orchestrator・トリガー
+依存の活動群を除外した上で`IfElseIfV2`/`Return`/`AddLogFields`/
+`TimeoutScope`等の候補を発見)で見つかった`ui:Return`
+(タグ名限定検索で82件ヒット)に着手した。
+
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機
+(`crcnum4/UP_Loan_Prescreen`の`Meridian/AutoApprove.xaml`、
+`ui:IfElseIfBlock.Then`内の早期終了として複数回使用——`CommentOut`
+無効化ではないことを独立に再取得・確認)いずれも`<ui:Return />`
+(属性無しの自己終了タグ、`Break`/`Continue`と同じ構造)に完全一致。
+
+公式ドキュメント(WebSearch経由確認、`return`ページ)で「エラー
+無しでワークフローをその時点で終了する(`Out`引数はその時点の
+値のまま返される)」と確認済み——本トランスパイラは各ワークフロー
+を独立したPython関数として生成する既存アーキテクチャのため、
+Pythonの`return`文(値無し)に直接対応する。公式ドキュメントが
+明記するLibraryプロジェクト内での呼び出し元ワークフローへの終了
+伝播という.NET側特有の既知の制約は、本トランスパイラがライブラリ
+を呼び出し元へインライン展開する実行モデルを持たないため該当しない
+——`Break`/`Continue`と同様、関数外での使用はPython自身の構文
+エラーに委ねる(事前の文脈検証は行わない)。
+
+`If.Then`内で`Return`を実行するとそれ以降の処理がスキップされる
+実機相当の構成を`exec()`経由で実際に実行し確認した。回帰テスト
+追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+1件)、リポジトリ全体で全2181件通過(28件skip、変化無し)。
+
+同じ発見パスで`ui:IfElseIfV2`(390件ヒット、`Return`と頻繁に
+併用される現代的な複数分岐if/elif/else構造)・`ui:AddLogFields`
+(1880件ヒットと非常に高い実機利用率、既存の`ScopeInfo`/contextvars
+アーキテクチャの自然な拡張と推測)・`ui:TimeoutScope`
+(134件ヒット、`RetryScope`と構造的に類似だが任意のネストされた
+Pythonシーケンスへの真のプリエンプティブな割り込みが必要という
+インフラ設計判断を要する)を次の候補として記録する。
+`ui:InvokeProcess`(67件ヒットだが実機確認の結果、サブプロセス
+起動ではなく別のUiPathプロセスをパッケージ解決経由で呼び出す
+という`InvokeWorkflowFile`以上に複雑な構成と判明——見送り)、
+Excel.Activities classic(非`ueab:`)系・Mail.Activities
+(POP3/IMAP/Exchange/Lotus Notes系、いずれも未確認プロトコル
+クライアント実装が必要)は今回は検証不足のため見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -68,6 +68,7 @@ from ..uipath_dsl.types import (
     AttachWindowNode,
     BreakNode,
     ContinueNode,
+    ReturnNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -705,6 +706,8 @@ def _generate_node(
         return [f"{prefix}break"]
     if isinstance(node, ContinueNode):
         return [f"{prefix}continue"]
+    if isinstance(node, ReturnNode):
+        return [f"{prefix}return"]
     if isinstance(node, ParallelNode):
         return _generate_parallel(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, AppendLineNode):

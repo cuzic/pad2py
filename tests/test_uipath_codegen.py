@@ -44,6 +44,7 @@ from dump_daemon.uipath_dsl import (
     AttachWindowNode,
     BreakNode,
     ContinueNode,
+    ReturnNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1497,6 +1498,40 @@ def test_continue_generates_python_continue():
     with contextlib.redirect_stdout(stdout):
         namespace["Test"]()
     assert stdout.getvalue().splitlines() == ["1", "3"]
+
+
+def test_return_generates_python_return_and_exits_early():
+    """知見238: `ui:Return`(`Break`/`Continue`と同じ属性無しの
+    自己終了タグ)。実機`crcnum4/UP_Loan_Prescreen`相当の
+    `If.Then`内の早期終了構成を`exec()`経由で実際に実行し、`Return`
+    以降の処理がスキップされることを確認する。"""
+    wf = _wrap(
+        [
+            IfNode(
+                condition=VbExpr(text="shouldExit"),
+                then_body=[
+                    WriteLineNode(text=Literal(value="exiting")),
+                    ReturnNode(),
+                ],
+            ),
+            WriteLineNode(text=Literal(value="after")),
+        ]
+    )
+    code = generate_python(wf)
+    assert "return" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(shouldExit):")
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"](True)
+    assert stdout.getvalue().splitlines() == ["exiting"]
+    stdout2 = io.StringIO()
+    with contextlib.redirect_stdout(stdout2):
+        namespace["Test"](False)
+    assert stdout2.getvalue().splitlines() == ["after"]
 
 
 def test_repeat_number_of_times_x_runs_exact_count_regardless_of_start_at():

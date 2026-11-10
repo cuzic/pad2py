@@ -315,6 +315,32 @@ class ContinueNode:
 
 
 @dataclass
+class ReturnNode:
+    """`<ui:Return />`(知見238、`Break`/`Continue`と同じ属性無しの
+    自己終了タグ、サブエージェントによる7回目の新規発見パス——
+    `UiPath.System.Activities`のground-truth全件リストと既実装
+    活動リストの体系的な差分で発見——タグ名限定GitHub検索で82件
+    ヒット)。ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機
+    (`crcnum4/UP_Loan_Prescreen`の`Meridian/AutoApprove.xaml`、
+    `ui:IfElseIfBlock.Then`内の早期終了として複数回使用——
+    `CommentOut`無効化ではないことを独立に再取得・確認)いずれも
+    `<ui:Return />`に完全一致。
+
+    公式ドキュメント(WebSearch経由確認、`return`ページ)で「エラー
+    無しでワークフローをその時点で終了する(`Out`引数はその時点の
+    値のまま返される)」と確認済み——本トランスパイラは各ワーク
+    フローを独立したPython関数として生成するため、Pythonの`return`
+    文(値無し)に直接対応する。Libraryプロジェクト内での呼び出し元
+    ワークフローへの終了伝播という.NET側特有の既知の制約
+    (公式ドキュメント確認済み)は、本トランスパイラがライブラリを
+    呼び出し元へインライン展開する実行モデルを持たないため該当しない
+    ——`Break`/`Continue`と同様、関数外での使用はPython自身の構文
+    エラーに委ねる。"""
+
+    display_name: str | None = None
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -3820,6 +3846,7 @@ Node = (
     | DoWhileNode
     | BreakNode
     | ContinueNode
+    | ReturnNode
     | ParallelNode
     | ClickNode
     | HoverNode

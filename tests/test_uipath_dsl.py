@@ -22,6 +22,7 @@ from dump_daemon.uipath_dsl import (
     AttachWindowNode,
     BreakNode,
     ContinueNode,
+    ReturnNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3271,6 +3272,17 @@ def test_continue_properties():
     xml = f"<ui:Continue {_UI_XMLNS} />"
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ContinueNode)
+
+
+def test_return_properties():
+    """知見238: `ui:Return`(`Break`/`Continue`と同じ属性無しの
+    自己終了タグ、タグ名限定GitHub検索で82件ヒット)。実機
+    `crcnum4/UP_Loan_Prescreen`の`Meridian/AutoApprove.xaml`で確認
+    した構成——`ui:IfElseIfBlock.Then`内の早期終了として使用、
+    `<ui:Return />`に完全一致。"""
+    xml = f"<ui:Return {_UI_XMLNS} />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReturnNode)
 
 
 def test_repeat_number_of_times_x_properties():
