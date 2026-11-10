@@ -45,6 +45,7 @@ from dump_daemon.uipath_dsl import (
     SelectFolderNode,
     GetUsernamePasswordXNode,
     GetEnvironmentFolderNode,
+    GetProcessesNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1416,6 +1417,43 @@ def test_kill_process_properties():
     assert node.display_name == "Kill Process edge"
     assert node.process is None
     assert node.applies_to is None
+    assert node.continue_on_error is None
+
+
+def test_get_processes_properties():
+    """知見255: `ui:GetProcesses`。実機`crcnum4/UP_Underwriter_Dashboard`
+    の`Framework/KillAllProcesses.xaml`で確認した`Processes`(出力)+
+    `ContinueOnError`のみの構成。"""
+    xml = (
+        f"<ui:GetProcesses {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" DisplayName="Get Processes" '
+        'Processes="[processes]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetProcessesNode)
+    assert node.processes == VbExpr(text="processes")
+    assert node.continue_on_error is None
+    assert node.display_name == "Get Processes"
+
+
+def test_kill_process_with_process_object_and_applies_to_all():
+    """知見255: 同じ`crcnum4/UP_Underwriter_Dashboard`の実機サンプルで
+    発見した、`ProcessName`の代わりに`GetProcesses`の出力をループした
+    `Process`オブジェクトを直接渡す構成(`AppliesTo="All"`は知見169の
+    `{x:Null}`既定値と同じ意味、公式ドキュメントで確認済み)。"""
+    xml = (
+        f"<ui:KillProcess {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" ProcessName="{x:Null}" AppliesTo="All" '
+        'DisplayName="Kill Process" '
+        'Process="[CType( currentProcess, System.Diagnostics.Process)]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, KillProcessNode)
+    assert node.process_name is None
+    assert node.process == VbExpr(
+        text="CType( currentProcess, System.Diagnostics.Process)"
+    )
+    assert node.applies_to == Literal(value="All")
     assert node.continue_on_error is None
 
 

@@ -69,6 +69,7 @@ from dump_daemon.uipath_dsl import (
     SelectFolderNode,
     GetUsernamePasswordXNode,
     GetEnvironmentFolderNode,
+    GetProcessesNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -2420,6 +2421,64 @@ def test_highlight_with_no_selector_still_generates_comment():
     _compiles(code)
 
 
+def test_get_processes_resolves_via_psutil_exec():
+    """知見255: `ui:GetProcesses`——既存のコア依存`psutil`の
+    `psutil.process_iter()`が`Processes`出力に直接対応することを
+    実際の`psutil`で`exec()`経由で確認する。"""
+    import psutil
+
+    wf = _wrap([GetProcessesNode(processes=VbExpr(text="procs"))])
+    code = generate_python(wf)
+    assert "psutil.process_iter()" in code
+    assert "import psutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return procs", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = ns["Test"]()
+    assert isinstance(result, list) and len(result) > 0
+    assert all(isinstance(p, psutil.Process) for p in result)
+
+
+def test_get_processes_with_no_output_is_todo():
+    wf = _wrap([GetProcessesNode(processes=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetProcesses with no Processes output captured" in code
+    _compiles(code)
+
+
+def test_get_processes_with_continue_on_error_is_todo():
+    wf = _wrap(
+        [
+            GetProcessesNode(
+                processes=VbExpr(text="procs"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetProcesses with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_process_name_chained_property_maps_to_psutil_name_exec():
+    """知見255: `System.Diagnostics.Process.ProcessName`(`GetProcesses`
+    経由の`psutil.Process`への実機確認済みドット記法アクセス)が
+    `.name()`に正しく変換されることを`exec()`経由で確認する。"""
+    from dump_daemon.uipath_codegen.render import render_expr
+
+    expr = VbExpr(text="CType(currentProcess, System.Diagnostics.Process).ProcessName")
+    rendered = render_expr(expr)
+    assert rendered == "currentProcess.name()"
+
+    class _FakeProc:
+        def name(self):
+            return "msedge"
+
+    ns: dict[str, object] = {"currentProcess": _FakeProc()}
+    assert eval(rendered, ns) == "msedge"  # noqa: S307 - テスト対象は信頼できる自作コード
+
+
 def test_kill_process_generates_taskkill_via_subprocess_run():
     """知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット)。
     Windows標準搭載の確認済みコマンド`taskkill /IM <name>.exe /F`
@@ -2443,11 +2502,47 @@ def test_kill_process_display_name_becomes_a_comment():
 def test_kill_process_with_no_process_name_is_todo_not_guessed():
     wf = _wrap([KillProcessNode(process_name=None)])
     code = generate_python(wf)
-    assert "# TODO: KillProcess with no ProcessName captured" in code
+    assert "# TODO: KillProcess with no ProcessName/Process captured" in code
     _compiles(code)
 
 
-def test_kill_process_with_process_reference_is_todo_not_guessed():
+def test_kill_process_with_process_reference_calls_kill_exec():
+    """知見255: 実機`crcnum4/UP_Underwriter_Dashboard`で発見した、
+    `ProcessName`の代わりに`GetProcesses`の出力(`psutil.Process`
+    オブジェクト)を直接渡す構成——`.kill()`で対応することを`exec()`
+    経由で確認する(`CType(...)`は恒等変換、`AppliesTo="All"`は知見169
+    の`{x:Null}`既定値と同じ意味なので許容される)。"""
+    wf = _wrap(
+        [
+            KillProcessNode(
+                process_name=None,
+                process=VbExpr(text="CType(proc, System.Diagnostics.Process)"),
+                applies_to=Literal(value="All"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "proc.kill()" in code
+    assert "subprocess.run" not in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(proc):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+
+    class _FakeProc:
+        def __init__(self):
+            self.killed = False
+
+        def kill(self):
+            self.killed = True
+
+    fake = _FakeProc()
+    ns["Test"](fake)
+    assert fake.killed is True
+
+
+def test_kill_process_with_both_process_and_process_name_prefers_process():
     wf = _wrap(
         [
             KillProcessNode(
@@ -2456,8 +2551,25 @@ def test_kill_process_with_process_reference_is_todo_not_guessed():
         ]
     )
     code = generate_python(wf)
-    assert "# TODO: KillProcess with Process set" in code
+    assert "proc.kill()" in code
     assert "subprocess.run" not in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_kill_process_with_unconfirmed_applies_to_value_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            KillProcessNode(
+                process_name=None,
+                process=VbExpr(text="proc"),
+                applies_to=Literal(value="OnlyCurrentUser"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: KillProcess with AppliesTo set" in code
+    assert ".kill()" not in code
     _compiles(code)
 
 

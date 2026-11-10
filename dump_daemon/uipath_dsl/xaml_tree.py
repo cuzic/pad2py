@@ -117,6 +117,7 @@ from .types import (
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
+    GetProcessesNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -1663,6 +1664,15 @@ def _parse_create_file(elem: etree._Element) -> CreateFileNode:
     )
 
 
+def _parse_get_processes(elem: etree._Element) -> GetProcessesNode:
+    return GetProcessesNode(
+        processes=_attr_expr(elem, "Processes")
+        or _in_argument_property_expr(elem, "Processes"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_kill_process(elem: etree._Element) -> KillProcessNode:
     return KillProcessNode(
         process_name=_attr_expr(elem, "ProcessName"),
@@ -3089,6 +3099,7 @@ _DISPATCH = {
     (UI_NS, "MaximizeWindow"): _parse_maximize_window,
     (UI_NS, "MinimizeWindow"): _parse_minimize_window,
     (UI_NS, "RestoreWindow"): _parse_restore_window,
+    (UI_NS, "GetProcesses"): _parse_get_processes,
     (UI_NS, "KillProcess"): _parse_kill_process,
     (UI_NS, "AddDataRow"): _parse_add_data_row,
     (UI_NS, "RemoveDataRow"): _parse_remove_data_row,

@@ -2323,6 +2323,41 @@ class CreateFileNode:
 
 
 @dataclass
+class GetProcessesNode:
+    """`<ui:GetProcesses Processes="..." ContinueOnError="..." />`
+    (知見255、10回目発見パスの残り候補、タグ名限定GitHub検索で72件
+    ヒット)。実機4件(`crcnum4/UP_Underwriter_Dashboard`の
+    `Framework/KillAllProcesses.xaml`、`bhsaguiar/
+    FlowDrivenFrameworkWindows`・`bhsaguiar/FlowDrivenFramework_Global`
+    の`GetProcesses.xaml`、`ozhazdayt/CommentClassifyR`の
+    `Check Outlook.xaml`)+ground-truthいずれも`Processes`(出力、
+    `IEnumerable<System.Diagnostics.Process>`、`ui:ForEach
+    x:TypeArguments="sd:Process"`で消費)+`ContinueOnError`
+    (実機全件`{x:Null}`)のみの構成——属性自体は極めて単純。
+
+    下流の実際の消費パターンを実機サンプルで確認した——
+    `CurrentProcess.ProcessName`(`CType(currentProcess,
+    System.Diagnostics.Process).ProcessName`形、文字列比較)への
+    読み取りアクセスと、`KillProcess`(知見169)の`Process`属性への
+    そのままの再代入(`CType(currentProcess,
+    System.Diagnostics.Process)`——`KillProcess`が`ProcessName`の
+    代わりに個々の`Process`オブジェクトを直接終了するケース、知見169
+    で「常に`{x:Null}`」としていたが実際には非null例が存在した)の
+    2つのみ——いずれもこの実行環境で既に確認済みのコア依存
+    `psutil`(`dump_daemon/uia_capture.py`で既に`psutil.Process(pid).
+    name()`という同じAPIを使用済み)の`psutil.process_iter()`
+    (`psutil.Process`オブジェクトのイテレータを返す)で正確に対応
+    できる——新規依存は不要。`.ProcessName`は`psutil.Process.
+    name()`メソッドへの1:1対応として`render.py`の既存の括弧省略形
+    チェインメンバ変換テーブル(`_CHAINED_PROPERTY_TRANSLATIONS`)に
+    追加するだけで対応できる。"""
+
+    processes: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class KillProcessNode:
     """`<ui:KillProcess>`(知見169、GitHub code searchで1514件ヒット
     ——REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で
@@ -2340,7 +2375,17 @@ class KillProcessNode:
     経由、プロセス名に一致する全プロセスを強制終了する、Windows標準
     搭載の確認済みコマンド)が直接対応する——`/T`(プロセスツリー全体の
     終了)は付けない(.NETの素の`Process.Kill()`は子プロセスを終了
-    しないため、過大な終了範囲をでっち上げないよう安全側に倒す)。"""
+    しないため、過大な終了範囲をでっち上げないよう安全側に倒す)。
+
+    知見255で発見した新たな実機サンプル(`crcnum4/
+    UP_Underwriter_Dashboard`の`Framework/KillAllProcesses.xaml`)は
+    `ProcessName="{x:Null}"`+`Process="[CType( currentProcess,
+    System.Diagnostics.Process)]"`(`GetProcesses`(知見255)の出力を
+    `ui:ForEach`で回したループ変数)という、知見169の時点では一度も
+    観測できなかった非null`Process`の実例——`GetProcesses`の
+    `psutil.process_iter()`対応と組み合わせることで、`Process`が
+    設定されている場合は`<変数>.kill()`(`psutil.Process.kill()`、
+    `taskkill`より直接的で確認済みのAPI)で対応する。"""
 
     process_name: Expr = None
     display_name: str | None = None
@@ -4661,6 +4706,7 @@ Node = (
     | RenameFileNode
     | RenameFolderNode
     | CreateFileNode
+    | GetProcessesNode
     | KillProcessNode
     | CloseTabNode
     | RefreshBrowserNode

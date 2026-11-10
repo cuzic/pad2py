@@ -156,6 +156,7 @@ from ..uipath_dsl.types import (
     InvokePowerShellNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
+    GetProcessesNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -527,6 +528,10 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import imaplib")
     if any("email.message_from_bytes(" in line for line in body):
         imports.append("import email")
+    # `psutil`(`GetProcesses`→`psutil.process_iter(...)`変換先、知見255、
+    # 既存のコア依存——`dump_daemon/uia_capture.py`で既に使用済み)も同様。
+    if any("psutil.process_iter(" in line for line in body):
+        imports.append("import psutil")
     # `win32cred`/`pywintypes`(`GetSecureCredential`→`win32cred.
     # CredRead(...)`・`AddCredential`→`win32cred.CredWrite(...)`変換先、
     # 知見248)も同様——`pywintypes.error`は`_win32_cred_read`ヘルパー
@@ -855,6 +860,8 @@ def _generate_node(
         return _generate_close_window(node, indent)
     if isinstance(node, WindowStateNode):
         return _generate_window_state(node, indent)
+    if isinstance(node, GetProcessesNode):
+        return _generate_get_processes(node, indent)
     if isinstance(node, KillProcessNode):
         return _generate_kill_process(node, indent)
     if isinstance(node, AddDataRowNode):
@@ -4974,12 +4981,43 @@ def _generate_retry_scope_body(
 
 
 # 知見169: `ui:KillProcess`(GitHub code searchで1514件ヒット——
+# 知見255: `ui:GetProcesses`——出力の`Processes`(`IEnumerable<System.
+# Diagnostics.Process>`)は既存の確認済みコア依存`psutil`
+# (`dump_daemon/uia_capture.py`で既に同じAPIを使用済み)の
+# `psutil.process_iter()`がそのまま正確に対応する。
+def _generate_get_processes(node: GetProcessesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_processes_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_processes_body(node: GetProcessesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.processes is None:
+        return [f"{prefix}# TODO: GetProcesses with no Processes output captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: GetProcesses with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    try:
+        target = render_expr(node.processes)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    return [f"{prefix}{target} = list(psutil.process_iter())"]
+
+
 # REFrameworkの標準サブワークフロー`KillAllProcesses.xaml`で多用される
 # ため極めて高頻度)。`ProcessName`に一致する全プロセスを終了する
 # ——Windows標準搭載の確認済みコマンド`taskkill /IM <name>.exe /F`
 # (`subprocess.run`経由)が直接対応する。`/T`(プロセスツリー全体の
 # 終了)は付けない(.NETの素の`Process.Kill()`は子プロセスを終了しない
-# ため、過大な終了範囲をでっち上げないよう安全側に倒す)。
+# ため、過大な終了範囲をでっち上げないよう安全側に倒す)。知見255:
+# `Process`が設定されている場合(実機`crcnum4/
+# UP_Underwriter_Dashboard`で確認——`GetProcesses`の出力をループした
+# `psutil.Process`オブジェクト)は`.kill()`で直接対応する
+# (`ProcessName`経由の`taskkill`より直接的)。
 def _generate_kill_process(node: KillProcessNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _generate_kill_process_body(node, indent)
@@ -4988,19 +5026,16 @@ def _generate_kill_process(node: KillProcessNode, indent: int) -> list[str]:
 
 def _generate_kill_process_body(node: KillProcessNode, indent: int) -> list[str]:
     prefix = INDENT * indent
-    if node.process_name is None:
-        return [f"{prefix}# TODO: KillProcess with no ProcessName captured"]
-    if node.process is not None:
-        return [
-            f"{prefix}# TODO: KillProcess with Process set "
-            f"({_describe_expr_for_comment(node.process)}) — UiPath Process "
-            "object reference not modeled, refusing to guess"
-        ]
-    if node.applies_to is not None:
+    if node.process_name is None and node.process is None:
+        return [f"{prefix}# TODO: KillProcess with no ProcessName/Process captured"]
+    if node.applies_to is not None and not (
+        isinstance(node.applies_to, Literal) and node.applies_to.value == "All"
+    ):
         return [
             f"{prefix}# TODO: KillProcess with AppliesTo set "
-            f"({_describe_expr_for_comment(node.applies_to)}) — semantics "
-            "not confirmed, refusing to guess"
+            f"({_describe_expr_for_comment(node.applies_to)}) — only the "
+            'confirmed "All" (default) value is implemented, refusing to '
+            "guess"
         ]
     if node.continue_on_error is not None:
         return [
@@ -5008,6 +5043,12 @@ def _generate_kill_process_body(node: KillProcessNode, indent: int) -> list[str]
             f"({_describe_expr_for_comment(node.continue_on_error)}) — "
             "error-continuation mapping not confirmed, refusing to guess"
         ]
+    if node.process is not None:
+        try:
+            process = render_expr(node.process)
+        except NotImplementedError as e:
+            return _todo_value(prefix, str(e))
+        return [f"{prefix}{process}.kill()"]
     todo: list[str] = []
     process_name = _render_value_or_todo(node.process_name, prefix, todo)
     if todo:

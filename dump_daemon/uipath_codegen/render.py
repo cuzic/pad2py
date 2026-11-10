@@ -703,6 +703,11 @@ _CHAINED_PROPERTY_TRANSLATIONS = {
     "tolower": "lower",
     "tolowerinvariant": "lower",
     "trim": "strip",
+    # 知見255: `System.Diagnostics.Process.ProcessName`(`GetProcesses`の
+    # `psutil.Process`出力への実機確認済みドット記法アクセス)→
+    # `psutil.Process.name()`(`dump_daemon/uia_capture.py`で既に同じ
+    # APIを使用済み、1:1対応)。
+    "processname": "name",
 }
 
 # 知見119/130/133/146/190: 括弧省略形の素の変数へのメンバアクセス連鎖
@@ -1143,6 +1148,17 @@ def _render_func_call(node: FuncCall) -> str:
         if len(args) != 1:
             raise NotImplementedError("CDbl expects exactly 1 argument")
         return f"{VB_CDBL_HELPER_NAME}({args[0]})"
+    if key == "ctype":
+        # 知見255: `CType(expr, Type)`(`ozhazdayt/CommentClassifyR`等の
+        # 実機XAML`CType(currentProcess, System.Diagnostics.Process)`で
+        # 発見、`GetProcesses`→`KillProcess.Process`間のループ変数の
+        # 明示的型キャスト)。Pythonは動的型付けのため、型キャスト自体は
+        # 実行時の値を一切変えない恒等操作——第2引数(型名、`Ident`として
+        # 構文解析される完全修飾名、例`System.Diagnostics.Process`)は
+        # 無視し、第1引数(キャスト対象の値)をそのまま返す。
+        if len(args) != 2:
+            raise NotImplementedError("CType expects exactly 2 arguments")
+        return args[0]
     if key == "isnothing":
         if len(args) != 1:
             raise NotImplementedError("IsNothing expects exactly 1 argument")

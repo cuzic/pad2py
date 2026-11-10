@@ -3637,3 +3637,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_codegen.py`4件)、リポジトリ全体で全2288件通過。
      残る10回目発見パスの候補(`ui:GetProcesses`・
      `ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録。
+
+213. **(完了、2026-11-10)** `ui:GetProcesses`を新規実装(知見255)
+     ——タグ名限定検索で72件ヒット。既存のコア依存`psutil`の
+     `psutil.process_iter()`が`Processes`出力に直接対応、新規依存
+     不要。実機サンプル調査で知見169の既存記述の不足を発見し、
+     副産物として`KillProcess.Process`の既存ギャップも閉じた——
+     `GetProcesses`の出力をループした`Process`オブジェクトを
+     `CType(...)`キャストして`KillProcess.Process`へ渡す非null実例
+     (知見169の時点では確認できていなかった)を発見し、
+     `.kill()`で対応。`.ProcessName`→`psutil.Process.name()`は
+     既存のチェインメンバ変換テーブルに1エントリ追加するだけで
+     対応、`CType(expr, Type)`(.NETの明示的型キャスト、本調査初
+     遭遇)は`render.py`に恒等変換として追加(`CStr`/`CInt`等と同じ
+     関数呼び出しディスパッチ層)。`AppliesTo="All"`の新しい非null
+     実例も発見し、公式ドキュメントで既定値と同じ意味であることを
+     確認——知見169の記述を補強。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`7件、
+     既存1件を更新)、リポジトリ全体で全2296件通過。残る10回目
+     発見パスの候補(`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の
+     候補として記録。

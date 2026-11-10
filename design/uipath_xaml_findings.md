@@ -12093,6 +12093,73 @@ test_uipath_codegen.py`4件)、リポジトリ全体で全2288件通過
 (28件skip)。残る10回目発見パスの候補(`ui:GetProcesses`・
 `ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録する。
 
+## 255. `ui:GetProcesses`を新規実装——既存のコア依存`psutil`がそのまま対応し、副産物として知見169の`KillProcess.Process`の既存ギャップも閉じた
+
+10回目発見パスの残り候補のうち`ui:GetProcesses`(タグ名限定GitHub
+検索で72件ヒット)に着手した。実機4件(`crcnum4/
+UP_Underwriter_Dashboard`の`Framework/KillAllProcesses.xaml`、
+`bhsaguiar/FlowDrivenFrameworkWindows`・
+`bhsaguiar/FlowDrivenFramework_Global`の`GetProcesses.xaml`、
+`ozhazdayt/CommentClassifyR`の`Check Outlook.xaml`)+ground-truthで
+確認した属性構成は`Processes`(出力)+`ContinueOnError`
+(実機全件`{x:Null}`)のみ——極めて単純。
+
+`Processes`の実行時型は`IEnumerable<System.Diagnostics.Process>`だが、
+でっち上げた型をモデル化する必要は無かった——本プロジェクトの既存の
+確認済みコア依存`psutil`(`dump_daemon/uia_capture.py`で既に
+`psutil.Process(pid).name()`という同じAPIを使用済み)の
+`psutil.process_iter()`がそのまま`psutil.Process`オブジェクトの
+イテレータを返し、.NETの`Process`型と1:1で対応する。新規依存は
+不要だった。
+
+実機サンプルの下流消費パターンを調査したところ、知見169の
+`KillProcess`ドキュメントに記載していた「`Process`属性は実機確認
+した全件で`{x:Null}`」という既存の知見が**不完全だった**ことが
+判明した——`crcnum4/UP_Underwriter_Dashboard`の同じワークフローは
+`GetProcesses`の出力をループした`currentProcess`変数を
+`CType(currentProcess, System.Diagnostics.Process)`という形で
+`KillProcess.Process`へそのまま渡す非null実例を含んでいた
+(`ProcessName="{x:Null}"`+`Process`設定という、`ProcessName`経由と
+相互排他的な構成)。同じサンプルは`.ProcessName`への読み取り
+アクセス(`CType(currentProcess, System.Diagnostics.Process).
+ProcessName = "msedge"`という条件式)も含んでいた。
+
+この副産物の下流アクセス2つをそれぞれ解決した:
+1. `.ProcessName`→`psutil.Process.name()`への1:1対応を、既存の
+   括弧省略形チェインメンバ変換テーブル(`_CHAINED_PROPERTY_
+   TRANSLATIONS`、知見146/190/233/241)に追加するだけで対応できた
+   ——新規の特殊処理は不要。
+2. `CType(expr, Type)`(.NETの明示的型キャスト構文、本調査で初めて
+   遭遇)を`render.py`の関数呼び出しディスパッチ(`CStr`/`CInt`/
+   `CBool`/`CDbl`と同じ層)に追加した——Pythonは動的型付けのため、
+   型キャストは実行時の値を一切変えない恒等操作であり、第1引数
+   (キャスト対象)をそのまま返すだけで正しい(第2引数の型名は
+   .NET完全修飾名の`Ident`として構文解析されるが使われない)。
+3. `KillProcessNode`(知見169)のコード生成を更新し、`Process`が
+   設定されている場合は`<変数>.kill()`(`psutil.Process.kill()`、
+   既存の`ProcessName`経由`taskkill`より直接的で確認済みのAPI)で
+   対応するようにした——知見169の時点で「`Process`設定時は常に
+   `# TODO`」としていた既存のギャップを閉じた。
+4. 同じ実機サンプルで`AppliesTo="All"`という、知見169で「実機で
+   一度も非`{x:Null}`の値を確認できず意味論未確認」としていた
+   属性の新しい非null実例も発見した——公式ドキュメント(WebFetch
+   経由確認)で`AppliesTo`の既定値が`"All"`(未設定時と同じ意味)
+   であることを確認し、矛盾ではなく既存の知見169の記述を補強する
+   ものと判断した。
+
+`ozhazdayt/CommentClassifyR`の別の実機サンプルは`RunningProcesses.
+IndexOf(System.Diagnostics.Process.GetProcessesByName("..."))`という
+より複雑な消費パターンも含んでいたが、これは未対応の`.IndexOf()`
+チェインメソッド+未対応の静的メソッド呼び出しのため個別に
+`# TODO`へ倒れる——`GetProcesses`自体の実装は影響を受けない
+(確認済みの「活動自体は常に成功、個々の未確認下流式は独立して
+`# TODO`へ倒れる」という既存の分離方針どおり)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`7件、既存1件を実際の挙動に合わせて更新)、
+リポジトリ全体で全2296件通過(28件skip)。残る10回目発見パスの
+候補(`ui:ReadPDFWithOCR`・`ui:InvokeVBA`)は次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
