@@ -1334,6 +1334,39 @@ class ExportPdfPageAsImageNode:
 
 
 @dataclass
+class ExtractImagesFromPdfNode:
+    """`<ExtractImagesFromPDF>`(知見209、`upap:`名前空間——
+    `ExportPDFPageAsImage`等と同じ`pdf-render`プラグインで対応できる
+    見込み)。実機1件(`vajrang-b/UiPathIn30Days`)で確認した構成は
+    `FileName`+`OutputFolderName`のみ(`ImageExtension`属性は一度も
+    確認できず)。公式ドキュメント(`docs.uipath.com`検索経由)では
+    `ImageExtension`というドロップダウン(`.png`/`.jpeg`/`.tiff`/
+    `.bmp`/`.gif`、既定`.png`)の存在が示唆されるが、実機で非デフォルト
+    値の確認が無いため設定時は`# TODO`へ倒す。
+
+    注意: 同名の`ExtractImagesFromPDF`活動がArenaRobotics社の
+    サードパーティパッケージ(`apac:`名前空間、属性名`Filename`/
+    `OutputFolder`/`ImageExtension`(数値enum)——いずれも本活動の
+    `FileName`/`OutputFolderName`とは異なる)にも存在することを本tickの
+    GitHub調査で確認した。タグ名が同じだけの別物であり、本活動の
+    実装には一切関係しない(知見193で既に警告した`apac:ReadPDFText`と
+    同じ混同リスク)。
+
+    **出力ファイル名の命名規則は未確定(公式ドキュメント・実機のいずれ
+    にも記載が無い)**——本トランスパイラ独自の選択として、PyMuPDFの
+    公式レシピ(`recipes-images.rst`)がそのまま使う`img-{xref}.{ext}`
+    形式(画像のPDF内部参照番号ベース)を採用する。これはUiPathの実際の
+    内部命名を再現したものではないため、生成コードにもその旨のコメント
+    を残す。抽出される画像バイト列自体の正しさ(本質的な機能)とは
+    独立した、表示上の命名選択に過ぎない。"""
+
+    display_name: str | None = None
+    file_name: Expr = None
+    output_folder_name: Expr = None
+    image_extension: Expr = None
+
+
+@dataclass
 class ManagePdfPasswordNode:
     """`<ManagePDFPassword>`(知見202、`GetPDFPageCount`/
     `ExtractPDFPageRange`/`JoinPDF`(知見200・201)と同じ`upap:`
@@ -2832,6 +2865,7 @@ Node = (
     | ExtractPdfPageRangeNode
     | JoinPdfNode
     | ExportPdfPageAsImageNode
+    | ExtractImagesFromPdfNode
     | ManagePdfPasswordNode
     | WriteCsvFileNode
     | InvokePowerShellNode

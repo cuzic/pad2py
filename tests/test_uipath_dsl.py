@@ -67,6 +67,7 @@ from dump_daemon.uipath_dsl import (
     InvokeWorkflowFileNode,
     JoinPdfNode,
     ExportPdfPageAsImageNode,
+    ExtractImagesFromPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -1898,6 +1899,22 @@ def test_export_pdf_page_as_image_properties_with_literal_page_number():
     assert node.output_file_name == Literal(value="Output\\pdfimage.png")
     assert node.page_number == Literal(value="1")
     assert node.image_dpi == "150"
+
+
+def test_extract_images_from_pdf_properties():
+    """知見209: `ExtractImagesFromPDF`(`ExportPDFPageAsImage`等と同じ
+    `upap:`名前空間)。実機`vajrang-b/UiPathIn30Days`で確認した構成
+    ——`ImageExtension`属性は一度も確認できなかった。"""
+    xml = (
+        f"<upap:ExtractImagesFromPDF {_PDF_XMLNS} "
+        'DisplayName="Extract Images From PDF document" '
+        'FileName="SamplePdf1_12mb_6pages (1).pdf" OutputFolderName="Output" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExtractImagesFromPdfNode)
+    assert node.file_name == Literal(value="SamplePdf1_12mb_6pages (1).pdf")
+    assert node.output_folder_name == Literal(value="Output")
+    assert node.image_extension is None
 
 
 def test_manage_pdf_password_with_new_owner_password():

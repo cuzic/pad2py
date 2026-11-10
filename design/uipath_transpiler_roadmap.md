@@ -2774,3 +2774,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      3件)、UiPath関連テスト全951件通過、リポジトリ全体で全2037件
      通過。`ExtractImagesFromPDF`(出力ファイル命名規則が未確認)は
      未着手のまま、次の候補。
+
+168. **(完了、2026-11-10)** `ui:ExtractImagesFromPDF`を新規実装
+     (知見210)——知見209の`pdf-render`プラグイン(`pymupdf`)を
+     そのまま再利用。PyMuPDF公式レシピ(`Page.get_images()`+
+     `Document.extract_image(xref)`)が直接対応する。調査中に
+     GitHub上で同名だが無関係な第三者製活動(ArenaRobotics社の
+     `apac:ExtractImagesFromPDF`、属性名も`Filename`/`OutputFolder`/
+     数値enumの`ImageExtension`と完全に別物)を発見し、UiPath自身の
+     `upap:ExtractImagesFromPDF`とは明確に区別した——知見193が既に
+     警告していた「タグ名だけ同じ無関係な別活動」混同リスクの実例。
+     `ImageExtension`(UiPath版、文字列ドロップダウン)は実機で非
+     `{x:Null}`の実例が無いため設定時は`# TODO`。出力ファイル名の
+     命名規則は公式ドキュメント・実機のいずれにも記載が無く未確定
+     のため、本トランスパイラ独自の選択(PyMuPDF公式レシピの
+     `img-{xref}.{ext}`形式)を採用し、生成コードにその旨のコメントを
+     残した——UiPath自身の内部命名を再現したものではないと明示。
+     実機相当の構成(埋め込み画像付きPDF)を`exec()`経由で実際に実行
+     して確認。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`4件)、UiPath関連テスト全956件
+     通過、リポジトリ全体で全2042件通過。これで知見193が発見した
+     `upap:`名前空間のPDF活動ファミリー7件全てに着手済みとなった。

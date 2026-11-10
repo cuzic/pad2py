@@ -92,6 +92,7 @@ from dump_daemon.uipath_dsl import (
     InvokeWorkflowFileNode,
     JoinPdfNode,
     ExportPdfPageAsImageNode,
+    ExtractImagesFromPdfNode,
     KillProcessNode,
     Literal,
     LoadImageNode,
@@ -4531,6 +4532,94 @@ def test_export_pdf_page_as_image_with_missing_properties_is_todo():
         "# TODO: ExportPDFPageAsImage with missing FileName/OutputFileName/"
         "PageNumber" in code
     )
+    _compiles(code)
+
+
+def test_extract_images_from_pdf_generates_pymupdf_extraction_loop():
+    """知見209: `ExtractImagesFromPDF`。PyMuPDF公式レシピ
+    (`Page.get_images()`+`Document.extract_image(xref)`)が直接対応
+    する——`pymupdf`は`ExportPDFPageAsImage`と同じ`pdf-render`プラグイン
+    (知見209の設計判断、本体`dependencies`には無い)。"""
+    wf = _wrap(
+        [
+            ExtractImagesFromPdfNode(
+                file_name=Literal(value="in.pdf"),
+                output_folder_name=Literal(value="out_dir"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import pymupdf" in code
+    assert "import os" in code
+    assert "pymupdf.open('in.pdf')" in code
+    assert "_eifp_doc.extract_image(_eifp_xref)" in code
+    assert "os.path.join('out_dir'," in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_extract_images_from_pdf_extracts_the_embedded_image():
+    """知見209: `pymupdf`が実際にインストールされている場合のみ実行
+    する統合テスト(無い環境では自動skip)。reportlabで埋め込み画像付き
+    PDFを生成し、実際に画像バイト列が正しく抽出されることを`exec()`
+    経由で確認する。"""
+    pytest.importorskip("pymupdf")
+    reportlab_canvas = pytest.importorskip("reportlab.pdfgen.canvas")
+    pil_image = pytest.importorskip("PIL.Image")
+    from reportlab.lib.pagesizes import letter
+
+    img_path = tempfile.mktemp(suffix=".png")
+    pil_image.new("RGB", (10, 10), color="red").save(img_path)
+
+    pdf_path = tempfile.mktemp(suffix=".pdf")
+    c = reportlab_canvas.Canvas(pdf_path, pagesize=letter)
+    c.drawImage(img_path, 100, 600, width=50, height=50)
+    c.showPage()
+    c.save()
+
+    out_dir = tempfile.mkdtemp()
+
+    wf = _wrap(
+        [
+            ExtractImagesFromPdfNode(
+                file_name=Literal(value=pdf_path),
+                output_folder_name=Literal(value=out_dir),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    extracted = os.listdir(out_dir)
+    assert len(extracted) == 1
+    assert extracted[0].startswith("img-")
+
+
+def test_extract_images_from_pdf_declines_unconfirmed_image_extension():
+    """知見209: `ImageExtension`は実機で非`{x:Null}`の実例が無いため
+    `# TODO`へ倒す(同名別活動`apac:ExtractImagesFromPDF`の数値enum
+    との混同を避ける意味もある)。"""
+    wf = _wrap(
+        [
+            ExtractImagesFromPdfNode(
+                file_name=Literal(value="in.pdf"),
+                output_folder_name=Literal(value="out_dir"),
+                image_extension=Literal(value="jpeg"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExtractImagesFromPDF with ImageExtension set" in code
+    _compiles(code)
+
+
+def test_extract_images_from_pdf_with_missing_properties_is_todo():
+    wf = _wrap(
+        [ExtractImagesFromPdfNode(file_name=None, output_folder_name=Literal(value="out"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExtractImagesFromPDF with missing FileName/OutputFolderName" in code
     _compiles(code)
 
 

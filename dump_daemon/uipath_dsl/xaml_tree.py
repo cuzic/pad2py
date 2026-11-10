@@ -88,6 +88,7 @@ from .types import (
     JoinDataTablesNode,
     JoinOperationArgument,
     ExportPdfPageAsImageNode,
+    ExtractImagesFromPdfNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -1135,6 +1136,19 @@ def _parse_export_pdf_page_as_image(elem: etree._Element) -> ExportPdfPageAsImag
         page_number=_attr_expr(elem, "PageNumber")
         or _in_argument_property_expr(elem, "PageNumber"),
         image_dpi=_attr(elem, "ImageDpi"),
+    )
+
+
+def _parse_extract_images_from_pdf(elem: etree._Element) -> ExtractImagesFromPdfNode:
+    return ExtractImagesFromPdfNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_name=_attr_expr(elem, "FileName") or _in_argument_property_expr(
+            elem, "FileName"
+        ),
+        output_folder_name=_attr_expr(elem, "OutputFolderName")
+        or _in_argument_property_expr(elem, "OutputFolderName"),
+        image_extension=_attr_expr(elem, "ImageExtension")
+        or _in_argument_property_expr(elem, "ImageExtension"),
     )
 
 
@@ -2289,6 +2303,7 @@ _DISPATCH = {
     (PDF_NS, "ExtractPDFPageRange"): _parse_extract_pdf_page_range,
     (PDF_NS, "JoinPDF"): _parse_join_pdf,
     (PDF_NS, "ExportPDFPageAsImage"): _parse_export_pdf_page_as_image,
+    (PDF_NS, "ExtractImagesFromPDF"): _parse_extract_images_from_pdf,
     (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,

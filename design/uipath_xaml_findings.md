@@ -9969,6 +9969,54 @@ test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件、うち1件は
 ままのため、別tickでの個別調査が必要)は今回は未着手のまま、次の
 実装候補として記録する。
 
+## 210. `ui:ExtractImagesFromPDF`を新規実装——知見209の`pdf-render`プラグインをそのまま再利用、GitHub調査で同名だが無関係な第三者製活動(ArenaRobotics社`apac:`名前空間)の実例を発見・区別、出力ファイル名は未確認のため本トランスパイラ独自の命名を採用し明示的にコメントで注記
+
+知見209で保留した`ExtractImagesFromPDF`の出力ファイル命名規則を
+調査するため、GitHub code searchで`ExtractImagesFromPDF ImageExtension`
+を検索したところ、`burakyucel0/Project55`が一致した。しかし実際に
+確認すると`apac:ExtractImagesFromPDF`(`clr-namespace:
+ArenaRobotics.PDF.Activities.Controllers;assembly=ArenaRobotics.PDF.
+Activities`)という**UiPathの`upap:ExtractImagesFromPDF`とは無関係の
+第三者製アクティビティ**だった——属性名も`Filename`(`FileName`では
+ない)/`OutputFolder`(`OutputFolderName`ではない)/`ImageExtension`
+(数値enum`"0"`/`"4"`、UiPath版のドロップダウン文字列とは別物)で
+完全に異なる。知見193で既に警告していた`apac:ReadPDFText`と同じ
+「タグ名が同じだけの無関係な別活動」混同リスクが、今度は
+`ExtractImagesFromPDF`でも実例として確認された——タグ名だけでなく
+名前空間を必ず確認する必要性を改めて実証した。
+
+UiPath自身の`upap:ExtractImagesFromPDF`について、`ImageExtension`の
+非デフォルト値を実機で確認する追加調査はできなかった(実機1件
+`vajrang-b/UiPathIn30Days`は`FileName`+`OutputFolderName`のみで
+`ImageExtension`属性自体が無い)。公式ドキュメント検索では
+`ImageExtension`ドロップダウン(`.png`/`.jpeg`/`.tiff`/`.bmp`/`.gif`、
+既定`.png`)の存在が示唆されたが、実機確認が無いため`ImageExtension`
+が設定されている場合は`# TODO`へ倒す——未設定(既定`.png`相当)の
+場合のみ対応する。
+
+**出力ファイル名の命名規則自体も公式ドキュメント・実機のいずれにも
+記載が無く未確定**——本質的な機能(画像バイト列の正しい抽出)とは
+独立した表示上の選択として、PyMuPDF公式レシピ(知見209でWebFetch
+確認した`recipes-images.rst`)がそのまま使う`img-{xref}.{ext}`形式
+(画像のPDF内部参照番号ベース)を採用した。これはUiPath自身の内部
+命名を再現したものではないため、生成コードにもコメントでその旨を
+明示する。知見209の`pdf-render`プラグイン(`pymupdf`)をそのまま
+再利用——`Document.extract_image(xref)`が返す`dict`の`"image"`
+(バイト列)/`"ext"`(拡張子)キーで、ページをまたいで重複する画像
+参照(`xref`)を1回だけ抽出する(公式レシピが明示する仕様)。
+
+実機相当の構成(reportlabでPNG画像を埋め込んだPDFを生成)を`exec()`
+経由で実際に実行し、埋め込み画像のバイト列が正しく抽出されることを
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`4件、うち1件は`pytest.importorskip`付きの
+`exec()`統合テスト)、UiPath関連テスト全956件通過、リポジトリ全体で
+全2042件通過(28件skip、変化無し)。
+
+これで知見193が発見した`upap:`名前空間のPDF活動ファミリー7件
+(`ReadPDFText`/`GetPDFPageCount`/`ExtractPDFPageRange`/`JoinPDF`/
+`ManagePDFPassword`/`ExportPDFPageAsImage`/`ExtractImagesFromPDF`)の
+うち、未着手は無くなった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

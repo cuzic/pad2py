@@ -125,6 +125,7 @@ from ..uipath_dsl.types import (
     FilterDataTableNode,
     JoinDataTablesNode,
     ExportPdfPageAsImageNode,
+    ExtractImagesFromPdfNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -685,6 +686,8 @@ def _generate_node(
         return _generate_join_pdf(node, indent)
     if isinstance(node, ExportPdfPageAsImageNode):
         return _generate_export_pdf_page_as_image(node, indent)
+    if isinstance(node, ExtractImagesFromPdfNode):
+        return _generate_extract_images_from_pdf(node, indent)
     if isinstance(node, ManagePdfPasswordNode):
         return _generate_manage_pdf_password(node, indent)
     if isinstance(node, WriteCsvFileNode):
@@ -3139,6 +3142,65 @@ def _generate_export_pdf_page_as_image_body(
         f"{prefix}_eppi_pix = _eppi_page.get_pixmap(dpi=round("
         f"{VB_CDBL_HELPER_NAME}({node.image_dpi!r})))",
         f"{prefix}_eppi_pix.save({output_file_name})",
+    ]
+
+
+# 知見209: `ExtractImagesFromPDF`(`GetPDFPageCount`/`ExtractPDFPageRange`/
+# `JoinPDF`/`ExportPDFPageAsImage`と同じ`upap:`名前空間、同じ`pdf-render`
+# プラグインを使う)。PyMuPDF公式レシピ(`recipes-images.rst`、知見209で
+# WebFetch確認済み)の`Page.get_images()`+`Document.extract_image(xref)`
+# が直接対応する——出力ファイル名(`img-{xref}.{ext}`)はUiPath自身の
+# 内部命名を再現したものではない、本トランスパイラ独自の選択である旨を
+# 生成コードにもコメントで残す(抽出される画像バイト列自体の正しさとは
+# 独立した表示上の選択に過ぎない)。
+def _generate_extract_images_from_pdf(
+    node: ExtractImagesFromPdfNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_extract_images_from_pdf_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_extract_images_from_pdf_body(
+    node: ExtractImagesFromPdfNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_name is None or node.output_folder_name is None:
+        return [
+            f"{prefix}# TODO: ExtractImagesFromPDF with missing FileName/"
+            "OutputFolderName"
+        ]
+    if node.image_extension is not None:
+        return [
+            f"{prefix}# TODO: ExtractImagesFromPDF with ImageExtension set "
+            "— non-default output format not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    output_folder_name = _render_value_or_todo(node.output_folder_name, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    inner3 = INDENT * (indent + 3)
+    return [
+        f"{prefix}_eifp_doc = pymupdf.open({file_name})",
+        f"{prefix}_eifp_seen = set()",
+        # 出力ファイル名(`img-{xref}.{ext}`)はUiPathの内部命名を再現
+        # したものではなく、本トランスパイラ独自の選択(知見209)。
+        f"{prefix}for _eifp_page in _eifp_doc:",
+        f"{inner}for _eifp_img in _eifp_page.get_images():",
+        f"{inner2}_eifp_xref = _eifp_img[0]",
+        f"{inner2}if _eifp_xref in _eifp_seen:",
+        f"{inner3}continue",
+        f"{inner2}_eifp_seen.add(_eifp_xref)",
+        f"{inner2}_eifp_info = _eifp_doc.extract_image(_eifp_xref)",
+        f"{inner2}if not _eifp_info:",
+        f"{inner3}continue",
+        f"{inner2}with open(os.path.join({output_folder_name}, "
+        f'f"img-{{_eifp_xref}}.{{_eifp_info[\'ext\']}}"), "wb") as _eifp_f:',
+        f"{inner3}_eifp_f.write(_eifp_info['image'])",
     ]
 
 
