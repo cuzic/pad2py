@@ -121,6 +121,7 @@ from ..uipath_dsl.types import (
     Literal,
     LoadImageNode,
     LookupDataTableNode,
+    SortDataTableNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -706,6 +707,8 @@ def _generate_node(
         return _generate_load_image(node, indent)
     if isinstance(node, LookupDataTableNode):
         return _generate_lookup_data_table(node, indent)
+    if isinstance(node, SortDataTableNode):
+        return _generate_sort_data_table(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
@@ -2081,6 +2084,71 @@ def _generate_lookup_data_table_body(node: LookupDataTableNode, indent: int) -> 
             return todo
         lines.append(f"{prefix}{cell_value} = _lookup_cell_value")
     return lines
+
+
+_SORT_DATA_TABLE_ORDERS = {"Ascending": False, "Descending": True, "Decending": True}
+
+
+def _generate_sort_data_table(node: SortDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_sort_data_table_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_sort_data_table_body(node: SortDataTableNode, indent: int) -> list[str]:
+    """知見206: `ColumnName`指定+対象`DataTable`がdict行と確認できる
+    場合のみ対応する。`ColumnIndex`/`DataColumn`は実機で非`{x:Null}`の
+    実例が無いため常に`# TODO`(知見196の`LookupDataTable`と同じ判断)。
+    `ScopeInfo.data_table_columns`に登録が無い場合、list行の可能性を
+    排除できないため`# TODO`へ倒す(知見205と同じ「表現非依存で安全という
+    思い込みが実行時バグになる」教訓の適用)。"""
+    prefix = INDENT * indent
+    if node.data_table is None or node.output_data_table is None:
+        return [
+            f"{prefix}# TODO: SortDataTable with missing DataTable/"
+            "OutputDataTable"
+        ]
+    if node.data_column is not None:
+        return [
+            f"{prefix}# TODO: SortDataTable with DataColumn set — "
+            "DataColumn object reference not modeled, refusing to guess"
+        ]
+    if node.column_index is not None:
+        return [
+            f"{prefix}# TODO: SortDataTable with ColumnIndex set — "
+            "column-index-based sort not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    if node.column_name is None:
+        return [f"{prefix}# TODO: SortDataTable with missing ColumnName"]
+    if node.sort_order not in _SORT_DATA_TABLE_ORDERS:
+        return [
+            f"{prefix}# TODO: SortDataTable with unrecognized SortOrder/"
+            f"Order ({node.sort_order!r}) — refusing to guess"
+        ]
+    if not isinstance(node.data_table, VbExpr):
+        return [
+            f"{prefix}# TODO: SortDataTable with non-identifier DataTable "
+            "— row representation cannot be confirmed, refusing to guess"
+        ]
+    scope = get_active_scope()
+    if scope is None or not scope.data_table_columns.get(node.data_table.text.lower()):
+        return [
+            f"{prefix}# TODO: SortDataTable — DataTable's row "
+            "representation (dict vs list) could not be confirmed via "
+            "BuildDataTable with a parsed column schema, refusing to guess"
+        ]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    output_data_table = _render_value_or_todo(node.output_data_table, prefix, todo)
+    column_name = _render_value_or_todo(node.column_name, prefix, todo)
+    if todo:
+        return todo
+    reverse = _SORT_DATA_TABLE_ORDERS[node.sort_order]
+    return [
+        f"{prefix}{output_data_table} = sorted({data_table}, "
+        f"key=lambda _row: _row[{column_name}], reverse={reverse})"
+    ]
 
 
 # 知見179: `ui:SaveImage`(`LoadImage`知見178の正反対)。`Image`

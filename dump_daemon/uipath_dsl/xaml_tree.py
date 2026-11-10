@@ -82,6 +82,7 @@ from .types import (
     Literal,
     LoadImageNode,
     LookupDataTableNode,
+    SortDataTableNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -797,6 +798,27 @@ def _parse_lookup_data_table(elem: etree._Element) -> LookupDataTableNode:
         target_data_column=_attr_expr(elem, "TargetDataColumn"),
         cell_value=cell_value,
         row_index=row_index,
+    )
+
+
+def _parse_sort_data_table(elem: etree._Element) -> SortDataTableNode:
+    data_table = _attr_expr(elem, "DataTable") or _in_argument_property_expr(
+        elem, "DataTable"
+    )
+    output_data_table = _attr_expr(elem, "OutputDataTable") or _in_argument_property_expr(
+        elem, "OutputDataTable"
+    )
+    column_name = _attr_expr(elem, "ColumnName") or _in_argument_property_expr(
+        elem, "ColumnName"
+    )
+    return SortDataTableNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=data_table,
+        output_data_table=output_data_table,
+        column_name=column_name,
+        column_index=_attr_expr(elem, "ColumnIndex"),
+        data_column=_attr_expr(elem, "DataColumn"),
+        sort_order=_attr(elem, "SortOrder") or _attr(elem, "Order"),
     )
 
 
@@ -2164,6 +2186,7 @@ _DISPATCH = {
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,
     (UI_NS, "LoadImage"): _parse_load_image,
     (UI_NS, "LookupDataTable"): _parse_lookup_data_table,
+    (UI_NS, "SortDataTable"): _parse_sort_data_table,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

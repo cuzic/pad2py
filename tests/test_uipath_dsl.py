@@ -98,6 +98,7 @@ from dump_daemon.uipath_dsl import (
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
+    SortDataTableNode,
     SwitchNode,
     TakeScreenshotNode,
     TerminateWorkflowNode,
@@ -1271,6 +1272,51 @@ def test_lookup_data_table_properties():
     assert node.lookup_data_column is None
     assert node.target_column_index is None
     assert node.target_data_column is None
+
+
+def test_sort_data_table_properties_with_order_alias_and_decending_typo():
+    """知見195/206: 実機`PacktPublishing/Robotic-Process-Automation-
+    RPA-for-Developers`で確認した構成——属性名`Order`(ground-truthの
+    `SortOrder`とは別名)+値`"Decending"`(`"Descending"`の誤字)。"""
+    xml = (
+        f"<ui:SortDataTable {_UI_XMLNS} "
+        'ColumnIndex="{x:Null}" DataColumn="{x:Null}" ColumnName="Age" '
+        'DataTable="[dt]" DisplayName="Sort data table" '
+        'Order="Decending" OutputDataTable="[dtProcessed]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SortDataTableNode)
+    assert node.data_table == VbExpr(text="dt")
+    assert node.output_data_table == VbExpr(text="dtProcessed")
+    assert node.column_name == Literal(value="Age")
+    assert node.column_index is None
+    assert node.data_column is None
+    assert node.sort_order == "Decending"
+
+
+def test_sort_data_table_prefers_sort_order_attribute_over_order_alias():
+    """知見195/206: 実機`ShonHarsh/RPADev-S06P01-GetAndSortData-
+    WindowsLegacy`では`Order`と`SortOrder`が同じ値で**両方同時に**
+    直列化されていた——ground-truthの正式名`SortOrder`を優先する。"""
+    xml = (
+        f"<ui:SortDataTable {_UI_XMLNS} "
+        'ColumnIndex="{x:Null}" DataColumn="{x:Null}" ColumnName="Name" '
+        'DisplayName="Sort Data Table" Order="Ascending" '
+        'SortOrder="Ascending">'
+        '<ui:SortDataTable.DataTable>'
+        '<InArgument x:TypeArguments="sd:DataTable">[dataTable]</InArgument>'
+        "</ui:SortDataTable.DataTable>"
+        '<ui:SortDataTable.OutputDataTable>'
+        '<OutArgument x:TypeArguments="sd:DataTable">[dataTable]</OutArgument>'
+        "</ui:SortDataTable.OutputDataTable>"
+        "</ui:SortDataTable>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SortDataTableNode)
+    assert node.data_table == VbExpr(text="dataTable")
+    assert node.output_data_table == VbExpr(text="dataTable")
+    assert node.column_name == Literal(value="Name")
+    assert node.sort_order == "Ascending"
 
 
 def test_load_image_properties():

@@ -123,6 +123,7 @@ from dump_daemon.uipath_dsl import (
     SendOutlookMailNode,
     SequenceNode,
     SetToClipboardNode,
+    SortDataTableNode,
     SwitchArm,
     SwitchNode,
     TakeScreenshotNode,
@@ -3164,6 +3165,119 @@ def test_add_data_row_falls_back_to_list_when_columns_are_unknown():
     assert "MyDataTable.append(['Hello World', -_vb_num(1)])" in code
     assert "dict(zip(" not in code
     _compiles(code)
+
+
+def test_sort_data_table_by_column_name_when_build_data_table_columns_are_known():
+    """知見206: 知見195で保留した`SortDataTable`を、知見203の`ScopeInfo`
+    アーキテクチャで解消する——対象`DataTable`が`BuildDataTable`由来で
+    列名が確認できる場合に限り`sorted(..., key=lambda row: row[col])`を
+    生成する。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Name", "Age"]),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Bob", 42}'), data_table=VbExpr(text="dt")
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Ann", 20}'), data_table=VbExpr(text="dt")
+            ),
+            SortDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                column_name=Literal(value="Age"),
+                sort_order="Ascending",
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "dt2 = sorted(dt, key=lambda _row: _row['Age'], reverse=False)" in code
+    )
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return dt2", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() == [
+        {"Name": "Ann", "Age": 20},
+        {"Name": "Bob", "Age": 42},
+    ]
+
+
+def test_sort_data_table_decending_typo_and_order_alias_are_honored():
+    """知見195/206: 実機`PacktPublishing/Robotic-Process-Automation-
+    RPA-for-Developers`で確認した版差——属性名`Order`(`SortOrder`の
+    別名)+値`"Decending"`(`"Descending"`の誤字)。パーサー・コード生成
+    の両方がこれを正しく吸収することを確認する。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            SortDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                column_name=Literal(value="Age"),
+                sort_order="Decending",
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "reverse=True" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_sort_data_table_declines_when_row_representation_is_unknown():
+    """知見206: 対象`DataTable`が`BuildDataTable`由来だと確認できない
+    場合(スコープ情報に列名が無い)は、list行の可能性を排除できないため
+    `# TODO`へ倒す——知見205と同じ「表現非依存で安全という思い込みが
+    実行時バグになる」教訓の適用。"""
+    wf = _wrap(
+        [
+            SortDataTableNode(
+                data_table=VbExpr(text="unknown_dt"),
+                output_data_table=VbExpr(text="dt2"),
+                column_name=Literal(value="Age"),
+                sort_order="Ascending",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SortDataTable" in code
+    assert "sorted(" not in code
+    _compiles(code)
+
+
+def test_sort_data_table_declines_column_index_and_data_column():
+    """知見206: `ColumnIndex`/`DataColumn`は実機で非`{x:Null}`の実例が
+    無いため常に`# TODO`——知見196の`LookupDataTable`と同じ判断。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            SortDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                column_index=Literal(value="0"),
+                sort_order="Ascending",
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SortDataTable with ColumnIndex set" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Age"]),
+            SortDataTableNode(
+                data_table=VbExpr(text="dt"),
+                output_data_table=VbExpr(text="dt2"),
+                data_column=VbExpr(text="ageColumn"),
+                sort_order="Ascending",
+            ),
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: SortDataTable with DataColumn set" in code2
+    _compiles(code2)
 
 
 def test_remove_data_row_with_row_index_deletes_by_position():

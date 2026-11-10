@@ -9744,6 +9744,56 @@ scope()`という新しい公開アクセサを追加した(`AddDataRow`の生�
 知見117・126・130が記録していた「式レンダリングにスコープ情報が
 必要」という3件の設計課題全てに対応する基盤が揃った。
 
+## 206. `ui:SortDataTable`を新規実装——知見195で「列名ベースの値アクセスが本質的に必要」として保留した3件の1件を、知見203のScopeInfoアーキテクチャで解消、実機で`SortOrder`/`Order`両属性同時存在という新しい版差を発見
+
+知見195で`FilterDataTable`/`SortDataTable`/`JoinDataTables`の3件を
+「対象`DataTable`の行表現(dict行か否か)が活動単体の情報からは判断
+できない」として一括保留していたが、知見203〜205で`ScopeInfo.
+data_table_columns`(`BuildDataTable`の列スキーマが実際に確認できた
+変数のみを追跡)が整ったことで、このうち`SortDataTable`は解消できる
+条件が揃った。
+
+ground-truth(`UiPath.System.Activities/25.10`)の属性構成は
+`ColumnIndex`/`ColumnName`/`DataColumn`(列指定の3択)+`DataTable`+
+`OutputDataTable`+`SortOrder`(既定`"Ascending"`)。実機2件
+(`PacktPublishing/Robotic-Process-Automation-RPA-for-Developers`・
+`ShonHarsh/RPADev-S06P01-GetAndSortData-WindowsLegacy`)で検証した
+結果、両方とも`ColumnName`のみを使用(`ColumnIndex`/`DataColumn`は
+実機で非`{x:Null}`の値を一度も確認できず、知見196の`LookupDataTable`
+と同じ理由で未対応とした)、`OutputDataTable`は`DataTable`とは別の
+変数が指定されていた(インプレースではなく新しいDataTableを生成する
+——.NETの`DataView`ベースソートの挙動に合致)。
+
+**新しい版差の発見**: 知見195で見つけた`SortOrder`→`Order`という
+別名+`"Decending"`という誤字値を実機で再確認したが、今回
+`ShonHarsh/RPADev-S06P01-GetAndSortData-WindowsLegacy`では**`Order`
+と`SortOrder`が同じ値で両方同時に**シリアライズされていた
+(`PacktPublishing`の方は`Order`のみ)——単純な「新旧どちらかの名前」
+ではなく、Studioのバージョンによって両方同時出力するケースがある
+ことを示す。パーサーは`SortOrder`を優先し`Order`をフォールバックで
+読む(`_attr(elem, "SortOrder") or _attr(elem, "Order")`)。
+
+`ColumnName`指定+対象`DataTable`が`BuildDataTable`由来で列スキーマが
+確認できる(`columns`が空でない)場合のみ`OutputDataTable = sorted(
+DataTable, key=lambda row: row[ColumnName], reverse=...)`を生成する。
+`ScopeInfo.data_table_columns`への登録はあるが`columns`が空
+(`TableInfo`からスキーマを抽出できなかった場合)は、知見205の
+`AddDataRow`と同じ理由(その場合`AddDataRow`はlist行のまま追加する
+フォールバックに倒れるため、実際の行表現はdictではない)で
+`# TODO`へ倒す——`in`演算子だけでなく値の真偽までチェックする必要が
+あった(本tickで実際にテストして発見・修正)。それ以外(スコープ情報
+に登録が無い、`ColumnIndex`/`DataColumn`指定、`SortOrder`/`Order`が
+未知の値)は全て`# TODO`へ倒す。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`4件、うち1件は`exec()`経由で生成コードを
+実際に実行し`sorted()`の結果を確認する統合テスト)、UiPath関連テスト
+全935件通過、リポジトリ全体で全2021件通過(28件skip、変化無し)。
+
+残る`FilterDataTable`/`JoinDataTables`は、`SortDataTable`より複雑な
+入力構造(`Filters`コレクション・`Arguments`結合条件)を持つため、
+今回の調査・実装はまだ着手していない——次の実装候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

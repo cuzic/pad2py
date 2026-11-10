@@ -2699,3 +2699,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      全2015件通過。知見117・126・130が記録した3件の設計課題全てに
      対応する「スコープ対応のコード生成アーキテクチャ」がこれで
      完成した。
+
+164. **(完了、2026-11-10)** `ui:SortDataTable`を新規実装(知見206)——
+     知見195で保留した`FilterDataTable`/`SortDataTable`/
+     `JoinDataTables`3件のうち、知見203のScopeInfoアーキテクチャが
+     整ったことで解消できる条件が揃った`SortDataTable`に着手した。
+     `ColumnName`指定+対象`DataTable`が`BuildDataTable`由来で列
+     スキーマが確認できる場合のみ`sorted(DataTable, key=lambda row:
+     row[ColumnName], reverse=...)`を生成、`ColumnIndex`/`DataColumn`
+     (実機で非`{x:Null}`の実例なし)・スコープ情報に登録が無い場合は
+     `# TODO`へ倒す。実機2件で`SortOrder`→`Order`という別名+
+     `"Decending"`誤字値(知見195で発見)を再確認し、新たに両属性が
+     同時に直列化されるケースも発見した——`SortOrder`優先・`Order`
+     フォールバックで両方吸収する。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`4件)、
+     UiPath関連テスト全935件通過、リポジトリ全体で全2021件通過。
+     残る`FilterDataTable`/`JoinDataTables`は未着手、次の候補。

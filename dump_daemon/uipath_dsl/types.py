@@ -712,6 +712,48 @@ class LookupDataTableNode:
 
 
 @dataclass
+class SortDataTableNode:
+    """`<ui:SortDataTable>`(知見206、知見195で`FilterDataTable`/
+    `JoinDataTables`と共に「列名ベースの値アクセスが本質的に必要」として
+    保留した3件の1件。知見203の`ScopeInfo.data_table_columns`
+    アーキテクチャが整った今、対象`DataTable`の行表現(dict行か否か)が
+    確認できる場合に限り実装できる)。ground-truth(`UiPath.System.
+    Activities/25.10`)の属性構成は`ColumnIndex`/`ColumnName`/
+    `DataColumn`(列指定の3択)+`DataTable`+`OutputDataTable`+
+    `SortOrder`(既定`"Ascending"`)。
+
+    実機2件(`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`・`ShonHarsh/RPADev-S06P01-GetAndSortData-
+    WindowsLegacy`)で検証した結果、知見195が発見した`SortOrder`→
+    `Order`という別名の実在(片方は`Order`のみ、もう片方は`Order`と
+    `SortOrder`を**両方同時に**同じ値で持つ——おそらくStudioの
+    シリアライズ形式の版差)を再確認、`"Decending"`(誤字)という値も
+    再確認した。`ColumnName`のみが両実機サンプルで使われており
+    (`ColumnIndex`/`DataColumn`は実機で非`{x:Null}`の値を一度も確認
+    できず、`LookupDataTableNode`の`LookupColumnIndex`/
+    `LookupDataColumn`と同じ理由で未対応)、`OutputDataTable`は両方の
+    実機サンプルで`DataTable`とは別変数が指定されていた(=
+    インプレースではなく新しいDataTableを生成する——.NETの
+    `DataView`ベースソートの挙動に合致)。
+
+    `ColumnName`指定時のみ対応し、`ScopeInfo.data_table_columns`に
+    対象`DataTable`変数が登録されている(=`BuildDataTable`/
+    `ExcelReadRange(AddHeaders=True)`由来と確認できた)場合に限り
+    `sorted(DataTable, key=lambda row: row[ColumnName], ...)`を
+    生成する。登録が無い場合は「list行の可能性を排除できない」として
+    `# TODO`へ倒す——知見205で実証した「表現非依存で安全という思い込みが
+    実行時バグになる」教訓をここでも適用する。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    output_data_table: Expr = None
+    column_name: Expr = None
+    column_index: Expr = None
+    data_column: Expr = None
+    sort_order: str | None = None
+
+
+@dataclass
 class SaveImageNode:
     """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
     `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
@@ -2636,6 +2678,7 @@ Node = (
     | GetPasswordNode
     | LoadImageNode
     | LookupDataTableNode
+    | SortDataTableNode
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode
