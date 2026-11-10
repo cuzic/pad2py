@@ -3121,3 +3121,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`3件・`tests/
      test_uipath_codegen.py`6件)、UiPath関連テスト全1040件通過、
      リポジトリ全体で全2129件通過。
+
+188. **(完了、2026-11-10)** `ui:InsertDataTable`・`ui:BulkInsert`を
+     新規実装(知見230)——`ExecuteQuery`/`ExecuteNonQuery`(知見114)
+     と同じ`UiPath.Database.Activities`、タグ名限定検索で33件/9件
+     ヒット。属性構成・意味論が完全に同じ兄弟活動のため同じコード
+     生成関数(`_insert_data_table_family_body`)を共用。
+     `ExistingDbConnection`は`DatabaseConnect`(知見114)が常に
+     生成する`sqlite3.Connection`——`Connection.executemany()`+`?`
+     プレースホルダが対応する。`DataTable`がdict行表現の場合のみ
+     列名付き`INSERT INTO table (col1, col2) VALUES (?, ?)`で正確に
+     対応でき、list行表現の場合は列名が無いため全列を順序通りに
+     与えると仮定する保守的な縮退(`# WARNING`付き)に倒す——
+     `WriteCsvFile`(知見185)・`OutputDataTable`(知見184)と同じ
+     既存方針の延長。`BulkInsert`の`TableName`はスキーマ修飾名
+     (`"stage.datosVivienda"`)も実機確認済み。実際の`sqlite3`
+     データベースへ`exec()`経由でdict行・list行の両方を実行し
+     確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`5件)、UiPath関連テスト全1041件
+     通過、リポジトリ全体で全2135件通過。同じ発見パスで見つけた
+     `ui:DatabaseTransaction`(28件ヒット、`RetryScope`と構造的に
+     同じスコープ活動)を次の候補として記録。

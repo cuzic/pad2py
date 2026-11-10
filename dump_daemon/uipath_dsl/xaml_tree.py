@@ -52,6 +52,8 @@ from .types import (
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
+    InsertDataTableNode,
+    BulkInsertNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1714,6 +1716,28 @@ def _parse_execute_non_query(elem: etree._Element) -> ExecuteNonQueryNode:
     )
 
 
+def _parse_insert_data_table(elem: etree._Element) -> InsertDataTableNode:
+    return InsertDataTableNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        table_name=_attr_expr(elem, "TableName"),
+        existing_db_connection=_attr_expr(elem, "ExistingDbConnection"),
+        affected_records=_attr_expr(elem, "AffectedRecords"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_bulk_insert(elem: etree._Element) -> BulkInsertNode:
+    return BulkInsertNode(
+        data_table=_attr_expr(elem, "DataTable"),
+        table_name=_attr_expr(elem, "TableName"),
+        existing_db_connection=_attr_expr(elem, "ExistingDbConnection"),
+        affected_records=_attr_expr(elem, "AffectedRecords"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2702,6 +2726,8 @@ _DISPATCH = {
     (UI_NS, "DatabaseDisconnect"): _parse_database_disconnect,
     (UI_NS, "ExecuteQuery"): _parse_execute_query,
     (UI_NS, "ExecuteNonQuery"): _parse_execute_non_query,
+    (UI_NS, "InsertDataTable"): _parse_insert_data_table,
+    (UI_NS, "BulkInsert"): _parse_bulk_insert,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

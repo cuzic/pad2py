@@ -2272,6 +2272,63 @@ class ExecuteNonQueryNode:
 
 
 @dataclass
+class InsertDataTableNode:
+    """`<ui:InsertDataTable DataTable="..." TableName="..."
+    ExistingDbConnection="..." AffectedRecords="..." />`(知見230、
+    `ExecuteQuery`/`ExecuteNonQuery`(知見114)と同じ`UiPath.Database.
+    Activities`、タグ名限定GitHub検索で33件ヒット)。ground-truthには
+    `DataTable`/`TableName`が無いが(知見197と同種の「ground-truthは
+    網羅的ではない」実例)、実機複数件(`allenlooplee/RPABook`の
+    `SQLiteProcess.xaml`・`UiPath532/UiPathExamples`の`Day 6/
+    DataBaseWithUiPath/Main.xaml`)いずれも`DataTable`(入力)+
+    `TableName`(挿入先テーブル名)+`ExistingDbConnection`+
+    `AffectedRecords`(出力、影響行数)+`ContinueOnError`の構成で
+    確認した——`TimeoutMS`はground-truth・実機いずれにも無く
+    (`ExecuteQuery`/`ExecuteNonQuery`とは違う)未対応。
+
+    `DatabaseConnect`(知見114)が生成する`sqlite3.Connection`
+    (`row_factory = sqlite3.Row`設定済み)が`ExistingDbConnection`の
+    実体——`Connection.executemany()`+パラメータ化された`?`
+    プレースホルダ(SQLiteのネイティブ形式)が対応する。`DataTable`が
+    dict行表現の場合のみ列名が分かるため`INSERT INTO table (col1,
+    col2) VALUES (?, ?)`形で正確に対応でき、list行表現の場合は列名が
+    無いため`INSERT INTO table VALUES (?, ?)`(全列を順序通りに
+    与えると仮定、`# WARNING`コメントで明示)という保守的な縮退に
+    倒す——`WriteCsvFile`(知見185)・`OutputDataTable`(知見184)と
+    同じ「両表現に対応するが、dict行の時だけ正確な動作」という既存
+    方針。"""
+
+    data_table: Expr = None
+    table_name: Expr = None
+    existing_db_connection: Expr = None
+    affected_records: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class BulkInsertNode:
+    """`<ui:BulkInsert DataTable="..." TableName="..."
+    ExistingDbConnection="..." AffectedRecords="..." />`(知見230、
+    `InsertDataTable`と属性構成が全く同じ兄弟活動、タグ名限定GitHub
+    検索で9件ヒット——実機`andresporras3423/scrapingRealState`の
+    `fincaRaiz.xaml`、`kissandor/thesis`の`ResoultToDataBase.xaml`で
+    確認。`TableName`はスキーマ修飾名(`"stage.datosVivienda"`)も
+    実機確認済み——特別な解釈はせずそのまま文字列として使う。意味論・
+    実装は`InsertDataTable`と完全に同じ(`_generate_insert_data_table_
+    family_body`を共用)——UiPath側で両者が別クラスである理由
+    (バッチサイズ等の内部最適化の違い)はPython側の挙動には影響
+    しない。"""
+
+    data_table: Expr = None
+    table_name: Expr = None
+    existing_db_connection: Expr = None
+    affected_records: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3535,6 +3592,8 @@ Node = (
     | DatabaseDisconnectNode
     | ExecuteQueryNode
     | ExecuteNonQueryNode
+    | InsertDataTableNode
+    | BulkInsertNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

@@ -10804,6 +10804,58 @@ test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`6件)、
 UiPath関連テスト全1040件通過、リポジトリ全体で全2129件通過
 (28件skip、変化無し)。
 
+## 230. `ui:InsertDataTable`・`ui:BulkInsert`を新規実装——DataTableがdict行表現かlist行表現かで列名付き/列名無しのINSERT文を切り替える、両者は属性構成・意味論が完全に同じ兄弟活動のためコード生成関数を共用
+
+サブエージェントによる4回目の新規発見パス(`UiPath.Database.
+Activities`/`UiPath.Excel.Activities`/`UiPath.Testing.Activities`/
+`UiPath.Persistence.Activities`を探索範囲とした)で発見した
+`InsertDataTable`(タグ名限定検索で33件ヒット)・`BulkInsert`
+(9件ヒット)に着手した。いずれも既実装の`ExecuteQuery`/
+`ExecuteNonQuery`(知見114)と同じ`UiPath.Database.Activities`。
+
+ground-truthには`DataTable`/`TableName`属性が無かった(知見197と
+同種の「ground-truthは網羅的ではない」実例)が、実機複数件
+(`allenlooplee/RPABook`の`SQLiteProcess.xaml`・`UiPath532/
+UiPathExamples`の`Day 6/DataBaseWithUiPath/Main.xaml`・
+`andresporras3423/scrapingRealState`の`fincaRaiz.xaml`)いずれも
+`DataTable`(入力)+`TableName`(挿入先テーブル名、スキーマ修飾名
+`"stage.datosVivienda"`も実機確認済み)+`ExistingDbConnection`+
+`AffectedRecords`(出力)+`ContinueOnError`の構成で確認した——
+`TimeoutMS`はground-truth・実機いずれにも無く(`ExecuteQuery`/
+`ExecuteNonQuery`とは違う)未対応。`InsertDataTable`と`BulkInsert`は
+属性構成・意味論が完全に同じ(UiPath側での違いはおそらく内部の
+バッチサイズ最適化のみ)と判断し、同じコード生成関数
+(`_insert_data_table_family_body`)を共用した。
+
+`DatabaseConnect`(知見114)が常に`sqlite3.connect()`を生成する
+ため、`ExistingDbConnection`は`sqlite3.Connection`——
+`Connection.executemany()`+`?`プレースホルダ(SQLiteのネイティブ
+形式)が対応する。`DataTable`がdict行表現の場合のみ列名が分かる
+ため`INSERT INTO table (col1, col2) VALUES (?, ?)`形で正確に対応
+でき、list行表現の場合は列名が無いため`INSERT INTO table VALUES
+(?, ?)`(全列を順序通りに与えると仮定、`# WARNING`コメントで明示)
+という保守的な縮退に倒す——`WriteCsvFile`(知見185)・
+`OutputDataTable`(知見184)と同じ「両表現に対応するが、dict行の時
+だけ正確」という既存方針の延長。
+
+実機相当の構成(dict行表現・list行表現の両方)を実際の`sqlite3`
+データベースへ`exec()`経由で実行し、両方とも正しくINSERTされる
+ことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+`tests/test_uipath_codegen.py`5件)、UiPath関連テスト全1041件
+通過、リポジトリ全体で全2135件通過(28件skip、変化無し)。
+
+同じ発見パスで`ui:DatabaseTransaction`(28件ヒット、`RetryScope`と
+構造的に同じスコープ活動——`UseTransaction`に応じて`Body`実行後
+`connection.commit()`/例外時`rollback()`、新規インフラ不要)を
+次の候補として記録する。`BulkUpdate`(同じ属性構成だが実機2件のみ
+——確認不足のため見送り)、`UiPath.Excel.Activities`の「Modern
+Excel」系活動群(`ueab:ExcelProcessScopeX`→`ueab:
+ExcelApplicationCard`という別系統のスコープ+ハンドル構造が前提
+——`DeleteSheetX`/`RenameSheetX`等単体では実装できない、将来の
+インフラ投資先候補として記録)、`UiPath.Testing.Activities`/
+`UiPath.Persistence.Activities`(テスト自動化・Action Center依存
+でRPAワークフローとの関連性が薄い)も調査済み——見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -67,6 +67,8 @@ from dump_daemon.uipath_dsl import (
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
+    InsertDataTableNode,
+    BulkInsertNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7278,6 +7280,124 @@ def test_execute_non_query_with_populated_parameters_is_todo_not_guessed():
     wf = _wrap([_execute_non_query_node(parameters={"id": Literal(value="1")})])
     code = generate_python(wf)
     assert "# TODO: Execute Non Query with populated Parameters" in code
+    _compiles(code)
+
+
+def test_insert_data_table_with_dict_rows_builds_named_column_insert():
+    """知見230: `ui:InsertDataTable`。`DataTable`がdict行表現の場合、
+    実機`UiPath532/UiPathExamples`相当の構成で`exec()`経由で実際に
+    `sqlite3`へINSERTし、列名付きSQLが正しく動くことを確認する。"""
+    wf = _wrap(
+        [
+            InsertDataTableNode(
+                data_table=VbExpr(text="dt"),
+                table_name=Literal(value="products"),
+                existing_db_connection=VbExpr(text="conn"),
+                affected_records=VbExpr(text="affected"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "isinstance(dt[0], dict)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(conn, dt):")
+    code2 += "\n    return affected"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE products (name TEXT, price REAL)")
+    dt = [{"name": "Widget", "price": 9.99}, {"name": "Gadget", "price": 19.99}]
+    assert namespace["Test"](conn, dt) == 2
+    assert conn.execute("SELECT * FROM products").fetchall() == [
+        ("Widget", 9.99),
+        ("Gadget", 19.99),
+    ]
+
+
+def test_insert_data_table_with_list_rows_falls_back_to_positional_insert():
+    """知見230: `DataTable`がlist行表現の場合、列名が無いため全列を
+    順序通りに与えると仮定した保守的な縮退(`# WARNING`コメント付き)
+    で動くことを`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            InsertDataTableNode(
+                data_table=VbExpr(text="dt"),
+                table_name=Literal(value="products"),
+                existing_db_connection=VbExpr(text="conn"),
+                affected_records=VbExpr(text="affected"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# WARNING: list-shaped rows have no column names" in code
+    code2 = code.replace("def Test():", "def Test(conn, dt):")
+    code2 += "\n    return affected"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE products (name TEXT, price REAL)")
+    dt = [("Widget", 9.99), ("Gadget", 19.99)]
+    assert namespace["Test"](conn, dt) == 2
+    assert conn.execute("SELECT * FROM products").fetchall() == dt
+
+
+def test_bulk_insert_shares_insert_data_table_codegen():
+    """知見230: `ui:BulkInsert`は`InsertDataTable`と属性構成・意味論が
+    全く同じ兄弟活動——同じコード生成関数を共用することを確認する。
+    `TableName`はスキーマ修飾名(`andresporras3423/scrapingRealState`
+    相当)も問題なく通ることを確認する。"""
+    wf = _wrap(
+        [
+            BulkInsertNode(
+                data_table=VbExpr(text="dt"),
+                table_name=Literal(value="stage.datosVivienda"),
+                existing_db_connection=VbExpr(text="conn"),
+                affected_records=VbExpr(text="affected"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "stage.datosVivienda" in code
+    assert "_idt_cur = conn.executemany(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_insert_data_table_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InsertDataTableNode(
+                data_table=VbExpr(text="dt"),
+                table_name=Literal(value="products"),
+                existing_db_connection=VbExpr(text="conn"),
+                affected_records=VbExpr(text="affected"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InsertDataTable with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_insert_data_table_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            InsertDataTableNode(
+                data_table=None,
+                table_name=Literal(value="products"),
+                existing_db_connection=VbExpr(text="conn"),
+                affected_records=VbExpr(text="affected"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InsertDataTable with missing DataTable/TableName" in code
     _compiles(code)
 
 

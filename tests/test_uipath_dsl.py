@@ -46,6 +46,8 @@ from dump_daemon.uipath_dsl import (
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
+    InsertDataTableNode,
+    BulkInsertNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -690,6 +692,39 @@ def test_execute_query_and_execute_non_query():
     assert non_query.affected_records == VbExpr(text="rows")
     assert non_query.command_type == "Text"
     assert non_query.parameters == {}
+
+
+def test_insert_data_table_and_bulk_insert_properties():
+    """知見230: `ui:InsertDataTable`/`ui:BulkInsert`(`ExecuteQuery`/
+    `ExecuteNonQuery`と同じ`UiPath.Database.Activities`)。実機
+    `allenlooplee/RPABook`の`SQLiteProcess.xaml`・`andresporras3423/
+    scrapingRealState`の`fincaRaiz.xaml`で確認した属性構成——
+    `BulkInsert`の`TableName`はスキーマ修飾名(`"stage.datosVivienda"`)
+    も実機確認済み。"""
+    insert_xml = (
+        f"<ui:InsertDataTable {_UI_XMLNS} "
+        'AffectedRecords="{x:Null}" ContinueOnError="{x:Null}" '
+        'DataTable="[PostTable]" DisplayName="Insert" '
+        'ExistingDbConnection="[PostDbConnection]" TableName="post" />'
+    )
+    insert_node = parse_activity(etree.fromstring(insert_xml))
+    assert isinstance(insert_node, InsertDataTableNode)
+    assert insert_node.data_table == VbExpr(text="PostTable")
+    assert insert_node.table_name == Literal(value="post")
+    assert insert_node.existing_db_connection == VbExpr(text="PostDbConnection")
+    assert insert_node.affected_records is None
+    assert insert_node.continue_on_error is None
+
+    bulk_xml = (
+        f"<ui:BulkInsert {_UI_XMLNS} "
+        'AffectedRecords="[rows]" ContinueOnError="{x:Null}" '
+        'DataTable="[ExtractDataTable]" DisplayName="Bulk Insert" '
+        'ExistingDbConnection="[db_conn]" TableName="stage.datosVivienda" />'
+    )
+    bulk_node = parse_activity(etree.fromstring(bulk_xml))
+    assert isinstance(bulk_node, BulkInsertNode)
+    assert bulk_node.table_name == Literal(value="stage.datosVivienda")
+    assert bulk_node.affected_records == VbExpr(text="rows")
 
 
 def test_excel_read_range_and_write_range():

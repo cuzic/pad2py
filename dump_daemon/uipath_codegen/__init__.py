@@ -93,6 +93,8 @@ from ..uipath_dsl.types import (
     ExcelWriteCellNode,
     ExcelWriteRangeNode,
     ExecuteNonQueryNode,
+    InsertDataTableNode,
+    BulkInsertNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -828,6 +830,10 @@ def _generate_node(
         return _generate_execute_query(node, indent)
     if isinstance(node, ExecuteNonQueryNode):
         return _generate_execute_non_query(node, indent)
+    if isinstance(node, InsertDataTableNode):
+        return _generate_insert_data_table(node, indent)
+    if isinstance(node, BulkInsertNode):
+        return _generate_bulk_insert(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5180,6 +5186,72 @@ def _generate_execute_non_query_body(node: ExecuteNonQueryNode, indent: int) -> 
         f"{prefix}{conn}.commit()",
         f"{prefix}{target} = _cur.rowcount",
     ]
+
+
+def _insert_data_table_family_body(
+    node: InsertDataTableNode | BulkInsertNode, indent: int, activity_label: str
+) -> list[str]:
+    """知見230: `InsertDataTable`/`BulkInsert`共通のコード生成——
+    `DataTable`がdict行表現の場合のみ列名が分かるため`INSERT INTO
+    table (col1, col2) VALUES (?, ?)`形で正確に対応し、list行表現の
+    場合は列名が無いため`INSERT INTO table VALUES (?, ?)`(全列を
+    順序通りに与えると仮定)という保守的な縮退に倒す
+    (`WriteCsvFile`知見185・`OutputDataTable`知見184と同じ「両表現に
+    対応するが、dict行の時だけ正確」という既存方針)。`?`プレース
+    ホルダはSQLiteのネイティブ形式(`DatabaseConnect`知見114が常に
+    `sqlite3.connect()`を生成するため)。"""
+    prefix = INDENT * indent
+    if node.affected_records is None:
+        return [f"{prefix}# TODO: {activity_label} with no output AffectedRecords captured"]
+    if node.existing_db_connection is None:
+        return [f"{prefix}# TODO: {activity_label} with no ExistingDbConnection captured"]
+    if node.data_table is None or node.table_name is None:
+        return [f"{prefix}# TODO: {activity_label} with missing DataTable/TableName"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: {activity_label} with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    conn = _render_value_or_todo(node.existing_db_connection, prefix, todo)
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    table_name = _render_value_or_todo(node.table_name, prefix, todo)
+    target = _render_value_or_todo(node.affected_records, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_idt_table = {VB_CSTR_HELPER_NAME}({table_name})",
+        f"{prefix}if {data_table} and isinstance({data_table}[0], dict):",
+        f"{inner}_idt_cols = list({data_table}[0].keys())",
+        f"{inner}_idt_sql = ('INSERT INTO ' + _idt_table + ' (' "
+        "+ ', '.join(_idt_cols) + ') VALUES (' "
+        "+ ', '.join(['?'] * len(_idt_cols)) + ')')",
+        f"{inner}_idt_cur = {conn}.executemany("
+        f"_idt_sql, [tuple(_r[_c] for _c in _idt_cols) for _r in {data_table}])",
+        f"{prefix}else:",
+        f"{inner}# WARNING: list-shaped rows have no column names — values "
+        "are assumed to map positionally to all TableName columns in "
+        "table order",
+        f"{inner}_idt_sql = ('INSERT INTO ' + _idt_table + ' VALUES (' "
+        f"+ ', '.join(['?'] * len({data_table}[0])) + ')')",
+        f"{inner}_idt_cur = {conn}.executemany(_idt_sql, {data_table})",
+        f"{prefix}{conn}.commit()",
+        f"{prefix}{target} = _idt_cur.rowcount",
+    ]
+
+
+def _generate_insert_data_table(node: InsertDataTableNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _insert_data_table_family_body(node, indent, "InsertDataTable")
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_bulk_insert(node: BulkInsertNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _insert_data_table_family_body(node, indent, "BulkInsert")
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名
