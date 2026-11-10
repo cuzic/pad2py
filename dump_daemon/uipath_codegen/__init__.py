@@ -148,6 +148,7 @@ from ..uipath_dsl.types import (
     ExtractFilesNode,
     CompressFilesNode,
     IsMatchNode,
+    ReplaceNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -671,6 +672,8 @@ def _generate_node(
         return _generate_compress_files(node, indent)
     if isinstance(node, IsMatchNode):
         return _generate_is_match(node, indent)
+    if isinstance(node, ReplaceNode):
+        return _generate_replace(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
         return _generate_get_environment_variable(node, indent)
     if isinstance(node, ReadTextFileNode):
@@ -1634,7 +1637,7 @@ def _generate_compress_files_body(node: CompressFilesNode, indent: int) -> list[
     ]
 
 
-_IS_MATCH_ALLOWED_OPTIONS = {"IgnoreCase", "Compiled"}
+_REGEX_ALLOWED_OPTIONS = {"IgnoreCase", "Compiled"}
 
 
 def _generate_is_match(node: IsMatchNode, indent: int) -> list[str]:
@@ -1655,7 +1658,7 @@ def _generate_is_match_body(node: IsMatchNode, indent: int) -> list[str]:
     if node.regex_option is None:
         return [f"{prefix}# TODO: IsMatch with no RegexOption captured"]
     options = {opt.strip() for opt in node.regex_option.split(",")}
-    if not options <= _IS_MATCH_ALLOWED_OPTIONS:
+    if not options <= _REGEX_ALLOWED_OPTIONS:
         return [
             f"{prefix}# TODO: IsMatch with unrecognized RegexOption "
             f"({node.regex_option!r}) — refusing to guess"
@@ -1670,6 +1673,48 @@ def _generate_is_match_body(node: IsMatchNode, indent: int) -> list[str]:
     return [
         f"{prefix}{result} = bool(re.search({pattern}, "
         f"{VB_CSTR_HELPER_NAME}({input_}){flags}))"
+    ]
+
+
+def _generate_replace(node: ReplaceNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_replace_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_replace_body(node: ReplaceNode, indent: int) -> list[str]:
+    """知見220: `IsMatch`(知見213)と同じ`RegexOption`の判断
+    (`"IgnoreCase"`/`"IgnoreCase, Compiled"`のみ対応)。`.NET
+    Regex.Replace(input, pattern, replacement)`は`re.sub(pattern,
+    replacement, input)`に対応する——`Replacement`内の`$1`等の.NET
+    後方参照記法は変換しない(知見144と同じ既存の判断)。"""
+    prefix = INDENT * indent
+    if node.input is None or node.pattern is None or node.replacement is None:
+        return [
+            f"{prefix}# TODO: Replace with missing Input/Pattern/Replacement"
+        ]
+    if node.result is None:
+        return [f"{prefix}# TODO: Replace with no Result captured"]
+    if node.regex_option is None:
+        return [f"{prefix}# TODO: Replace with no RegexOption captured"]
+    options = {opt.strip() for opt in node.regex_option.split(",")}
+    if not options <= _REGEX_ALLOWED_OPTIONS:
+        return [
+            f"{prefix}# TODO: Replace with unrecognized RegexOption "
+            f"({node.regex_option!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    input_ = _render_value_or_todo(node.input, prefix, todo)
+    pattern = _render_value_or_todo(node.pattern, prefix, todo)
+    replacement = _render_value_or_todo(node.replacement, prefix, todo)
+    result = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    flags = ", flags=re.IGNORECASE" if "IgnoreCase" in options else ""
+    return [
+        f"{prefix}{result} = re.sub({pattern}, "
+        f"{VB_CSTR_HELPER_NAME}({replacement}), "
+        f"{VB_CSTR_HELPER_NAME}({input_}){flags})"
     ]
 
 

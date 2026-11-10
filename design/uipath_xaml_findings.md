@@ -10368,6 +10368,46 @@ test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、UiPath
 関連テスト全994件通過、リポジトリ全体で全2080件通過(28件skip、
 変化無し)。
 
+## 220. `ui:Replace`を新規実装——知見213の`IsMatch`と同じ正規表現ビルダー系の兄弟活動、`ChangeCase`の0件ヒットの原因である別名前空間(`uast:`)を特定したがこの活動自体はヒット数が少なく見送り
+
+明示的な次候補が尽きたため、知見193のground-truthリストから新たな
+候補を再調査した。`ChangeCase`(知見212で`"ui:ChangeCase"`が0件
+ヒットだった原因不明として記録)のground-truthを直接確認し、
+`clr-namespace:UiPath.Activities.System.Text;assembly=UiPath.
+System.Activities`(一般的な別名`uast:`)という、`ui:`/`uascw:`とは
+さらに別の第3の名前空間を使うことを特定した——`CombineText`/
+`SplitText`/`FindAndReplace`も同じ`uast:`名前空間だった。しかし
+`"uast:ChangeCase"`で再検索しても7件のみとヒット数が低く、実装は
+見送った。
+
+同じground-truth調査で`TextToLeftRight`/`Matches`/`Replace`/
+`ModifyText`が`ui:`名前空間のままだと確認し、タグ名限定検索で
+`Matches`(448件)・`Replace`(359件)が高いヒット数だと判明した——
+いずれも知見213の`IsMatch`と同じ正規表現ビルダー系の兄弟活動
+(`Input`+`Pattern`+`RegexOption`+`Result`という共通の構造)。本tick
+では`Replace`に着手した(`Matches`は複数マッチの出力形式が未確認の
+ため次候補)。
+
+実機2件(`piyushagarwal08/JU-Notes`・`LowyShin/
+lwrpa-uip-moveoldfiles`)で確認した構成は`Input`+`Pattern`+
+`Replacement`+`Result`+`RegexOption="IgnoreCase, Compiled"`
+(両実機で同一値)——両実機とも`Input`と`Result`が同じ変数
+(インプレース上書き)。`.NET Regex.Replace(input, pattern,
+replacement)`は`re.sub(pattern, replacement, input)`に対応する。
+`RegexOption`は`IsMatch`と同じ判断(`"IgnoreCase"`/`"IgnoreCase,
+Compiled"`のみ対応)を再利用——共有定数`_IS_MATCH_ALLOWED_OPTIONS`を
+`_REGEX_ALLOWED_OPTIONS`へ一般化した。`Replacement`内の`$1`等の.NET
+後方参照記法は変換しない(知見144の`Regex.Replace`→`re.sub`と同じ
+既存の判断を継承)。
+
+実機相当の構成を`exec()`経由で実際に実行し正しく置換されることを
+確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、UiPath関連テスト全998件通過、リポジトリ
+全体で全2084件通過(28件skip、変化無し)。
+
+残る`Matches`(複数マッチ出力の実機確認が必要)を次の候補として記録
+する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

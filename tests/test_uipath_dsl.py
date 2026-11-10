@@ -97,6 +97,7 @@ from dump_daemon.uipath_dsl import (
     ExtractFilesNode,
     CompressFilesNode,
     IsMatchNode,
+    ReplaceNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -2713,6 +2714,25 @@ def test_is_match_properties_with_builder_wizard_noise():
     assert node.pattern == Literal(value="^([0-9]{2})$")
     assert node.regex_option == "IgnoreCase"
     assert node.result == VbExpr(text="deger_dogruMU")
+
+
+def test_replace_properties():
+    """知見220: `ui:Replace`(`IsMatch`と同じ正規表現ビルダー系の兄弟
+    活動)。実機`LowyShin/lwrpa-uip-moveoldfiles`で確認した構成——
+    `Input`と`Result`が同じ変数(インプレース上書き)。"""
+    xml = (
+        f"<ui:Replace {_UI_XMLNS} "
+        'Input="[kValue]" IsBuilderTabModified="False" Pattern="}{" '
+        'RegexOption="IgnoreCase, Compiled" Replacement="},{" '
+        'Result="[kValue]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReplaceNode)
+    assert node.input == VbExpr(text="kValue")
+    assert node.pattern == Literal(value="}{")
+    assert node.replacement == Literal(value="},{")
+    assert node.regex_option == "IgnoreCase, Compiled"
+    assert node.result == VbExpr(text="kValue")
 
 
 def test_get_environment_variable_properties():

@@ -2414,6 +2414,39 @@ class IsMatchNode:
 
 
 @dataclass
+class ReplaceNode:
+    """`<ui:Replace>`(知見220、`IsMatch`(知見213)と同じ正規表現
+    ビルダー系の兄弟活動、GitHub code searchで「`"ui:Replace"`」
+    タグ名限定359件ヒット)。ground-truthの属性構成は`Input`+
+    `Pattern`+`Replacement`+`IsBuilderTabModified`+`RegexOption`
+    (既定`"IgnoreCase, Compiled"`)——`Result`(出力)はground-truthの
+    デフォルト状態では現れないが、実機で確認済み。
+
+    実機2件(`piyushagarwal08/JU-Notes`・`LowyShin/
+    lwrpa-uip-moveoldfiles`)で確認した構成は`Input`+`Pattern`+
+    `Replacement`+`Result`+`RegexOption="IgnoreCase, Compiled"`
+    (両実機で同一値)——両実機とも`Input`と`Result`が同じ変数
+    (インプレース上書き)。`BuilderPattern`/`Model`/
+    `IsBuilderTabModified`は`IsMatch`と同じ正規表現ビルダーウィザードの
+    UI状態メタデータで無視する。
+
+    `.NET Regex.Replace(input, pattern, replacement)`は
+    Pythonの`re.sub(pattern, replacement, input)`に対応する
+    (引数の意味順序が同じ)。`RegexOption`は`IsMatch`と同じ判断
+    (`"IgnoreCase"`/`"IgnoreCase, Compiled"`のみ対応)。`Replacement`
+    内の`$1`等の.NET後方参照記法とPythonの`\1`記法の違いは変換しない
+    (知見144の`Regex.Replace`→`re.sub`と同じ既存の判断を継承、実機
+    2件のいずれも後方参照を使っていない)。"""
+
+    display_name: str | None = None
+    input: Expr = None
+    pattern: Expr = None
+    replacement: Expr = None
+    regex_option: str | None = None
+    result: Expr = None
+
+
+@dataclass
 class GetEnvironmentVariableNode:
     """`<ui:GetEnvironmentVariable Variable="..." VariableValue="..." />`
     (知見215、知見214のタグ名限定GitHub検索で再発掘)。実機5件
@@ -3169,6 +3202,7 @@ Node = (
     | ExtractFilesNode
     | CompressFilesNode
     | IsMatchNode
+    | ReplaceNode
     | GetEnvironmentVariableNode
     | InvokeCodeNode
     | SetToClipboardNode

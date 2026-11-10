@@ -123,6 +123,7 @@ from dump_daemon.uipath_dsl import (
     ExtractFilesNode,
     CompressFilesNode,
     IsMatchNode,
+    ReplaceNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -9758,6 +9759,87 @@ def test_is_match_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: IsMatch with no Result captured" in code
+    _compiles(code)
+
+
+def test_replace_substitutes_via_re_sub():
+    """知見220: `ui:Replace`(`IsMatch`と同じ正規表現ビルダー系の兄弟
+    活動)。`.NET Regex.Replace(input, pattern, replacement)`は
+    `re.sub(pattern, replacement, input)`に対応する。実機
+    `LowyShin/lwrpa-uip-moveoldfiles`相当の構成を`exec()`経由で実際に
+    実行し、正しく置換されることを確認する。"""
+    wf = _wrap(
+        [
+            ReplaceNode(
+                input=VbExpr(text="kValue"),
+                pattern=Literal(value="}{"),
+                replacement=Literal(value="},{"),
+                regex_option="IgnoreCase, Compiled",
+                result=VbExpr(text="kValue"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "re.sub(" in code
+    assert "import re" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(kValue):")
+    code2 += "\n    return kValue"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("a}{b}{c") == "a},{b},{c"
+
+
+def test_replace_ignores_compiled_flag_and_declines_unconfirmed_option():
+    """知見220: `"IgnoreCase, Compiled"`は`Compiled`を無視して対応する
+    ——`IsMatch`(知見213)と同じ判断。未確認の他フラグは`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            ReplaceNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                replacement=Literal(value="z"),
+                regex_option="IgnoreCase, Compiled",
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "flags=re.IGNORECASE" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            ReplaceNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                replacement=Literal(value="z"),
+                regex_option="Multiline",
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: Replace with unrecognized RegexOption ('Multiline')" in code2
+    _compiles(code2)
+
+
+def test_replace_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            ReplaceNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                replacement=Literal(value="z"),
+                regex_option="IgnoreCase",
+                result=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Replace with no Result captured" in code
     _compiles(code)
 
 

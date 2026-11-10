@@ -2937,3 +2937,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `exec()`経由で正しさを確認。回帰テスト追加(`tests/
      test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、
      UiPath関連テスト全994件通過、リポジトリ全体で全2080件通過。
+
+178. **(完了、2026-11-10)** `ui:Replace`を新規実装(知見220)——
+     `IsMatch`(知見213)と同じ正規表現ビルダー系の兄弟活動、タグ名
+     限定検索で359件ヒット。`ChangeCase`の0件ヒットの原因だった第3の
+     名前空間`uast:`(`clr-namespace:UiPath.Activities.System.Text`)
+     を特定したが、`ChangeCase`自体はヒット数が低く(7件)実装は見送り。
+     `Replace`の実機2件で`Input`+`Pattern`+`Replacement`+`Result`+
+     `RegexOption="IgnoreCase, Compiled"`の構成を確認、`.NET
+     Regex.Replace(input, pattern, replacement)`→`re.sub(pattern,
+     replacement, input)`が対応する。`IsMatch`と同じ`RegexOption`
+     判断を再利用するため共有定数`_IS_MATCH_ALLOWED_OPTIONS`を
+     `_REGEX_ALLOWED_OPTIONS`へ一般化。実機相当の構成を`exec()`経由
+     で実際に実行して正しさを確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、
+     UiPath関連テスト全998件通過、リポジトリ全体で全2084件通過。
+     残る`Matches`(複数マッチ出力の実機確認が必要)を次の候補として
+     記録。
