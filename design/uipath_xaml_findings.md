@@ -10856,6 +10856,55 @@ ExcelApplicationCard`という別系統のスコープ+ハンドル構造が前�
 `UiPath.Persistence.Activities`(テスト自動化・Action Center依存
 でRPAワークフローとの関連性が薄い)も調査済み——見送り。
 
+## 231. `ui:DatabaseTransaction`を新規実装——UseTransaction=Falseのみ対応、UseTransaction=True(既定値)は子活動が個別commitする既存実装と両立しないため意図的に未対応とした
+
+知見230で次候補とした`ui:DatabaseTransaction`(タグ名限定検索で
+28件ヒット、公式表示名「Start Transaction」)に着手した。
+ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`Uipathtutorials/Usecases`の`Beginners/DatabaseActivities.xaml`・
+`angelagongli/TheSixFootOffice`の`PullOfficeSetting.xaml`)で構造を
+確認した——`.Body`配下は`AttachWindow`(知見153)・`CommentOut`
+(知見225)と同じ直接`Sequence`(`ActivityAction`ラップ無し)。
+
+公式ドキュメント(WebSearch経由確認、`database-transaction`ページ)
+で発見した2点が実装判断を大きく左右した:
+
+1. **2つの接続モード**: 既存の`DatabaseConnection`を渡す形
+   (`ConnectionString`/`SecureConnectionString`は無視される)と、
+   `ConnectionString`+`ProviderName`で新規接続を自ら確立する形
+   (`DatabaseConnect`と同じ引数)。実機`angelagongli/
+   TheSixFootOffice`は後者のMySQL例(`ProviderName="MySql.Data.
+   MySqlClient"`)だったが、`DatabaseConnect`(知見114)自体が
+   `"System.Data.SQLite"`以外を未確認として`# TODO`へ倒す既存方針
+   のため、自己接続モードは本活動でも同様に未対応とした。
+
+2. **`UseTransaction`の実装不可能性を発見**: 公式ドキュメントで
+   `UseTransaction=False`時は「各操作が個別にコミットされる」と
+   確認——これは`ExecuteNonQuery`/`InsertDataTable`/`BulkInsert`の
+   既存コード生成が既に各自`connection.commit()`を呼ぶ実装
+   (知見114・230)と完全に一致するため、`Body`をそのまま展開する
+   だけで正しく動作する(新規コード生成不要)。しかし
+   `UseTransaction=True`(ground-truthの既定値、「全操作を1つの
+   トランザクションにまとめ、失敗時は全体をロールバックする」)は、
+   `Body`配下の子活動が既に個別に`commit()`してしまう**既存の
+   コード生成とそのままでは両立しない**ことに気づいた——個々の文が
+   実行直後に確定してしまうため、後続の失敗時にロールバックしても
+   先に確定済みの文は取り消せない。子活動の`commit()`呼び出しを
+   抑制する文脈伝播機構(`ScopeInfo`のような仕組み)が無いと正しい
+   all-or-nothing保証を再現できないため、見た目だけ機能するが実際
+   には保証しないtry/exceptをでっち上げるより`UseTransaction=True`
+   自体を`# TODO`へ倒す判断とした——`ModifyText`(知見224)の
+   「部分的に正しいより全体を拒否」と同じ判断の新たな適用例。
+
+`UseTransaction=False`の場合を実際の`sqlite3`データベースへ
+`exec()`経由で実行し、`ExecuteNonQuery`の既存コード生成がそのまま
+動くことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全1045件
+通過、リポジトリ全体で全2141件通過(28件skip、変化無し)。
+
+これで知見230の発見パスで見つかった候補は全て着手済み(または
+意図的な見送り判断)——次のtickで新規発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

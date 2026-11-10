@@ -48,6 +48,7 @@ from dump_daemon.uipath_dsl import (
     ExecuteNonQueryNode,
     InsertDataTableNode,
     BulkInsertNode,
+    DatabaseTransactionNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -725,6 +726,55 @@ def test_insert_data_table_and_bulk_insert_properties():
     assert isinstance(bulk_node, BulkInsertNode)
     assert bulk_node.table_name == Literal(value="stage.datosVivienda")
     assert bulk_node.affected_records == VbExpr(text="rows")
+
+
+def test_database_transaction_unwraps_body_sequence():
+    """知見231: `ui:DatabaseTransaction`(公式表示名「Start
+    Transaction」、`InsertDataTable`/`BulkInsert`と同じ`UiPath.
+    Database.Activities`)。実機`Uipathtutorials/Usecases`の
+    `Beginners/DatabaseActivities.xaml`で確認した構造——
+    `AttachWindow`(知見153)・`CommentOut`(知見225)と同じ
+    `ActivityAction`ラップ無しの直接`Sequence`。"""
+    xml = (
+        f"<ui:DatabaseTransaction {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" DatabaseConnection="[Con]" '
+        'DisplayName="Start Transaction" UseTransaction="True">'
+        "<ui:DatabaseTransaction.Body>"
+        '<Sequence DisplayName="Do">'
+        '<ui:ExecuteNonQuery Sql="DELETE FROM t" '
+        'ExistingDbConnection="[Con]" AffectedRecords="[rows]" />'
+        "</Sequence>"
+        "</ui:DatabaseTransaction.Body>"
+        "</ui:DatabaseTransaction>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DatabaseTransactionNode)
+    assert node.database_connection == VbExpr(text="Con")
+    assert node.use_transaction == "True"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], ExecuteNonQueryNode)
+
+
+def test_database_transaction_self_connecting_mode_properties():
+    """知見231: `UseTransaction`に加え、`ConnectionString`/
+    `ProviderName`での自己接続モード(実機`angelagongli/
+    TheSixFootOffice`の`PullOfficeSetting.xaml`、MySQL例)も属性として
+    捕捉する(コード生成側は`DatabaseConnect`同様`System.Data.SQLite`
+    以外は未確認として`# TODO`へ倒す)。"""
+    xml = (
+        f"<ui:DatabaseTransaction {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" DatabaseConnection="[DB_Connection]" '
+        'ConnectionString="Host=localhost;Port=3306;Database=Office_DB;" '
+        'ProviderName="MySql.Data.MySqlClient" UseTransaction="True">'
+        "<ui:DatabaseTransaction.Body>"
+        '<Sequence DisplayName="Do" />'
+        "</ui:DatabaseTransaction.Body>"
+        "</ui:DatabaseTransaction>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DatabaseTransactionNode)
+    assert node.provider_name == Literal(value="MySql.Data.MySqlClient")
+    assert node.connection_string is not None
 
 
 def test_excel_read_range_and_write_range():

@@ -2329,6 +2329,57 @@ class BulkInsertNode:
 
 
 @dataclass
+class DatabaseTransactionNode:
+    """`<ui:DatabaseTransaction DatabaseConnection="..."
+    UseTransaction="...">`(知見231、`InsertDataTable`/`BulkInsert`
+    (知見230)と同じ`UiPath.Database.Activities`、タグ名限定GitHub
+    検索で28件ヒット、公式表示名「Start Transaction」)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機複数件(`Uipathtutorials/
+    Usecases`の`Beginners/DatabaseActivities.xaml`・`angelagongli/
+    TheSixFootOffice`の`PullOfficeSetting.xaml`)で構造を確認した——
+    `.Body`配下は`AttachWindow`(知見153)・`CommentOut`(知見225)と
+    同じ直接`Sequence`(`ActivityAction`ラップ無し)。
+
+    公式ドキュメント(WebSearch経由確認、`database-transaction`
+    ページ)で2つのモードがあると確認した——①既存の`DatabaseConnection`
+    を渡す形(その場合`ConnectionString`/`SecureConnectionString`は
+    無視される)、②`ConnectionString`+`ProviderName`で新規接続を自ら
+    確立する形(`DatabaseConnect`と同じ引数)。実機
+    `angelagongli/TheSixFootOffice`は②のMySQL例(`ProviderName=
+    "MySql.Data.MySqlClient"`)だったが、`DatabaseConnect`(知見114)
+    自体が`"System.Data.SQLite"`以外のプロバイダを未確認として
+    `# TODO`へ倒す既存方針のため、②の自己接続モードは本活動でも
+    同様に未対応とし①(既存接続渡し)のみ対応する。
+
+    **`UseTransaction`の実装上の制約**: 公式ドキュメントで
+    `UseTransaction=False`時は「各操作が個別にコミットされる」と
+    確認——これは`ExecuteNonQuery`/`InsertDataTable`/`BulkInsert`の
+    既存コード生成が既に各自`connection.commit()`を呼ぶ実装
+    (知見114・230)と完全に一致するため、`Body`をそのまま展開する
+    だけで正しく動作する。しかし`UseTransaction=True`(「全操作を
+    1つのトランザクションにまとめ、失敗時は全体をロールバックする」
+    という意味論、ground-truthの既定値)は、`Body`配下の子活動が
+    既に個別に`commit()`してしまう既存コード生成とそのままでは
+    両立しない(個々の文が実行直後に確定してしまい、後続の失敗時に
+    ロールバックしても先に確定済みの文は取り消せない)——子活動の
+    `commit()`呼び出しをスキップさせる仕組み(`ScopeInfo`のような
+    文脈伝播機構)が無いと正しいall-or-nothing保証を再現できない
+    ため、でっち上げたtry/except(見た目だけ機能するが実際には保証
+    しないコード)を生成するより`UseTransaction=True`自体を
+    `# TODO`へ倒す判断とした——`ModifyText`(知見224)の「部分的に
+    正しいより全体を拒否」と同じ判断。"""
+
+    database_connection: Expr = None
+    use_transaction: str | None = None
+    continue_on_error: Expr = None
+    connection_string: Expr = None
+    secure_connection_string: Expr = None
+    provider_name: Expr = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3594,6 +3645,7 @@ Node = (
     | ExecuteNonQueryNode
     | InsertDataTableNode
     | BulkInsertNode
+    | DatabaseTransactionNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

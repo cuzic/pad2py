@@ -54,6 +54,7 @@ from .types import (
     ExecuteNonQueryNode,
     InsertDataTableNode,
     BulkInsertNode,
+    DatabaseTransactionNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1738,6 +1739,21 @@ def _parse_bulk_insert(elem: etree._Element) -> BulkInsertNode:
     )
 
 
+def _parse_database_transaction(elem: etree._Element) -> DatabaseTransactionNode:
+    body_elem = _find_property_element(elem, "Body")
+    body = _unwrap_body_sequence(body_elem) if body_elem is not None else []
+    return DatabaseTransactionNode(
+        database_connection=_attr_expr(elem, "DatabaseConnection"),
+        use_transaction=_attr(elem, "UseTransaction"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        connection_string=_attr_expr(elem, "ConnectionString"),
+        secure_connection_string=_attr_expr(elem, "SecureConnectionString"),
+        provider_name=_attr_expr(elem, "ProviderName"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2728,6 +2744,7 @@ _DISPATCH = {
     (UI_NS, "ExecuteNonQuery"): _parse_execute_non_query,
     (UI_NS, "InsertDataTable"): _parse_insert_data_table,
     (UI_NS, "BulkInsert"): _parse_bulk_insert,
+    (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

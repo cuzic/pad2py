@@ -69,6 +69,7 @@ from dump_daemon.uipath_dsl import (
     ExecuteNonQueryNode,
     InsertDataTableNode,
     BulkInsertNode,
+    DatabaseTransactionNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7398,6 +7399,94 @@ def test_insert_data_table_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: InsertDataTable with missing DataTable/TableName" in code
+    _compiles(code)
+
+
+def test_database_transaction_with_use_transaction_false_runs_body_normally():
+    """知見231: `UseTransaction=False`(公式ドキュメント確認済みの
+    「各操作が個別にコミットされる」)は、`ExecuteNonQuery`が既に
+    自前で`commit()`する既存コード生成とそのまま一致するため、
+    `Body`を単純に展開するだけで正しく動くことを`exec()`経由で実際の
+    `sqlite3`データベースへ確認する。"""
+    wf = _wrap(
+        [
+            DatabaseTransactionNode(
+                database_connection=VbExpr(text="conn"),
+                use_transaction="False",
+                body=[
+                    ExecuteNonQueryNode(
+                        sql=Literal(value="INSERT INTO t VALUES (1)"),
+                        existing_db_connection=VbExpr(text="conn"),
+                        affected_records=VbExpr(text="rows"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(conn):")
+    code2 += "\n    return rows"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE t (x INTEGER)")
+    assert namespace["Test"](conn) == 1
+    assert conn.execute("SELECT * FROM t").fetchall() == [(1,)]
+
+
+def test_database_transaction_with_use_transaction_true_is_todo():
+    """知見231: `UseTransaction=True`(既定値)は、`Body`配下の子活動が
+    既に個別に`commit()`してしまう既存実装とそのままでは両立せず、
+    見た目だけ機能するtry/exceptをでっち上げるより`# TODO`へ倒す
+    方針を確認する。"""
+    wf = _wrap(
+        [
+            DatabaseTransactionNode(
+                database_connection=VbExpr(text="conn"),
+                use_transaction="True",
+                body=[],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DatabaseTransaction with UseTransaction=True" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [DatabaseTransactionNode(database_connection=VbExpr(text="conn"), body=[])]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: DatabaseTransaction with UseTransaction=True" in code2
+    _compiles(code2)
+
+
+def test_database_transaction_self_connecting_mode_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            DatabaseTransactionNode(
+                database_connection=None,
+                connection_string=Literal(value="Host=localhost;"),
+                provider_name=Literal(value="MySql.Data.MySqlClient"),
+                use_transaction="True",
+                body=[],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DatabaseTransaction establishing its own connection" in code
+    _compiles(code)
+
+
+def test_database_transaction_with_no_database_connection_is_todo():
+    wf = _wrap(
+        [DatabaseTransactionNode(database_connection=None, use_transaction="False", body=[])]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DatabaseTransaction with no DatabaseConnection captured" in code
     _compiles(code)
 
 

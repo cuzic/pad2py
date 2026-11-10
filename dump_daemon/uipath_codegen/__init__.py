@@ -95,6 +95,7 @@ from ..uipath_dsl.types import (
     ExecuteNonQueryNode,
     InsertDataTableNode,
     BulkInsertNode,
+    DatabaseTransactionNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -834,6 +835,10 @@ def _generate_node(
         return _generate_insert_data_table(node, indent)
     if isinstance(node, BulkInsertNode):
         return _generate_bulk_insert(node, indent)
+    if isinstance(node, DatabaseTransactionNode):
+        return _generate_database_transaction(
+            node, indent, invoke_resolver, out_arg_resolver
+        )
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5252,6 +5257,88 @@ def _generate_bulk_insert(node: BulkInsertNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _insert_data_table_family_body(node, indent, "BulkInsert")
     return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_database_transaction(
+    node: DatabaseTransactionNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_database_transaction_body(
+        node, indent, invoke_resolver, out_arg_resolver
+    )
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_database_transaction_body(
+    node: DatabaseTransactionNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見231: `UseTransaction=False`(「各操作が個別にコミットされる」、
+    公式ドキュメント確認済み)は、`Body`配下の子活動(`ExecuteNonQuery`/
+    `InsertDataTable`等)が既に各自`commit()`する既存コード生成
+    (知見114・230)と完全に一致するため、`Body`をそのまま展開する
+    だけで正しく動作する。一方`UseTransaction=True`(既定値、「全操作を
+    1つのトランザクションにまとめ失敗時は全体をロールバック」)は、
+    子活動が個別に`commit()`してしまう既存実装とそのままでは両立
+    しない(先行する文が確定済みのままロールバックしても取り消せ
+    ない)——子の`commit()`を抑制する文脈伝播機構が無いと正しい
+    all-or-nothing保証を再現できないため、見た目だけ機能するが
+    実際には保証しないtry/exceptをでっち上げるより`# TODO`へ倒す
+    (`ModifyText`知見224と同じ「部分的に正しいより全体を拒否」)。
+    `ConnectionString`/`ProviderName`での自己接続モード(`DatabaseConnect`
+    知見114と同じ、MySQL等の未確認プロバイダで実機確認)も同様に
+    未対応——`DatabaseConnect`自体が`System.Data.SQLite`以外を
+    未確認として`# TODO`へ倒す既存方針と揃える。"""
+    prefix = INDENT * indent
+    if (
+        node.connection_string is not None
+        or node.provider_name is not None
+        or node.secure_connection_string is not None
+    ):
+        return [
+            f"{prefix}# TODO: DatabaseTransaction establishing its own "
+            "connection (ConnectionString/ProviderName set) is not "
+            "confirmed for any provider yet (only System.Data.SQLite is "
+            "confirmed for DatabaseConnect) — pass an existing "
+            "DatabaseConnection instead, refusing to guess"
+        ]
+    if node.database_connection is None:
+        return [
+            f"{prefix}# TODO: DatabaseTransaction with no DatabaseConnection "
+            "captured"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: DatabaseTransaction with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "refusing to guess"
+        ]
+    if node.use_transaction not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: DatabaseTransaction with unrecognized "
+            f"UseTransaction ({node.use_transaction!r}) — refusing to guess"
+        ]
+    use_transaction = node.use_transaction if node.use_transaction is not None else "True"
+    if use_transaction == "True":
+        return [
+            f"{prefix}# TODO: DatabaseTransaction with UseTransaction=True "
+            "— child activities inside Body already commit individually "
+            "(ExecuteNonQuery/InsertDataTable's own codegen), so a faithful "
+            "all-or-nothing rollback cannot be reproduced without a "
+            "context-propagation mechanism to suppress their commits; "
+            "refusing to generate misleading try/except that looks "
+            "transactional but isn't"
+        ]
+    todo: list[str] = []
+    _render_value_or_todo(node.database_connection, prefix, todo)
+    if todo:
+        return todo
+    return _ensure_nonempty_suite(
+        _generate_body(node.body, indent, invoke_resolver, out_arg_resolver), indent
+    )
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

@@ -3142,3 +3142,27 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      通過、リポジトリ全体で全2135件通過。同じ発見パスで見つけた
      `ui:DatabaseTransaction`(28件ヒット、`RetryScope`と構造的に
      同じスコープ活動)を次の候補として記録。
+
+189. **(完了、2026-11-10)** `ui:DatabaseTransaction`を新規実装
+     (知見231、公式表示名「Start Transaction」)——タグ名限定検索で
+     28件ヒット。`.Body`配下は`AttachWindow`(知見153)・`CommentOut`
+     (知見225)と同じ直接`Sequence`。公式ドキュメント確認済みの
+     2点が実装判断を左右した: ①既存`DatabaseConnection`渡し/
+     `ConnectionString`+`ProviderName`自己接続の2モードがあり、
+     後者は`DatabaseConnect`(知見114)と同じ「`System.Data.SQLite`
+     以外未確認」方針により未対応。②`UseTransaction=False`
+     (「各操作が個別にコミット」)は`ExecuteNonQuery`/
+     `InsertDataTable`等の既存コード生成がすでに各自`commit()`する
+     実装と完全に一致するため`Body`をそのまま展開するだけで動く一方、
+     `UseTransaction=True`(既定値、「全操作を1つのトランザクション
+     にまとめ失敗時は全体をロールバック」)は子活動が個別に
+     `commit()`してしまう既存実装とは両立せず、子の`commit()`を
+     抑制する文脈伝播機構が無いと正しいall-or-nothing保証を再現
+     できないため、見た目だけ機能するtry/exceptをでっち上げるより
+     `# TODO`へ倒した(`ModifyText`知見224と同じ「部分的に正しい
+     より全体を拒否」)。`UseTransaction=False`の場合を実際の
+     `sqlite3`データベースへ`exec()`経由で確認した。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     4件)、UiPath関連テスト全1045件通過、リポジトリ全体で全2141件
+     通過。知見230の発見パスの候補は全て着手済み——次のtickで新規
+     発見パスが必要。
