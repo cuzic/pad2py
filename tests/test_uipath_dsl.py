@@ -35,6 +35,9 @@ from dump_daemon.uipath_dsl import (
     CopyFolderXNode,
     MoveFolderXNode,
     StartProcessNode,
+    GetSecureCredentialNode,
+    AddCredentialNode,
+    RequestCredentialNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1631,6 +1634,71 @@ def test_get_password_with_no_result_captured():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, GetPasswordNode)
     assert node.result is None
+
+
+def test_get_secure_credential_properties():
+    """知見248: `ui:GetSecureCredential`(タグ名限定GitHub検索で174件
+    ヒット)。公式`UiPath/Community.Activities`リポジトリのREFramework
+    テンプレート(`Templates/ReFrameWork/Framework/
+    GetAppCredentials.xaml`)で確認した実例——`GetPasswordNode`
+    (知見176、XAML自体に埋め込まれたDPAPI暗号化バイナリで永久に
+    `# TODO`)とは違い、`Target`は単なる実行時のWindows資格情報
+    マネージャー検索キー。"""
+    xml = (
+        f"<ui:GetSecureCredential {_UI_XMLNS} "
+        'CredentialType="Generic" DisplayName="Get secure credential" '
+        'Password="[out_Password]" PersistanceType="Enterprise" '
+        'Result="[credentialFound]" Target="[in_Credential]" '
+        'Username="[out_Username]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetSecureCredentialNode)
+    assert node.target == VbExpr(text="in_Credential")
+    assert node.credential_type == "Generic"
+    assert node.persistance_type == "Enterprise"
+    assert node.result == VbExpr(text="credentialFound")
+    assert node.username == VbExpr(text="out_Username")
+    assert node.password == VbExpr(text="out_Password")
+
+
+def test_add_credential_properties():
+    """知見248: `ui:AddCredential`(タグ名限定GitHub検索で125件ヒット)。
+    同じ公式REFrameworkテンプレートで確認した実例——`Result`属性自体
+    は実機サンプルに現れない。"""
+    xml = (
+        f"<ui:AddCredential {_UI_XMLNS} "
+        'CredentialType="Generic" DisplayName="Add Credential" '
+        'Password="[stringPassword]" PersistanceType="Enterprise" '
+        'Target="[in_Credential]" Username="[out_Username]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AddCredentialNode)
+    assert node.target == VbExpr(text="in_Credential")
+    assert node.username == VbExpr(text="out_Username")
+    assert node.password == VbExpr(text="stringPassword")
+    assert node.secure_password is None
+    assert node.result is None
+
+
+def test_request_credential_properties():
+    """知見248: `ui:RequestCredential`(タグ名限定GitHub検索で123件
+    ヒット)。同じ公式REFrameworkテンプレートで確認した実例——
+    `GetSecureCredential`で見つからなかった場合のフォールバック
+    プロンプト。"""
+    xml = (
+        f"<ui:RequestCredential {_UI_XMLNS} "
+        'DisplayName="Request Credential" '
+        'Message="[&quot;Please provide credentials&quot;]" '
+        'Password="[stringPassword]" Result="[credentialFound]" '
+        'Title="Hello! This is Robot" Username="[out_Username]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RequestCredentialNode)
+    assert node.title == Literal(value="Hello! This is Robot")
+    assert node.message == VbExpr(text='"Please provide credentials"')
+    assert node.result == VbExpr(text="credentialFound")
+    assert node.username == VbExpr(text="out_Username")
+    assert node.password == VbExpr(text="stringPassword")
 
 
 def test_lookup_data_table_properties():

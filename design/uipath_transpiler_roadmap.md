@@ -3493,3 +3493,30 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `exec()`経由で実際に呼ばれる引数を確認した。回帰テスト追加
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      7件)、リポジトリ全体で全2239件通過。
+
+206. **(完了、2026-11-10)** `ui:GetSecureCredential`・
+     `ui:AddCredential`・`ui:RequestCredential`を新規実装(知見248)
+     ——タグ名限定検索で174/125/123件ヒット、9回目発見パス。実機は
+     公式`UiPath/Community.Activities`のREFrameworkテンプレート
+     (`Templates/ReFrameWork/Framework/GetAppCredentials.xaml`)で
+     確認——`GetSecureCredential`→`RequestCredential`→
+     `AddCredential`のフォールバックフローが一緒に使われている。
+     既存の`GetPasswordNode`(知見176、XAML埋め込みDPAPIバイナリで
+     永久に`# TODO`)とは全く異なる構造——`Target`は実行時のWindows
+     資格情報マネージャー検索キーで、`pywin32`(既存の確認済み依存)
+     の`win32cred.CredRead()`/`CredWrite()`に対応する。独立検証で
+     `win32cred.CredRead()`が見つからない場合`None`を返すという
+     一部のサードパーティ情報源の誤った記述を発見・訂正し、本物の
+     `pywin32`は`pywintypes.error`(`winerror=1168`)を投げることを
+     確認した上で例外を捕捉するヘルパーを実装——鵜呑みにしていたら
+     未処理の例外でクラッシュする生成コードになっていた潜在バグ。
+     `CredentialBlob`のUTF-16(`utf-16-le`)エンコード/デコードも
+     確認した。`RequestCredential`は`InputDialogNode`(知見131)の
+     `input()`直接対応判断を継承、`Result`(Cancel判定)はブロッキング
+     入力に対応概念が無いため束縛時は常に`True`(近似)。このサンド
+     ボックスには実際の`pywin32`が無いため`sys.modules`へフェイク
+     `win32cred`/`pywintypes`を注入して`exec()`経由で
+     `AddCredential`→`GetSecureCredential`の往復・見つからない場合の
+     正しい`Result=False`を確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`3件・`tests/test_uipath_codegen.py`8件)、
+     リポジトリ全体で全2250件通過。

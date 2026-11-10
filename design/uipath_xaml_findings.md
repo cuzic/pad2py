@@ -11739,6 +11739,72 @@ ground-truthコーパスには`StartProcess.xaml`自体が存在せず(25.10
 追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
 7件)、リポジトリ全体で全2239件通過(28件skip)。
 
+## 248. `ui:GetSecureCredential`・`ui:AddCredential`・`ui:RequestCredential`を新規実装——`GetPasswordNode`のXAML埋め込みDPAPIバイナリとは全く異なる「実行時のWindows資格情報マネージャー検索」構造だと確認し、`pywin32`の`win32cred`で対応した
+
+同じ9回目発見パスの候補(タグ名限定GitHub検索で174/125/123件
+ヒット)だった資格情報系3活動——`GetSecureCredential`・
+`AddCredential`・`RequestCredential`——に着手した。
+
+実機は公式`UiPath/Community.Activities`リポジトリ自身のREFramework
+テンプレート(`Templates/ReFrameWork/Framework/
+GetAppCredentials.xaml`)で確認(知見240のAddLogFields/
+RemoveLogFieldsと同じ信頼性クラス——Studio自体が生成する公式
+ボイラープレート)——3活動が`GetSecureCredential`(ローカル検索)
+→見つからなければ`RequestCredential`(GUIプロンプト)→
+`AddCredential`(次回用に保存)という一連のフォールバックフローで
+一緒に使われている実例を確認した。
+
+**既存の`GetPasswordNode`(知見176)とは構造が全く異なる**と確認した
+点が重要: `GetPassword`の`ProtectedPassword`はXAML自体に埋め込まれた
+Windows DPAPI暗号化バイナリ(暗号化した特定のWindowsユーザー・
+マシンでなければ復号不能、永久に`# TODO`)だが、`GetSecureCredential`
+の`Target`は単なる**実行時の**Windows資格情報マネージャーへの検索
+キー名——秘密自体はXAMLに一切含まれず、実行時に`win32cred.
+CredRead()`で解決する。`pywin32`は本プロジェクト既存の確認済み
+依存(`GetOutlookMailMessages`等のOutlook COM連携で既に使用中)の
+ため、新規依存の判断は不要だった。
+
+公式ドキュメント(WebFetch経由確認)で属性構成
+(`GetSecureCredential`: `Target`+`CredentialType`+`PersistanceType`+
+`Result`(bool)+`Username`(出力)+`Password`(出力、`SecureString`)。
+`AddCredential`: 同じ+`SecurePassword`という別入力も存在するが実機
+未確認のため見送り。`RequestCredential`: `Title`+`Message`+`Result`+
+`Username`+`Password`)を確認。`CredentialType`/`PersistanceType`は
+実機で確認できた値(`"Generic"`/`"Enterprise"`)のみ対応する。
+
+**独立検証で発見した重要な技術的事実**: `win32cred.CredRead()`は
+見つからない場合に`None`を返すという一部のサードパーティ`ctypes`
+再実装ドキュメントの記述を最初に見つけたが、これを鵜呑みにせず
+`python-keyring`のWindowsバックエンド実装を追加調査した結果、
+**本物の`pywin32`パッケージは実際には`pywintypes.error`
+(`winerror=1168`、`ERROR_NOT_FOUND`)を投げる**ことを確認した——
+もし最初の(誤った)情報源だけを信じて実装していたら、見つから
+ない場合に未処理の例外でクラッシュする生成コードになっていた
+(本物のWindows環境で実際に動かすまで発覚しない潜在バグ)。この
+教訓により例外を捕捉して`Result=False`へ変換する注入ヘルパー
+`_win32_cred_read()`を実装した。`CredentialBlob`はUTF-16(BOM無し、
+`utf-16-le`)エンコード済みの生バイトとして返る/書き込む必要がある
+ことも同じ調査で確認した(`AddCredential`の`.encode("utf-16-le")`と
+対になる`GetSecureCredential`の`.decode("utf-16-le")`)。
+
+`RequestCredential`は`InputDialogNode`(知見131)の「`input()`はGUI
+ダイアログへの直接対応」判断を継承(`Username`→`input()`、
+`Password`→`getpass.getpass()`)。`Result`(Cancel判定)はブロッキング
+`input()`に対応概念が無いという構造的なギャップのため、束縛されて
+いれば常に`True`を代入する近似とした(`Parallel`の順次実行化と同じ
+判断クラス)。
+
+このサンドボックスには実際の`pywin32`が存在しない(Windows専用)
+ため、`sys.modules`へ最小限のフェイク`win32cred`/`pywintypes`モジュール
+を注入して`exec()`経由で実際の制御フロー(`AddCredential`→
+`GetSecureCredential`の往復——`CredentialBlob`のUTF-16エンコード/
+デコードが対になっていることを含む、および見つからない場合に
+`Result=False`へ正しく倒れクラッシュしないこと)を検証した。
+`RequestCredential`は`input`/`getpass.getpass`自体をモックして確認
+した。回帰テスト追加(`tests/test_uipath_dsl.py`3件・`tests/
+test_uipath_codegen.py`8件)、リポジトリ全体で全2250件通過
+(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

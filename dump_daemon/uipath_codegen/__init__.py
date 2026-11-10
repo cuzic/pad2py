@@ -81,6 +81,9 @@ from ..uipath_dsl.types import (
     CopyFolderXNode,
     MoveFolderXNode,
     StartProcessNode,
+    GetSecureCredentialNode,
+    AddCredentialNode,
+    RequestCredentialNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -511,6 +514,18 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 変換先、知見98)も同様。
     if any("win32com.client.Dispatch(" in line for line in body):
         imports.append("import win32com.client")
+    # `win32cred`/`pywintypes`(`GetSecureCredential`→`win32cred.
+    # CredRead(...)`・`AddCredential`→`win32cred.CredWrite(...)`変換先、
+    # 知見248)も同様——`pywintypes.error`は`_win32_cred_read`ヘルパー
+    # 自身が参照するため、ヘルパー注入時に一緒に`import`する。
+    if any(
+        "win32cred.CredRead(" in line or "win32cred.CredWrite(" in line
+        or f"{_WIN32_CRED_READ_HELPER_NAME}(" in line
+        for line in body
+    ):
+        imports.append("import win32cred")
+    if any(f"{_WIN32_CRED_READ_HELPER_NAME}(" in line for line in body):
+        imports.append("import pywintypes")
     # `time`(`Click`の`DelayBefore`→`time.sleep(...)`変換先、知見106)も同様。
     if any("time.sleep(" in line for line in body):
         imports.append("import time")
@@ -568,7 +583,7 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `UserName`特殊プロパティ変換先、知見215)も同様。
     if any("platform.node(" in line for line in body):
         imports.append("import platform")
-    if any("getpass.getuser(" in line for line in body):
+    if any("getpass.getuser(" in line or "getpass.getpass(" in line for line in body):
         imports.append("import getpass")
     # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
     # 知見130)も同様。
@@ -654,6 +669,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見240)も同様。
     if any(f"{_LOG_FIELDS_SUFFIX_HELPER_NAME}(" in line for line in body):
         imports.append(_LOG_FIELDS_SUFFIX_HELPER_SOURCE.rstrip("\n"))
+    # `_win32_cred_read`(`GetSecureCredential`→`win32cred.CredRead(...)`の
+    # 「見つからない」例外を`None`へ変換する先、知見248)も同様。
+    if any(f"{_WIN32_CRED_READ_HELPER_NAME}(" in line for line in body):
+        imports.append(_WIN32_CRED_READ_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -883,6 +902,12 @@ def _generate_node(
         return _generate_get_attribute(node, indent)
     if isinstance(node, GetPasswordNode):
         return _generate_get_password(node, indent)
+    if isinstance(node, GetSecureCredentialNode):
+        return _generate_get_secure_credential(node, indent)
+    if isinstance(node, AddCredentialNode):
+        return _generate_add_credential(node, indent)
+    if isinstance(node, RequestCredentialNode):
+        return _generate_request_credential(node, indent)
     if isinstance(node, LoadImageNode):
         return _generate_load_image(node, indent)
     if isinstance(node, LookupDataTableNode):
@@ -2980,6 +3005,204 @@ def _generate_get_password_body(node: GetPasswordNode, indent: int) -> list[str]
         "DPAPI-encrypted blob tied to the original Windows user/machine "
         "(CryptProtectData), cannot be decrypted portably, refusing to guess"
     ]
+
+
+# 知見248: `win32cred.CredRead()`は見つからない場合に`None`を返すのでは
+# なく`pywintypes.error`(`winerror=1168`、`ERROR_NOT_FOUND`)を投げる
+# ことをWebSearch経由で独立に確認済み(`GetSecureCredentialNode`の
+# docstring参照)——この例外を`None`へ変換するヘルパーを注入する。
+_WIN32_CRED_READ_HELPER_NAME = "_win32_cred_read"
+_WIN32_CRED_READ_HELPER_SOURCE = '''\
+def _win32_cred_read(target_name, cred_type):
+    try:
+        return win32cred.CredRead(Type=cred_type, TargetName=target_name)
+    except pywintypes.error as e:
+        if e.winerror == 1168:
+            return None
+        raise
+'''
+
+_CREDENTIAL_TYPE_CONSTANTS = {"Generic": "win32cred.CRED_TYPE_GENERIC"}
+_PERSISTANCE_TYPE_CONSTANTS = {"Enterprise": "win32cred.CRED_PERSIST_ENTERPRISE"}
+
+
+def _generate_get_secure_credential(node: GetSecureCredentialNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_secure_credential_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_secure_credential_body(
+    node: GetSecureCredentialNode, indent: int
+) -> list[str]:
+    """知見248: `ui:GetSecureCredential`——`win32cred.CredRead()`に
+    対応する(`pywin32`、本プロジェクト既存の確認済み依存)。
+    `CredentialBlob`はUTF-16(`utf-16-le`)エンコード済みの生バイト
+    として返るため`.decode("utf-16-le")`する。"""
+    prefix = INDENT * indent
+    if node.target is None:
+        return [f"{prefix}# TODO: GetSecureCredential with no Target captured"]
+    if node.credential_type not in (None, "Generic"):
+        return [
+            f"{prefix}# TODO: GetSecureCredential with CredentialType "
+            f"{node.credential_type!r} — only the confirmed \"Generic\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.persistance_type not in (None, "Enterprise"):
+        return [
+            f"{prefix}# TODO: GetSecureCredential with PersistanceType "
+            f"{node.persistance_type!r} — only the confirmed \"Enterprise\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: GetSecureCredential with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    try:
+        target = render_expr(node.target)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    targets: dict[str, str] = {}
+    for label, expr in (("result", node.result), ("username", node.username), ("password", node.password)):
+        if expr is None:
+            continue
+        try:
+            targets[label] = render_expr(expr)
+        except NotImplementedError as e:
+            return _todo_value(prefix, str(e))
+    lines = [
+        f"{prefix}_cred = {_WIN32_CRED_READ_HELPER_NAME}({VB_CSTR_HELPER_NAME}({target}), "
+        f"{_CREDENTIAL_TYPE_CONSTANTS['Generic']})",
+        f"{prefix}if _cred is not None:",
+    ]
+    inner = INDENT * (indent + 1)
+    if "result" in targets:
+        lines.append(f"{inner}{targets['result']} = True")
+    if "username" in targets:
+        lines.append(f"{inner}{targets['username']} = _cred['UserName']")
+    if "password" in targets:
+        lines.append(f"{inner}{targets['password']} = _cred['CredentialBlob'].decode('utf-16-le')")
+    if len(lines) == 2:
+        lines.append(f"{inner}pass")
+    if "result" in targets:
+        lines.append(f"{prefix}else:")
+        lines.append(f"{inner}{targets['result']} = False")
+    return lines
+
+
+def _generate_add_credential(node: AddCredentialNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_add_credential_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_add_credential_body(node: AddCredentialNode, indent: int) -> list[str]:
+    """知見248: `ui:AddCredential`——`win32cred.CredWrite()`に対応する。
+    `CredentialBlob`は`GetSecureCredential`と対になる`.encode(
+    "utf-16-le")`でエンコードする。"""
+    prefix = INDENT * indent
+    if node.target is None or node.username is None or node.password is None:
+        return [
+            f"{prefix}# TODO: AddCredential with missing Target/Username/"
+            "Password"
+        ]
+    if node.secure_password is not None:
+        return [
+            f"{prefix}# TODO: AddCredential with SecurePassword set "
+            f"({_describe_expr_for_comment(node.secure_password)}) — only "
+            "the confirmed plain Password input is implemented, refusing "
+            "to guess"
+        ]
+    if node.result is not None:
+        return [
+            f"{prefix}# TODO: AddCredential with Result output bound "
+            f"({_describe_expr_for_comment(node.result)}) — write-failure "
+            "semantics not confirmed in the wild, refusing to guess"
+        ]
+    if node.credential_type not in (None, "Generic"):
+        return [
+            f"{prefix}# TODO: AddCredential with CredentialType "
+            f"{node.credential_type!r} — only the confirmed \"Generic\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.persistance_type not in (None, "Enterprise"):
+        return [
+            f"{prefix}# TODO: AddCredential with PersistanceType "
+            f"{node.persistance_type!r} — only the confirmed \"Enterprise\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: AddCredential with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.target, prefix, todo)
+    username = _render_value_or_todo(node.username, prefix, todo)
+    password = _render_value_or_todo(node.password, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}win32cred.CredWrite({{",
+        f"{INDENT * (indent + 1)}'Type': {_CREDENTIAL_TYPE_CONSTANTS['Generic']},",
+        f"{INDENT * (indent + 1)}'TargetName': {VB_CSTR_HELPER_NAME}({target}),",
+        f"{INDENT * (indent + 1)}'UserName': {VB_CSTR_HELPER_NAME}({username}),",
+        f"{INDENT * (indent + 1)}'CredentialBlob': {VB_CSTR_HELPER_NAME}({password}).encode('utf-16-le'),",
+        f"{INDENT * (indent + 1)}'Persist': {_PERSISTANCE_TYPE_CONSTANTS['Enterprise']},",
+        f"{prefix}}}, 0)",
+    ]
+
+
+def _generate_request_credential(node: RequestCredentialNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_request_credential_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_request_credential_body(node: RequestCredentialNode, indent: int) -> list[str]:
+    """知見248: `ui:RequestCredential`——`InputDialogNode`(知見131)の
+    「`input()`はダイアログへの直接対応」判断を継承する
+    (`Username`→`input()`、`Password`→`getpass.getpass()`)。`Result`
+    (Cancel判定)はブロッキング`input()`に対応概念が無いため、束縛
+    されていれば常に`True`を代入する(近似、ノードdocstring参照)。"""
+    prefix = INDENT * indent
+    if node.username is None or node.password is None:
+        return [
+            f"{prefix}# TODO: RequestCredential with missing Username/"
+            "Password output binding"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: RequestCredential with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    try:
+        username_target = render_expr(node.username)
+        password_target = render_expr(node.password)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    result_target: str | None = None
+    if node.result is not None:
+        try:
+            result_target = render_expr(node.result)
+        except NotImplementedError as e:
+            return _todo_value(prefix, str(e))
+    todo: list[str] = []
+    lines: list[str] = []
+    if node.message is not None:
+        message = _render_value_or_todo(node.message, prefix, todo)
+        lines.append(f"{prefix}print({VB_CSTR_HELPER_NAME}({message}))")
+    if todo:
+        return todo
+    lines.append(f"{prefix}{username_target} = input('Username: ')")
+    lines.append(f"{prefix}{password_target} = getpass.getpass('Password: ')")
+    if result_target is not None:
+        lines.append(f"{prefix}{result_target} = True")
+    return lines
 
 
 # 知見178: `ui:LoadImage`(GitHub code searchで58件ヒット、OCR系活動の

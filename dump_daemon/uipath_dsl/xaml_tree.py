@@ -39,6 +39,9 @@ from .types import (
     CopyFolderXNode,
     MoveFolderXNode,
     StartProcessNode,
+    GetSecureCredentialNode,
+    AddCredentialNode,
+    RequestCredentialNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -467,6 +470,46 @@ def _parse_input_dialog(elem: etree._Element) -> InputDialogNode:
         is_password=_attr(elem, "IsPassword"),
         options=_attr_expr(elem, "Options"),
         result=_in_argument_property_expr(elem, "Result"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_get_secure_credential(elem: etree._Element) -> GetSecureCredentialNode:
+    return GetSecureCredentialNode(
+        target=_attr_expr(elem, "Target") or _in_argument_property_expr(elem, "Target"),
+        credential_type=_attr_or_none(elem, "CredentialType"),
+        persistance_type=_attr_or_none(elem, "PersistanceType"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        username=_attr_expr(elem, "Username") or _in_argument_property_expr(elem, "Username"),
+        password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_add_credential(elem: etree._Element) -> AddCredentialNode:
+    return AddCredentialNode(
+        target=_attr_expr(elem, "Target") or _in_argument_property_expr(elem, "Target"),
+        credential_type=_attr_or_none(elem, "CredentialType"),
+        persistance_type=_attr_or_none(elem, "PersistanceType"),
+        username=_attr_expr(elem, "Username") or _in_argument_property_expr(elem, "Username"),
+        password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
+        secure_password=_attr_expr(elem, "SecurePassword")
+        or _in_argument_property_expr(elem, "SecurePassword"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_request_credential(elem: etree._Element) -> RequestCredentialNode:
+    return RequestCredentialNode(
+        title=_attr_expr(elem, "Title") or _in_argument_property_expr(elem, "Title"),
+        message=_attr_expr(elem, "Message") or _in_argument_property_expr(elem, "Message"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        username=_attr_expr(elem, "Username") or _in_argument_property_expr(elem, "Username"),
+        password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -3005,6 +3048,9 @@ _DISPATCH = {
     (UI_NS, "GenerateDataTable"): _parse_generate_data_table,
     (UI_NS, "GetAttribute"): _parse_get_attribute,
     (UI_NS, "GetPassword"): _parse_get_password,
+    (UI_NS, "GetSecureCredential"): _parse_get_secure_credential,
+    (UI_NS, "AddCredential"): _parse_add_credential,
+    (UI_NS, "RequestCredential"): _parse_request_credential,
     (UI_NS, "SelectFile"): _parse_select_file,
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,

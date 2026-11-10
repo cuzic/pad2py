@@ -899,6 +899,116 @@ class GetPasswordNode:
 
 
 @dataclass
+class GetSecureCredentialNode:
+    """`<ui:GetSecureCredential Target="..." CredentialType="Generic"
+    PersistanceType="Enterprise" Result="..." Username="..."
+    Password="..." />`(知見248、9回目発見パスで発見、タグ名限定
+    GitHub検索で174件ヒット)。`GetPasswordNode`(知見176)とは構造・
+    解決可能性が全く異なる——`GetPassword`の`ProtectedPassword`は
+    XAML自体に埋め込まれたWindows DPAPI暗号化バイナリ(別マシンでは
+    復号不能、永久に`# TODO`)だが、`GetSecureCredential`の`Target`は
+    単なるWindows資格情報マネージャーへの**実行時の検索キー名**——
+    秘密自体はXAMLには一切含まれず、実行時に
+    (`pywin32`——本プロジェクト既存の確認済み依存、`GetOutlookMail
+    Messages`等のOutlook COM連携で既に使用中、新規依存の判断は不要)
+    `win32cred.CredRead()`で解決する。
+
+    公式の`UiPath/Community.Activities`リポジトリ自身のREFramework
+    テンプレート(`Templates/ReFrameWork/Framework/
+    GetAppCredentials.xaml`)で実際の使用(`CredentialType="Generic"`
+    +`PersistanceType="Enterprise"`+`Result`(bool、取得成功)+
+    `Username`(出力)+`Password`(出力、`ss:SecureString`型だが本
+    トランスパイラは変数の型を区別しないため関係無い))を確認した
+    ——Studio自体が生成する公式ボイラープレートという最も権威的な
+    実機ソース(知見240のAddLogFields/RemoveLogFieldsと同じ信頼性
+    クラス)。公式ドキュメント(WebFetch経由確認)でも同じ属性構成
+    (`CredentialType`/`PersistanceType`は列挙だが確認済みの値は
+    `"Generic"`/`"Enterprise"`のみ)を確認。
+
+    `win32cred.CredRead()`は見つからない場合に`None`を返すのではなく
+    `pywintypes.error`(`winerror=1168`、`ERROR_NOT_FOUND`)を**投げる**
+    ことをWebSearch経由で独立に確認済み(一部のサードパーティ`ctypes`
+    再実装ドキュメントは誤って`None`を返すと説明しているが、本物の
+    `pywin32`パッケージの実際の挙動はこちらで確認した例外経由)——
+    この例外を捕捉して`Result=False`へ変換する。`CredentialBlob`は
+    UTF-16(BOM無し、`utf-16-le`)でエンコードされた生バイトとして
+    返る(`python-keyring`のWindowsバックエンド実装で確認済みの既知の
+    規約)ため`.decode("utf-16-le")`が必要。"""
+
+    target: Expr = None
+    credential_type: str | None = None
+    persistance_type: str | None = None
+    result: Expr = None
+    username: Expr = None
+    password: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class AddCredentialNode:
+    """`<ui:AddCredential Target="..." CredentialType="Generic"
+    PersistanceType="Enterprise" Username="..." Password="..."
+    SecurePassword="..." Result="..." />`(知見248、`GetSecureCredential`
+    の対になる書き込み活動、タグ名限定GitHub検索で125件ヒット)。公式
+    `UiPath/Community.Activities`のREFrameworkテンプレート
+    (`Templates/ReFrameWork/Framework/GetAppCredentials.xaml`)で実際の
+    使用(`CredentialType="Generic"`+`PersistanceType="Enterprise"`+
+    `Username`(入力)+`Password`(入力、この実機サンプルでは生の
+    `x:String`変数——`SecurePassword`は公式ドキュメント確認済みの別の
+    入力プロパティとして存在するが実機未確認のため見送る)、`Result`
+    属性自体は実機サンプルに現れない)を確認した。
+
+    `win32cred.CredWrite()`に対応する——`CredentialBlob`は`.encode(
+    "utf-16-le")`で`GetSecureCredential`と対になるエンコーディングに
+    する。実機未確認の`Result`が設定されている場合(書き込み失敗時の
+    意味論が未確認)は見送る。"""
+
+    target: Expr = None
+    credential_type: str | None = None
+    persistance_type: str | None = None
+    username: Expr = None
+    password: Expr = None
+    secure_password: Expr = None
+    result: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class RequestCredentialNode:
+    """`<ui:RequestCredential Title="..." Message="..." Result="..."
+    Username="..." Password="..." />`(知見248、`GetSecureCredential`が
+    見つからなかった場合のフォールバックとして同じREFramework
+    テンプレートで使われるGUIプロンプト活動、タグ名限定GitHub検索で
+    123件ヒット)。公式ドキュメント確認済み: ユーザーに資格情報の入力
+    を求めるダイアログを表示し、`Username`/`Password`(出力)+
+    `Result`(bool、ユーザーが入力したか`Cancel`をクリックしたか)を
+    返す。
+
+    `InputDialogNode`(知見131)の「`input()`はダイアログへの代替・
+    妥協ではなく直接対応する変換」という判断をそのまま継承する——
+    `Username`→`input()`、`Password`→`getpass.getpass()`。ただし
+    `Result`(Cancel判定)はPythonの素の`input()`/`getpass.getpass()`
+    には対応概念が無い(ブロッキング呼び出しに「キャンセル」という
+    概念自体が存在しない)——これは省略できない構造的なギャップ
+    のため、`Result`が束縛されている場合は常に`True`を代入する
+    (実機`UiPath/Community.Activities`のREFrameworkテンプレートでは
+    `Result`を後続の`If (Not credentialFound)`で検査する——コンソール
+    入力は常に何らかの値を返しキャンセル不能なため、`True`固定が
+    「ユーザーが実際に入力した」という最も一般的な実行結果に対応する
+    近似だと判断した、`Parallel`の順次実行化と同じ種類の判断)。"""
+
+    title: Expr = None
+    message: Expr = None
+    result: Expr = None
+    username: Expr = None
+    password: Expr = None
+    continue_on_error: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class LoadImageNode:
     """`<ui:LoadImage FileName="..." Image="..." />`(知見178、GitHub
     code searchで58件ヒット)。`UiPath/skills`公式リポジトリの
@@ -4216,6 +4326,9 @@ Node = (
     | CopyFolderXNode
     | MoveFolderXNode
     | StartProcessNode
+    | GetSecureCredentialNode
+    | AddCredentialNode
+    | RequestCredentialNode
     | ParallelNode
     | ClickNode
     | HoverNode

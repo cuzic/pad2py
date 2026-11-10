@@ -59,6 +59,9 @@ from dump_daemon.uipath_dsl import (
     CopyFolderXNode,
     MoveFolderXNode,
     StartProcessNode,
+    GetSecureCredentialNode,
+    AddCredentialNode,
+    RequestCredentialNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -2920,6 +2923,237 @@ def test_get_password_with_no_result_is_todo():
     wf = _wrap([GetPasswordNode(result=None)])
     code = generate_python(wf)
     assert "# TODO: GetPassword with no output Result captured" in code
+    _compiles(code)
+
+
+class _FakeWin32CredError(Exception):
+    """知見248: 実機`pywin32`の`pywintypes.error`はタプル風の属性
+    (`winerror`/`funcname`/`strerror`)を持つ——このサンドボックスには
+    実際の`pywin32`が存在しない(Windows専用)ため、`sys.modules`へ
+    最小限のフェイク`win32cred`/`pywintypes`モジュールを注入して
+    `exec()`経由で実際の制御フロー(見つかった/見つからなかった両方)
+    を検証する。"""
+
+    def __init__(self, winerror, funcname="CredRead", strerror=""):
+        super().__init__(strerror)
+        self.winerror = winerror
+        self.funcname = funcname
+        self.strerror = strerror
+
+
+def _install_fake_win32cred():
+    import sys
+    import types
+
+    store: dict[tuple, dict] = {}
+    fake_win32cred = types.ModuleType("win32cred")
+    fake_win32cred.CRED_TYPE_GENERIC = 1
+    fake_win32cred.CRED_PERSIST_ENTERPRISE = 3
+    fake_pywintypes = types.ModuleType("pywintypes")
+    fake_pywintypes.error = _FakeWin32CredError
+
+    def fake_cred_read(Type, TargetName):
+        key = (Type, TargetName)
+        if key not in store:
+            raise _FakeWin32CredError(1168, "CredRead", "Element not found.")
+        return store[key]
+
+    def fake_cred_write(credential, flags):
+        key = (credential["Type"], credential["TargetName"])
+        store[key] = {
+            "UserName": credential["UserName"],
+            "CredentialBlob": credential["CredentialBlob"],
+        }
+
+    fake_win32cred.CredRead = fake_cred_read
+    fake_win32cred.CredWrite = fake_cred_write
+    sys.modules["win32cred"] = fake_win32cred
+    sys.modules["pywintypes"] = fake_pywintypes
+    return store
+
+
+def test_add_credential_then_get_secure_credential_round_trip_exec():
+    """知見248: `ui:AddCredential`(`win32cred.CredWrite()`)で書き込んだ
+    資格情報を、`ui:GetSecureCredential`(`win32cred.CredRead()`)が
+    正しく読み戻せることを`exec()`経由で確認する——`CredentialBlob`の
+    `utf-16-le`エンコード/デコードが対になっていることも確認する。"""
+    _install_fake_win32cred()
+    wf_add = _wrap(
+        [
+            AddCredentialNode(
+                target=Literal(value="MyApp:bob"),
+                username=Literal(value="bob"),
+                password=Literal(value="s3cr3t"),
+                credential_type="Generic",
+                persistance_type="Enterprise",
+            )
+        ]
+    )
+    code_add = generate_python(wf_add)
+    assert "win32cred.CredWrite(" in code_add
+    assert "import win32cred" in code_add
+    assert "# TODO" not in code_add
+    _compiles(code_add)
+    ns_add: dict[str, object] = {}
+    exec(code_add, ns_add)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns_add["Test"]()
+
+    wf_get = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                GetSecureCredentialNode(
+                    target=Literal(value="MyApp:bob"),
+                    credential_type="Generic",
+                    persistance_type="Enterprise",
+                    result=VbExpr(text="found"),
+                    username=VbExpr(text="u"),
+                    password=VbExpr(text="p"),
+                )
+            ]
+        ),
+        arguments={
+            "found": "OutArgument(x:Boolean)",
+            "u": "OutArgument(x:String)",
+            "p": "OutArgument(x:String)",
+        },
+    )
+    code_get = generate_python(wf_get)
+    assert "_win32_cred_read(" in code_get
+    assert "import win32cred" in code_get
+    assert "import pywintypes" in code_get
+    _compiles(code_get)
+    ns_get: dict[str, object] = {}
+    exec(code_get + "\n    return found, u, p", ns_get)  # noqa: S102 - 信頼できる自作コード
+    result = ns_get["Test"](found=None, u=None, p=None)
+    assert result == (True, "bob", "s3cr3t")
+
+
+def test_get_secure_credential_not_found_sets_result_false_exec():
+    """知見248: `win32cred.CredRead()`は見つからない場合に`None`を
+    返すのではなく`pywintypes.error`(`winerror=1168`)を投げる——
+    これを正しく`Result=False`へ変換することを`exec()`経由で確認する
+    (例外を潰さずクラッシュせずに処理できることの実証)。"""
+    _install_fake_win32cred()
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                GetSecureCredentialNode(
+                    target=Literal(value="MyApp:nonexistent"),
+                    credential_type="Generic",
+                    persistance_type="Enterprise",
+                    result=VbExpr(text="found"),
+                    username=VbExpr(text="u"),
+                    password=VbExpr(text="p"),
+                )
+            ]
+        ),
+        arguments={
+            "found": "OutArgument(x:Boolean)",
+            "u": "OutArgument(x:String)",
+            "p": "OutArgument(x:String)",
+        },
+    )
+    code = generate_python(wf)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return found, u, p", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = ns["Test"](found=None, u=None, p=None)
+    assert result == (False, None, None)
+
+
+def test_get_secure_credential_with_unconfirmed_credential_type_is_todo():
+    wf = _wrap(
+        [
+            GetSecureCredentialNode(
+                target=Literal(value="x"),
+                credential_type="DomainPassword",
+                result=VbExpr(text="found"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetSecureCredential with CredentialType" in code
+    _compiles(code)
+
+
+def test_get_secure_credential_with_no_target_is_todo():
+    wf = _wrap([GetSecureCredentialNode(target=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetSecureCredential with no Target captured" in code
+    _compiles(code)
+
+
+def test_add_credential_with_secure_password_is_todo():
+    """知見248: 公式ドキュメント確認済みの`SecurePassword`入力
+    (`Password`とは別の属性)は実機未確認のため見送る。"""
+    wf = _wrap(
+        [
+            AddCredentialNode(
+                target=Literal(value="x"),
+                username=Literal(value="u"),
+                password=None,
+                secure_password=VbExpr(text="securePw"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddCredential with missing Target/Username/Password" in code
+    _compiles(code)
+
+
+def test_add_credential_with_result_bound_is_todo():
+    wf = _wrap(
+        [
+            AddCredentialNode(
+                target=Literal(value="x"),
+                username=Literal(value="u"),
+                password=Literal(value="p"),
+                result=VbExpr(text="ok"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AddCredential with Result output bound" in code
+    _compiles(code)
+
+
+def test_request_credential_prompts_and_sets_result_true_exec():
+    """知見248: `ui:RequestCredential`——`InputDialogNode`(知見131)と
+    同じ`input()`直接対応、パスワードは`getpass.getpass()`。`Result`
+    はブロッキング`input()`に対応概念が無いため常に`True`を代入する
+    (ノードdocstring参照)——`input`/`getpass.getpass`自体をモックして
+    `exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            RequestCredentialNode(
+                title=Literal(value="Login"),
+                message=Literal(value="Enter creds"),
+                result=VbExpr(text="ok"),
+                username=VbExpr(text="user"),
+                password=VbExpr(text="pw"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "input(" in code
+    assert "getpass.getpass(" in code
+    assert "import getpass" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return ok, user, pw", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("builtins.input", return_value="alice"), unittest.mock.patch(
+        "getpass.getpass", return_value="secret"
+    ):
+        result = namespace["Test"]()
+    assert result == (True, "alice", "secret")
+
+
+def test_request_credential_with_missing_username_or_password_is_todo():
+    wf = _wrap([RequestCredentialNode(username=None, password=VbExpr(text="pw"))])
+    code = generate_python(wf)
+    assert "# TODO: RequestCredential with missing Username/Password output binding" in code
     _compiles(code)
 
 
