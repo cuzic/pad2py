@@ -53,6 +53,7 @@ from dump_daemon.uipath_dsl import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    CreateDirectoryNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -872,6 +873,24 @@ def test_check_true_and_check_false_properties():
     assert isinstance(false_node, CheckFalseNode)
     assert false_node.expression == VbExpr(text="String.IsNullOrWhiteSpace(credentialName)")
     assert false_node.error_message == Literal(value="A credential name must be supplied")
+
+
+def test_create_directory_properties():
+    """知見235: `ui:CreateDirectory`(`CopyFile`/`MoveFile`/
+    `CreateFile`の兄弟活動、タグ名限定GitHub検索で1760件ヒット)。
+    実機`PacktPublishing/Robotic-Process-Automation-Projects`の
+    `Chapter 05/Framework/TakeScreenshot.xaml`で確認した構成——
+    `If.Else`内の実際に有効な実例(`CommentOut`無効化ではない)。"""
+    xml = (
+        f"<ui:CreateDirectory {_UI_XMLNS} "
+        'ContinueOnError="{x:Null}" DisplayName="Create directory" '
+        'Path="[screenshotFileInfo.DirectoryName]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CreateDirectoryNode)
+    assert node.path == VbExpr(text="screenshotFileInfo.DirectoryName")
+    assert node.continue_on_error is None
+    assert node.output is None
 
 
 def test_excel_read_range_and_write_range():

@@ -11092,6 +11092,38 @@ test_uipath_codegen.py`3件)、リポジトリ全体で全2159件通過
 「Modern」系UI Automation活動全般に同じ制約が及ぶことを明文化)——
 `ueab:`(Modern Excel)系の既存の見送り判断(知見230)と同じ扱い。
 
+## 235. `ui:CreateDirectory`を新規実装——CopyFile/MoveFile/CreateFileの兄弟活動、.NET Directory.CreateDirectory()の確立済みAPIコントラクトによりos.makedirs(path, exist_ok=True)に直接対応する
+
+知見234で発見した次候補のうち最上位の`ui:CreateDirectory`
+(タグ名限定検索で1760件ヒット)に着手した。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機(`PacktPublishing/
+Robotic-Process-Automation-Projects`の`Chapter 05/Framework/
+TakeScreenshot.xaml`、`Path="[screenshotFileInfo.DirectoryName]"`
+——`If.Else`内で実際に有効な構成であることを独立に再取得・確認、
+`CommentOut`無効化ではない)・`piyushagarwal08/JU-Notes`いずれも
+`Path`のみが非null、`ContinueOnError`/`Output`は実機で一度も非null
+値を確認できなかった。
+
+`Output`は公式ドキュメント確認済み(「作成したフォルダへの参照、
+後続の活動で使用する」)で.NETの`DirectoryInfo`型——実機で非null
+の実例が無いため、`GetFileInfoX`/`GetFolderInfoX`と同じ「未確認の
+型付きオブジェクトをでっち上げない」判断で未対応とした。`Path`の
+作成自体は.NET`Directory.CreateDirectory(path)`の確立済みAPI
+コントラクト(既存ディレクトリがあっても例外にならず、中間の親
+ディレクトリもまとめて作成する)——`CopyFile`(知見117)と同じ
+「UiPath固有のドキュメントではなく.NET自体の公開APIコントラクトに
+基づく判断」であり、Pythonの`os.makedirs(path, exist_ok=True)`に
+直接対応する。
+
+実際の一時ディレクトリへ`exec()`経由で実行し、中間の親ディレクトリ
+を含めて正しく作成されること、既存ディレクトリへの再実行でも例外
+にならないことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+1件・`tests/test_uipath_codegen.py`4件)、リポジトリ全体で全2164件
+通過(28件skip、変化無し)。
+
+残る`ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`(13件
+ヒットとやや薄い)を次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

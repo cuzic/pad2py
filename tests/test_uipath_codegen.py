@@ -74,6 +74,7 @@ from dump_daemon.uipath_dsl import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    CreateDirectoryNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7763,6 +7764,59 @@ def test_check_true_and_check_false_with_missing_properties_is_todo():
     code2 = generate_python(wf2)
     assert "# TODO: CheckFalse with missing Expression/ErrorMessage" in code2
     _compiles(code2)
+
+
+def test_create_directory_makes_nested_dirs_idempotently():
+    """知見235: `ui:CreateDirectory`。実機`PacktPublishing/
+    Robotic-Process-Automation-Projects`相当の構成を`exec()`経由で
+    実際の一時ディレクトリへ実行し、中間の親ディレクトリも含めて
+    作成されること、既存ディレクトリへの再実行でも例外にならない
+    こと(.NET`Directory.CreateDirectory()`の確立済みAPIコントラクト)
+    を確認する。"""
+    wf = _wrap([CreateDirectoryNode(path=VbExpr(text="target_path"))])
+    code = generate_python(wf)
+    assert "os.makedirs(" in code
+    assert "import os" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(target_path):")
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        nested = os.path.join(d, "a", "b", "c")
+        namespace["Test"](nested)
+        assert os.path.isdir(nested)
+        namespace["Test"](nested)
+        assert os.path.isdir(nested)
+
+
+def test_create_directory_with_no_path_is_todo():
+    wf = _wrap([CreateDirectoryNode(path=None)])
+    code = generate_python(wf)
+    assert "# TODO: CreateDirectory with no Path captured" in code
+    _compiles(code)
+
+
+def test_create_directory_with_output_is_todo_not_guessed():
+    wf = _wrap([CreateDirectoryNode(path=VbExpr(text="p"), output=VbExpr(text="o"))])
+    code = generate_python(wf)
+    assert "# TODO: CreateDirectory with Output set" in code
+    _compiles(code)
+
+
+def test_create_directory_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            CreateDirectoryNode(
+                path=VbExpr(text="p"), continue_on_error=Literal(value="True")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: CreateDirectory with ContinueOnError set" in code
+    _compiles(code)
 
 
 @pytest.mark.parametrize(

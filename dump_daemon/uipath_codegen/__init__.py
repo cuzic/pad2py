@@ -100,6 +100,7 @@ from ..uipath_dsl.types import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    CreateDirectoryNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -508,13 +509,13 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)・
     # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)・
     # `os.listdir(`(`GetLastDownloadedFile`のダウンロードフォルダ
-    # ポーリング変換先、知見233)も同じ`os`モジュールのため同じ条件に
-    # まとめる。
+    # ポーリング変換先、知見233)・`os.makedirs(`(`CreateDirectory`
+    # 変換先、知見235)も同じ`os`モジュールのため同じ条件にまとめる。
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
         or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
         or "os.rename(" in line or "os.environ." in line or "os.environ[" in line
-        or "os.listdir(" in line
+        or "os.listdir(" in line or "os.makedirs(" in line
         for line in body
     ):
         imports.append("import os")
@@ -856,6 +857,8 @@ def _generate_node(
         return _generate_check_true(node, indent)
     if isinstance(node, CheckFalseNode):
         return _generate_check_false(node, indent)
+    if isinstance(node, CreateDirectoryNode):
+        return _generate_create_directory(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5582,6 +5585,46 @@ def _generate_check_false(node: CheckFalseNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _check_true_false_family_body(node, indent, "CheckFalse", negate=False)
     return _with_scope_child_display_name(node, lines, prefix)
+
+
+# 知見235: `ui:CreateDirectory`。`Output`(.NET`DirectoryInfo`、
+# 「作成したフォルダへの参照」、公式ドキュメント確認済み)は実機で
+# 非null値を一度も確認できず未対応(`GetFileInfoX`/`GetFolderInfoX`と
+# 同じ「未確認の型付きオブジェクトをでっち上げない」判断)。`Path`の
+# 作成は.NET`Directory.CreateDirectory(path)`の確立済みAPIコントラクト
+# (既存ディレクトリがあっても例外にならず中間の親ディレクトリも
+# まとめて作成する)——`CopyFile`(知見117)と同じ「UiPath固有の
+# ドキュメントではなく.NET自体の公開APIコントラクトに基づく判断」。
+def _generate_create_directory(node: CreateDirectoryNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_create_directory_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_create_directory_body(
+    node: CreateDirectoryNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: CreateDirectory with no Path captured"]
+    if node.output is not None:
+        return [
+            f"{prefix}# TODO: CreateDirectory with Output set "
+            f"({_describe_expr_for_comment(node.output)}) — .NET "
+            "DirectoryInfo reference not confirmed via real capture, "
+            "refusing to guess"
+        ]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: CreateDirectory with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}os.makedirs({VB_CSTR_HELPER_NAME}({path}), exist_ok=True)"]
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

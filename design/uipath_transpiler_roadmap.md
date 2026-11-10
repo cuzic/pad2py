@@ -3236,3 +3236,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      同じ発見パスで`ui:CreateDirectory`(1760件ヒット)・
      `ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`(13件ヒット)
      を次の候補として記録。
+
+193. **(完了、2026-11-10)** `ui:CreateDirectory`を新規実装(知見235)
+     ——`CopyFile`/`MoveFile`/`CreateFile`の兄弟活動、タグ名限定検索
+     で1760件ヒット。`Path`のみが実機で非null(`ContinueOnError`/
+     `Output`は一度も非null値を確認できず)。`Output`(.NET
+     `DirectoryInfo`型、公式ドキュメント確認済みの「作成したフォルダ
+     への参照」)は`GetFileInfoX`/`GetFolderInfoX`と同じ「未確認の
+     型付きオブジェクトをでっち上げない」判断で未対応。`Path`の作成
+     自体は.NET`Directory.CreateDirectory(path)`の確立済みAPI
+     コントラクト(既存ディレクトリがあっても例外にならず中間の親
+     ディレクトリもまとめて作成)——`CopyFile`(知見117)と同じ
+     「.NET自体の公開APIコントラクトに基づく判断」であり
+     `os.makedirs(path, exist_ok=True)`に直接対応する。実際の一時
+     ディレクトリへ`exec()`経由で実行し、中間ディレクトリの作成・
+     既存ディレクトリへの再実行での冪等性を確認した。回帰テスト
+     追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2164件通過。
+     残る`ui:MergeDataTable`(319件ヒット)・`ui:FormatValue`
+     (13件ヒット)を次の候補として記録。

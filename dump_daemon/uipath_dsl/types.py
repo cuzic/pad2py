@@ -2516,6 +2516,37 @@ class CheckFalseNode:
 
 
 @dataclass
+class CreateDirectoryNode:
+    """`<ui:CreateDirectory Path="..." ContinueOnError="..."
+    Output="..." />`(知見235、`CopyFile`/`MoveFile`/`CreateFile`の
+    兄弟活動、サブエージェントによる6回目の新規発見パスで発見、
+    タグ名限定GitHub検索で1760件ヒット)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機複数件(`PacktPublishing/
+    Robotic-Process-Automation-Projects`の`Chapter 05/Framework/
+    TakeScreenshot.xaml`、`Path="[screenshotFileInfo.DirectoryName]"`
+    ——`If.Else`内で実際に有効な構成として確認、`CommentOut`無効化で
+    はない)いずれも`Path`のみが非null、`ContinueOnError`/`Output`は
+    実機で一度も非null値を確認できなかった。
+
+    `Output`は公式ドキュメント確認済み(「作成したフォルダへの参照、
+    後続の活動で使用する」)で.NETの`DirectoryInfo`型——実機で非null
+    の実例が無いため未対応とする(`GetFileInfoX`/`GetFolderInfoX`と
+    同じ「未確認の型付きオブジェクト」を新規にでっち上げない判断)。
+    `ContinueOnError`も実機で非null値が無いため未対応。`Path`の作成
+    は.NET`Directory.CreateDirectory(path)`の確立済みAPIコントラクト
+    (既存ディレクトリがあっても例外にならず、中間の親ディレクトリも
+    まとめて作成する)——`CopyFile`(知見117)と同じ「UiPath固有の
+    ドキュメントではなく.NET自体の公開APIコントラクトに基づく判断」
+    であり、Pythonの`os.makedirs(path, exist_ok=True)`に直接対応
+    する。"""
+
+    path: Expr = None
+    continue_on_error: Expr = None
+    output: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3786,6 +3817,7 @@ Node = (
     | GetLastDownloadedFileNode
     | CheckTrueNode
     | CheckFalseNode
+    | CreateDirectoryNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode
