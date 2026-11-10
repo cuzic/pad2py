@@ -10105,6 +10105,40 @@ ANSIコードページ——ではなく、実機round-trip確認済みの`"utf-
 次の候補として`IsMatch`(正規表現マッチのbool判定、GitHub 2404件
 ヒット)を記録する。
 
+## 213. `ui:IsMatch`を新規実装——GitHub code searchの`IsMatch`単体検索が一般的なWPF/XAMLアプリとの大量の偽陽性を含むと判明、`"ui:IsMatch"`タグ名限定検索で再調査し解消
+
+知見212で次候補とした`IsMatch`(GitHub検索2404件ヒット)を調査した
+ところ、素朴な`IsMatch extension:xaml`検索の結果の大半が
+UiPathとは無関係な一般的なC#/WPFアプリケーション(`IsMatch`という
+プロパティ名/バインディング式がWPFの`.xaml`ファイルで頻出するため)
+だと判明した——知見211の`ElementExists`偽陽性(表示名への誤マッチ)
+とは別種の、より根本的な「`.xaml`拡張子は UiPath専用ではない」という
+偽陽性要因。`"ui:IsMatch"`(名前空間プレフィックス込みのタグ名)で
+再検索したところ、確かにUiPath関連リポジトリのみに絞り込めた。
+
+実機2件(`mehmetbesli/UiPathExamples`・`GSA/Credit_Card_Logging_Bot`)
+で確認した構成は`Input`+`Pattern`+`RegexOption`+`Result`(出力、
+フラット属性形)のみ——`BuilderPattern`/`Model`/
+`IsBuilderTabModified`はStudioの正規表現ビルダーウィザードのUI状態
+メタデータで、ランタイムの意味論には無関係と確認した(無視する)。
+
+`RegexOption`は.NET`RegexOptions`の`[Flags]`enumがカンマ区切りで
+直列化される——実機2件で確認した値は`"IgnoreCase"`単体と
+`"IgnoreCase, Compiled"`(ground-truthの既定値と同一)の2種のみ。
+`Compiled`はPythonの`re`モジュールに対応する概念が無い(内部で自動
+キャッシュされるため安全に無視できる)が、未確認の他フラグ
+(`Multiline`/`Singleline`等)が含まれる場合は`# TODO`へ倒す。
+`.NET Regex.IsMatch`はPythonの`re.match`(先頭固定)ではなく
+`re.search`(文字列内の任意位置)に対応する——知見144の`Regex.Replace`
+→`re.sub`と同じ「.NET/Python正規表現構文は共通部分が十分に互換」
+という既存の判断を継承し、パターン文字列自体の変換は行わない。
+
+実機相当の構成(2桁数字判定の正規表現)を`exec()`経由で実際に実行し、
+正しいbool判定結果を確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、UiPath
+関連テスト全964件通過、リポジトリ全体で全2050件通過(28件skip、
+変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -90,6 +90,7 @@ from dump_daemon.uipath_dsl import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    IsMatchNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -2544,6 +2545,26 @@ def test_write_text_file_properties():
     assert node.text == VbExpr(text="pdfText")
     assert node.file is None
     assert node.output is None
+
+
+def test_is_match_properties_with_builder_wizard_noise():
+    """知見213: `ui:IsMatch`。実機`mehmetbesli/UiPathExamples`で確認
+    した構成——`BuilderPattern`/`Model`/`IsBuilderTabModified`は
+    Studioの正規表現ビルダーウィザードのUI状態メタデータで、ランタイム
+    の意味論には無関係(無視する)。"""
+    xml = (
+        f"<ui:IsMatch {_UI_XMLNS} "
+        'BuilderPattern="^([0-9]{2})$" DisplayName="Is Match" '
+        'Input="[girilen_sayi.ToString]" IsBuilderTabModified="True" '
+        'Pattern="^([0-9]{2})$" RegexOption="IgnoreCase" '
+        'Result="[deger_dogruMU]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, IsMatchNode)
+    assert node.input == VbExpr(text="girilen_sayi.ToString")
+    assert node.pattern == Literal(value="^([0-9]{2})$")
+    assert node.regex_option == "IgnoreCase"
+    assert node.result == VbExpr(text="deger_dogruMU")
 
 
 def test_invoke_code(main_wf):

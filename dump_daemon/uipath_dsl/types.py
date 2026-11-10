@@ -2205,6 +2205,32 @@ class WriteTextFileNode:
 
 
 @dataclass
+class IsMatchNode:
+    """`<ui:IsMatch>`(知見213、GitHub code searchで「`ui:IsMatch`」
+    (タグ名限定、`IsMatch`単体では一般的なWPF/XAMLアプリとの偽陽性が
+    大量に混入することを本tickで発見)で再検索し実機2件
+    (`mehmetbesli/UiPathExamples`・`GSA/Credit_Card_Logging_Bot`)で
+    確認した構成。`Input`+`Pattern`+`RegexOption`+`Result`(出力、
+    フラット属性形)のみ——`BuilderPattern`/`Model`/
+    `IsBuilderTabModified`はStudioの正規表現ビルダーウィザードの
+    UI状態メタデータであり、ランタイムの意味論には無関係(確認済み、
+    無視する)。
+
+    `RegexOption`は.NET`RegexOptions`の`[Flags]`enumがカンマ区切りで
+    直列化される——実機2件で確認した値は`"IgnoreCase"`単体と
+    `"IgnoreCase, Compiled"`(ground-truthの既定値と同一)の2種のみ。
+    `Compiled`はPythonの`re`モジュールに対応する概念が無い(内部で
+    自動キャッシュされるため)安全に無視できるが、未確認の他フラグ
+    (`Multiline`/`Singleline`等)が含まれる場合は`# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    input: Expr = None
+    pattern: Expr = None
+    regex_option: str | None = None
+    result: Expr = None
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -2925,6 +2951,7 @@ Node = (
     | AppendLineNode
     | ReadTextFileNode
     | WriteTextFileNode
+    | IsMatchNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

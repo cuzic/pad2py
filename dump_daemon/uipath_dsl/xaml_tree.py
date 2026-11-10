@@ -104,6 +104,7 @@ from .types import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    IsMatchNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -1677,6 +1678,17 @@ def _parse_write_text_file(elem: etree._Element) -> WriteTextFileNode:
     )
 
 
+def _parse_is_match(elem: etree._Element) -> IsMatchNode:
+    return IsMatchNode(
+        display_name=_attr(elem, "DisplayName"),
+        input=_attr_expr(elem, "Input") or _in_argument_property_expr(elem, "Input"),
+        pattern=_attr_expr(elem, "Pattern")
+        or _in_argument_property_expr(elem, "Pattern"),
+        regex_option=_attr(elem, "RegexOption"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
 def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -2363,6 +2375,7 @@ _DISPATCH = {
     (UI_NS, "AppendLine"): _parse_append_line,
     (UI_NS, "ReadTextFile"): _parse_read_text_file,
     (UI_NS, "WriteTextFile"): _parse_write_text_file,
+    (UI_NS, "IsMatch"): _parse_is_match,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,

@@ -115,6 +115,7 @@ from dump_daemon.uipath_dsl import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    IsMatchNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -9261,6 +9262,84 @@ def test_write_text_file_with_missing_properties_is_todo():
     wf = _wrap([WriteTextFileNode(file_name=None, text=Literal(value="hi"))])
     code = generate_python(wf)
     assert "# TODO: WriteTextFile with missing FileName/Text" in code
+    _compiles(code)
+
+
+def test_is_match_evaluates_regex_with_ignorecase():
+    """知見213: 実機`mehmetbesli/UiPathExamples`相当の構成——
+    `RegexOption="IgnoreCase"`を`re.IGNORECASE`に変換して`re.search()`
+    を実際に実行し、正しいbool判定結果を確認する。"""
+    wf = _wrap(
+        [
+            IsMatchNode(
+                input=VbExpr(text="girilen_sayi"),
+                pattern=Literal(value="^([0-9]{2})$"),
+                regex_option="IgnoreCase",
+                result=VbExpr(text="deger_dogruMU"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "deger_dogruMU = bool(re.search(" in code
+    assert "re.IGNORECASE" in code
+    assert "import re" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(girilen_sayi):\n    deger_dogruMU = None")
+    code2 += "\n    return deger_dogruMU"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("42") is True
+    assert namespace["Test"]("123") is False
+
+
+def test_is_match_ignores_compiled_flag_and_declines_unconfirmed_option():
+    """知見213: `"IgnoreCase, Compiled"`(ground-truthの既定値+実機
+    `GSA/Credit_Card_Logging_Bot`の実例)は`Compiled`を無視して対応
+    する。未確認の他フラグ(`Multiline`等)は`# TODO`へ倒す。"""
+    wf = _wrap(
+        [
+            IsMatchNode(
+                input=Literal(value="True"),
+                pattern=Literal(value="True"),
+                regex_option="IgnoreCase, Compiled",
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "re.IGNORECASE" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            IsMatchNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                regex_option="Multiline",
+                result=VbExpr(text="r"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: IsMatch with unrecognized RegexOption ('Multiline')" in code2
+    _compiles(code2)
+
+
+def test_is_match_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            IsMatchNode(
+                input=Literal(value="x"),
+                pattern=Literal(value="y"),
+                regex_option="IgnoreCase",
+                result=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: IsMatch with no Result captured" in code
     _compiles(code)
 
 

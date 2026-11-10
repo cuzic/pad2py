@@ -141,6 +141,7 @@ from ..uipath_dsl.types import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    IsMatchNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -480,8 +481,9 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 変換先、知見134)も同様。
     if any("glob.glob(" in line for line in body):
         imports.append("import glob")
-    # `re`(`Regex.Replace`→`re.sub(...)`変換先、知見144)も同様。
-    if any("re.sub(" in line for line in body):
+    # `re`(`Regex.Replace`→`re.sub(...)`変換先、知見144。`IsMatch`→
+    # `re.search(...)`変換先、知見213)も同様。
+    if any("re.sub(" in line or "re.search(" in line for line in body):
         imports.append("import re")
     # `logging`(`LogMessage`→`logging.info(...)`/`.error(...)`変換先、
     # 知見119)も同様。
@@ -641,6 +643,8 @@ def _generate_node(
         return _generate_append_line(node, indent)
     if isinstance(node, WriteTextFileNode):
         return _generate_write_text_file(node, indent)
+    if isinstance(node, IsMatchNode):
+        return _generate_is_match(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -1437,6 +1441,45 @@ def _generate_write_text_file_body(node: WriteTextFileNode, indent: int) -> list
     return [
         f'{prefix}open({file_name}, "w", encoding="utf-8").write('
         f"{VB_CSTR_HELPER_NAME}({text}))"
+    ]
+
+
+_IS_MATCH_ALLOWED_OPTIONS = {"IgnoreCase", "Compiled"}
+
+
+def _generate_is_match(node: IsMatchNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_is_match_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_is_match_body(node: IsMatchNode, indent: int) -> list[str]:
+    """知見213: `RegexOption`は実機確認済みの`"IgnoreCase"`単体/
+    `"IgnoreCase, Compiled"`の2値のみ対応——`Compiled`はPythonの`re`に
+    対応概念が無いため無視、未確認の他フラグは`# TODO`へ倒す。"""
+    prefix = INDENT * indent
+    if node.input is None or node.pattern is None:
+        return [f"{prefix}# TODO: IsMatch with missing Input/Pattern"]
+    if node.result is None:
+        return [f"{prefix}# TODO: IsMatch with no Result captured"]
+    if node.regex_option is None:
+        return [f"{prefix}# TODO: IsMatch with no RegexOption captured"]
+    options = {opt.strip() for opt in node.regex_option.split(",")}
+    if not options <= _IS_MATCH_ALLOWED_OPTIONS:
+        return [
+            f"{prefix}# TODO: IsMatch with unrecognized RegexOption "
+            f"({node.regex_option!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    input_ = _render_value_or_todo(node.input, prefix, todo)
+    pattern = _render_value_or_todo(node.pattern, prefix, todo)
+    result = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    flags = ", re.IGNORECASE" if "IgnoreCase" in options else ""
+    return [
+        f"{prefix}{result} = bool(re.search({pattern}, "
+        f"{VB_CSTR_HELPER_NAME}({input_}){flags}))"
     ]
 
 

@@ -2826,3 +2826,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      3件)、UiPath関連テスト全960件通過、リポジトリ全体で全2046件
      通過。次の候補`IsMatch`(2404件ヒット)を記録。
+
+171. **(完了、2026-11-10)** `ui:IsMatch`を新規実装(知見213)——
+     調査の過程で、素朴な`IsMatch extension:xaml`検索は一般的な
+     WPF/XAMLアプリとの大量の偽陽性を含むと判明(`.xaml`拡張子は
+     UiPath専用ではない)、`"ui:IsMatch"`タグ名限定で再検索しUiPath
+     関連リポジトリのみに絞り込んだ。実機2件で`Input`+`Pattern`+
+     `RegexOption`+`Result`のみの構成を確認、`BuilderPattern`/
+     `Model`/`IsBuilderTabModified`(正規表現ビルダーウィザードのUI
+     状態メタデータ)は無視。`RegexOption`は実機確認済みの
+     `"IgnoreCase"`/`"IgnoreCase, Compiled"`の2値のみ対応
+     (`Compiled`は無視、他フラグは`# TODO`)、`re.search()`
+     (`.NET Regex.IsMatch`は先頭固定ではなく任意位置マッチ)が直接
+     対応する——知見144の`Regex.Replace`→`re.sub`と同じ「.NET/Python
+     正規表現構文は十分に互換」の判断を継承。実機相当の構成を
+     `exec()`経由で実際に実行して正しさを確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全964件通過、リポジトリ全体で全2050件
+     通過。
