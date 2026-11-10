@@ -10253,6 +10253,44 @@ dict行・list行の両方を更新)を`exec()`経由で実際に実行し、正
 1件・`tests/test_uipath_codegen.py`8件)、UiPath関連テスト全980件
 通過、リポジトリ全体で全2066件通過(28件skip、変化無し)。
 
+## 217. `uascw:ExtractFiles`を新規実装——知見216で発見した別名前空間を正しく指定して再調査し実機確証を得た、新規依存無しで`shutil.unpack_archive()`(標準ライブラリ)が直接対応することを確認
+
+知見216で発見した`uascw:`名前空間(`clr-namespace:UiPath.Activities.
+System.Compression.Workflow;assembly=UiPath.System.Activities`)を
+正しく指定してGitHub code searchを再実行したところ、`"uascw:
+ExtractFiles"`(75件)・`"uascw:CompressFiles"`(83件)の両方で確証が
+得られた。本tickでは属性数が少ない`ExtractFiles`(ground-truthで
+`Content`+`DestinationFolder`+`DestinationFolderInfo`+`File`+
+`FileToExtract`+`Password`+`CodePage`+`ConflictResolution`+
+`ExtractToADedicatedFolder`+`SkipUnsupportedFiles`の10属性)に着手、
+`CompressFiles`(11属性、暗号化関連が更に多い)は次tickの候補として
+残した。
+
+実機1件(`duyphat2003/Working-with-files-and-folders_Practice-
+solution`)で確認した構成は`FileToExtract`+`DestinationFolder`+
+`CodePage="Default"`+`ExtractToADedicatedFolder="False"`
+(ground-truthの既定`"True"`とは異なる値)+
+`SkipUnsupportedFiles="False"`のみ——`Content`/`File`/
+`DestinationFolderInfo`/`Password`は常に`{x:Null}`(暗号化アーカイブ
+の実例は未確認)。
+
+Pythonの`shutil.unpack_archive()`(標準ライブラリ)がzip/tar系の
+拡張子を自動判別して直接対応する——新規サードパーティ依存は不要
+(`.rar`/`.7z`は非対応だが、知見209の`pdf-render`プラグインのような
+依存追加の判断自体が発生しない)。宛先フォルダが存在しない場合に
+自動作成されることも対話的に確認済み。`ExtractToADedicatedFolder`
+(アーカイブ名のサブフォルダへ展開すると推測、実機未確認)・`CodePage`
+が`"Default"`以外・`SkipUnsupportedFiles="True"`・`Password`設定時
+はいずれも`# TODO`へ倒す。
+
+実機相当の構成(実際にzipアーカイブを作成して展開)を`exec()`経由で
+実際に実行し、正しく展開されることを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件、
+うち1件は実際のzipファイル作成+展開の統合テスト)、UiPath関連テスト
+全984件通過、リポジトリ全体で全2070件通過(28件skip、変化無し)。
+
+残る`uascw:CompressFiles`は未着手のまま、次の実装候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

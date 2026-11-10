@@ -2891,3 +2891,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      8件)、UiPath関連テスト全980件通過、リポジトリ全体で全2066件
      通過。
+
+175. **(完了、2026-11-10)** `uascw:ExtractFiles`を新規実装(知見217)
+     ——知見216で発見した別名前空間(`clr-namespace:UiPath.
+     Activities.System.Compression.Workflow`)を正しく指定して
+     GitHub検索を再実行し実機確証を得た。実機1件で`FileToExtract`+
+     `DestinationFolder`+`CodePage="Default"`+
+     `ExtractToADedicatedFolder="False"`+`SkipUnsupportedFiles=
+     "False"`のみの構成を確認(`Content`/`File`/
+     `DestinationFolderInfo`/`Password`は常に未設定)。Pythonの
+     `shutil.unpack_archive()`(標準ライブラリ、zip/tar系を自動判別)
+     が新規依存無しで直接対応する——宛先フォルダの自動作成も確認済み。
+     `ExtractToADedicatedFolder`/`CodePage`/`SkipUnsupportedFiles`が
+     実機確認済みの値以外・`Password`設定時は`# TODO`。実際にzip
+     アーカイブを作成して`exec()`経由で展開し正しさを確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件)、UiPath関連テスト全984件通過、リポジトリ全体で全2070件
+     通過。残る`uascw:CompressFiles`は未着手、次の候補。

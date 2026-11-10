@@ -20,6 +20,7 @@ import contextlib
 import io
 import os
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,7 @@ from dump_daemon.uipath_dsl import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    ExtractFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -3991,6 +3993,86 @@ def test_update_row_item_with_both_column_index_and_column_name_is_todo_not_gues
     )
     code = generate_python(wf)
     assert "# TODO: UpdateRowItem with both ColumnIndex and ColumnName set" in code
+    _compiles(code)
+
+
+def test_extract_files_unpacks_archive_to_destination_folder():
+    """知見217: `uascw:ExtractFiles`(`ui:`とは別の名前空間)。実機
+    `duyphat2003/Working-with-files-and-folders_Practice-solution`
+    相当の構成——`shutil.unpack_archive()`(標準ライブラリ)が直接対応
+    する。実際にzipアーカイブを作成し、展開結果を確認する。"""
+    src_dir = tempfile.mkdtemp()
+    with open(os.path.join(src_dir, "a.txt"), "w") as f:
+        f.write("hello world")
+    zip_path = tempfile.mktemp(suffix=".zip")
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(os.path.join(src_dir, "a.txt"), "a.txt")
+    dest_dir = tempfile.mktemp()
+
+    wf = _wrap(
+        [
+            ExtractFilesNode(
+                file_to_extract=Literal(value=zip_path),
+                destination_folder=Literal(value=dest_dir),
+                code_page="Default",
+                extract_to_a_dedicated_folder="False",
+                skip_unsupported_files="False",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert f"shutil.unpack_archive({zip_path!r}, {dest_dir!r})" in code
+    assert "import shutil" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+    assert os.listdir(dest_dir) == ["a.txt"]
+    assert open(os.path.join(dest_dir, "a.txt")).read() == "hello world"
+
+
+def test_extract_files_declines_unconfirmed_options_and_password():
+    """知見217: `Password`(暗号化アーカイブ、実機未確認)・
+    `ExtractToADedicatedFolder`/`SkipUnsupportedFiles`が実機確認済みの
+    `"False"`以外の場合は`# TODO`へ倒す。"""
+    base_kwargs = dict(
+        file_to_extract=Literal(value="in.zip"),
+        destination_folder=Literal(value="out_dir"),
+        code_page="Default",
+        extract_to_a_dedicated_folder="False",
+        skip_unsupported_files="False",
+    )
+
+    wf = _wrap([ExtractFilesNode(**base_kwargs, password=VbExpr(text="pwd"))])
+    code = generate_python(wf)
+    assert "# TODO: ExtractFiles with Password set" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [ExtractFilesNode(**{**base_kwargs, "extract_to_a_dedicated_folder": "True"})]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: ExtractFiles with ExtractToADedicatedFolder 'True'" in code2
+    _compiles(code2)
+
+    wf3 = _wrap([ExtractFilesNode(**{**base_kwargs, "code_page": "UTF8"})])
+    code3 = generate_python(wf3)
+    assert "# TODO: ExtractFiles with CodePage 'UTF8'" in code3
+    _compiles(code3)
+
+
+def test_extract_files_with_missing_properties_is_todo():
+    wf = _wrap(
+        [
+            ExtractFilesNode(
+                file_to_extract=None,
+                destination_folder=Literal(value="out_dir"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ExtractFiles with missing FileToExtract/DestinationFolder" in code
     _compiles(code)
 
 

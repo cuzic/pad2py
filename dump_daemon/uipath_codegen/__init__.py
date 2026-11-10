@@ -143,6 +143,7 @@ from ..uipath_dsl.types import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    ExtractFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -454,9 +455,12 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import email.mime.text")
     # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117。
     # `MoveFile`→`shutil.move(...)`変換先、知見188。`DeleteFolder`
-    # (Recursive=True)→`shutil.rmtree(...)`変換先、知見189)も同様。
+    # (Recursive=True)→`shutil.rmtree(...)`変換先、知見189。
+    # `ExtractFiles`→`shutil.unpack_archive(...)`変換先、知見217)も
+    # 同様。
     if any(
         "shutil.copy(" in line or "shutil.move(" in line or "shutil.rmtree(" in line
+        or "shutil.unpack_archive(" in line
         for line in body
     ):
         imports.append("import shutil")
@@ -654,6 +658,8 @@ def _generate_node(
         return _generate_append_line(node, indent)
     if isinstance(node, WriteTextFileNode):
         return _generate_write_text_file(node, indent)
+    if isinstance(node, ExtractFilesNode):
+        return _generate_extract_files(node, indent)
     if isinstance(node, IsMatchNode):
         return _generate_is_match(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
@@ -1458,6 +1464,68 @@ def _generate_write_text_file_body(node: WriteTextFileNode, indent: int) -> list
     return [
         f'{prefix}open({file_name}, "w", encoding="utf-8").write('
         f"{VB_CSTR_HELPER_NAME}({text}))"
+    ]
+
+
+def _generate_extract_files(node: ExtractFilesNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_extract_files_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_extract_files_body(node: ExtractFilesNode, indent: int) -> list[str]:
+    """知見217: 実機確認済みの構成(`CodePage="Default"`・
+    `ExtractToADedicatedFolder="False"`・`SkipUnsupportedFiles=
+    "False"`・`Password`未設定)のみ対応。`shutil.unpack_archive()`
+    (標準ライブラリ、zip/tar系の拡張子を自動判別)が直接対応する。"""
+    prefix = INDENT * indent
+    if node.content is not None or node.file is not None:
+        return [
+            f"{prefix}# TODO: ExtractFiles with Content/File set — "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.destination_folder_info is not None:
+        return [
+            f"{prefix}# TODO: ExtractFiles with DestinationFolderInfo "
+            "captured — output FileInfo semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.password is not None:
+        return [
+            f"{prefix}# TODO: ExtractFiles with Password set — "
+            "encrypted archive extraction not confirmed in real "
+            "samples, refusing to guess"
+        ]
+    if node.code_page not in (None, "Default"):
+        return [
+            f"{prefix}# TODO: ExtractFiles with CodePage "
+            f"{node.code_page!r} — not confirmed in real samples, "
+            "refusing to guess"
+        ]
+    if node.extract_to_a_dedicated_folder not in (None, "False"):
+        return [
+            f"{prefix}# TODO: ExtractFiles with ExtractToADedicatedFolder "
+            f"{node.extract_to_a_dedicated_folder!r} — only 'False' "
+            "confirmed in real samples, refusing to guess"
+        ]
+    if node.skip_unsupported_files not in (None, "False"):
+        return [
+            f"{prefix}# TODO: ExtractFiles with SkipUnsupportedFiles "
+            f"{node.skip_unsupported_files!r} — only 'False' confirmed "
+            "in real samples, refusing to guess"
+        ]
+    if node.file_to_extract is None or node.destination_folder is None:
+        return [
+            f"{prefix}# TODO: ExtractFiles with missing FileToExtract/"
+            "DestinationFolder"
+        ]
+    todo: list[str] = []
+    file_to_extract = _render_value_or_todo(node.file_to_extract, prefix, todo)
+    destination_folder = _render_value_or_todo(node.destination_folder, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}shutil.unpack_archive({file_to_extract}, {destination_folder})"
     ]
 
 

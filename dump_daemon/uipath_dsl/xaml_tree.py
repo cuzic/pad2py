@@ -106,6 +106,7 @@ from .types import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    ExtractFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -157,6 +158,14 @@ SAP_NS = "http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
 # `elem.tag`へ渡すため、既存の`(namespace, tag)`ディスパッチ機構は
 # この形式でも構造的にそのまま使える)。
 PDF_NS = "clr-namespace:UiPath.PDF.Activities.PDF;assembly=UiPath.PDF.Activities"
+# 知見217: `UiPath.System.Activities`パッケージ内だが、`ExtractFiles`/
+# `CompressFiles`だけが使う別の非`UI_NS`名前空間——`PDF_NS`と同じ理由
+# (CLRネームスペース文字列そのものをXML名前空間URIとして使う形)で
+# 既存の`(namespace, tag)`ディスパッチ機構のまま対応できる。
+COMPRESSION_NS = (
+    "clr-namespace:UiPath.Activities.System.Compression.Workflow;"
+    "assembly=UiPath.System.Activities"
+)
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -1704,6 +1713,25 @@ def _parse_write_text_file(elem: etree._Element) -> WriteTextFileNode:
     )
 
 
+def _parse_extract_files(elem: etree._Element) -> ExtractFilesNode:
+    return ExtractFilesNode(
+        display_name=_attr(elem, "DisplayName"),
+        file_to_extract=_attr_expr(elem, "FileToExtract")
+        or _in_argument_property_expr(elem, "FileToExtract"),
+        destination_folder=_attr_expr(elem, "DestinationFolder")
+        or _in_argument_property_expr(elem, "DestinationFolder"),
+        content=_attr_expr(elem, "Content") or _in_argument_property_expr(elem, "Content"),
+        file=_attr_expr(elem, "File") or _in_argument_property_expr(elem, "File"),
+        destination_folder_info=_attr_expr(elem, "DestinationFolderInfo")
+        or _in_argument_property_expr(elem, "DestinationFolderInfo"),
+        password=_attr_expr(elem, "Password")
+        or _in_argument_property_expr(elem, "Password"),
+        code_page=_attr(elem, "CodePage"),
+        extract_to_a_dedicated_folder=_attr(elem, "ExtractToADedicatedFolder"),
+        skip_unsupported_files=_attr(elem, "SkipUnsupportedFiles"),
+    )
+
+
 def _parse_is_match(elem: etree._Element) -> IsMatchNode:
     return IsMatchNode(
         display_name=_attr(elem, "DisplayName"),
@@ -2368,6 +2396,7 @@ _DISPATCH = {
     (PDF_NS, "JoinPDF"): _parse_join_pdf,
     (PDF_NS, "ExportPDFPageAsImage"): _parse_export_pdf_page_as_image,
     (PDF_NS, "ExtractImagesFromPDF"): _parse_extract_images_from_pdf,
+    (COMPRESSION_NS, "ExtractFiles"): _parse_extract_files,
     (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,

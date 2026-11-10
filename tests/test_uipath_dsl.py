@@ -92,6 +92,7 @@ from dump_daemon.uipath_dsl import (
     ReadPdfTextNode,
     ReadTextFileNode,
     WriteTextFileNode,
+    ExtractFilesNode,
     IsMatchNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
@@ -1736,6 +1737,41 @@ def test_update_row_item_with_column_name_properties():
     assert node.column_index is None
     assert node.column is None
     assert node.value == VbExpr(text='"Yes"')
+
+
+_COMPRESSION_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:uascw="clr-namespace:UiPath.Activities.System.Compression.'
+    'Workflow;assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_extract_files_properties():
+    """知見217: `uascw:ExtractFiles`(`UiPath.System.Activities`
+    パッケージ内だが`ui:`とは別の名前空間)。実機
+    `duyphat2003/Working-with-files-and-folders_Practice-solution`で
+    確認した構成——`Content`/`File`/`DestinationFolderInfo`/
+    `Password`は常に`{x:Null}`。"""
+    xml = (
+        f"<uascw:ExtractFiles {_COMPRESSION_XMLNS} "
+        'Content="{x:Null}" DestinationFolderInfo="{x:Null}" '
+        'File="{x:Null}" Password="{x:Null}" CodePage="Default" '
+        'DestinationFolder="[ExtractedFolderPath]" '
+        'DisplayName="Unzip Input File" ExtractToADedicatedFolder="False" '
+        'FileToExtract="[InputFilePath]" SkipUnsupportedFiles="False" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExtractFilesNode)
+    assert node.file_to_extract == VbExpr(text="InputFilePath")
+    assert node.destination_folder == VbExpr(text="ExtractedFolderPath")
+    assert node.code_page == "Default"
+    assert node.extract_to_a_dedicated_folder == "False"
+    assert node.skip_unsupported_files == "False"
+    assert node.content is None
+    assert node.file is None
+    assert node.destination_folder_info is None
+    assert node.password is None
 
 
 def test_clear_data_table_properties():

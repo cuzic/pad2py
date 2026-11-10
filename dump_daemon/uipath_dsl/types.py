@@ -2259,6 +2259,46 @@ class WriteTextFileNode:
 
 
 @dataclass
+class ExtractFilesNode:
+    """`<uascw:ExtractFiles>`(知見217、`UiPath.System.Activities`
+    パッケージ内だが`ui:`とは別の名前空間
+    `clr-namespace:UiPath.Activities.System.Compression.Workflow`
+    ——知見216で`ui:`限定検索が0件だった原因と判明)。ground-truthの
+    属性構成は`Content`+`DestinationFolder`+`DestinationFolderInfo`+
+    `File`+`FileToExtract`+`Password`+`CodePage`(既定`"Default"`)+
+    `ConflictResolution`(既定`"Replace"`)+
+    `ExtractToADedicatedFolder`(既定`"True"`)+
+    `SkipUnsupportedFiles`(既定`"False"`)——11属性と多い。
+
+    実機1件(`duyphat2003/Working-with-files-and-folders_Practice-
+    solution`)で確認した構成は`FileToExtract`+`DestinationFolder`+
+    `CodePage="Default"`+`ExtractToADedicatedFolder="False"`
+    (ground-truthの既定`"True"`とは異なる値、実機では常に`False`)+
+    `SkipUnsupportedFiles="False"`のみ——`Content`/`File`/
+    `DestinationFolderInfo`/`Password`は常に`{x:Null}`(暗号化
+    アーカイブの実例は未確認のため`Password`は未対応)。
+
+    Pythonの`shutil.unpack_archive()`(標準ライブラリ、zip/tar系の
+    拡張子を自動判別——`.rar`/`.7z`は未対応だが新規依存無しで
+    カバーできる範囲)が直接対応する(宛先フォルダが存在しない場合は
+    自動作成することを対話的に確認済み)。`ExtractToADedicatedFolder=
+    "True"`(アーカイブ名のサブフォルダへ展開すると推測、実機未確認)・
+    `CodePage`が`"Default"`以外・`SkipUnsupportedFiles="True"`
+    (実機未確認の挙動)・`Password`設定時はいずれも`# TODO`へ倒す。"""
+
+    display_name: str | None = None
+    file_to_extract: Expr = None
+    destination_folder: Expr = None
+    content: Expr = None
+    file: Expr = None
+    destination_folder_info: Expr = None
+    password: Expr = None
+    code_page: str | None = None
+    extract_to_a_dedicated_folder: str | None = None
+    skip_unsupported_files: str | None = None
+
+
+@dataclass
 class IsMatchNode:
     """`<ui:IsMatch>`(知見213、GitHub code searchで「`ui:IsMatch`」
     (タグ名限定、`IsMatch`単体では一般的なWPF/XAMLアプリとの偽陽性が
@@ -3035,6 +3075,7 @@ Node = (
     | AppendLineNode
     | ReadTextFileNode
     | WriteTextFileNode
+    | ExtractFilesNode
     | IsMatchNode
     | GetEnvironmentVariableNode
     | InvokeCodeNode
