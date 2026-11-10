@@ -88,6 +88,8 @@ from dump_daemon.uipath_dsl import (
     OutputDataTableNode,
     ParallelNode,
     PathExistsNode,
+    FileExistsXNode,
+    FolderExistsXNode,
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
@@ -2230,6 +2232,38 @@ def test_path_exists_with_folder_path_type():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, PathExistsNode)
     assert node.path_type == "Folder"
+
+
+def test_file_exists_x_properties():
+    """知見219: `ui:FileExistsX`(`PathExists`の`PathType="File"`固定
+    版と推測、GitHub code searchで「`"ui:FileExistsX"`」タグ名限定
+    422件ヒット)。実機`bogdanripa/Log-Me-In`で確認した実例。"""
+    xml = (
+        f"<ui:FileExistsX {_UI_XMLNS} DisplayName=\"File Exists\" "
+        'Exists="[dontInit]" Path="selector3.txt" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FileExistsXNode)
+    assert node.path == Literal(value="selector3.txt")
+    assert node.exists == VbExpr(text="dontInit")
+
+
+def test_folder_exists_x_properties():
+    """知見219: `ui:FolderExistsX`(`FileExistsX`と対になるフォルダ版、
+    GitHub code searchで「`"ui:FolderExistsX"`」タグ名限定227件
+    ヒット)。実機`Gokula-Krishnan9991/UIPATH-Projects`で確認した実例。"""
+    xml = (
+        f"<ui:FolderExistsX {_UI_XMLNS} "
+        'DisplayName="Folder Exists-Check if folder exists" '
+        'Exists="[Folder_Exists]" '
+        'Path="[in_Config(&quot;Report_ Folder_Path&quot;).ToString+in_WIID]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FolderExistsXNode)
+    assert node.path == VbExpr(
+        text='in_Config("Report_ Folder_Path").ToString+in_WIID'
+    )
+    assert node.exists == VbExpr(text="Folder_Exists")
 
 
 def test_delete_file_properties():

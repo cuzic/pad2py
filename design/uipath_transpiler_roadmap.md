@@ -2925,3 +2925,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      3件)、UiPath関連テスト全988件通過、リポジトリ全体で全2074件
      通過。
+
+177. **(完了、2026-11-10)** `ui:FileExistsX`/`ui:FolderExistsX`を新規
+     実装(知見219)——`PathExists`(知見188)の`PathType`固定版と
+     推測される2活動。タグ名限定検索で422件・227件という高いヒット
+     数を確認し着手。ground-truthの属性構成は`Exists`+`Path`のみ
+     (`PathExists`が持つ`PathType`/`Resource`は無い)。実機各2件で
+     同じ単純な構成を確認。`FileExistsX`→`os.path.isfile()`、
+     `FolderExistsX`→`os.path.isdir()`(`PathExists`の対応する分岐と
+     同じAPI)が直接対応する。実際にファイル/フォルダを作成して
+     `exec()`経由で正しさを確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、
+     UiPath関連テスト全994件通過、リポジトリ全体で全2080件通過。

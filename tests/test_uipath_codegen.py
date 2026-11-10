@@ -114,6 +114,8 @@ from dump_daemon.uipath_dsl import (
     OutputDataTableNode,
     ParallelNode,
     PathExistsNode,
+    FileExistsXNode,
+    FolderExistsXNode,
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
@@ -5548,6 +5550,67 @@ def test_path_exists_with_unrecognized_path_type_is_todo_not_guessed():
     code = generate_python(wf)
     assert "# TODO: PathExists with unrecognized/unset PathType" in code
     _compiles(code)
+
+
+def test_file_exists_x_uses_isfile():
+    """知見219: `ui:FileExistsX`(`PathExists`の`PathType="File"`固定版
+    と推測、GitHub code searchで「`"ui:FileExistsX"`」タグ名限定422件
+    ヒット)。`os.path.isfile()`が直接対応する。実際に存在するファイル
+    で`exec()`経由で確認する。"""
+    tmp_file = tempfile.mktemp(suffix=".txt")
+    with open(tmp_file, "w") as f:
+        f.write("hi")
+    wf = _wrap(
+        [FileExistsXNode(path=Literal(value=tmp_file), exists=VbExpr(text="found"))]
+    )
+    code = generate_python(wf)
+    assert "found = os.path.isfile(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return found", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() is True
+
+
+def test_file_exists_x_with_missing_properties_is_todo():
+    wf = _wrap([FileExistsXNode(path=None, exists=VbExpr(text="found"))])
+    code = generate_python(wf)
+    assert "# TODO: FileExistsX with no Path captured" in code
+    _compiles(code)
+
+    wf2 = _wrap([FileExistsXNode(path=Literal(value="a.txt"), exists=None)])
+    code2 = generate_python(wf2)
+    assert "# TODO: FileExistsX with no output Exists captured" in code2
+    _compiles(code2)
+
+
+def test_folder_exists_x_uses_isdir():
+    """知見219: `ui:FolderExistsX`(`FileExistsX`と対になるフォルダ版、
+    GitHub code searchで「`"ui:FolderExistsX"`」タグ名限定227件
+    ヒット)。`os.path.isdir()`が直接対応する。"""
+    tmp_dir = tempfile.mkdtemp()
+    wf = _wrap(
+        [FolderExistsXNode(path=Literal(value=tmp_dir), exists=VbExpr(text="found"))]
+    )
+    code = generate_python(wf)
+    assert "found = os.path.isdir(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return found", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() is True
+
+
+def test_folder_exists_x_with_missing_properties_is_todo():
+    wf = _wrap([FolderExistsXNode(path=None, exists=VbExpr(text="found"))])
+    code = generate_python(wf)
+    assert "# TODO: FolderExistsX with no Path captured" in code
+    _compiles(code)
+
+    wf2 = _wrap([FolderExistsXNode(path=Literal(value="dir"), exists=None)])
+    code2 = generate_python(wf2)
+    assert "# TODO: FolderExistsX with no output Exists captured" in code2
+    _compiles(code2)
 
 
 def test_delete_file_calls_os_remove():

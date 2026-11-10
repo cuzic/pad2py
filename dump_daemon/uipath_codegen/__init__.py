@@ -139,6 +139,8 @@ from ..uipath_dsl.types import (
     OutputDataTableNode,
     ParallelNode,
     PathExistsNode,
+    FileExistsXNode,
+    FolderExistsXNode,
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
@@ -787,6 +789,10 @@ def _generate_node(
         return _generate_move_file(node, indent)
     if isinstance(node, PathExistsNode):
         return _generate_path_exists(node, indent)
+    if isinstance(node, FileExistsXNode):
+        return _generate_file_exists_x(node, indent)
+    if isinstance(node, FolderExistsXNode):
+        return _generate_folder_exists_x(node, indent)
     if isinstance(node, DeleteFileNode):
         return _generate_delete_file(node, indent)
     if isinstance(node, DeleteFolderNode):
@@ -4883,6 +4889,50 @@ def _generate_path_exists_body(node: PathExistsNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{target} = {check}({path})"]
+
+
+def _generate_file_exists_x(node: FileExistsXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_file_exists_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_file_exists_x_body(node: FileExistsXNode, indent: int) -> list[str]:
+    """知見219: `PathExists`(知見188)の`PathType="File"`固定版と推測
+    される——`os.path.isfile()`が直接対応する。"""
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: FileExistsX with no Path captured"]
+    if node.exists is None:
+        return [f"{prefix}# TODO: FileExistsX with no output Exists captured"]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    target = _render_value_or_todo(node.exists, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = os.path.isfile({path})"]
+
+
+def _generate_folder_exists_x(node: FolderExistsXNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_folder_exists_x_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_folder_exists_x_body(node: FolderExistsXNode, indent: int) -> list[str]:
+    """知見219: `PathExists`(知見188)の`PathType="Folder"`固定版と
+    推測される——`os.path.isdir()`が直接対応する。"""
+    prefix = INDENT * indent
+    if node.path is None:
+        return [f"{prefix}# TODO: FolderExistsX with no Path captured"]
+    if node.exists is None:
+        return [f"{prefix}# TODO: FolderExistsX with no output Exists captured"]
+    todo: list[str] = []
+    path = _render_value_or_todo(node.path, prefix, todo)
+    target = _render_value_or_todo(node.exists, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = os.path.isdir({path})"]
 
 
 # 知見189: `ui:DeleteFileX`。`os.remove()`(Python標準の確認済みAPI)が

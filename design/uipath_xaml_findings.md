@@ -10339,6 +10339,35 @@ test_uipath_codegen.py`3件、うち1件は実際のzip作成+エントリ名検
 これで知見216が発見した`uascw:`名前空間の圧縮活動2件
 (`ExtractFiles`/`CompressFiles`)の両方に着手済みとなった。
 
+## 219. `ui:FileExistsX`/`ui:FolderExistsX`を新規実装——知見188の`PathExists`の`PathType`固定版と推測される2活動、タグ名限定検索で422件・227件という高いヒット数を確認
+
+明示的な次候補が尽きたため、知見193で記録した`UiPath.System.
+Activities`ground-truthの全活動リストから、Orchestrator結合系
+(知見211で見送り済み)・既存実装済みを除外して新しい候補をタグ名
+限定検索で再調査した。`FileExistsX`(422件)・`FolderExistsX`
+(227件)が突出して高く、知見188で実装済みの`PathExists`(558件)に
+迫る規模だったため着手した。
+
+ground-truthの属性構成はいずれも`Exists`(出力)+`Path`のみ——
+`PathExists`が持つ`PathType`(File/Folder切り替え)+`Resource`
+(Integration Service連携用)は無い。実機2件ずつ
+(`FileExistsX`: `bogdanripa/Log-Me-In`のVB実機・`Anusha-TX/
+Group1001_TestAutomation`のC#実機、`FolderExistsX`:
+`Gokula-Krishnan9991/UIPATH-Projects`のVB実機・
+`AliOmarAbdelhady/Raya_tasks`のC#実機)で確認した構成も
+`Exists`+`Path`のみの単純な形——`PathExists`の`PathType="File"`/
+`"Folder"`固定版だと推測される(属性構成の対応関係から推測、公式な
+説明文書は未確認)。
+
+`FileExistsX`→`os.path.isfile()`、`FolderExistsX`→`os.path.isdir()`
+(`PathExists`の対応する分岐と同じAPI)が直接対応する——実機で確認
+した値のみの単純な活動のため、`PathExists`より少ない分岐で実装
+できた。実際にファイル/フォルダを作成して`exec()`経由で正しく
+`True`が返ることを確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`6件)、UiPath
+関連テスト全994件通過、リポジトリ全体で全2080件通過(28件skip、
+変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

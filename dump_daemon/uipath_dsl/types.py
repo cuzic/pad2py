@@ -1606,6 +1606,41 @@ class PathExistsNode:
 
 
 @dataclass
+class FileExistsXNode:
+    """`<ui:FileExistsX>`(知見219、`PathExists`(知見188)の`PathType=
+    "File"`固定版と推測される、GitHub code searchで「`"ui:
+    FileExistsX"`」タグ名限定422件ヒット——`PathExists`の558件に
+    迫る)。ground-truthの属性構成は`Exists`(出力)+`Path`のみ。
+    実機2件(`bogdanripa/Log-Me-In`のVB実機・`Anusha-TX/
+    Group1001_TestAutomation`のC#実機)で確認した構成も`Exists`+
+    `Path`のみの単純な形。
+
+    `os.path.isfile()`(Python標準の確認済みAPI、`PathExists`の
+    `PathType="File"`分岐と同じ対応)が直接対応する。"""
+
+    display_name: str | None = None
+    path: Expr = None
+    exists: Expr = None
+
+
+@dataclass
+class FolderExistsXNode:
+    """`<ui:FolderExistsX>`(知見219、`FileExistsX`と対になる
+    フォルダ版、GitHub code searchで「`"ui:FolderExistsX"`」タグ名
+    限定227件ヒット)。ground-truthの属性構成は`Exists`(出力)+`Path`
+    のみ。実機2件(`AliOmarAbdelhady/Raya_tasks`のC#実機・
+    `Gokula-Krishnan9991/UIPATH-Projects`のVB実機)で確認した構成も
+    `Exists`+`Path`のみ。
+
+    `os.path.isdir()`(Python標準の確認済みAPI、`PathExists`の
+    `PathType="Folder"`分岐と同じ対応)が直接対応する。"""
+
+    display_name: str | None = None
+    path: Expr = None
+    exists: Expr = None
+
+
+@dataclass
 class DeleteFileNode:
     """`<ui:DeleteFileX>`(知見189、GitHub code searchで508件ヒット
     ——検索語`"ui:DeleteFile"`は`"ui:DeleteFileX"`への部分一致で、
@@ -3103,6 +3138,8 @@ Node = (
     | RetryScopeNode
     | MoveFileNode
     | PathExistsNode
+    | FileExistsXNode
+    | FolderExistsXNode
     | DeleteFileNode
     | DeleteFolderNode
     | ForEachFileNode

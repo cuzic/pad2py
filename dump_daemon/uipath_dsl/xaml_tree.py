@@ -102,6 +102,8 @@ from .types import (
     OutputDataTableNode,
     ParallelNode,
     PathExistsNode,
+    FileExistsXNode,
+    FolderExistsXNode,
     ReadCsvFileNode,
     ReadPdfTextNode,
     ReadTextFileNode,
@@ -1282,6 +1284,22 @@ def _parse_path_exists(elem: etree._Element) -> PathExistsNode:
     )
 
 
+def _parse_file_exists_x(elem: etree._Element) -> FileExistsXNode:
+    return FileExistsXNode(
+        display_name=_attr(elem, "DisplayName"),
+        path=_attr_expr(elem, "Path") or _in_argument_property_expr(elem, "Path"),
+        exists=_attr_expr(elem, "Exists") or _in_argument_property_expr(elem, "Exists"),
+    )
+
+
+def _parse_folder_exists_x(elem: etree._Element) -> FolderExistsXNode:
+    return FolderExistsXNode(
+        display_name=_attr(elem, "DisplayName"),
+        path=_attr_expr(elem, "Path") or _in_argument_property_expr(elem, "Path"),
+        exists=_attr_expr(elem, "Exists") or _in_argument_property_expr(elem, "Exists"),
+    )
+
+
 def _parse_delete_file(elem: etree._Element) -> DeleteFileNode:
     path = _attr_expr(elem, "Path") or _in_argument_property_expr(elem, "Path")
     return DeleteFileNode(
@@ -2437,6 +2455,8 @@ _DISPATCH = {
     (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "MoveFile"): _parse_move_file,
     (UI_NS, "PathExists"): _parse_path_exists,
+    (UI_NS, "FileExistsX"): _parse_file_exists_x,
+    (UI_NS, "FolderExistsX"): _parse_folder_exists_x,
     (UI_NS, "DeleteFileX"): _parse_delete_file,
     (UI_NS, "DeleteFolderX"): _parse_delete_folder,
     (UI_NS, "ForEachFileX"): _parse_for_each_file,
