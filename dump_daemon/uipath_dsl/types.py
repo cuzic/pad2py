@@ -485,6 +485,44 @@ class DeserializeJsonNode:
 
 
 @dataclass
+class DeserializeJsonArrayNode:
+    """`<ui:DeserializeJsonArray JsonString="..." JsonArray="..." />`
+    (知見245、`DeserializeJson<njl:JObject>`(知見241)の兄弟活動、
+    タグ名限定GitHub検索で142件ヒット)。`DeserializeJson`と違い
+    ジェネリックではない(`x:TypeArguments`無し、実機確認済み)——
+    `JsonArray`は常に`njl:JArray`型。
+
+    実機2件(`vajrang-b/UiPathIn30Days`の`SourceCode/2024/Projects/
+    April 2024/RandomuserMeApi/Main.xaml`、`base64ai/uipath-samples`
+    の`Sequences/Base64.ai Facial Recognition.xaml`)で確認済みの
+    ダウンストリーム利用形(`formattedJson.Count.ToString`、
+    `currentItem("picture")("large").ToString()`——`ui:ForEach
+    x:TypeArguments="njl:JToken"`の反復変数経由)は、知見241の
+    `JObject`と同じ狙い撃ちできる狭いパターン(VBの`識別子(引数)`
+    添字構文+`.Count`)——`JArray`も`JObject`と同じ`ScopeInfo.
+    json_object_vars`機構を共有してよい(両方ともPython側は`json.
+    loads()`の戻り値という素の`dict`/`list`表現で、添字アクセス・
+    要素数カウントの意味論に違いが無いため)。`JObject`→`JArray`間の
+    `ui:ForEach`ループ変数(`currentItem`)への型伝播は、既存の
+    `ForEachRow`の`data_row_vars`伝播(知見203)と同じ既存パターンを
+    再利用する。
+
+    知見244追記: 実機`vajrang-b/UiPathIn30Days`サンプルは
+    `DeserializeJson`の出力`JObject`から`JsonObject("results").
+    ToString()`という式で本活動の`JsonString`入力を作っていた——これを
+    調査中に、`json_object_vars`添字アクセス直後に単独で`.ToString()`
+    が続く式の実行時型(スカラーかJSONコンテナか)が静的に決定不能で、
+    既存の`_vb_cstr()`への単純な変換は後者の場合に無効なJSON文字列を
+    生成してしまう(`render.py`の`_render_chained_access`で修正、
+    `str()`/`json.dumps()`どちらに倒すかでっち上げず`NotImplementedError`
+    へ倒す)という独立したバグを発見・修正した。"""
+
+    json_string: Expr = None
+    json_array: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ParallelNode:
     """`<Parallel>`(知見19・20)。直接の子`Activity`要素それぞれが1つの
     ブランチ(複数ステップのブランチは`Sequence`でラップされる——`branches`の
@@ -4074,6 +4112,7 @@ Node = (
     | GoBackNode
     | NavigateToNode
     | GetFromClipboardNode
+    | DeserializeJsonArrayNode
     | ParallelNode
     | ClickNode
     | HoverNode

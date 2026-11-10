@@ -11559,6 +11559,93 @@ Authorization Code.xaml`)で独立に再取得・確認——`TimeoutMS`
 (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
 リポジトリ全体で全2213件通過(28件skip)。
 
+## 244. バグ修正: `render.py`の`.ToString()`/多段バレ変数連鎖に2件の既存の誤変換を発見・修正——`JObject/JArray`添字の直後の単独`.ToString()`は型が静的に決定不能なためでっち上げず見送り、3段以上のバレ変数連鎖(`var.Count.ToString`)は末尾しか剥がれず中間セグメントが素通りされていた
+
+同じ8回目発見パスの次候補`ui:DeserializeJsonArray`(知見245)の実機
+サンプルを調査中に、`render.py`の既存コードパスに2件の独立した
+誤変換バグを発見した——いずれも実機の確認済み実例で再現する前に
+でっち上げを未然に防げた。
+
+**バグ1: `JObject/JArray`添字直後の単独`.ToString()`の型曖昧性**
+実機`vajrang-b/UiPathIn30Days`の`SourceCode/2024/Projects/April
+2024/RandomuserMeApi/Main.xaml`で`JsonObject("results").ToString()`
+という式(`DeserializeJsonArray`の`JsonString`入力として使われる)を
+発見。`jobj`が`ScopeInfo.json_object_vars`(知見241)に登録済みの場合、
+`jobj("results")`は`jobj['results']`という添字アクセスに正しく解決
+されるが、続く`.ToString()`は既存の`_apply_chained_property`の
+`tostring`分岐により無条件で`_vb_cstr(...)`(Pythonの`str()`相当)へ
+変換されていた——これは.NET `Newtonsoft.Json`の`JToken.ToString()`の
+実際の意味論と食い違う: スカラー値(`JValue`)なら`_vb_cstr()`と同じ
+生の値を返すが、コンテナ(`JObject`/`JArray`)なら再シリアライズした
+JSONテキストを返す。`_vb_cstr()`のPython `str()`ベースの変換は
+シングルクォート/`True`/`False`/`None`混じりの無効なJSONを生成し、
+後続の`json.loads()`(`DeserializeJsonArray`自身を含む)を壊す。
+実行時型は静的に決定不能(`"results"`キーの値がスカラーかコンテナか
+はJSON内容に依存)なため、どちらか一方を決め打ちせず
+`_render_chained_access`の冒頭で`NotImplementedError`へ倒す新しい
+ガードを追加した(`FuncCall`が`json_object_vars`登録済み変数への
+1引数添字呼び出しで、続く唯一のメンバが`ToString`の場合のみ発火)。
+
+**バグ2: 3段以上のバレ変数連鎖で中間セグメントが素通りされる**
+実機`base64ai/uipath-samples`の`Sequences/Base64.ai Facial
+Recognition.xaml`で`formattedJson.Count.ToString`(`DeserializeJsonArray`
+の出力を括弧省略形の`.Count`で参照)を発見。知見119の既存コード
+(`IDENT`トークンの正規表現がドット区切りを1トークンに貪欲マッチする
+ため、関数呼び出しを介さないバレ変数へのメンバ連鎖は`rpartition(".")`
+で**末尾セグメントだけ**を剥がし、残りの`prefix`(`"formattedJson.
+Count"`)を1個の不透明な名前として`_canonical_name()`に渡すだけ)は
+2段連鎖(`var.Length`)では正しく動くが、3段連鎖では`prefix`自身が
+さらに翻訳が必要な末尾セグメント(`Count`)を持つことを見落とし、
+Pythonの`list`に存在しない`.Count`属性アクセスがそのまま出力され
+実行時`AttributeError`になっていた。`_canonical_name(prefix)`を
+`_render_node(Ident(name=prefix))`(再帰呼び出し)に変更——`prefix`
+自身も同じIdent判定ロジックに回すことで、何段連鎖していても末尾から
+順に正しく翻訳されるようになった(再帰の基底部は既存の`.`を含まない
+場合の`_canonical_name()`分岐)。同時に`_SAFE_BARE_MEMBERS`に`"count"`
+を追加(知見241で`_apply_chained_property`側には追加済みだったが、
+バレ変数連鎖側の安全リストへの追加が漏れていた)。
+
+両方とも既存の回帰テスト(知見241含む)を一切壊さずに修正できた
+——知見241で確認済みの`formattedJson("matches").Count.ToString`
+(2段メンバ連鎖、`ChainedAccess`経由)は今回のガードの対象外
+(メンバが`Count`+`ToString`の2つで、単独`.ToString()`ではないため)
+で影響を受けない。リポジトリ全体で全2213件通過(テスト追加は
+知見245と合わせて記録)。
+
+## 245. `ui:DeserializeJsonArray`を新規実装——`DeserializeJson<njl:JObject>`(知見241)の兄弟活動、`ScopeInfo.json_object_vars`を`JArray`・`ForEach njl:JToken`反復変数にも一般化して対応した
+
+同じ8回目発見パスの候補だった`ui:DeserializeJsonArray`(タグ名限定
+GitHub検索で142件ヒット)に着手した。
+
+実機2件(`vajrang-b/UiPathIn30Days`の`SourceCode/2024/Projects/April
+2024/RandomuserMeApi/Main.xaml`、`base64ai/uipath-samples`の
+`Sequences/Base64.ai Facial Recognition.xaml`)で独立に再取得・確認
+——`DeserializeJson`と違いジェネリックではない(`x:TypeArguments`無し、
+常に`JArray`)、`JsonArray`(出力)+`JsonString`(入力)のみ。Pythonの
+`list`(`json.loads()`の戻り値)として表現する——`JObject`→`dict`
+(知見241)と同じ素直な表現で架空のラッパークラスは不要。
+
+ダウンストリーム利用形は知見241の`JObject`と同じ狙い撃ちできる狭い
+パターン——`vajrang-b/UiPathIn30Days`サンプルでは`ui:ForEach
+x:TypeArguments="njl:JToken"`で反復し、反復変数`currentItem`自身も
+`currentItem("picture")("large")`という添字アクセスの対象になる
+(多段添字は既存の`NotImplementedError`で見送り、単段のみ対応)。
+この反復変数への型伝播は`ForEachRow`の`data_row_vars`伝播(知見203)
+と全く同じ既存パターンで実装——`ScopeInfo.json_object_vars`
+(知見241)を`DeserializeJsonArray.JsonArray`の出力変数、および
+`njl:JToken`型`ForEach`の反復変数の両方に拡張登録した
+(`JObject`/`JArray`いずれもPython側は`dict`/`list`という素の表現で
+添字アクセス・`.Count`の意味論に違いが無いため、同じ集合を共有)。
+
+知見244のバグ修正により、実機サンプルの`JsonObject("results").
+ToString()`(別の`DeserializeJson`出力からの連鎖式)は正しく
+`# TODO`へ倒れ、`formattedJson.Count.ToString`は正しく`_vb_cstr(len(
+formattedJson))`へ変換されることを確認した。実機相当の両方の構成
+(単純な`JsonArray`+`JsonString`のみの形、`ForEach njl:JToken`反復)を
+`exec()`経由で実際に実行し確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`4件、
+知見244の専用テスト含む)、リポジトリ全体で全2219件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

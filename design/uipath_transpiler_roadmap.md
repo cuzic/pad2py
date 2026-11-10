@@ -3419,3 +3419,36 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      検証手法。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
      `tests/test_uipath_codegen.py`3件)、リポジトリ全体で全2213件
      通過。
+
+202. **(完了、2026-11-10)** `render.py`のバグ修正2件(知見244)——
+     `ui:DeserializeJsonArray`(知見245)の実機サンプル調査中に発見。
+     (1)`JObject/JArray`添字(`ScopeInfo.json_object_vars`、知見241)
+     直後の単独`.ToString()`(実機`vajrang-b/UiPathIn30Days`で
+     `JsonObject("results").ToString()`を発見)は戻り値の実行時型
+     (JSONコンテナかスカラーか)が静的に決定不能——`_vb_cstr()`への
+     無条件変換は前者の場合に無効なJSONを生成してしまうため、
+     `_render_chained_access`冒頭に`NotImplementedError`ガードを
+     追加した。(2)3段以上のバレ変数連鎖(実機`base64ai/uipath-
+     samples`で`formattedJson.Count.ToString`を発見)は、知見119の
+     既存コードが末尾セグメントだけを剥がし`prefix`を不透明な名前
+     として扱っていたため中間セグメント(`Count`)が未翻訳のまま
+     素通りし実行時`AttributeError`になっていた——`_canonical_name
+     (prefix)`を`_render_node(Ident(name=prefix))`の再帰呼び出しに
+     変更し修正した(`_SAFE_BARE_MEMBERS`への`"count"`追加漏れも
+     同時に修正)。既存の知見241回帰テストは一切壊れていない。
+
+203. **(完了、2026-11-10)** `ui:DeserializeJsonArray`を新規実装
+     (知見245)——タグ名限定検索で142件ヒット、`DeserializeJson<njl:
+     JObject>`(知見241)の兄弟活動。実機2件(`vajrang-b/
+     UiPathIn30Days`・`base64ai/uipath-samples`)で確認——
+     `x:TypeArguments`無しの非ジェネリック活動、常に`JArray`→Python
+     の`list`(`json.loads()`の戻り値)に対応する。`ScopeInfo.
+     json_object_vars`(知見241)を`JsonArray`出力変数+`ui:ForEach
+     x:TypeArguments="njl:JToken"`の反復変数の両方に拡張登録——
+     `ForEachRow`の`data_row_vars`伝播(知見203)と同じ既存パターンを
+     再利用した。知見244のバグ修正により実機サンプルの連鎖式
+     (`JObject("results").ToString()`)が正しく`# TODO`へ倒れ、
+     `formattedJson.Count.ToString`が正しく`len()`へ変換されることを
+     確認した。実機相当の両方の構成を`exec()`経由で実際に実行し確認
+     した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2219件通過。

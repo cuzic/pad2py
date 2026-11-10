@@ -77,6 +77,7 @@ from ..uipath_dsl.types import (
     GoBackNode,
     NavigateToNode,
     GetFromClipboardNode,
+    DeserializeJsonArrayNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -345,6 +346,14 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
             if obj.type_arguments.lower() == "sd:datarow":
                 register_name(obj.item_var)
                 data_row_vars.add(obj.item_var.lower())
+            elif obj.type_arguments.lower() == "njl:jtoken":
+                # 知見245: `JArray`(`DeserializeJsonArray`)を反復する
+                # `ui:ForEach x:TypeArguments="njl:JToken"`の反復変数——
+                # `ForEachRow`の`data_row_vars`伝播(知見203)と同じ既存
+                # パターンで、反復変数自身もJSONトークンの添字アクセス
+                # (`currentItem("picture")`)対象として追跡する。
+                register_name(obj.item_var)
+                json_object_vars.add(obj.item_var.lower())
         elif isinstance(obj, BuildDataTableNode):
             if isinstance(obj.data_table, VbExpr):
                 register_name(obj.data_table.text)
@@ -356,6 +365,9 @@ def _build_scope_info(workflow: WorkflowFile) -> ScopeInfo:
                 "jobject"
             ):
                 json_object_vars.add(obj.json_object.text.lower())
+        elif isinstance(obj, DeserializeJsonArrayNode):
+            if isinstance(obj.json_array, VbExpr):
+                json_object_vars.add(obj.json_array.text.lower())
 
     _walk_scope_sources(workflow.root, set(), on_node)
 
@@ -720,6 +732,8 @@ def _generate_node(
         return _generate_remove_log_fields(node, indent)
     if isinstance(node, DeserializeJsonNode):
         return _generate_deserialize_json(node, indent)
+    if isinstance(node, DeserializeJsonArrayNode):
+        return _generate_deserialize_json_array(node, indent)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, RepeatNumberOfTimesXNode):
@@ -1263,6 +1277,37 @@ def _generate_deserialize_json_body(node: DeserializeJsonNode, indent: int) -> l
         ]
     try:
         target = render_expr(node.json_object)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    todo: list[str] = []
+    json_string = _render_value_or_todo(node.json_string, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = json.loads({json_string})"]
+
+
+def _generate_deserialize_json_array(node: DeserializeJsonArrayNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_deserialize_json_array_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_deserialize_json_array_body(
+    node: DeserializeJsonArrayNode, indent: int
+) -> list[str]:
+    """知見245: `ui:DeserializeJsonArray`(`DeserializeJson<njl:JObject>`
+    (知見241)の兄弟活動)——`x:TypeArguments`無しの非ジェネリック活動、
+    常に`JArray`。Pythonの`list`(`json.loads()`の戻り値)として表現
+    する。`JsonArray`(代入先)は`DeserializeJson.JsonObject`と同じ
+    厳格な失敗モード(`render_expr`を直接呼び、例外発生時は代入文自体
+    を生成しない)。"""
+    prefix = INDENT * indent
+    if node.json_array is None:
+        return [f"{prefix}# TODO: DeserializeJsonArray with no JsonArray captured"]
+    if node.json_string is None:
+        return [f"{prefix}# TODO: DeserializeJsonArray with no JsonString captured"]
+    try:
+        target = render_expr(node.json_array)
     except NotImplementedError as e:
         return _todo_value(prefix, str(e))
     todo: list[str] = []

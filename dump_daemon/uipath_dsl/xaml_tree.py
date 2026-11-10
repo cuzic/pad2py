@@ -35,6 +35,7 @@ from .types import (
     GoBackNode,
     NavigateToNode,
     GetFromClipboardNode,
+    DeserializeJsonArrayNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -527,6 +528,14 @@ def _parse_deserialize_json(elem: etree._Element) -> DeserializeJsonNode:
         type_argument=_attr(elem, "TypeArguments", X_NS) or _attr(elem, "TypeArguments"),
         json_string=_attr_expr(elem, "JsonString") or _in_argument_property_expr(elem, "JsonString"),
         json_object=_attr_expr(elem, "JsonObject") or _in_argument_property_expr(elem, "JsonObject"),
+    )
+
+
+def _parse_deserialize_json_array(elem: etree._Element) -> DeserializeJsonArrayNode:
+    return DeserializeJsonArrayNode(
+        display_name=_attr(elem, "DisplayName"),
+        json_string=_attr_expr(elem, "JsonString") or _in_argument_property_expr(elem, "JsonString"),
+        json_array=_attr_expr(elem, "JsonArray") or _in_argument_property_expr(elem, "JsonArray"),
     )
 
 
@@ -2886,6 +2895,7 @@ _DISPATCH = {
     (UI_NS, "AddLogFields"): _parse_add_log_fields,
     (UI_NS, "RemoveLogFields"): _parse_remove_log_fields,
     (UI_NS, "DeserializeJson"): _parse_deserialize_json,
+    (UI_NS, "DeserializeJsonArray"): _parse_deserialize_json_array,
     (UI_NS, "Click"): _parse_click,
     (UI_NS, "Hover"): _parse_hover,
     (UI_NS, "Activate"): _parse_activate,

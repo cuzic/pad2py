@@ -63,11 +63,16 @@ class ScopeInfo:
     ための後方互換ガード)。`data_table_columns`と同じ「ファイル単位でしか
     解析しない」既知の限界を持つ——呼び出し元ワークフローの`AddLogFields`
     は呼び出し先ファイルの`has_log_fields`には伝播しない。
-    `json_object_vars`(知見241)は`DeserializeJson.JsonObject`で宣言された
-    変数名の集合——`data_row_vars`と全く同じ理由(VB.NETの`識別子(引数)`
-    添字構文が`DataRow`の列アクセスと`JObject`の辞書的添字アクセスで
-    構文上区別不能、知見126・203)で、`FuncCall`レンダリング時にこの
-    集合に名前があれば`base[key]`形の添字アクセスとして解釈する。"""
+    `json_object_vars`(知見241、知見245で`JArray`/`ForEach njl:JToken`
+    反復変数にも拡張)は`DeserializeJson.JsonObject`・
+    `DeserializeJsonArray.JsonArray`・その`njl:JToken`反復変数で宣言
+    された変数名の集合——`data_row_vars`と全く同じ理由(VB.NETの
+    `識別子(引数)`添字構文が`DataRow`の列アクセスと`JObject`/`JArray`
+    の添字アクセスで構文上区別不能、知見126・203)で、`FuncCall`
+    レンダリング時にこの集合に名前があれば`base[key]`形の添字アクセス
+    として解釈する。`JObject`(dict)・`JArray`(list)いずれもPython側は
+    `json.loads()`の戻り値という素の表現で、添字アクセス・`.Count`の
+    意味論に違いが無いため同じ集合を共有してよい。"""
 
     canonical_names: dict[str, str] = field(default_factory=dict)
     data_row_vars: frozenset[str] = frozenset()
@@ -570,7 +575,19 @@ def _render_node(node: ExprNode) -> str:
             # 知見146: VB.NETの大文字小文字不区別のため比較前に`.lower()`。
             last_lower = last.lower()
             if last_lower in _SAFE_BARE_MEMBERS or last_lower in _CHAINED_PROPERTY_TRANSLATIONS:
-                return _apply_chained_property(_canonical_name(prefix), last)
+                # 知見244: `prefix`を`_canonical_name()`(大文字小文字正規化
+                # のみ)でそのまま使うと、`prefix`自身がさらに翻訳が必要な
+                # 末尾セグメントを持つ3段以上の連鎖(`formattedJson.Count.
+                # ToString`——`DeserializeJsonArray`(知見245)の実機
+                # `base64ai/uipath-samples`出力で発見、`prefix=
+                # "formattedJson.Count"`が1個の不透明な名前として扱われ
+                # Pythonの`list`に存在しない`.Count`属性アクセスへそのまま
+                # 素通しされ実行時`AttributeError`になる)を正しく処理
+                # できない。`_render_node(Ident(name=prefix))`で再帰的に
+                # 同じ判定を適用し、`prefix`自身の末尾セグメントも
+                # 必要なら翻訳する(再帰の基底部は`prefix`にこれ以上`.`が
+                # 無くなった時点の既存の`_canonical_name()`分岐)。
+                return _apply_chained_property(_render_node(Ident(name=prefix)), last)
         else:
             return _canonical_name(node.name)
         return node.name
@@ -697,7 +714,7 @@ _CHAINED_PROPERTY_TRANSLATIONS = {
 # このIdent分岐を通る)もここに追加しないと`_apply_chained_property`
 # 側の対応が素通りされ、`CurrentFile.FullName`がそのまま出力されて
 # 実行時`AttributeError`になる(実装直後にテストで発見・即修正)。
-_SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname", "name")
+_SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname", "name", "count")
 
 # 知見140: 呼び出しを伴わない静的クラスプロパティの完全修飾名(小文字化
 # 済み)→Python式。`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`
@@ -710,6 +727,38 @@ _STATIC_PROPERTY_TRANSLATIONS = {
 
 
 def _render_chained_access(node: ChainedAccess) -> str:
+    # 知見244: `jobj("key").ToString()`(`jobj`が`ScopeInfo.
+    # json_object_vars`に登録済みのJObject/JArray添字変数、知見241)の
+    # ようにインデクサ呼び出し直後に単独で`.ToString()`が続く場合、
+    # 戻り値の実行時型(スカラーかコンテナか)が静的に決定不能——
+    # Newtonsoft.Jsonの`JToken.ToString()`はスカラー(`JValue`)なら生の
+    # 値(VBの`.ToString()`と同じ、既存の`_vb_cstr()`が正しい)だが、
+    # コンテナ(`JObject`/`JArray`)なら再シリアライズしたJSONテキストを
+    # 返す(`_vb_cstr()`のPython `str()`ベースの変換ではシングルクォート
+    # /`True`/`False`/`None`混じりの無効なJSONになり、`DeserializeJsonArray`
+    # (知見245)のような後続の`json.loads()`を壊す)——実機
+    # `vajrang-b/UiPathIn30Days`の`SourceCode/2024/Projects/April
+    # 2024/RandomuserMeApi/Main.xaml`で実際に
+    # `JsonObject("results").ToString()`という形(`"results"`はJSON配列
+    # を指す)を発見し、この食い違いに気付いた。どちらか一方を決め打ち
+    # すると反対の型の場合に静かに間違ったコードを生成してしまうため、
+    # でっち上げず`NotImplementedError`へ倒す(他の`_render_*`と同じ
+    # 「型が静的に確定できない場合は見送る」方針)。
+    scope = _ACTIVE_SCOPE.get()
+    if (
+        scope is not None
+        and isinstance(node.target, FuncCall)
+        and len(node.target.args) == 1
+        and node.target.name.lower() in scope.json_object_vars
+        and len(node.members) == 1
+        and node.members[0].lower() == "tostring"
+        and node.args in (None, ())
+    ):
+        raise NotImplementedError(
+            f"{node.target.name}(...).ToString() on a JObject/JArray indexer "
+            "result has a statically-unknown runtime type (JSON container "
+            "vs. scalar) — refusing to guess between json.dumps() and str()"
+        )
     base = _render_node(node.target)
     members = list(node.members)
     if node.args is None:

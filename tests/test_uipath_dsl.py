@@ -31,6 +31,7 @@ from dump_daemon.uipath_dsl import (
     GoBackNode,
     NavigateToNode,
     GetFromClipboardNode,
+    DeserializeJsonArrayNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3591,6 +3592,41 @@ def test_deserialize_json_with_csharp_expression_arguments_declines_to_none():
     assert isinstance(node, DeserializeJsonNode)
     assert node.json_object is None
     assert node.json_string is None
+
+
+def test_deserialize_json_array_properties():
+    """知見245: `ui:DeserializeJsonArray`(`DeserializeJson<njl:JObject>`
+    (知見241)の兄弟活動、タグ名限定GitHub検索で142件ヒット)。
+    `DeserializeJson`と違いジェネリックではない(`x:TypeArguments`無し)
+    ——実機`base64ai/uipath-samples`の`Sequences/Base64.ai Facial
+    Recognition.xaml`相当の構成。"""
+    xml = (
+        f"<ui:DeserializeJsonArray {_UI_XMLNS} "
+        'DisplayName="Deserialize JSON Array" '
+        'JsonArray="[formattedJson]" JsonString="[base64aiResponse]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeserializeJsonArrayNode)
+    assert node.json_array == VbExpr(text="formattedJson")
+    assert node.json_string == VbExpr(text="base64aiResponse")
+
+
+def test_deserialize_json_array_with_chained_json_object_source():
+    """実機`vajrang-b/UiPathIn30Days`の`SourceCode/2024/Projects/April
+    2024/RandomuserMeApi/Main.xaml`相当の構成——`JsonString`が別の
+    `DeserializeJson`出力からの`JObject("key").ToString()`連鎖式。"""
+    xml = (
+        f"<ui:DeserializeJsonArray {_UI_XMLNS} "
+        'DisplayName="Deserialize JSON Array" '
+        'JsonArray="[_out_DeserializeJsonArray_1__JsonArray]" '
+        'JsonString="[_out_DeserializeJson_Generic_1_1__JsonObject(&quot;results&quot;).ToString()]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeserializeJsonArrayNode)
+    assert node.json_array == VbExpr(text="_out_DeserializeJsonArray_1__JsonArray")
+    assert node.json_string == VbExpr(
+        text='_out_DeserializeJson_Generic_1_1__JsonObject("results").ToString()'
+    )
 
 
 def test_repeat_number_of_times_x_properties():

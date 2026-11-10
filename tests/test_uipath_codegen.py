@@ -55,6 +55,7 @@ from dump_daemon.uipath_dsl import (
     GoBackNode,
     NavigateToNode,
     GetFromClipboardNode,
+    DeserializeJsonArrayNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -10447,6 +10448,129 @@ def test_deserialize_json_with_missing_json_object_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: DeserializeJson with no JsonObject captured" in code
+    _compiles(code)
+
+
+def test_deserialize_json_array_simple_exec():
+    """知見245: `ui:DeserializeJsonArray`——`x:TypeArguments`無しの
+    非ジェネリック活動、常に`JArray`→Pythonの`list`に対応する。実機
+    `base64ai/uipath-samples`相当の構成(`JsonArray`+`JsonString`の
+    みのシンプル形)を`exec()`経由で実際に実行し確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                DeserializeJsonArrayNode(
+                    json_string=VbExpr(text="base64aiResponse"),
+                    json_array=VbExpr(text="formattedJson"),
+                ),
+            ]
+        ),
+        arguments={"base64aiResponse": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "import json" in code
+    assert "formattedJson = json.loads(base64aiResponse)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    import json as _json
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return formattedJson", namespace)  # noqa: S102 - 信頼できる自作コード
+    out = namespace["Test"](_json.dumps([{"a": 1}, {"b": 2}]))
+    assert out == [{"a": 1}, {"b": 2}]
+
+
+def test_deserialize_json_array_foreach_njl_jtoken_loop_var_exec():
+    """知見245: 実機`vajrang-b/UiPathIn30Days`相当の構成——
+    `DeserializeJsonArray`の出力を`ui:ForEach x:TypeArguments=
+    "njl:JToken"`で反復し、反復変数自身も`ScopeInfo.json_object_vars`
+    (`ForEachRow`の`data_row_vars`伝播、知見203と同じパターン)経由で
+    添字アクセス(`currentItem("key")`)できることを`exec()`経由で
+    確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                DeserializeJsonArrayNode(
+                    json_string=VbExpr(text="responseString"),
+                    json_array=VbExpr(text="arr"),
+                ),
+                ForEachNode(
+                    item_var="currentItem",
+                    type_arguments="njl:JToken",
+                    values=VbExpr(text="arr"),
+                    body=[WriteLineNode(text=VbExpr(text='currentItem("gender")'))],
+                ),
+            ]
+        ),
+        arguments={"responseString": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "for currentItem in arr:" in code
+    assert "currentItem['gender']" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    import json as _json
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - 信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"](_json.dumps([{"gender": "male"}, {"gender": "female"}]))
+    assert stdout.getvalue().splitlines() == ["male", "female"]
+
+
+def test_deserialize_json_array_with_ambiguous_tostring_source_declines():
+    """知見244: `JObject("key").ToString()`(`DeserializeJson`出力からの
+    実機`vajrang-b/UiPathIn30Days`相当の連鎖式)は、戻り値の実行時型
+    (JSONコンテナかスカラーか)が静的に決定不能なため、`_vb_cstr()`
+    (無効なJSONを生成しうる)でも`json.dumps()`(スカラーには過剰な
+    引用符を付ける)でもでっち上げず`# TODO`へ倒すことを確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                DeserializeJsonNode(
+                    json_string=VbExpr(text="responseString"),
+                    json_object=VbExpr(text="jobj"),
+                    type_argument="njl:JObject",
+                ),
+                DeserializeJsonArrayNode(
+                    json_string=VbExpr(text='jobj("results").ToString'),
+                    json_array=VbExpr(text="arr"),
+                ),
+            ]
+        ),
+        arguments={"responseString": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "# TODO" in code
+    assert "statically-unknown runtime type" in code
+    _compiles(code)
+
+
+def test_json_object_vars_count_chain_on_bare_identifier():
+    """知見244: バレ変数の3段以上の連鎖(`formattedJson.Count.ToString`、
+    実機`base64ai/uipath-samples`で確認——`DeserializeJsonArray`の出力
+    を`x:TypeArguments`無しの括弧省略形`.Count`で参照する)は、既存の
+    `_render_node`のIdent分岐が末尾セグメントしか剥がさず`prefix`
+    ("formattedJson.Count")を不透明な1個の名前として扱ってしまい、
+    Pythonに存在しない`.Count`属性アクセスへ素通しされ実行時
+    `AttributeError`になっていたバグを修正したことを確認する——
+    `prefix`自身も再帰的に同じ判定へ回すことで`len()`へ正しく変換
+    される。"""
+    wf = _wrap(
+        [
+            AssignNode(
+                target=VbExpr(text="result"),
+                value=VbExpr(text="formattedJson.Count.ToString"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "result = _vb_cstr(len(formattedJson))" in code
+    assert "# TODO" not in code
     _compiles(code)
 
 
