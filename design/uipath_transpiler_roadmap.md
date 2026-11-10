@@ -3166,3 +3166,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      4件)、UiPath関連テスト全1045件通過、リポジトリ全体で全2141件
      通過。知見230の発見パスの候補は全て着手済み——次のtickで新規
      発見パスが必要。
+
+190. **(完了、2026-11-10)** `uast:ExtractText`を新規実装(知見232)——
+     `StartingText`と`EndingText`の間の文字列を抜き出す活動、
+     タグ名限定検索で41件ヒット。知見220で発見済みだった`uast:`
+     (`UiPath.Activities.System.Text`)名前空間を初めて定数化
+     (`SYSTEM_TEXT_NS`)。ground-truthには単数形`Result`属性が無く
+     `FirstMatch`/`Results`(複数)のみ記載されていたが、実機6件は
+     常に`Result`(単数)を使う——知見197・230に続く「ground-truthは
+     網羅的ではない」教訓の3度目の実例。マーカー文字列自体は出力に
+     含まない(`TextToLeftRight`知見222と同じ判断、他社RPAツールの
+     同種機能も同じ規約と確認)。`MatchCase`省略時は公式ドキュメント
+     確認済みの既定`False`(大文字小文字を区別しない検索、出力は
+     元の大文字小文字を保持)。マーカーが見つからない場合は
+     `str.index()`の自然な`ValueError`に委ねる(フォールバック値を
+     捏造しない既存方針)。`exec()`経由で大文字小文字を区別しない
+     既定・区別する`MatchCase=True`・マーカー不在時の`ValueError`を
+     確認した。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`6件)、UiPath関連テスト全1051件
+     通過、リポジトリ全体で全2148件通過。同じ発見パスで見つけた
+     `ui:GetLastDownloadedFile`(129件ヒット、スコープ構造+ポーリング
+     処理)と`uix:NMouseScroll`(UIAutomationNextの`uix:`名前空間、
+     219件ヒット、実機確認済みは要素記述子無しの単純なグローバル
+     マウスホイールスクロール)を次の候補として記録。

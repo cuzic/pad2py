@@ -2380,6 +2380,56 @@ class DatabaseTransactionNode:
 
 
 @dataclass
+class ExtractTextNode:
+    """`<uast:ExtractText Source="..." StartingText="..."
+    EndingText="..." Result="..." ExtractOptions="BetweenStrings" />`
+    (知見232、サブエージェントによる5回目の新規発見パスで発見、
+    `UiPath.Activities.System.Text`名前空間——知見220で`ChangeCase`
+    調査時に発見済みだったが当時は実装対象に採用しなかった`uast:`を
+    初めて定数化。タグ名限定GitHub検索で41件ヒット)。実機6件
+    (`sree-hari-s/ACME-REFramework`の`Check_PDF.xaml`、OCR抽出した
+    PDFテキストから`Check Number`/`Check Date`等のラベル後の値を
+    個別に抜き出す定番用途)いずれも`ExtractOptions="BetweenStrings"`
+    +`IgnoreDuplicates="False"`+`MatchCase="False"`+
+    `ExtractBaseURLOnly="False"`+単一文字列出力`Result`の構成——
+    ground-truth(`marcelocruzrpa/uipath-ai-skills`)には`Result`
+    (単数)属性が無く`FirstMatch`/`Results`(複数)のみ記載されている
+    が(知見197・230と同種の「ground-truthは網羅的ではない」実例)、
+    実機は常に`Result`(単数)属性を使い`FirstMatch`/`Results`は
+    `{x:Null}`のまま——公式ドキュメント(WebSearch経由確認、
+    Studio UI上の表示名は「First extracted text」/「All extracted
+    text」)の「最初の1件を返す」出力と同じ役割と判断し`Result`の
+    みに対応する(`FirstMatch`/`Results`は実機で一度も使われている
+    のを確認できず未対応)。
+
+    「StartingTextとEndingTextの間の文字列を抜き出す」——マーカー
+    文字列自体は出力に含まれない(`TextToLeftRight`知見222の
+    `Separator`除外と同じ判断、他RPAツール(WorkFusion/Electroneek)
+    の同種機能も同じ規約と確認——UiPath公式ドキュメントには含む/
+    除くの明記は無いが強い状況証拠による推測)。`StartingText`が
+    見つからない・`EndingText`が`StartingText`より後に見つからない
+    場合の挙動は未確認——`str.index()`の自然な`ValueError`に委ねる
+    (フォールバック値を捏造しない既存方針、`TextToLeftRight`等と
+    同じ)。`MatchCase`は公式ドキュメント確認済みの既定`False`
+    (大文字小文字を区別しない検索、出力自体は元の大文字小文字を保持)
+    ——`ModifyText`の`FindAndReplaceTextModification`(知見224)と
+    同じ判断。`IgnoreDuplicates`/`ExtractBaseURLOnly`が`"True"`の
+    場合の挙動は実機で一度も確認できず未対応。`ExtractOptions`が
+    `"BetweenStrings"`以外(URL抽出等、`ExtractBaseURLOnly`属性の
+    存在から推測される別モードの可能性)の場合も未対応。"""
+
+    source: Expr = None
+    starting_text: Expr = None
+    ending_text: Expr = None
+    result: Expr = None
+    extract_options: str | None = None
+    match_case: str | None = None
+    ignore_duplicates: str | None = None
+    extract_base_url_only: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3646,6 +3696,7 @@ Node = (
     | InsertDataTableNode
     | BulkInsertNode
     | DatabaseTransactionNode
+    | ExtractTextNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

@@ -10905,6 +10905,65 @@ ground-truth(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
 これで知見230の発見パスで見つかった候補は全て着手済み(または
 意図的な見送り判断)——次のtickで新規発見パスが必要。
 
+## 232. `uast:ExtractText`を新規実装——StartingTextとEndingTextの間の文字列を抜き出す定番用途、ground-truthに無い単数形Result属性を実機は常に使うという「ground-truthは網羅的ではない」実例が再び確認できた
+
+サブエージェントによる5回目の新規発見パス(studio-ground-truth
+リポジトリには実はパッケージディレクトリが7種しか無いと判明——
+Database/Excel/Mail/PDF/Persistence/System/Testing/WebAPI/
+UIAutomation——別途Core/Word/Image/Credentials専用パッケージは
+存在しないため、未探索のバージョンスナップショットを直接マイニング
+する手法に切り替えたとの報告)で発見した`uast:ExtractText`
+(タグ名限定検索で41件ヒット)に着手した。知見220で`ChangeCase`
+調査時に`uast:`(`clr-namespace:UiPath.Activities.System.Text;
+assembly=UiPath.System.Activities`)を発見済みだったが、その時は
+実装対象に採用せず定数化もしていなかった——本活動で初めて
+`SYSTEM_TEXT_NS`として定数化した。
+
+実機6件(`sree-hari-s/ACME-REFramework`の`Check_PDF.xaml`、OCR抽出
+したPDFテキストから`Check Number`/`Check Date`/`Client ID`等の
+ラベル後の値を個別に抜き出す定番用途)いずれも
+`ExtractOptions="BetweenStrings"`+`IgnoreDuplicates="False"`+
+`MatchCase="False"`+`ExtractBaseURLOnly="False"`+単一文字列出力
+`Result`の構成で確認した。ground-truthには`Result`(単数)属性が
+**無く**`FirstMatch`/`Results`(複数)のみ記載されている——しかし
+実機は常に`Result`(単数)を使い`FirstMatch`/`Results`は`{x:Null}`
+のまま。知見197(`GenerateDataTable`)・知見230
+(`InsertDataTable`/`BulkInsert`)に続く「ground-truthは網羅的な
+属性リストではない」という既知の教訓の3度目の実例——公式ドキュメント
+(WebSearch経由確認、Studio UI上の表示名「First extracted text」/
+「All extracted text」)の「最初の1件を返す」出力と同じ役割と判断し
+`Result`のみに対応することにした。
+
+「`StartingText`と`EndingText`の間の文字列を抜き出す」——マーカー
+文字列自体は出力に含まれない(`TextToLeftRight`知見222の
+`Separator`除外と同じ判断、WorkFusion/Electroneekという他社RPA
+ツールの同種機能が同じ規約を明示していることも確認——UiPath公式
+ドキュメント自体には含む/除くの明記は無いが、強い状況証拠からの
+推測)。`MatchCase`省略時は公式ドキュメント確認済みの既定`False`
+(大文字小文字を区別しない検索)——`str.lower()`で検索用に小文字化
+しつつ、出力自体は元の`_et_source`(大文字小文字保持)からスライス
+する実装とした。`StartingText`/`EndingText`が見つからない場合の
+挙動は未確認——`str.index()`の自然な`ValueError`に委ねる
+(フォールバック値を捏造しない既存方針)。
+
+`exec()`経由で実機相当の構成(大文字小文字を区別しない既定・
+区別するMatchCase=True・マーカーが見つからない場合の`ValueError`)
+を実際に実行し、全て正しく動作することを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件)、
+UiPath関連テスト全1051件通過、リポジトリ全体で全2148件通過
+(28件skip、変化無し)。
+
+同じ発見パスで`ui:GetLastDownloadedFile`(129件ヒット、
+`AttachWindow`/`RetryScope`と同種のスコープ構造だがダウンロード
+フォルダのポーリング・タイミング処理を伴う中程度の複雑さ)と
+`uix:NMouseScroll`(UIAutomationNextの`uix:`名前空間、219件ヒット、
+実機確認済みの用法は要素記述子を一切使わない「`SendHotkey`の兄弟」
+相当の単純なグローバルマウスホイールスクロール)の2件も発見済み
+——次の候補として記録する。`ui:SetWebAttribute`/
+`ui:SelectMultipleItems`(10/11件ヒットだが大半が合成生成物で
+実機未確認)、`uix:NGetClipboard`/`NSetClipboard`/`NDragAndDrop`
+(5〜6件のみ)は確認不足のため見送り。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

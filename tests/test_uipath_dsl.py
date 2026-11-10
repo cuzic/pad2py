@@ -49,6 +49,7 @@ from dump_daemon.uipath_dsl import (
     InsertDataTableNode,
     BulkInsertNode,
     DatabaseTransactionNode,
+    ExtractTextNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -775,6 +776,41 @@ def test_database_transaction_self_connecting_mode_properties():
     assert isinstance(node, DatabaseTransactionNode)
     assert node.provider_name == Literal(value="MySql.Data.MySqlClient")
     assert node.connection_string is not None
+
+
+_SYSTEM_TEXT_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:uast="clr-namespace:UiPath.Activities.System.Text;'
+    'assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_extract_text_properties():
+    """知見232: `uast:ExtractText`(タグ名限定GitHub検索で41件ヒット、
+    知見220で発見済みだった`uast:`名前空間を初めて実装対象に採用)。
+    実機`sree-hari-s/ACME-REFramework`の`Check_PDF.xaml`で確認した
+    属性構成——ground-truthには無い`Result`(単数)属性を実機は常に
+    使い、`FirstMatch`/`Results`(複数)は`{x:Null}`のまま。"""
+    xml = (
+        f"<uast:ExtractText {_SYSTEM_TEXT_XMLNS} "
+        'FirstMatch="{x:Null}" Results="{x:Null}" '
+        'DisplayName="Extract Text" EndingText="Check Date" '
+        'ExtractBaseURLOnly="False" ExtractOptions="BetweenStrings" '
+        'IgnoreDuplicates="False" MatchCase="False" '
+        'Result="[out_CheckNumber]" Source="[str_PDFData]" '
+        'StartingText="Check Number " />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExtractTextNode)
+    assert node.source == VbExpr(text="str_PDFData")
+    assert node.starting_text == Literal(value="Check Number ")
+    assert node.ending_text == Literal(value="Check Date")
+    assert node.result == VbExpr(text="out_CheckNumber")
+    assert node.extract_options == "BetweenStrings"
+    assert node.match_case == "False"
+    assert node.ignore_duplicates == "False"
+    assert node.extract_base_url_only == "False"
 
 
 def test_excel_read_range_and_write_range():

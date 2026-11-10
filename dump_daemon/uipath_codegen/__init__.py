@@ -96,6 +96,7 @@ from ..uipath_dsl.types import (
     InsertDataTableNode,
     BulkInsertNode,
     DatabaseTransactionNode,
+    ExtractTextNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -839,6 +840,8 @@ def _generate_node(
         return _generate_database_transaction(
             node, indent, invoke_resolver, out_arg_resolver
         )
+    if isinstance(node, ExtractTextNode):
+        return _generate_extract_text(node, indent)
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5339,6 +5342,87 @@ def _generate_database_transaction_body(
     return _ensure_nonempty_suite(
         _generate_body(node.body, indent, invoke_resolver, out_arg_resolver), indent
     )
+
+
+_EXTRACT_TEXT_FALSE_ONLY_VALUES = (None, "False")
+
+
+def _generate_extract_text(node: ExtractTextNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_extract_text_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_extract_text_body(node: ExtractTextNode, indent: int) -> list[str]:
+    """知見232: `uast:ExtractText`。「`StartingText`と`EndingText`の
+    間の文字列を抜き出す」——マーカー文字列自体は出力に含まない
+    (`TextToLeftRight`知見222と同じ判断)。`MatchCase`省略時は公式
+    ドキュメント確認済みの既定`False`(大文字小文字を区別しない検索、
+    出力自体は元の大文字小文字を保持)。`StartingText`/`EndingText`が
+    見つからない場合は`str.index()`の自然な`ValueError`に委ねる
+    (フォールバック値を捏造しない既存方針)。"""
+    prefix = INDENT * indent
+    if (
+        node.source is None
+        or node.starting_text is None
+        or node.ending_text is None
+        or node.result is None
+    ):
+        return [
+            f"{prefix}# TODO: ExtractText with missing Source/StartingText/"
+            "EndingText/Result"
+        ]
+    if node.extract_options not in (None, "BetweenStrings"):
+        return [
+            f"{prefix}# TODO: ExtractText with unconfirmed ExtractOptions "
+            f"({node.extract_options!r}) — only 'BetweenStrings' is "
+            "confirmed, refusing to guess"
+        ]
+    if node.extract_base_url_only not in _EXTRACT_TEXT_FALSE_ONLY_VALUES:
+        return [
+            f"{prefix}# TODO: ExtractText with ExtractBaseURLOnly set "
+            f"({node.extract_base_url_only!r}) — refusing to guess"
+        ]
+    if node.ignore_duplicates not in _EXTRACT_TEXT_FALSE_ONLY_VALUES:
+        return [
+            f"{prefix}# TODO: ExtractText with IgnoreDuplicates set "
+            f"({node.ignore_duplicates!r}) — only the confirmed False "
+            "default is supported, refusing to guess"
+        ]
+    if node.match_case not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: ExtractText with unrecognized MatchCase "
+            f"({node.match_case!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    source = _render_value_or_todo(node.source, prefix, todo)
+    starting_text = _render_value_or_todo(node.starting_text, prefix, todo)
+    ending_text = _render_value_or_todo(node.ending_text, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_et_source = {VB_CSTR_HELPER_NAME}({source})",
+        f"{prefix}_et_start = {VB_CSTR_HELPER_NAME}({starting_text})",
+        f"{prefix}_et_end = {VB_CSTR_HELPER_NAME}({ending_text})",
+    ]
+    if node.match_case == "True":
+        lines.extend(
+            [
+                f"{prefix}_et_start_idx = _et_source.index(_et_start) + len(_et_start)",
+                f"{prefix}_et_end_idx = _et_source.index(_et_end, _et_start_idx)",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"{prefix}_et_source_lower = _et_source.lower()",
+                f"{prefix}_et_start_idx = _et_source_lower.index(_et_start.lower()) + len(_et_start)",
+                f"{prefix}_et_end_idx = _et_source_lower.index(_et_end.lower(), _et_start_idx)",
+            ]
+        )
+    lines.append(f"{prefix}{target} = _et_source[_et_start_idx:_et_end_idx]")
+    return lines
 
 
 # 知見117: `ui:CopyFile`。`Destination`がフォルダパスの場合は元のファイル名

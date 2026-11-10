@@ -55,6 +55,7 @@ from .types import (
     InsertDataTableNode,
     BulkInsertNode,
     DatabaseTransactionNode,
+    ExtractTextNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -205,6 +206,12 @@ TEXT_MODIFICATIONS_NS = (
 MAIL_BUSINESS_NS = (
     "clr-namespace:UiPath.Mail.Activities.Business;"
     "assembly=UiPath.Mail.Activities"
+)
+# 知見220で発見した`uast:`名前空間(`ChangeCase`等——実機ヒット数が
+# 低く(7件)見送り済み)——知見232の`ExtractText`(41件ヒット)で
+# 初めて実装対象として採用し、ここで初めて定数化する。
+SYSTEM_TEXT_NS = (
+    "clr-namespace:UiPath.Activities.System.Text;assembly=UiPath.System.Activities"
 )
 
 
@@ -1754,6 +1761,22 @@ def _parse_database_transaction(elem: etree._Element) -> DatabaseTransactionNode
     )
 
 
+def _parse_extract_text(elem: etree._Element) -> ExtractTextNode:
+    return ExtractTextNode(
+        display_name=_attr(elem, "DisplayName"),
+        source=_attr_expr(elem, "Source") or _in_argument_property_expr(elem, "Source"),
+        starting_text=_attr_expr(elem, "StartingText")
+        or _in_argument_property_expr(elem, "StartingText"),
+        ending_text=_attr_expr(elem, "EndingText")
+        or _in_argument_property_expr(elem, "EndingText"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        extract_options=_attr(elem, "ExtractOptions"),
+        match_case=_attr(elem, "MatchCase"),
+        ignore_duplicates=_attr(elem, "IgnoreDuplicates"),
+        extract_base_url_only=_attr(elem, "ExtractBaseURLOnly"),
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2745,6 +2768,7 @@ _DISPATCH = {
     (UI_NS, "InsertDataTable"): _parse_insert_data_table,
     (UI_NS, "BulkInsert"): _parse_bulk_insert,
     (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
+    (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

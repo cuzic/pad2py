@@ -70,6 +70,7 @@ from dump_daemon.uipath_dsl import (
     InsertDataTableNode,
     BulkInsertNode,
     DatabaseTransactionNode,
+    ExtractTextNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7487,6 +7488,91 @@ def test_database_transaction_with_no_database_connection_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: DatabaseTransaction with no DatabaseConnection captured" in code
+    _compiles(code)
+
+
+def _extract_text_node(**overrides) -> ExtractTextNode:
+    defaults = dict(
+        source=VbExpr(text="str_PDFData"),
+        starting_text=Literal(value="Check Number "),
+        ending_text=Literal(value="Check Date"),
+        result=VbExpr(text="out_CheckNumber"),
+        extract_options="BetweenStrings",
+        match_case="False",
+        ignore_duplicates="False",
+        extract_base_url_only="False",
+    )
+    defaults.update(overrides)
+    return ExtractTextNode(**defaults)
+
+
+def test_extract_text_returns_substring_between_markers_case_insensitive():
+    """知見232: `uast:ExtractText`。実機`sree-hari-s/ACME-REFramework`
+    相当の構成を`exec()`経由で実際に実行し、マーカー文字列自体を含まず
+    その間の文字列だけが抜き出されること、`MatchCase`省略時の既定
+    (大文字小文字を区別しない検索、出力は元の大文字小文字を保持)を
+    確認する。"""
+    wf = _wrap([_extract_text_node()])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(str_PDFData):")
+    code2 += "\n    return out_CheckNumber"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    sample = "Check Number 12345\nCheck Date 2024-01-01"
+    assert namespace["Test"](sample) == "12345\n"
+
+
+def test_extract_text_match_case_true_is_case_sensitive():
+    wf = _wrap([_extract_text_node(match_case="True")])
+    code = generate_python(wf)
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(str_PDFData):")
+    code2 += "\n    return out_CheckNumber"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    sample = "Check Number 99\nCheck Date 2024-01-01"
+    assert namespace["Test"](sample) == "99\n"
+    with pytest.raises(ValueError):
+        namespace["Test"]("check number 99\nCheck Date 2024-01-01")
+
+
+def test_extract_text_missing_marker_raises_value_error():
+    """知見232: `StartingText`/`EndingText`が見つからない場合の挙動は
+    未確認——フォールバック値を捏造せず自然な`ValueError`に委ねる方針
+    (`TextToLeftRight`等と同じ)を`exec()`経由で確認する。"""
+    wf = _wrap([_extract_text_node()])
+    code = generate_python(wf)
+    code2 = code.replace("def Test():", "def Test(str_PDFData):")
+    code2 += "\n    return out_CheckNumber"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with pytest.raises(ValueError):
+        namespace["Test"]("no markers here")
+
+
+def test_extract_text_with_missing_properties_is_todo():
+    wf = _wrap([_extract_text_node(result=None)])
+    code = generate_python(wf)
+    assert (
+        "# TODO: ExtractText with missing Source/StartingText/EndingText/"
+        "Result" in code
+    )
+    _compiles(code)
+
+
+def test_extract_text_with_unconfirmed_extract_options_is_todo_not_guessed():
+    wf = _wrap([_extract_text_node(extract_options="Url")])
+    code = generate_python(wf)
+    assert "# TODO: ExtractText with unconfirmed ExtractOptions ('Url')" in code
+    _compiles(code)
+
+
+def test_extract_text_with_ignore_duplicates_true_is_todo_not_guessed():
+    wf = _wrap([_extract_text_node(ignore_duplicates="True")])
+    code = generate_python(wf)
+    assert "# TODO: ExtractText with IgnoreDuplicates set ('True')" in code
     _compiles(code)
 
 
