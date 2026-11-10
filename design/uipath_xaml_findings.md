@@ -10017,6 +10017,57 @@ test_uipath_codegen.py`4件、うち1件は`pytest.importorskip`付きの
 `ManagePDFPassword`/`ExportPDFPageAsImage`/`ExtractImagesFromPDF`)の
 うち、未着手は無くなった。
 
+## 211. 新規活動候補を発掘する調査(実装は見送り)——Orchestratorキュー/トランザクション/アセット系活動群(`AddQueueItem`等、GitHub code searchで数千件ヒット)が、XAMLに一切現れないOrchestrator接続情報を本質的に必要とするため、知見194の`AnchorBase`と同種の構造的な壁に当たると判明
+
+知見193-210で`upap:`PDF活動ファミリー・DataTable操作ファミリーの
+明示的なTODOバックログを全て解消したため、知見128・179と同じ手法
+(GitHub code searchでの素朴なヒット数調査)で新しい実装候補を発掘
+した。
+
+GitHub code searchのヒット数(本tick時点、認証済みレート制限の直前
+まで取得): `SetTransactionStatus`(3236件)・`ElementExists`
+(2412件)・`GetTransactionItem`(848件)・`AddQueueItem`(846件)・
+`GetQueueItems`(308件)・`FindChildren`(226件)・`GetAsset`(71件)・
+`AddTransactionItem`(56件)。これまで実装した活動の多くが数百件程度
+だったのに対し、`SetTransactionStatus`/`ElementExists`の数千件は
+突出して高い。
+
+**`ElementExists`は偽陽性と判明**: 調査の結果、これは別活動のタグ名
+ではなく、既存実装済みの`ui:UiElementExists`の**表示名**("Element
+Exists"、公式ドキュメントで"internal name UiPath.Core.Activities.
+UiElementExists"と確認)がGitHub code searchの`DisplayName`属性文字列
+にマッチしていた偽陽性だった——タグ名ベースではなく素朴な文字列検索
+だけに頼ると、こうした表示名由来の過大カウントに引っかかる教訓。
+
+**Orchestratorキュー/トランザクション/アセット系(`AddQueueItem`/
+`GetTransactionItem`/`SetTransactionStatus`/`AddTransactionItem`/
+`GetAsset`/`SetAsset`等)は、知見194の`AnchorBase`と同種の構造的な壁に
+当たる**: ground-truthコーパス(`UiPath.System.Activities/25.10`)で
+確認した属性構成(`AddQueueItem`は`QueueType`+`ItemInformation`
+(`Dictionary<string, InArgument>`)+`Priority`等)自体は把握できたが、
+公式ドキュメント(`docs.uipath.com/activities/other/latest/workflow/
+add-queue-item`、WebFetch確認)で「ロボットはOrchestratorに接続済みで
+なければならず、ロボット自身のOrchestratorアカウント権限で実行される」
+ことが明記されている——Orchestratorの接続先URL・認証情報は**XAML自体
+には一切現れず**、ロボット実行環境側(UiPath Robot/Assistantの
+マシンレベル登録)から実行時に注入される。これは`AnchorBase`が
+抱えていた「アンカー相対探索の実質的な機構がSelector文字列に一切
+表現されない」という問題と全く同じ構造——静的な`generate_python()`
+が安全に模倣できる情報がXAML自体に原理的に存在しない。
+
+実装するには、生成コードに新たな設計(例: 環境変数や追加の関数引数
+からOrchestrator接続情報を読み取る、`requests`(既存の確認済み依存、
+知見96の`HttpClient`で既に使用)でOrchestrator REST APIを直接呼ぶ等)
+を導入する必要があり、これは`AnchorBase`のような「常に実装を見送る」
+判断とは異なり、クレデンシャル/ネットワーク接続という新しいリスク
+領域を生成コードに持ち込む設計判断——知見209の依存追加の相談と同種、
+あるいはそれ以上に、ユーザーとの事前相談が必要な種類の決定だと判断
+した。本tickでは実装に着手せず、調査結果のみ記録する。
+
+コード変更無し。次にOrchestratorキュー系活動へ着手する場合は、まず
+この設計判断(接続情報の受け渡し方式)をユーザーと相談することから
+始める必要がある。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
