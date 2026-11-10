@@ -3029,3 +3029,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`5件)、UiPath関連テスト全1018件通過、
      リポジトリ全体で全2104件通過。
+
+183. **(完了、2026-11-10)** `ui:CommentOut`を新規実装(知見225)——
+     Studioの「コメントアウト」操作で残る、`Body`配下を実行しない
+     ラッパー、タグ名限定検索で5056件ヒット(既実装活動の中でも
+     最多クラス)。属性は`DisplayName`のみ、`.Body`配下は
+     `AttachWindow`(知見153)と同じ直接`Sequence`構造——既存の
+     `_unwrap_body_sequence`を再利用。パーサーは`body`を構造情報
+     として保持するが、コード生成側は`body`の内容を一切辿らず常に
+     1行の説明コメントのみを返す(無効化されているはずの処理を
+     実際に実行してしまわないため)——`_ensure_nonempty_suite`の
+     既存の仕組みがそのまま`pass`を補うことを確認。`exec()`経由で
+     `body`内の副作用のある文(`WriteLine`)が生成コードに一切現れ
+     ないことを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`2件)、UiPath関連テスト全
+     1021件通過、リポジトリ全体で全2107件通過。同じ発見パスで
+     `ui:Continue`(458件ヒット、`Break`と同じ無属性)と
+     `ui:RepeatNumberOfTimesX`(265件ヒット、`ForEach`と同じ
+     `ActivityAction<Int32>`本体構造)を次の候補として記録。

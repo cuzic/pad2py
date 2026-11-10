@@ -34,6 +34,7 @@ from .types import (
     CloseTabNode,
     CloseWindowNode,
     CommentNode,
+    CommentOutNode,
     CopyFileNode,
     CreateFileNode,
     DatabaseConnectNode,
@@ -1951,6 +1952,12 @@ def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
 
+def _parse_comment_out(elem: etree._Element) -> CommentOutNode:
+    body_elem = _find_property_element(elem, "Body")
+    body = _unwrap_body_sequence(body_elem) if body_elem is not None else []
+    return CommentOutNode(display_name=_attr(elem, "DisplayName"), body=body)
+
+
 def _parse_delay(elem: etree._Element) -> DelayNode:
     return DelayNode(
         duration=_attr_expr(elem, "Duration"),
@@ -2627,6 +2634,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
     (UI_NS, "ExcelReadCell"): _parse_excel_read_cell,
     (UI_NS, "Comment"): _parse_comment,
+    (UI_NS, "CommentOut"): _parse_comment_out,
     (UI_NS, "LogMessage"): _parse_log_message,
     (UI_NS, "ExcelReadRange"): _parse_excel_read_range,
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,

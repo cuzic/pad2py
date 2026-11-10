@@ -75,6 +75,7 @@ from ..uipath_dsl.types import (
     CloseTabNode,
     CloseWindowNode,
     CommentNode,
+    CommentOutNode,
     CopyFileNode,
     CreateFileNode,
     DatabaseConnectNode,
@@ -838,6 +839,8 @@ def _generate_node(
         return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, CommentNode):
         return _generate_comment(node, indent)
+    if isinstance(node, CommentOutNode):
+        return _generate_comment_out(node, indent)
     if isinstance(node, DelayNode):
         return _generate_delay(node, indent)
     if isinstance(node, WriteLineNode):
@@ -5947,6 +5950,22 @@ def _generate_comment(node: CommentNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = node.text.splitlines() or [""]
     return [f"{prefix}# {line}" for line in lines]
+
+
+def _generate_comment_out(node: CommentOutNode, indent: int) -> list[str]:
+    """知見225: `ui:CommentOut`はStudioの「コメントアウト」操作で
+    ワークフロー上に残る、`Body`配下を**実行しない**ラッパー——
+    `body`の内容は意図的に一切辿らない(辿って通常のコード生成に
+    回すと、無効化されているはずの処理が実際に実行されてしまう)。
+    コメント1行のみを出力し、`body`が唯一の文だった場合でも
+    `_ensure_nonempty_suite`が`pass`を補ってくれる(他の
+    コメントのみ`# TODO`行と同じ扱い)。"""
+    prefix = INDENT * indent
+    label = (node.display_name or "Comment Out").replace("\n", "\\n")
+    return [
+        f"{prefix}# {label} (ui:CommentOut — disabled in the original "
+        "workflow, body intentionally not generated)"
+    ]
 
 
 # 知見151: 実機XAMLで確認済みの.NET TimeSpanリテラル書式

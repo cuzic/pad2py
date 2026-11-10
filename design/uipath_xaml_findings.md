@@ -10591,6 +10591,52 @@ test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`5件)、
 UiPath関連テスト全1018件通過、リポジトリ全体で全2104件通過
 (28件skip、変化無し)。
 
+## 225. `ui:CommentOut`を新規実装——Studioの「コメントアウト」操作で残る、`Body`配下を実行しないラッパー、タグ名限定検索で既実装活動の中でも最多クラスの5056件ヒット
+
+知見224で候補が尽きたため、サブエージェントによる新規発見パスを
+実施した。既実装活動の全リスト(タグ名ベース)を除外条件として渡し、
+`marcelocruzrpa/uipath-ai-skills`の`studio-ground-truth`ディレクトリ
+一覧と実機GitHub検索を組み合わせる手法で3件の候補を発見・ランク
+付けしてもらい、最上位の`ui:CommentOut`に着手した。
+
+タグ名限定検索(`"ui:CommentOut" extension:xaml`)で5056件ヒット
+——本トランスパイラの既実装活動の中でも最多クラス(`Delay`の
+1万件超(知見151)には及ばないが、`AttachWindow`の1100件・
+`WindowScope`の1688件を大きく上回る)。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`SuneetPatil/IRCTC-tatkal-booking/IRCTCLogin.xaml`・
+`uipathkorea/OrchestratorAPI/CreateQueue.xaml`)いずれも属性は
+`DisplayName`のみ、`.Body`配下の構造は`AttachWindow`(知見153)と
+同じ——`ActivityAction`のラップ無しで直接`Sequence`1つが入る——
+既存の`_unwrap_body_sequence`をそのまま再利用できた。
+
+意味論はStudioの「選択範囲をコメントアウト」操作でワークフロー上に
+残る、**`Body`配下を実行しないまま保持する**ラッパー。パーサー側は
+構造情報として`body`を保持する(将来の用途のため)が、コード
+生成側では`body`の内容を一切辿らない方針とした——通常のコード
+生成に回すと、無効化されているはずの処理が実際に実行されてしまう
+ため。`_generate_comment_out`は常に1行の説明コメントのみを返し、
+`_ensure_nonempty_suite`の既存の仕組み(コメントのみの本体には
+`pass`を補う)がそのまま働くことを確認した。
+
+`exec()`経由で、`body`に`WriteLine`(副作用のある文)を入れても
+生成コードに一切現れず正常に`pass`扱いになることを確認した。
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`2件)、UiPath関連テスト全1021件通過、
+リポジトリ全体で全2107件通過(28件skip、変化無し)。
+
+同じ発見パスで`ui:Continue`(458件ヒット、`Break`と同じ無属性、
+`Break`の既存インフラを再利用できる見込み)と
+`ui:RepeatNumberOfTimesX`(265件ヒット、`NumberOfTimes`+
+`StartAt`+`ForEach`と同じ`ActivityAction<Int32>`本体構造)の
+2件も発見済み——次の候補として記録する。`ui:CustomInput`
+(302件ヒットだが埋め込みHTMLダイアログ、未モデル化のレンダリング
+インフラが必要なため見送り)と`UiPath.Activities.System.Date`/
+`.Text`名前空間の新しめの活動群(`AddOrSubtractFromDate`/
+`FormatDateAsText`/`ExtractDateTime`/`SplitText`、名前空間全体で
+53件ヒットのみ・個別活動は2〜8件ヒット——実機確認の「複数の独立
+リポジトリ」基準を満たさないため現時点では見送り)も調査済み。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

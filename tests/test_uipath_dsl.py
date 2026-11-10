@@ -29,6 +29,7 @@ from dump_daemon.uipath_dsl import (
     CloseTabNode,
     CloseWindowNode,
     CommentNode,
+    CommentOutNode,
     CopyFileNode,
     CreateFileNode,
     DatabaseConnectNode,
@@ -2916,6 +2917,29 @@ def test_excel_application_scope(main_wf):
     assert isinstance(scope.body[0], ExcelWriteCellNode)
     assert scope.body[0].cell == Literal(value="A1")
     assert scope.body[0].sheet_name == "Sheet1"
+
+
+def test_comment_out_unwraps_body_sequence():
+    """知見225: `ui:CommentOut`(タグ名限定GitHub検索で5056件ヒット
+    ——既実装活動の中でも最多クラス)。実機
+    `SuneetPatil/IRCTC-tatkal-booking`で確認した構造——
+    `AttachWindow`(知見153)と同じ`ActivityAction`ラップ無しの
+    直接`Sequence`、属性は`DisplayName`のみ。"""
+    xml = (
+        f"<ui:CommentOut {_UI_XMLNS} "
+        'DisplayName="Comment Out">'
+        "<ui:CommentOut.Body>"
+        '<Sequence DisplayName="Ignored Activities">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ui:CommentOut.Body>"
+        "</ui:CommentOut>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, CommentOutNode)
+    assert node.display_name == "Comment Out"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
 
 
 def test_attach_window_unwraps_body_sequence():

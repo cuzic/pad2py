@@ -51,6 +51,7 @@ from dump_daemon.uipath_dsl import (
     CloseTabNode,
     CloseWindowNode,
     CommentNode,
+    CommentOutNode,
     CopyFileNode,
     CreateFileNode,
     DatabaseConnectNode,
@@ -8790,6 +8791,38 @@ def test_comment_with_multiline_text_generates_one_comment_per_line():
     code = generate_python(wf)
     assert "# line one" in code
     assert "# line two" in code
+    _compiles(code)
+
+
+def test_comment_out_body_is_never_generated():
+    """知見225: `ui:CommentOut`はStudioの「コメントアウト」操作で
+    無効化されたブロック——`Body`配下は実行されないため、通常の
+    コード生成に回すと無効化されているはずの処理が実際に実行されて
+    しまう。`body`の内容(`WriteLine`)が一切生成コードに現れず、
+    代わりに1行のコメントだけが出力されることを確認する。"""
+    wf = _wrap(
+        [
+            CommentOutNode(
+                display_name="Comment Out",
+                body=[WriteLineNode(text=Literal(value="should never run"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "should never run" not in code
+    assert "# Comment Out (ui:CommentOut" in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test():\n    executed = []")
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+
+
+def test_comment_out_as_sole_statement_gets_pass():
+    wf = _wrap([CommentOutNode(display_name=None, body=[])])
+    code = generate_python(wf)
+    assert "# Comment Out (ui:CommentOut" in code
+    assert "pass" in code
     _compiles(code)
 
 

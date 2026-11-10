@@ -2668,6 +2668,27 @@ class CommentNode:
 
 
 @dataclass
+class CommentOutNode:
+    """`<ui:CommentOut><ui:CommentOut.Body><Sequence
+    DisplayName="Ignored Activities">...</Sequence></ui:CommentOut.Body>
+    </ui:CommentOut>`(知見225、タグ名限定GitHub検索で5056件ヒット——
+    本トランスパイラの既実装活動の中でも最多クラス)。Studioの
+    「選択範囲をコメントアウト」操作でワークフロー上に残る、`Body`配下
+    を**実行しないまま保持する**ラッパー——ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+    (`SuneetPatil/IRCTC-tatkal-booking`等)いずれも属性は`DisplayName`
+    のみ(他の設定項目は無い)。`.Body`配下の構造は`AttachWindow`
+    (知見153)と同じ——`ActivityAction`のラップ無しで直接`Sequence`
+    1つが入る——ため既存の`_unwrap_body_sequence`をそのまま再利用
+    できるが、コード生成では`body`の内容を一切辿らない(`Body`配下の
+    子活動が副作用のあるコードを生成してしまうと、無効化されている
+    はずの処理が実際に実行されてしまうため)。"""
+
+    display_name: str | None = None
+    body: list[Node] = field(default_factory=list)
+
+
+@dataclass
 class DelayNode:
     """`<ui:Delay Duration="..." />`(知見151、UiPath独自の待機活動
     ——GitHub code search(`"ui:Delay Duration=" extension:xaml`)で
@@ -3377,6 +3398,7 @@ Node = (
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode
+    | CommentOutNode
     | DelayNode
     | WriteLineNode
     | ThrowNode
