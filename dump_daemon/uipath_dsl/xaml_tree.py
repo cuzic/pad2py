@@ -70,6 +70,7 @@ from .types import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ReadRangeNode,
+    WriteRangeNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -2549,6 +2550,21 @@ def _parse_read_range(elem: etree._Element) -> ReadRangeNode:
     )
 
 
+def _parse_write_range(elem: etree._Element) -> WriteRangeNode:
+    return WriteRangeNode(
+        workbook_path=_attr_expr(elem, "WorkbookPath")
+        or _in_argument_property_expr(elem, "WorkbookPath"),
+        sheet_name=_attr_expr(elem, "SheetName")
+        or _in_argument_property_expr(elem, "SheetName"),
+        starting_cell=_attr_expr(elem, "StartingCell")
+        or _in_argument_property_expr(elem, "StartingCell"),
+        add_headers=_attr_or_none(elem, "AddHeaders"),
+        data_table=_attr_expr(elem, "DataTable")
+        or _in_argument_property_expr(elem, "DataTable"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_attach_window(elem: etree._Element) -> AttachWindowNode:
     body_elem = _find_property_element(elem, "Body")
     body = _unwrap_body_sequence(body_elem)
@@ -3233,6 +3249,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteRange"): _parse_excel_write_range,
     (UI_NS, "ExcelAppendRange"): _parse_excel_append_range,
     (UI_NS, "ReadRange"): _parse_read_range,
+    (UI_NS, "WriteRange"): _parse_write_range,
     (UI_NS, "AttachWindow"): _parse_attach_window,
     (UI_NS, "WindowScope"): _parse_window_scope,
     (UI_NS, "BrowserScope"): _parse_browser_scope,

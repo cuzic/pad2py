@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     GetEnvironmentFolderNode,
     GetProcessesNode,
     ReadRangeNode,
+    WriteRangeNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -11196,6 +11197,150 @@ def test_read_range_display_name_becomes_a_comment():
     )
     code = generate_python(wf)
     assert "# Read Range" in code
+    _compiles(code)
+
+
+def test_write_range_with_headers_overwrites_in_place_exec(tmp_path):
+    """知見257: `ui:WriteRange`——`ExcelWriteRangeNode`(知見115修正済み)
+    が確立した「直接セル指定書き込み(末尾追記ではない)」を継承し、
+    スコープ無しで自分自身の`WorkbookPath`に対して`load_workbook()`→
+    書き込み→`.save()`することを実際の`openpyxl`で`exec()`経由で
+    確認する。"""
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws["B2"] = "preexisting"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=Literal(value=path),
+                sheet_name=Literal(value="Sheet1"),
+                starting_cell=Literal(value="C5"),
+                add_headers="False",
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert "import openpyxl" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(dt):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]([{"x": "1", "y": "2"}, {"x": "3", "y": "4"}])
+
+    wb2 = openpyxl.load_workbook(path)
+    ws2 = wb2.active
+    assert ws2["B2"].value == "preexisting"
+    assert ws2["C5"].value == "1" and ws2["D5"].value == "2"
+    assert ws2["C6"].value == "3" and ws2["D6"].value == "4"
+
+
+def test_write_range_with_headers_and_dynamic_workbook_path_exec(tmp_path):
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    wb.active.title = "Sheet1"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=VbExpr(text="wbPath"),
+                sheet_name=Literal(value="Sheet1"),
+                starting_cell=None,
+                add_headers="True",
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(wbPath, dt):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"](path, [{"name": "alice", "age": 30}])
+
+    wb2 = openpyxl.load_workbook(path)
+    rows = list(wb2.active.iter_rows(values_only=True))
+    assert rows == [("name", "age"), ("alice", 30)]
+
+
+def test_write_range_with_no_workbook_path_is_todo():
+    wf = _wrap([WriteRangeNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Write Range with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_write_range_with_no_input_data_table_is_todo():
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                data_table=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Write Range with no input DataTable captured" in code
+    _compiles(code)
+
+
+def test_write_range_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=None,
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Write Range with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_write_range_with_dynamic_starting_cell_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                starting_cell=VbExpr(text="dynamicCell"),
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Write Range with dynamic (non-literal) StartingCell" in code
+    _compiles(code)
+
+
+def test_write_range_with_unparseable_starting_cell_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WriteRangeNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                sheet_name=Literal(value="Sheet1"),
+                starting_cell=Literal(value="notacell"),
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Write Range with unparseable StartingCell" in code
     _compiles(code)
 
 

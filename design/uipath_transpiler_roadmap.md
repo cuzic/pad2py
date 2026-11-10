@@ -3675,3 +3675,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      コミット済み、明示的パスリスト指定で衝突無く共存)。調査パスで
      Word classic(`WordAppendText`等)・マウスキーボード系
      (`ui:SetFocus`等)の候補も判明済み、次のティックで継続実装。
+
+215. **(完了、2026-11-10)** `ui:WriteRange`を新規実装(知見257)
+     ——`ReadRange`(知見256)の書き込み側、同じスコープ無し
+     "Workbook"系ファミリー。タグ名限定検索で2892件ヒット。実機4件で
+     `WorkbookPath`(動的VB式の文字列連結、または角括弧無しの素の
+     リテラルパスの両方)・`SheetName`・`StartingCell`(常にA1既定
+     相当)・`Password`(常に`{x:Null}`、新規属性)を確認。
+     `ExcelWriteRangeNode`(知見115修正済み)が確立した「直接セル
+     指定書き込み(既存データのあるシートでも正しい位置へ上書き)」を
+     継承しつつ、スコープ無しで自分自身の`load_workbook()`→書き込み
+     →`.save()`を行う。`sheet_name`は既存のスコープ版の`str`限定
+     制約と違い最初から`Expr`型として対応、`starting_cell`が動的式
+     (非`Literal`)の場合は新たに`# TODO`へ倒す判定を追加(実機未
+     観測の組み合わせへの事前の安全策)。実際の`openpyxl`で既存データ
+     上書き・動的`WorkbookPath`保存の両方を`exec()`経由で確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`7件)、リポジトリ全体で全2333件通過
+     (本活動の9件分の純増)。残るWord classic・マウスキーボード系の
+     候補は次のティックで継続実装。

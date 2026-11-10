@@ -47,6 +47,7 @@ from dump_daemon.uipath_dsl import (
     GetEnvironmentFolderNode,
     GetProcessesNode,
     ReadRangeNode,
+    WriteRangeNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1163,6 +1164,55 @@ def test_read_range_with_dynamic_sheet_name_and_null_range():
     assert node.add_headers == "True"
     assert node.range is None
     assert node.data_table == VbExpr(text="configTable")
+
+
+def test_write_range_properties():
+    """知見257: `ui:WriteRange`(`ReadRangeNode`の書き込み側、同じ
+    スコープ無し"Workbook"系ファミリー、タグ名限定GitHub検索で2892件
+    ヒット)。実機`piyushagarwal08/JU-Notes`の`UiPath/Data/Main.xaml`で
+    確認した構成——`WorkbookPath`が角括弧無しの素のリテラルパス、
+    `StartingCell`/`Password`が属性直書き。"""
+    xml = (
+        f"<ui:WriteRange {_UI_XMLNS} "
+        'AddHeaders="False" DataTable="[ExtractDataTable]" '
+        'DisplayName="Write Range" Password="{x:Null}" SheetName="Sheet1" '
+        'StartingCell="A1" WorkbookPath="C:\\Users\\piyus\\Desktop\\Gujrat.xlsx" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteRangeNode)
+    assert node.workbook_path == Literal(value="C:\\Users\\piyus\\Desktop\\Gujrat.xlsx")
+    assert node.sheet_name == Literal(value="Sheet1")
+    assert node.starting_cell == Literal(value="A1")
+    assert node.add_headers == "False"
+    assert node.data_table == VbExpr(text="ExtractDataTable")
+    assert node.display_name == "Write Range"
+
+
+def test_write_range_with_dynamic_workbook_path_and_nested_starting_cell():
+    """知見257: `manickakrish/Filter_ExcelDatatable`の実機XAMLで確認した
+    構成——`WorkbookPath`が文字列連結を含む動的VB式
+    (`DateAndTime.Now.ToString(...)`)、`StartingCell`がネストした
+    空文字列`Literal`形(`ExcelWriteRangeNode`と同じ「常にA1既定へ
+    倒れる」判断の対象)。"""
+    xml = (
+        f"<ui:WriteRange {_UI_XMLNS} "
+        'AddHeaders="True" DataTable="[ExtractDataTable]" '
+        'DisplayName="Write Range" SheetName="Sheet1" '
+        'WorkbookPath="[&quot;Original/&quot; + DateAndTime.Now.ToString(&quot;dd_MM_yyyy&quot;) + &quot;.xlsx&quot;]">'
+        "<ui:WriteRange.StartingCell>"
+        '<InArgument x:TypeArguments="x:String">'
+        '<Literal x:TypeArguments="x:String" Value="" />'
+        "</InArgument>"
+        "</ui:WriteRange.StartingCell>"
+        "</ui:WriteRange>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteRangeNode)
+    assert node.workbook_path == VbExpr(
+        text='"Original/" + DateAndTime.Now.ToString("dd_MM_yyyy") + ".xlsx"'
+    )
+    assert node.starting_cell == Literal(value="")
+    assert node.add_headers == "True"
 
 
 def test_excel_write_cell_with_dynamic_cell_expression():

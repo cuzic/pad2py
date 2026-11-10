@@ -111,6 +111,7 @@ from ..uipath_dsl.types import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ReadRangeNode,
+    WriteRangeNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1033,6 +1034,8 @@ def _generate_node(
         return _generate_excel_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ReadRangeNode):
         return _generate_read_range(node, indent)
+    if isinstance(node, WriteRangeNode):
+        return _generate_write_range(node, indent)
     if isinstance(node, WordApplicationScopeNode):
         return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendMailNode):
@@ -8038,6 +8041,79 @@ def _generate_read_range_body(node: ReadRangeNode, indent: int) -> list[str]:
     else:
         lines.append(f"{prefix}{target} = [list(_r) for _r in _rows]")
     lines.append(f"{prefix}_wb.close()")
+    return lines
+
+
+# 知見257: `ui:WriteRange`——`ReadRangeNode`(知見256)と同じスコープ無し
+# "Workbook"系活動ファミリーの書き込み側。`ExcelWriteRangeNode`
+# (知見115修正済み)が確立した「`Worksheet.cell(row=..., column=...,
+# value=...)`による直接セル指定書き込み」を継承するが、スコープ無しの
+# 単独活動のため自分自身で`load_workbook()`→書き込み→`.save()`する。
+def _generate_write_range(node: WriteRangeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_write_range_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_write_range_body(node: WriteRangeNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.workbook_path is None:
+        return [f"{prefix}# TODO: Write Range with no WorkbookPath captured"]
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Write Range with no input DataTable captured"]
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: Write Range with no SheetName captured"]
+    if node.starting_cell is not None and not isinstance(node.starting_cell, Literal):
+        return [
+            f"{prefix}# TODO: Write Range with dynamic (non-literal) "
+            f"StartingCell ({_describe_expr_for_comment(node.starting_cell)}) "
+            "— cell position can't be resolved statically, refusing to guess"
+        ]
+    starting_cell_literal = (
+        node.starting_cell.value if isinstance(node.starting_cell, Literal) else ""
+    )
+    try:
+        start_col_letter, start_row = coordinate_from_string(starting_cell_literal or "A1")
+        start_col = column_index_from_string(start_col_letter)
+    except (ValueError, CellCoordinatesException):
+        return [
+            f"{prefix}# TODO: Write Range with unparseable StartingCell "
+            f"({starting_cell_literal!r}) — refusing to guess"
+        ]
+    add_headers = node.add_headers if node.add_headers is not None else "False"
+    if add_headers not in ("True", "False"):
+        return [
+            f"{prefix}# TODO: Write Range with unrecognized AddHeaders "
+            f"({node.add_headers!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    workbook_path = _render_value_or_todo(node.workbook_path, prefix, todo)
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    rows = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    lines = [
+        f"{prefix}_wb = openpyxl.load_workbook({workbook_path})",
+        f"{prefix}_ws = _wb[{VB_CSTR_HELPER_NAME}({sheet_name})]",
+        f"{prefix}_rows = {rows}",
+        f"{prefix}if _rows:",
+    ]
+    if add_headers == "True":
+        lines.append(f"{inner}for _j, _h in enumerate(list(_rows[0].keys())):")
+        lines.append(
+            f"{inner2}_ws.cell(row={start_row}, column={start_col} + _j, value=_h)"
+        )
+        lines.append(f"{inner}_row0 = {start_row + 1}")
+    else:
+        lines.append(f"{inner}_row0 = {start_row}")
+    lines.append(f"{inner}for _i, _row in enumerate(_rows):")
+    lines.append(f"{inner2}for _j, _v in enumerate(_row.values()):")
+    lines.append(
+        f"{INDENT * (indent + 3)}_ws.cell(row=_row0 + _i, column={start_col} + _j, value=_v)"
+    )
+    lines.append(f"{prefix}_wb.save({workbook_path})")
     return lines
 
 

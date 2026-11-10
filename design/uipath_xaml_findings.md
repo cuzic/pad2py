@@ -12220,6 +12220,57 @@ test_uipath_codegen.py`7件)。このティックの開始時点で別セッシ�
 した。両方を含むリポジトリ全体で全2324件通過(28件skip、本活動の
 9件分の純増)。
 
+## 257. `ui:WriteRange`を新規実装——`ReadRange`(知見256)の書き込み側、同じスコープ無し"Workbook"系ファミリーに、知見115修正済みの直接セル指定書き込みを継承した
+
+Excel/Word/マウスキーボード網羅性向上の調査パス(知見256と同じ)で
+ランキング2位だった`ui:WriteRange`(タグ名限定GitHub検索で2892件
+ヒット)に着手した。`ReadRange`と対になる、同じ"Workbook"系
+(`WorkbookPath`を自分自身の属性として持ち、スコープ無しで単独動作
+する)書き込み活動。
+
+実機4件(`manickakrish/Filter_ExcelDatatable`、`piyushagarwal08/
+JU-Notes`の`UiPath/Data/Main.xaml`、`vajrang-b/UiPathIn30Days`の
+複数タスク、`cristinegulescu/startUiPathFromSalesforce`の
+`LearnTeams.xaml`)で独立に確認した構成——`WorkbookPath`は動的VB式の
+文字列連結(`["Original/" + DateAndTime.Now.ToString("dd_MM_yyyy") +
+".xlsx"]`、`render_expr`が`DateAndTime.Now`の`.Now`チェインメンバ
+未対応のため自然に`# TODO`へ倒れることを確認済み——でっち上げず
+正直に倒す既存方針どおり)と、角括弧無しの素のリテラルパス
+(`"C:\Users\piyus\Desktop\Gujrat.xlsx"`)の両方を確認。`SheetName`は
+静的リテラルのみ確認。`StartingCell`は実機4件とも「ネストした空
+文字列`Literal`形」「属性`{x:Null}`形」「`"A1"`という既定値と同じ値の
+明示的リテラル」のいずれかで、`ExcelWriteRangeNode`(知見115)の
+既存の「常にA1既定へ倒れる」判断と矛盾しない——本活動の
+`starting_cell`は動的式(非`Literal`)の場合のみ新たに`# TODO`へ倒す
+判定を追加した(実機では一度も観測されていない組み合わせ、事前の
+安全策)。`Password`(実機確認済みの値は常に`{x:Null}`、
+`ExcelWriteRangeNode`には存在しない新規属性)も確認。
+
+`ExcelWriteRangeNode.sheet_name: str`/`starting_cell: str | None`と
+いう既存の静的文字列限定制約(VbExpr未対応)とは違い、本活動は
+`WorkbookPath`の動的式実例が多数確認できたことを踏まえ
+`sheet_name`も最初から`Expr`型として対応した(`ReadRangeNode`の
+`sheet_name`と同じ判断)。
+
+`ExcelWriteRangeNode`が知見115追記で確立した「`Worksheet.cell(row=...,
+column=..., value=...)`による直接セル指定書き込み(`append()`ベース
+ではなく、既存データのあるシートでも正しい位置に上書きする)」を
+そのまま継承した——スコープ無しの単独活動のため、自分自身で
+`openpyxl.load_workbook()`→書き込み→`.save()`する(`ReadRangeNode`と
+違い書き込みのため保存が必要)。
+
+実際の`openpyxl`で生成した`.xlsx`ファイルに対して`exec()`経由で
+動作確認した——既存データのあるシートへの`C5`開始の上書きが正しい
+位置に書き込まれること(既存データ`B2`は無傷のまま)、動的
+`WorkbookPath`経由の保存・再読み込みで正しい値が確認できることの
+両方を確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`7件)、リポジトリ全体で全2333件通過
+(28件skip、本活動の9件分の純増)。調査パスで判明したWord classic系
+(`WordAppendText`・`WordSaveAs`等)・マウスキーボード系
+(`ui:SetFocus`等)の候補は次のティックで継続実装する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

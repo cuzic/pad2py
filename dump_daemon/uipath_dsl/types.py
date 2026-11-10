@@ -4265,6 +4265,50 @@ class ReadRangeNode:
 
 
 @dataclass
+class WriteRangeNode:
+    """`<ui:WriteRange WorkbookPath="..." SheetName="..." DataTable="..."
+    AddHeaders="..." StartingCell="..." Password="{x:Null}" />`(知見257、
+    `ReadRangeNode`(知見256)の書き込み側、同じスコープ無し"Workbook"系
+    活動ファミリー、タグ名限定GitHub検索で2892件ヒット)。
+
+    実機4件(`manickakrish/Filter_ExcelDatatable`の`Main.xaml`、
+    `piyushagarwal08/JU-Notes`の`UiPath/Data/Main.xaml`、
+    `vajrang-b/UiPathIn30Days`の複数タスク、`cristinegulescu/
+    startUiPathFromSalesforce`の`LearnTeams.xaml`)で確認した構成——
+    `WorkbookPath`(動的VB式の文字列連結`["Original/" + DateAndTime.
+    Now.ToString("dd_MM_yyyy") + ".xlsx"]`、または角括弧無しの素の
+    リテラルパス`"C:\\Users\\piyus\\Desktop\\Gujrat.xlsx"`の両方を確認)、
+    `SheetName`(静的リテラルのみ確認)、`DataTable`(入力)、
+    `AddHeaders`(`"True"`/`"False"`両方確認済み)、`StartingCell`
+    (ネストした空文字列`Literal`形、または属性`{x:Null}`形、または
+    `"A1"`という既定値と同じ値の明示的リテラル——実機4件とも
+    `ExcelWriteRangeNode`(知見115)の既存の「常にA1既定へ倒れる」
+    判断と矛盾しない)、`Password`(実機確認済みの値は常に`{x:Null}`、
+    `ExcelWriteRangeNode`には存在しない属性)。
+
+    `ExcelWriteRangeNode`の`sheet_name: str`/`starting_cell: str |
+    None`という既存の静的文字列限定制約(VbExpr未対応)とは異なり、
+    本活動は`WorkbookPath`の動的式実例が多数確認できたことを踏まえ
+    `sheet_name`/`starting_cell`も最初から`Expr`型として対応する
+    ——`starting_cell`が動的式(リテラルでない)の場合はコード生成時に
+    セル位置を静的に解決できないため`# TODO`へ倒す(実機では一度も
+    観測されていない組み合わせ)。
+
+    `ExcelWriteRangeNode`が確立した「`Worksheet.cell(row=..., column=...,
+    value=...)`による直接セル指定書き込み(`append()`ベースではない)」
+    という知見115修正済みのバグ修正を継承する。スコープ無しの単独活動
+    のため、自分自身で`openpyxl.load_workbook()`→書き込み→`.save()`
+    する(`ReadRangeNode`と違い書き込みのため保存が必要)。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    starting_cell: Expr = None
+    add_headers: str | None = None
+    data_table: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendOutlookMailNode:
     """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
 
@@ -4810,6 +4854,7 @@ Node = (
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
     | ReadRangeNode
+    | WriteRangeNode
     | SendOutlookMailNode
     | GetOutlookMailMessagesNode
     | MarkMailAsReadXNode
