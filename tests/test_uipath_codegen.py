@@ -21,6 +21,7 @@ import io
 import logging
 import os
 import tempfile
+import unittest.mock
 import zipfile
 from pathlib import Path
 
@@ -53,6 +54,7 @@ from dump_daemon.uipath_dsl import (
     DeserializeJsonNode,
     GoBackNode,
     NavigateToNode,
+    GetFromClipboardNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -11709,6 +11711,43 @@ def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:
     code = generate_python(wf)
     _compiles(code)
     assert "pyperclip.copy(_vb_cstr(4.0))" in code
+
+
+def test_get_from_clipboard_exec():
+    """知見243: `ui:GetFromClipboard`——`SetToClipboard`の逆方向、
+    `pyperclip.paste()`に対応する。このLinuxサンドボックスには実際の
+    クリップボード機構が無いため`unittest.mock.patch`で`pyperclip.
+    paste`自体をモックし(`pyperclip`のインポート自体は問題無い——
+    バックエンド呼び出し時のみ失敗する)、生成コードが実際に
+    `pyperclip.paste()`の戻り値を正しく代入先へ書き込むことを
+    `exec()`経由で確認する。"""
+    wf = _wrap([GetFromClipboardNode(result=VbExpr(text="result"))])
+    code = generate_python(wf)
+    assert "import pyperclip" in code
+    assert "result = pyperclip.paste()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return result", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("pyperclip.paste", return_value="hello world"):
+        out = namespace["Test"]()
+    assert out == "hello world"
+
+
+def test_get_from_clipboard_display_name_becomes_a_comment():
+    wf = _wrap(
+        [GetFromClipboardNode(result=VbExpr(text="result"), display_name="Get From Clipboard")]
+    )
+    code = generate_python(wf)
+    assert "# Get From Clipboard" in code
+    _compiles(code)
+
+
+def test_get_from_clipboard_with_no_result_is_todo():
+    wf = _wrap([GetFromClipboardNode(result=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetFromClipboard with no Result captured" in code
+    _compiles(code)
 
 
 @pytest.mark.parametrize(

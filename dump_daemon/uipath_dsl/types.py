@@ -3322,6 +3322,32 @@ class SetToClipboardNode:
 
 
 @dataclass
+class GetFromClipboardNode:
+    """`<ui:GetFromClipboard TimeoutMS="..."><ui:GetFromClipboard.Result>
+    <OutArgument ...>...</OutArgument></ui:GetFromClipboard.Result>
+    </ui:GetFromClipboard>`(知見243、8回目発見パスで発見、タグ名限定
+    GitHub検索で86件ヒット)。`SetToClipboardNode`の逆方向——実機2件
+    (`tylorbunting/P006---Update-COVID19-Dashboard`の`Main.xaml`、
+    `datasherlock/aws-workspace-login-rpa`の`Code/Get Authorization
+    Code.xaml`)で確認。`Result`の`x:TypeArguments`は`x:String`/
+    `ui:GenericValue`の両方が実在するが、いずれのダウンストリーム利用も
+    `.Length`(文字列扱い)のみ——単純な文字列として表現してよい。
+
+    `TimeoutMS`は`{x:Null}`(既定)・`5000`等の実値いずれも確認したが、
+    UI Automation系活動一般の既知の意味論(公式ドキュメント確認済み、
+    `Copy Selected Text`等——「活動の実行がエラーを投げるまでの最大
+    待機時間」)であり、「クリップボードに新しい内容が現れるまで
+    ポーリングする」という意味ではない。`pyperclip.paste()`は現在の
+    クリップボード内容を即座に読むだけで待機自体が発生しないため、
+    対応するタイムアウト概念が存在しない——`ContinueOnError`等と同じ
+    「意味のある対応先が無いため無視する」既存の判断パターンを適用し、
+    モデル化しない(`# TODO`も出さない、本当に無関係なため)。"""
+
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class CommentNode:
     """`<ui:Comment Text="..." />`(知見119、`PacktPublishing/
     Robotic-Process-Automation-Projects`の実機XAMLで発見)。アクティビティ
@@ -4047,6 +4073,7 @@ Node = (
     | DeserializeJsonNode
     | GoBackNode
     | NavigateToNode
+    | GetFromClipboardNode
     | ParallelNode
     | ClickNode
     | HoverNode

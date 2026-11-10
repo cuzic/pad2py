@@ -34,6 +34,7 @@ from .types import (
     DeserializeJsonNode,
     GoBackNode,
     NavigateToNode,
+    GetFromClipboardNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -2238,6 +2239,13 @@ def _parse_set_to_clipboard(elem: etree._Element) -> SetToClipboardNode:
     return SetToClipboardNode(text=_attr_expr(elem, "Text"))
 
 
+def _parse_get_from_clipboard(elem: etree._Element) -> GetFromClipboardNode:
+    return GetFromClipboardNode(
+        display_name=_attr(elem, "DisplayName"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
 def _parse_excel_write_cell(elem: etree._Element) -> ExcelWriteCellNode:
     return ExcelWriteCellNode(
         cell=_attr_expr(elem, "Cell"),
@@ -2987,6 +2995,7 @@ _DISPATCH = {
     ): _parse_to_upper_lower_text_modification,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,
+    (UI_NS, "GetFromClipboard"): _parse_get_from_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
     (UI_NS, "ExcelReadCell"): _parse_excel_read_cell,
     (UI_NS, "Comment"): _parse_comment,

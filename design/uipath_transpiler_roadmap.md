@@ -3401,3 +3401,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ueab:`と同じ構造的な壁)は対象外と確定。回帰テスト追加
      (`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
      5件)、リポジトリ全体で全2208件通過。
+
+201. **(完了、2026-11-10)** `ui:GetFromClipboard`を新規実装(知見243)
+     ——タグ名限定検索で86件ヒット、同じ8回目発見パスの候補。実機2件
+     (`tylorbunting/P006---Update-COVID19-Dashboard`・
+     `datasherlock/aws-workspace-login-rpa`)で確認——既存の
+     `SetToClipboard`の完全な逆方向、`pyperclip.paste()`に対応する。
+     `TimeoutMS`は公式ドキュメント確認済みのUI Automation系活動一般の
+     実行タイムアウト概念(クリップボードのポーリング待機ではない)
+     と判明し、`pyperclip.paste()`に対応するタイムアウト概念自体が
+     存在しないため意図的にモデル化しない。`Result`(代入先)は
+     `Assign.target`(知見136・137)・`DeserializeJson.JsonObject`
+     (知見241)と同じ厳格な失敗モード。このサンドボックスには実際の
+     クリップボード機構が無いため`unittest.mock.patch`で`pyperclip.
+     paste`自体をモックして`exec()`経由で実際の動作を確認した——
+     文字列検証のみだった既存の`SetToClipboard`テストより一歩進んだ
+     検証手法。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`3件)、リポジトリ全体で全2213件
+     通過。

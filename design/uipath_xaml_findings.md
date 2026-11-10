@@ -11521,6 +11521,44 @@ send_keys()`経路(pywinautoの`.venv`ソース`keyboard.py`のCODES
 追加(`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
 5件)、リポジトリ全体で全2208件通過(28件skip)。
 
+## 243. `ui:GetFromClipboard`を新規実装——既存の`SetToClipboard`の逆方向、`TimeoutMS`はクリップボードのポーリング待機ではなくUI Automation系活動一般の実行タイムアウト概念であることを確認し意図的に無視した
+
+同じ8回目発見パスの候補だった`ui:GetFromClipboard`(タグ名限定GitHub
+検索で86件ヒット)に着手した。
+
+実機2件(`tylorbunting/P006---Update-COVID19-Dashboard`の
+`Main.xaml`、`datasherlock/aws-workspace-login-rpa`の`Code/Get
+Authorization Code.xaml`)で独立に再取得・確認——`TimeoutMS`
+(`{x:Null}`既定値・`5000`の実値いずれも実在)+`.Result`(プロパティ
+要素形の`OutArgument`、`x:TypeArguments`は`x:String`/`ui:GenericValue`
+の両方が実在するが、いずれのダウンストリーム利用も`.Length`
+(文字列扱い)のみ)。既存の`SetToClipboardNode`
+(`pyperclip.copy()`)の完全な逆方向——`pyperclip.paste()`に対応する。
+
+`TimeoutMS`の意味論を事前にWebSearchで確認: UiPath公式ドキュメント
+(`Copy Selected Text`等のUI Automation系活動で明記)によれば
+「活動の実行がエラーを投げるまでの最大待機時間」(既定30秒)という
+活動全般の汎用タイムアウトであり、「クリップボードに新しい内容が
+現れるまでポーリングする」という意味では無い。`pyperclip.paste()`は
+現在のクリップボード内容を即座に読むだけで待機自体が発生しないため、
+対応するタイムアウト概念自体が存在しない——`ContinueOnError`等の
+既存の「意味のある対応先が無いため無視する」判断パターンと同じ
+扱いとし、`# TODO`すら出さない(本当に無関係なため)。
+
+`Result`(代入先)は知見136・137の`Assign.target`・知見241の
+`DeserializeJson.JsonObject`と同じ厳格な失敗モード(`render_expr`を
+直接呼び、例外発生時は代入文自体を生成しない)。
+
+このLinuxサンドボックスには実際のクリップボード機構が無く
+`pyperclip`の各バックエンド呼び出し自体は失敗する(既存の
+`SetToClipboard`回帰テストが`exec()`を避けてきた理由)が、
+`unittest.mock.patch("pyperclip.paste", ...)`で呼び出し自体をモックする
+ことで、生成コードが実際に`pyperclip.paste()`の戻り値を正しく代入先へ
+書き込むことを`exec()`経由で確認できた——文字列検証のみに留めていた
+既存の`SetToClipboard`テストより一歩進んだ検証手法。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+リポジトリ全体で全2213件通過(28件skip)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

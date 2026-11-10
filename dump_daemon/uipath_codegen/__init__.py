@@ -76,6 +76,7 @@ from ..uipath_dsl.types import (
     DeserializeJsonNode,
     GoBackNode,
     NavigateToNode,
+    GetFromClipboardNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -777,6 +778,8 @@ def _generate_node(
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
         return _generate_set_to_clipboard(node, indent)
+    if isinstance(node, GetFromClipboardNode):
+        return _generate_get_from_clipboard(node, indent)
     if isinstance(node, ClickNode):
         return _generate_click(node, indent)
     if isinstance(node, HoverNode):
@@ -2296,6 +2299,31 @@ def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[st
     todo: list[str] = []
     text = _render_value_or_todo(node.text, prefix, todo)
     return [*todo, f"{prefix}pyperclip.copy({VB_CSTR_HELPER_NAME}({text}))"]
+
+
+def _generate_get_from_clipboard(node: GetFromClipboardNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_from_clipboard_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_from_clipboard_body(node: GetFromClipboardNode, indent: int) -> list[str]:
+    """知見243: `ui:GetFromClipboard`——`SetToClipboard`の逆方向、
+    `pyperclip.paste()`に対応する。`Result`(代入先)は`Assign.target`
+    (知見136・137)・`DeserializeJson.JsonObject`(知見241)と同じ厳格な
+    失敗モード——`render_expr`を直接呼び、例外発生時は代入文自体を
+    生成しない。`TimeoutMS`はUI Automation系活動一般の実行タイムアウト
+    概念(クリップボードのポーリング待機ではない)で、`pyperclip.
+    paste()`に対応するタイムアウト概念自体が存在しないため意図的に
+    モデル化しない。"""
+    prefix = INDENT * indent
+    if node.result is None:
+        return [f"{prefix}# TODO: GetFromClipboard with no Result captured"]
+    try:
+        target = render_expr(node.result)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    return [f"{prefix}{target} = pyperclip.paste()"]
 
 
 # `ui:Click`の`ClickType`/`MouseButton`属性(知見71で「唯一確認できた

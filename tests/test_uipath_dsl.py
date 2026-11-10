@@ -30,6 +30,7 @@ from dump_daemon.uipath_dsl import (
     DeserializeJsonNode,
     GoBackNode,
     NavigateToNode,
+    GetFromClipboardNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1400,6 +1401,45 @@ def test_navigate_to_with_vb_expression_url():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, NavigateToNode)
     assert node.url == VbExpr(text='"http://localhost/search?q="+search')
+
+
+def test_get_from_clipboard_with_property_element_result():
+    """知見243: `ui:GetFromClipboard`(タグ名限定GitHub検索で86件
+    ヒット)。`SetToClipboard`の逆方向——実機
+    `tylorbunting/P006---Update-COVID19-Dashboard`の`Main.xaml`で
+    確認した構成、`Result`はプロパティ要素形
+    (`<ui:GetFromClipboard.Result><OutArgument .../></...>`)、
+    `TimeoutMS="{x:Null}"`。"""
+    xml = (
+        f"<ui:GetFromClipboard {_UI_XMLNS} TimeoutMS=\"{{x:Null}}\" "
+        'DisplayName="Get From Clipboard">'
+        "<ui:GetFromClipboard.Result>"
+        '<OutArgument x:TypeArguments="ui:GenericValue">[var_Clipboard]</OutArgument>'
+        "</ui:GetFromClipboard.Result>"
+        "</ui:GetFromClipboard>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetFromClipboardNode)
+    assert node.result == VbExpr(text="var_Clipboard")
+    assert node.display_name == "Get From Clipboard"
+
+
+def test_get_from_clipboard_with_nonzero_timeout():
+    """実機`datasherlock/aws-workspace-login-rpa`の`Code/Get
+    Authorization Code.xaml`で確認した`TimeoutMS="5000"`(非null)の
+    実例——`TimeoutMS`はモデル化しないが、パース自体はその有無に
+    関わらず`Result`を正しく取り出せることを確認する。"""
+    xml = (
+        f"<ui:GetFromClipboard {_UI_XMLNS} TimeoutMS=\"5000\" "
+        'DisplayName="Get from clipboard">'
+        "<ui:GetFromClipboard.Result>"
+        '<OutArgument x:TypeArguments="x:String">[AuthCode]</OutArgument>'
+        "</ui:GetFromClipboard.Result>"
+        "</ui:GetFromClipboard>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetFromClipboardNode)
+    assert node.result == VbExpr(text="AuthCode")
 
 
 def test_close_application_selector_and_properties():
