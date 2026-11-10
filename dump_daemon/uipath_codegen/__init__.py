@@ -124,6 +124,7 @@ from ..uipath_dsl.types import (
     SortDataTableNode,
     FilterDataTableNode,
     JoinDataTablesNode,
+    RemoveDuplicateRowsNode,
     ExportPdfPageAsImageNode,
     ExtractImagesFromPdfNode,
     LogMessageNode,
@@ -735,6 +736,8 @@ def _generate_node(
         return _generate_filter_data_table(node, indent)
     if isinstance(node, JoinDataTablesNode):
         return _generate_join_data_tables(node, indent)
+    if isinstance(node, RemoveDuplicateRowsNode):
+        return _generate_remove_duplicate_rows(node, indent)
     if isinstance(node, SelectFileNode):
         return _generate_select_file(node, indent)
     if isinstance(node, SelectItemNode):
@@ -2478,6 +2481,61 @@ def _generate_join_data_tables_body(node: JoinDataTablesNode, indent: int) -> li
         f"{renamed2!r}, [_jrow2[_jc] for _jc in {cols2!r}]))}} "
         f"for _jrow1 in {data_table1} for _jrow2 in {data_table2} "
         f"if {cond_expr}]"
+    ]
+
+
+def _generate_remove_duplicate_rows(
+    node: RemoveDuplicateRowsNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_remove_duplicate_rows_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_remove_duplicate_rows_body(
+    node: RemoveDuplicateRowsNode, indent: int
+) -> list[str]:
+    """知見214: 知見206-208と同じ`ScopeInfo.data_table_columns`で対象
+    `DataTable`がdict行と確認できる場合のみ対応する。全列の値が完全
+    一致する行を重複として除去し、最初に出現した行を残す。"""
+    prefix = INDENT * indent
+    if node.data_table is None or node.output_data_table is None:
+        return [
+            f"{prefix}# TODO: RemoveDuplicateRows with missing DataTable/"
+            "OutputDataTable"
+        ]
+    if not isinstance(node.data_table, VbExpr):
+        return [
+            f"{prefix}# TODO: RemoveDuplicateRows with non-identifier "
+            "DataTable — row representation cannot be confirmed, "
+            "refusing to guess"
+        ]
+    scope = get_active_scope()
+    columns = (
+        scope.data_table_columns.get(node.data_table.text.lower()) if scope else None
+    )
+    if not columns:
+        return [
+            f"{prefix}# TODO: RemoveDuplicateRows — DataTable's row "
+            "representation (dict vs list) could not be confirmed via "
+            "BuildDataTable with a parsed column schema, refusing to guess"
+        ]
+    todo: list[str] = []
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    output_data_table = _render_value_or_todo(node.output_data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    return [
+        f"{prefix}_rdr_seen = set()",
+        f"{prefix}_rdr_result = []",
+        f"{prefix}for _rdr_row in {data_table}:",
+        f"{inner}_rdr_key = tuple(_rdr_row.values())",
+        f"{inner}if _rdr_key not in _rdr_seen:",
+        f"{inner2}_rdr_seen.add(_rdr_key)",
+        f"{inner2}_rdr_result.append(_rdr_row)",
+        f"{prefix}{output_data_table} = _rdr_result",
     ]
 
 

@@ -2844,3 +2844,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      3件)、UiPath関連テスト全964件通過、リポジトリ全体で全2050件
      通過。
+
+172. **(完了、2026-11-10)** `ui:RemoveDuplicateRows`を新規実装
+     (知見214)——知見213のタグ名限定GitHub検索手法
+     (`"ui:ActivityName"`)を次候補リスト全件に適用して再調査、最も
+     ヒット数が高かった`RemoveDuplicateRows`(93件)に着手した。
+     ground-truth+実機2件で`DataTable`+`OutputDataTable`のみの
+     単純な構成を確認(列選択等のオプション無し)。知見206-208と同じ
+     `ScopeInfo.data_table_columns`アーキテクチャをDataTable操作系
+     5件目として再利用——対象`DataTable`がdict行と確認できる場合
+     のみ、各行の`dict.values()`をキーに全列完全一致の重複行を除去、
+     最初に出現した行を残す。実機相当の構成を`exec()`経由で実際に
+     実行して正しさを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全968
+     件通過、リポジトリ全体で全2054件通過。残る候補
+     `GetEnvironmentVariable`(55件)等を次の候補として記録。

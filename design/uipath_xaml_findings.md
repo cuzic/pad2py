@@ -10139,6 +10139,40 @@ test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`3件)、UiPath
 関連テスト全964件通過、リポジトリ全体で全2050件通過(28件skip、
 変化無し)。
 
+## 214. `ui:RemoveDuplicateRows`を新規実装——知見213のタグ名限定検索手法(`"ui:ActivityName"`)を標準化し、知見206-208と同じScopeInfoアーキテクチャをDataTable操作系5件目として再利用
+
+知見213で確立した「`"ui:ActivityName"`というタグ名限定でGitHub
+code searchする」手法を、知見212の次候補リスト(`UpdateRowItem`/
+`ExtractFiles`/`CompressFiles`/`GetEnvironmentVariable`/
+`RemoveDuplicateRows`/`ChangeCase`)全件に適用して再調査した。結果、
+`ChangeCase`はタグ名限定検索で0件(一般的な`ui:`プレフィックス以外の
+名前空間エイリアスが使われている可能性、未解明)、他は`RemoveDuplicate
+Rows`(93件)・`GetEnvironmentVariable`(55件)が確認できた——最も
+高かった`RemoveDuplicateRows`に着手した。
+
+ground-truthの属性構成は`DataTable`+`OutputDataTable`のみ——列選択や
+オプション属性は一切無く、`SortDataTable`/`FilterDataTable`/
+`JoinDataTables`より単純。実機2件(`cameronmcnz/uipath-tutorials`の
+`DedupeExcel/Main.xaml`・`mennatullahra/UiPath-ExcelDataManipulation`)
+で確認した構成もground-truthと完全に一致、両実機とも`OutputDataTable`
+が`DataTable`と同じ変数(インプレース上書き)だった。
+
+知見206-208と同じ`ScopeInfo.data_table_columns`アーキテクチャを
+DataTable操作系5件目として再利用——対象`DataTable`がdict行と確認
+できる場合のみ、各行の`dict.values()`をキーとして全列完全一致の
+重複行を除去し、最初に出現した行を残す(.NET`DataTable`の標準的な
+重複行判定)。
+
+実機相当の構成(完全一致する重複行を含むテーブル)を`exec()`経由で
+実際に実行し、正しく重複除去・順序保持されることを確認した。回帰
+テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`3件)、UiPath関連テスト全968件通過、リポジトリ
+全体で全2054件通過(28件skip、変化無し)。
+
+残る候補`GetEnvironmentVariable`(55件)・`UpdateRowItem`/
+`ExtractFiles`/`CompressFiles`(タグ名限定検索未実施)を次の候補として
+記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -851,6 +851,30 @@ class JoinDataTablesNode:
 
 
 @dataclass
+class RemoveDuplicateRowsNode:
+    """`<ui:RemoveDuplicateRows>`(知見214、知見206-208と同じ
+    `ScopeInfo.data_table_columns`DataTable操作系、知見213のタグ名
+    限定GitHub検索(`"ui:RemoveDuplicateRows"`)で再発掘)。ground-truth
+    +実機2件(`cameronmcnz/uipath-tutorials`の`DedupeExcel/Main.xaml`・
+    `mennatullahra/UiPath-ExcelDataManipulation`)で確認した構成は
+    `DataTable`+`OutputDataTable`のみ——列選択やオプション属性は一切
+    無い、`SortDataTable`/`FilterDataTable`/`JoinDataTables`より単純。
+    両実機とも`OutputDataTable`が`DataTable`と同じ変数(インプレース
+    上書き)。
+
+    全列の値が完全一致する行を重複として除去し、最初に出現した行を
+    残す(.NET`DataTable`の標準的な重複行判定——列の部分一致ではなく
+    全列一致)。`ScopeInfo.data_table_columns`で対象`DataTable`がdict
+    行と確認できる場合のみ、各行の`dict.values()`(列名→値の順序は
+    `BuildDataTable`由来の既存のdict構築規約で常に一定)をキーとして
+    重複判定する。"""
+
+    display_name: str | None = None
+    data_table: Expr = None
+    output_data_table: Expr = None
+
+
+@dataclass
 class SaveImageNode:
     """`<ui:SaveImage FileName="..." Image="..." />`(知見179、
     `LoadImageNode`(知見178)の正反対の操作)。`UiPath/skills`公式
@@ -2902,6 +2926,7 @@ Node = (
     | SortDataTableNode
     | FilterDataTableNode
     | JoinDataTablesNode
+    | RemoveDuplicateRowsNode
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode

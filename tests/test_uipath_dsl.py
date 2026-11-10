@@ -76,6 +76,7 @@ from dump_daemon.uipath_dsl import (
     FilterOperationArgument,
     JoinDataTablesNode,
     JoinOperationArgument,
+    RemoveDuplicateRowsNode,
     LogMessageNode,
     ManagePdfPasswordNode,
     MessageBoxNode,
@@ -1479,6 +1480,22 @@ def test_join_data_tables_properties_with_duplicate_key_column():
     assert arg.column1_type == "x:String"
     assert arg.column2 == VbExpr(text='"ID"')
     assert arg.column2_type == "x:String"
+
+
+def test_remove_duplicate_rows_properties():
+    """知見214: 実機2件(`cameronmcnz/uipath-tutorials`の
+    `DedupeExcel/Main.xaml`・`mennatullahra/UiPath-ExcelDataManipulation`)
+    で確認した`DataTable`+`OutputDataTable`のみの構成——両実機とも
+    `OutputDataTable`が`DataTable`と同じ変数(インプレース上書き)。"""
+    xml = (
+        f"<ui:RemoveDuplicateRows {_UI_XMLNS} "
+        'DataTable="[input]" DisplayName="Remove Duplicate Rows" '
+        'OutputDataTable="[input]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RemoveDuplicateRowsNode)
+    assert node.data_table == VbExpr(text="input")
+    assert node.output_data_table == VbExpr(text="input")
 
 
 def test_load_image_properties():

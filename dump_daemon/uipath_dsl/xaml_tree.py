@@ -87,6 +87,7 @@ from .types import (
     FilterOperationArgument,
     JoinDataTablesNode,
     JoinOperationArgument,
+    RemoveDuplicateRowsNode,
     ExportPdfPageAsImageNode,
     ExtractImagesFromPdfNode,
     LogMessageNode,
@@ -928,6 +929,16 @@ def _parse_join_data_tables(elem: etree._Element) -> JoinDataTablesNode:
         or _in_argument_property_expr(elem, "OutputDataTable"),
         join_type=_attr(elem, "JoinType"),
         arguments=arguments,
+    )
+
+
+def _parse_remove_duplicate_rows(elem: etree._Element) -> RemoveDuplicateRowsNode:
+    return RemoveDuplicateRowsNode(
+        display_name=_attr(elem, "DisplayName"),
+        data_table=_attr_expr(elem, "DataTable")
+        or _in_argument_property_expr(elem, "DataTable"),
+        output_data_table=_attr_expr(elem, "OutputDataTable")
+        or _in_argument_property_expr(elem, "OutputDataTable"),
     )
 
 
@@ -2350,6 +2361,7 @@ _DISPATCH = {
     (UI_NS, "SortDataTable"): _parse_sort_data_table,
     (UI_NS, "FilterDataTable"): _parse_filter_data_table,
     (UI_NS, "JoinDataTables"): _parse_join_data_tables,
+    (UI_NS, "RemoveDuplicateRows"): _parse_remove_duplicate_rows,
     (UI_NS, "CloseTab"): _parse_close_tab,
     (UI_NS, "RefreshBrowser"): _parse_refresh_browser,
     (UI_NS, "SetFocus"): _parse_activate,

@@ -100,6 +100,7 @@ from dump_daemon.uipath_dsl import (
     FilterDataTableNode,
     FilterOperationArgument,
     JoinDataTablesNode,
+    RemoveDuplicateRowsNode,
     JoinOperationArgument,
     LogMessageNode,
     ManagePdfPasswordNode,
@@ -3616,6 +3617,64 @@ def test_join_data_tables_declines_when_row_representation_is_unknown():
     code = generate_python(wf)
     assert "# TODO: JoinDataTables" in code
     assert "_jrow1" not in code
+    _compiles(code)
+
+
+def test_remove_duplicate_rows_keeps_first_occurrence():
+    """知見214: 実機2件(`cameronmcnz/uipath-tutorials`の
+    `DedupeExcel/Main.xaml`・`mennatullahra/UiPath-ExcelDataManipulation`)
+    相当の構成——全列の値が完全一致する行を重複として除去し、最初に
+    出現した行を残す。"""
+    wf = _wrap(
+        [
+            BuildDataTableNode(data_table=VbExpr(text="dt"), columns=["Name", "Age"]),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Alice", 30}'), data_table=VbExpr(text="dt")
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Bob", 42}'), data_table=VbExpr(text="dt")
+            ),
+            AddDataRowNode(
+                array_row=VbExpr(text='{"Alice", 30}'), data_table=VbExpr(text="dt")
+            ),
+            RemoveDuplicateRowsNode(
+                data_table=VbExpr(text="dt"), output_data_table=VbExpr(text="dt")
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return dt", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() == [
+        {"Name": "Alice", "Age": 30},
+        {"Name": "Bob", "Age": 42},
+    ]
+
+
+def test_remove_duplicate_rows_declines_when_row_representation_is_unknown():
+    """知見214: `DataTable`が`BuildDataTable`由来だと確認できない場合
+    はlist行の可能性を排除できないため`# TODO`へ倒す——知見206-208と
+    同じ判断。"""
+    wf = _wrap(
+        [
+            RemoveDuplicateRowsNode(
+                data_table=VbExpr(text="unknown_dt"),
+                output_data_table=VbExpr(text="dt2"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RemoveDuplicateRows" in code
+    assert "_rdr_row" not in code
+    _compiles(code)
+
+
+def test_remove_duplicate_rows_with_missing_properties_is_todo():
+    wf = _wrap([RemoveDuplicateRowsNode(data_table=None, output_data_table=VbExpr(text="dt2"))])
+    code = generate_python(wf)
+    assert "# TODO: RemoveDuplicateRows with missing DataTable/OutputDataTable" in code
     _compiles(code)
 
 
