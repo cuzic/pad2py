@@ -2255,6 +2255,34 @@ class IsMatchNode:
 
 
 @dataclass
+class GetEnvironmentVariableNode:
+    """`<ui:GetEnvironmentVariable Variable="..." VariableValue="..." />`
+    (知見215、知見214のタグ名限定GitHub検索で再発掘)。実機5件
+    (`jainsamyak/UiPath-Attendance-Framework-UAF`・`masiref/HandyML`)で
+    確認した`Variable`の値は`"MachineName"`/`"OSVersion"`/`"UserName"`
+    /`"TEMP"`/`"[Environment.UserName]"`(動的式)。
+
+    公式ドキュメント(WebSearch経由確認)で解決順序が確認できた:
+    ①`System.Environment`の既知プロパティ名(`MachineName`等)と一致
+    するか先に確認、②一致しなければOS環境変数として解決
+    (Windowsでは`EnvironmentVariableTarget.User`→`Process`の順)。
+    実機で確認した`MachineName`/`UserName`はPythonの`platform.node()`
+    /`getpass.getuser()`が十分に近い対応——`OSVersion`は.NETの
+    `Environment.OSVersion.ToString()`の正確な書式を再現する標準的な
+    Python対応が無いため未対応のまま`# TODO`へ倒す。それ以外
+    (`TEMP`等)は実際のOS環境変数名として`os.environ.get()`で解決する
+    ——Windows固有のUser-levelレジストリ永続化までは再現しない
+    (`os.environ`はプロセス起動時にスナップショットされた値のみ、
+    `ReadTextFile`知見108と同種の「公式の正確な既定ではないが実用上
+    十分」という判断)。`Variable`が静的リテラルでない場合(動的式)は
+    事前にどちらの解決経路か判断できないため常に`# TODO`。"""
+
+    display_name: str | None = None
+    variable: Expr = None
+    variable_value: Expr = None
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -2977,6 +3005,7 @@ Node = (
     | ReadTextFileNode
     | WriteTextFileNode
     | IsMatchNode
+    | GetEnvironmentVariableNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

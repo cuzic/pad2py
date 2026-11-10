@@ -10173,6 +10173,45 @@ test_uipath_codegen.py`3件)、UiPath関連テスト全968件通過、リポジ�
 `ExtractFiles`/`CompressFiles`(タグ名限定検索未実施)を次の候補として
 記録する。
 
+## 215. `ui:GetEnvironmentVariable`を新規実装——公式ドキュメントで「`System.Environment`既知プロパティ名を優先しOS環境変数にフォールバックする」解決順序を確認、特殊プロパティ名(`MachineName`/`UserName`)と実際の環境変数名(`TEMP`等)の2経路を区別
+
+知見214で次候補とした`GetEnvironmentVariable`(タグ名限定検索で
+55件ヒット)に着手した。ground-truthの属性構成は`Variable`+
+`VariableValue`のみ。実機2件(`jainsamyak/UiPath-Attendance-
+Framework-UAF`・`masiref/HandyML`)で確認した`Variable`の値は
+`"MachineName"`/`"OSVersion"`/`"UserName"`/`"TEMP"`/
+`"[Environment.UserName]"`(動的式)の5種。
+
+**`Variable`は単純な環境変数名ではなく、2種類の解決経路を持つ**こと
+を公式ドキュメント(WebSearch経由確認)で発見した: ①`System.
+Environment`クラスの既知プロパティ名(`MachineName`等)と一致するか
+を先に確認、②一致しなければ実際のOS環境変数として解決
+(Windowsでは`EnvironmentVariableTarget.User`→`Process`の順、
+Linux/macOSでは`Process`のみ)。つまり`"MachineName"`/`"OSVersion"`/
+`"UserName"`は実際の環境変数名ではなく.NETの特殊プロパティ名
+(Windowsの実環境変数は`COMPUTERNAME`/`USERNAME`等、名前が異なる)。
+
+確認済みの`MachineName`→Pythonの`platform.node()`、`UserName`→
+`getpass.getuser()`で対応(十分に近い標準対応)。`OSVersion`は.NETの
+`Environment.OSVersion.ToString()`の正確な書式(例:
+`"Microsoft Windows NT 10.0.19045.0"`)を再現する標準的なPython対応
+が無いため未対応のまま`# TODO`へ倒す。それ以外の値(`TEMP`等)は実際
+のOS環境変数名として`os.environ.get()`で解決する——Windows固有の
+User-levelレジストリ永続化までは再現しない(`os.environ`はプロセス
+起動時のスナップショットのみ、知見108の`ReadTextFile`の既定
+エンコーディング判断と同種の「公式の正確な既定ではないが実用上
+十分」という判断)。`Variable`が静的リテラルでない場合は2経路の
+どちらかを事前に判断できないため常に`# TODO`へ倒す。
+
+実機相当の構成(`MachineName`/`UserName`/実際の環境変数)を`exec()`
+経由で実際に実行し、それぞれ正しい値が返ることを確認した。回帰
+テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`4件)、UiPath関連テスト全972件通過、リポジトリ
+全体で全2058件通過(28件skip、変化無し)。
+
+残る候補`UpdateRowItem`/`ExtractFiles`/`CompressFiles`(タグ名限定
+検索未実施)を次の候補として記録する。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -117,6 +117,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     WriteTextFileNode,
     IsMatchNode,
+    GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -9400,6 +9401,95 @@ def test_is_match_with_missing_properties_is_todo():
     code = generate_python(wf)
     assert "# TODO: IsMatch with no Result captured" in code
     _compiles(code)
+
+
+def test_get_environment_variable_resolves_machine_name_and_user_name():
+    """知見215: 実機確認済みの`MachineName`/`UserName`特殊プロパティ名
+    を`platform.node()`/`getpass.getuser()`で解決する。`exec()`経由で
+    実際に実行し、プレースホルダではない実在の値が返ることを確認する。"""
+    wf = _wrap(
+        [
+            GetEnvironmentVariableNode(
+                variable=Literal(value="MachineName"),
+                variable_value=VbExpr(text="machine"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "machine = platform.node()" in code
+    assert "import platform" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return machine", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert isinstance(namespace["Test"](), str)
+
+    wf2 = _wrap(
+        [
+            GetEnvironmentVariableNode(
+                variable=Literal(value="UserName"),
+                variable_value=VbExpr(text="user"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "user = getpass.getuser()" in code2
+    assert "import getpass" in code2
+    _compiles(code2)
+
+
+def test_get_environment_variable_falls_back_to_os_environ():
+    """知見215: `MachineName`/`UserName`以外(`TEMP`等)は実際のOS環境
+    変数名として`os.environ.get()`で解決する——実機
+    `masiref/HandyML`相当。"""
+    wf = _wrap(
+        [
+            GetEnvironmentVariableNode(
+                variable=Literal(value="PAD2PY_TEST_ENV_VAR"),
+                variable_value=VbExpr(text="val"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "val = os.environ.get('PAD2PY_TEST_ENV_VAR')" in code
+    assert "import os" in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    os.environ["PAD2PY_TEST_ENV_VAR"] = "hello"
+    try:
+        exec(code + "\n    return val", namespace)  # noqa: S102 - 信頼できる自作コード
+        assert namespace["Test"]() == "hello"
+    finally:
+        del os.environ["PAD2PY_TEST_ENV_VAR"]
+
+
+def test_get_environment_variable_declines_osversion_and_dynamic_variable():
+    """知見215: `OSVersion`は.NETの正確な書式を再現する標準的なPython
+    対応が無いため`# TODO`。`Variable`が静的リテラルでない場合も
+    特殊プロパティ名かOS環境変数かを事前判断できないため`# TODO`。"""
+    wf = _wrap(
+        [
+            GetEnvironmentVariableNode(
+                variable=Literal(value="OSVersion"),
+                variable_value=VbExpr(text="os_ver"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetEnvironmentVariable with Variable 'OSVersion'" in code
+    _compiles(code)
+
+    wf2 = _wrap(
+        [
+            GetEnvironmentVariableNode(
+                variable=VbExpr(text="Environment.UserName"),
+                variable_value=VbExpr(text="user"),
+            )
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "# TODO: GetEnvironmentVariable with a dynamic Variable" in code2
+    _compiles(code2)
 
 
 def test_set_to_clipboard_text_uses_vb_cstr_not_python_str() -> None:

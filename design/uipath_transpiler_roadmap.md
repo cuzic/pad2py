@@ -2859,3 +2859,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      1件・`tests/test_uipath_codegen.py`3件)、UiPath関連テスト全968
      件通過、リポジトリ全体で全2054件通過。残る候補
      `GetEnvironmentVariable`(55件)等を次の候補として記録。
+
+173. **(完了、2026-11-10)** `ui:GetEnvironmentVariable`を新規実装
+     (知見215)——公式ドキュメントで「`System.Environment`既知
+     プロパティ名(`MachineName`等)を優先しOS環境変数にフォールバック
+     する」解決順序を発見した。実機確認済みの`MachineName`→
+     `platform.node()`・`UserName`→`getpass.getuser()`のみ対応、
+     `OSVersion`(.NETの正確な書式を再現する標準対応が無い)は
+     `# TODO`。それ以外(`TEMP`等)は実際のOS環境変数名として
+     `os.environ.get()`で解決——Windows固有のUser-levelレジストリ
+     永続化までは再現しない(知見108の`ReadTextFile`と同種の判断)。
+     `Variable`が静的リテラルでない場合は2経路のどちらか事前判断
+     できないため`# TODO`。実機相当の構成を`exec()`経由で実際に
+     実行して正しさを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全972
+     件通過、リポジトリ全体で全2058件通過。

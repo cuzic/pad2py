@@ -143,6 +143,7 @@ from ..uipath_dsl.types import (
     ReadTextFileNode,
     WriteTextFileNode,
     IsMatchNode,
+    GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -463,13 +464,21 @@ def _collect_imports(body: list[str]) -> list[str]:
     # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
     # `ForEachFolder`変換先、知見190)も同じ`os`モジュールのため同じ
     # 条件にまとめる。
+    # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)も
+    # 同じ`os`モジュールのため同じ条件にまとめる。
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
         or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
-        or "os.rename(" in line
+        or "os.rename(" in line or "os.environ." in line
         for line in body
     ):
         imports.append("import os")
+    # `platform`/`getpass`(`GetEnvironmentVariable`の`MachineName`/
+    # `UserName`特殊プロパティ変換先、知見215)も同様。
+    if any("platform.node(" in line for line in body):
+        imports.append("import platform")
+    if any("getpass.getuser(" in line for line in body):
+        imports.append("import getpass")
     # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
     # 知見130)も同様。
     if any("base64.b64encode(" in line for line in body):
@@ -646,6 +655,8 @@ def _generate_node(
         return _generate_write_text_file(node, indent)
     if isinstance(node, IsMatchNode):
         return _generate_is_match(node, indent)
+    if isinstance(node, GetEnvironmentVariableNode):
+        return _generate_get_environment_variable(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -1484,6 +1495,58 @@ def _generate_is_match_body(node: IsMatchNode, indent: int) -> list[str]:
         f"{prefix}{result} = bool(re.search({pattern}, "
         f"{VB_CSTR_HELPER_NAME}({input_}){flags}))"
     ]
+
+
+_GET_ENVIRONMENT_VARIABLE_SPECIAL_PROPERTIES = {
+    "MachineName": "platform.node()",
+    "UserName": "getpass.getuser()",
+}
+
+
+def _generate_get_environment_variable(
+    node: GetEnvironmentVariableNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_environment_variable_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_environment_variable_body(
+    node: GetEnvironmentVariableNode, indent: int
+) -> list[str]:
+    """知見215: `Variable`が静的リテラルでない場合、`System.Environment`
+    の既知プロパティ名(優先)かOS環境変数(フォールバック)かを事前に
+    判断できないため常に`# TODO`。確認済みの`MachineName`/`UserName`
+    のみ対応、`OSVersion`は正確な書式を再現する標準的なPython対応が
+    無いため未対応。"""
+    prefix = INDENT * indent
+    if node.variable is None or node.variable_value is None:
+        return [
+            f"{prefix}# TODO: GetEnvironmentVariable with missing "
+            "Variable/VariableValue"
+        ]
+    if not isinstance(node.variable, Literal):
+        return [
+            f"{prefix}# TODO: GetEnvironmentVariable with a dynamic "
+            "Variable — cannot statically tell apart a System.Environment "
+            "property name from an OS environment variable, refusing to "
+            "guess"
+        ]
+    name = node.variable.value
+    if name == "OSVersion":
+        return [
+            f"{prefix}# TODO: GetEnvironmentVariable with Variable "
+            "'OSVersion' — no confirmed Python equivalent for .NET's "
+            "exact Environment.OSVersion string format, refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.variable_value, prefix, todo)
+    if todo:
+        return todo
+    special = _GET_ENVIRONMENT_VARIABLE_SPECIAL_PROPERTIES.get(name)
+    if special is not None:
+        return [f"{prefix}{target} = {special}"]
+    return [f"{prefix}{target} = os.environ.get({name!r})"]
 
 
 def _generate_set_to_clipboard(node: SetToClipboardNode, indent: int) -> list[str]:

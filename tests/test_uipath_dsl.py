@@ -92,6 +92,7 @@ from dump_daemon.uipath_dsl import (
     ReadTextFileNode,
     WriteTextFileNode,
     IsMatchNode,
+    GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -2582,6 +2583,22 @@ def test_is_match_properties_with_builder_wizard_noise():
     assert node.pattern == Literal(value="^([0-9]{2})$")
     assert node.regex_option == "IgnoreCase"
     assert node.result == VbExpr(text="deger_dogruMU")
+
+
+def test_get_environment_variable_properties():
+    """知見215: `ui:GetEnvironmentVariable`。実機
+    `jainsamyak/UiPath-Attendance-Framework-UAF`で確認した`Variable`
+    の値——`"MachineName"`は.NET`System.Environment`の既知プロパティ
+    名(実際のOS環境変数ではない)。"""
+    xml = (
+        f"<ui:GetEnvironmentVariable {_UI_XMLNS} "
+        'DisplayName="Get environment variable" Variable="MachineName" '
+        'VariableValue="[machine]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetEnvironmentVariableNode)
+    assert node.variable == Literal(value="MachineName")
+    assert node.variable_value == VbExpr(text="machine")
 
 
 def test_invoke_code(main_wf):
