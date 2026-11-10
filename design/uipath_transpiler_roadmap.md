@@ -2972,3 +2972,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      1002件通過、リポジトリ全体で全2088件通過。これで知見213発見の
      正規表現ビルダー系活動3件(`IsMatch`/`Replace`/`Matches`)全てに
      着手済みとなった。
+
+180. **(完了、2026-11-10)** `ui:TextToLeftRight`を新規実装(知見222)
+     ——文字列を区切り文字の最初の出現位置で左右2つに分割する活動。
+     実機2件で`FullText`+`Separator`+`TextToLeft`+`TextToRight`+
+     `SeparatorKey`(`"Custom"`/`"NewLine"`の2種を確認)の構成を確認、
+     `str.split(separator, 1)`が`.NET`側の「最初の出現位置で分割、
+     区切り文字自体は出力に含まない」仕様に対応する。`Separator`が
+     見つからない場合の挙動は公式ドキュメントにも未記載のため、
+     `GetRowItem`(知見177/183)・`UpdateRowItem`と同じ「フォールバック
+     値を捏造せず自然な例外に委ねる」方針を採用——`TextToRight`側の
+     代入で自然な`IndexError`が発生するに任せる。`SeparatorKey`が
+     実機確認済みの2種以外の場合は`Separator`の正確な事前入力が
+     未確認のため`# TODO`。回帰テスト追加(`tests/test_uipath_dsl.py`
+     2件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全
+     1008件通過、リポジトリ全体で全2094件通過。

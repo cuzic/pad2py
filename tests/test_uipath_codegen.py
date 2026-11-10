@@ -125,6 +125,7 @@ from dump_daemon.uipath_dsl import (
     IsMatchNode,
     ReplaceNode,
     MatchesNode,
+    TextToLeftRightNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -9919,6 +9920,99 @@ def test_matches_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Matches with no output FirstMatch captured" in code
+    _compiles(code)
+
+
+def test_text_to_left_right_splits_on_first_occurrence():
+    """知見222: `ui:TextToLeftRight`。実機
+    `DariusDangi/GenerateYearlyReports`相当の`SeparatorKey="Custom"`
+    構成を`exec()`経由で実際に実行し、`Separator`の最初の出現位置で
+    分割されること、区切り文字自体が出力に含まれないことを確認する。"""
+    wf = _wrap(
+        [
+            TextToLeftRightNode(
+                full_text=VbExpr(text="TempString"),
+                separator=Literal(value="TaxID: "),
+                separator_key="Custom",
+                text_to_left=VbExpr(text="out_Left"),
+                text_to_right=VbExpr(text="out_Right"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".split(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(TempString):")
+    code2 += "\n    return out_Left, out_Right"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("Name: John TaxID: 1234") == (
+        "Name: John ",
+        "1234",
+    )
+
+
+def test_text_to_left_right_missing_separator_raises_index_error():
+    """知見222: `Separator`が`FullText`中に見つからない場合の挙動は
+    公式ドキュメントにも未記載——フォールバック値を捏造せず、
+    `TextToRight`代入で自然な`IndexError`が発生するに任せる方針
+    (`GetRowItem`知見177/183と同じ)を`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            TextToLeftRightNode(
+                full_text=VbExpr(text="FullText"),
+                separator=Literal(value="NOTFOUND"),
+                separator_key="Custom",
+                text_to_left=VbExpr(text="out_Left"),
+                text_to_right=VbExpr(text="out_Right"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(FullText):")
+    code2 += "\n    return out_Left, out_Right"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    with pytest.raises(IndexError):
+        namespace["Test"]("no separator here")
+
+
+def test_text_to_left_right_declines_unconfirmed_separator_key():
+    """知見222: `SeparatorKey`が`"Custom"`/`"NewLine"`以外の場合、
+    その時の`Separator`属性の正確な事前入力が未確認のため`# TODO`。"""
+    wf = _wrap(
+        [
+            TextToLeftRightNode(
+                full_text=VbExpr(text="x"),
+                separator=Literal(value="y"),
+                separator_key="Whitespace",
+                text_to_left=VbExpr(text="l"),
+                text_to_right=VbExpr(text="r"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: TextToLeftRight with unrecognized SeparatorKey ('Whitespace')"
+        in code
+    )
+    _compiles(code)
+
+
+def test_text_to_left_right_with_no_output_captured_is_todo():
+    wf = _wrap(
+        [
+            TextToLeftRightNode(
+                full_text=VbExpr(text="x"),
+                separator=Literal(value="y"),
+                separator_key="Custom",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: TextToLeftRight with no output captured" in code
     _compiles(code)
 
 

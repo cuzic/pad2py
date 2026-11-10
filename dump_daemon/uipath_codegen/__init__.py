@@ -150,6 +150,7 @@ from ..uipath_dsl.types import (
     IsMatchNode,
     ReplaceNode,
     MatchesNode,
+    TextToLeftRightNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -677,6 +678,8 @@ def _generate_node(
         return _generate_replace(node, indent)
     if isinstance(node, MatchesNode):
         return _generate_matches(node, indent)
+    if isinstance(node, TextToLeftRightNode):
+        return _generate_text_to_left_right(node, indent)
     if isinstance(node, GetEnvironmentVariableNode):
         return _generate_get_environment_variable(node, indent)
     if isinstance(node, ReadTextFileNode):
@@ -1764,6 +1767,63 @@ def _generate_matches_body(node: MatchesNode, indent: int) -> list[str]:
         f"{VB_CSTR_HELPER_NAME}({input_}){flags})",
         f"{prefix}{first_match} = _mch.group(0) if _mch else \"\"",
     ]
+
+
+_TEXT_TO_LEFT_RIGHT_ALLOWED_SEPARATOR_KEYS = {"Custom", "NewLine"}
+
+
+def _generate_text_to_left_right(node: TextToLeftRightNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_text_to_left_right_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_text_to_left_right_body(
+    node: TextToLeftRightNode, indent: int
+) -> list[str]:
+    """知見222: `SeparatorKey`は`"Custom"`/`"NewLine"`のみ対応
+    (実機確認済みの2種、他の値は`Separator`属性の正確な事前入力が
+    未確認のため`# TODO`)。`Separator`の最初の出現位置で分割する
+    `.NET`の挙動は`str.split(sep, 1)`に対応する。`Separator`が
+    `FullText`中に見つからない場合の挙動は未確認のため、`TextToRight`
+    側の代入で自然な`IndexError`が発生するに任せる(フォールバック値を
+    捏造しない、`GetRowItem`知見177/183と同じ方針)。"""
+    prefix = INDENT * indent
+    if node.full_text is None or node.separator is None:
+        return [
+            f"{prefix}# TODO: TextToLeftRight with missing FullText/Separator"
+        ]
+    if node.separator_key is None:
+        return [f"{prefix}# TODO: TextToLeftRight with no SeparatorKey captured"]
+    if node.separator_key not in _TEXT_TO_LEFT_RIGHT_ALLOWED_SEPARATOR_KEYS:
+        return [
+            f"{prefix}# TODO: TextToLeftRight with unrecognized SeparatorKey "
+            f"({node.separator_key!r}) — refusing to guess"
+        ]
+    if node.text_to_left is None and node.text_to_right is None:
+        return [
+            f"{prefix}# TODO: TextToLeftRight with no output captured"
+        ]
+    todo: list[str] = []
+    full_text = _render_value_or_todo(node.full_text, prefix, todo)
+    separator = _render_value_or_todo(node.separator, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_parts = {VB_CSTR_HELPER_NAME}({full_text}).split("
+        f"{VB_CSTR_HELPER_NAME}({separator}), 1)"
+    ]
+    if node.text_to_left is not None:
+        text_to_left = _render_value_or_todo(node.text_to_left, prefix, todo)
+        if todo:
+            return todo
+        lines.append(f"{prefix}{text_to_left} = _parts[0]")
+    if node.text_to_right is not None:
+        text_to_right = _render_value_or_todo(node.text_to_right, prefix, todo)
+        if todo:
+            return todo
+        lines.append(f"{prefix}{text_to_right} = _parts[1]")
+    return lines
 
 
 _GET_ENVIRONMENT_VARIABLE_SPECIAL_PROPERTIES = {

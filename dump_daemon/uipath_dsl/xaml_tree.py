@@ -113,6 +113,7 @@ from .types import (
     IsMatchNode,
     ReplaceNode,
     MatchesNode,
+    TextToLeftRightNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -1809,6 +1810,21 @@ def _parse_replace(elem: etree._Element) -> ReplaceNode:
     )
 
 
+def _parse_text_to_left_right(elem: etree._Element) -> TextToLeftRightNode:
+    return TextToLeftRightNode(
+        display_name=_attr(elem, "DisplayName"),
+        full_text=_attr_expr(elem, "FullText")
+        or _in_argument_property_expr(elem, "FullText"),
+        separator=_attr_expr(elem, "Separator")
+        or _in_argument_property_expr(elem, "Separator"),
+        separator_key=_attr(elem, "SeparatorKey"),
+        text_to_left=_attr_expr(elem, "TextToLeft")
+        or _in_argument_property_expr(elem, "TextToLeft"),
+        text_to_right=_attr_expr(elem, "TextToRight")
+        or _in_argument_property_expr(elem, "TextToRight"),
+    )
+
+
 def _parse_matches(elem: etree._Element) -> MatchesNode:
     return MatchesNode(
         display_name=_attr(elem, "DisplayName"),
@@ -2529,6 +2545,7 @@ _DISPATCH = {
     (UI_NS, "IsMatch"): _parse_is_match,
     (UI_NS, "Replace"): _parse_replace,
     (UI_NS, "Matches"): _parse_matches,
+    (UI_NS, "TextToLeftRight"): _parse_text_to_left_right,
     (UI_NS, "GetEnvironmentVariable"): _parse_get_environment_variable,
     (UI_NS, "InvokeCode"): _parse_invoke_code,
     (UI_NS, "SetToClipboard"): _parse_set_to_clipboard,

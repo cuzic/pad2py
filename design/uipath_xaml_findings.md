@@ -10447,6 +10447,43 @@ test_uipath_codegen.py`3件)、UiPath関連テスト全1002件通過、リポジ
 これで知見213で発見した正規表現ビルダー系活動3件
 (`IsMatch`/`Replace`/`Matches`)全てに着手済みとなった。
 
+## 222. `ui:TextToLeftRight`を新規実装——文字列を区切り文字の最初の出現位置で左右2つの出力に分割する活動、区切り文字が見つからない場合の挙動は未確認のため自然な`IndexError`に委ねる
+
+正規表現ビルダー系活動が一巡したため、文字列操作系の新規候補として
+`ui:TextToLeftRight`に着手した。実機2件
+(`adithya0414/StringManipulation_StringActivities`・
+`DariusDangi/GenerateYearlyReports`)でground-truthの属性構成を確認:
+`FullText`+`Separator`+`TextToLeft`(出力)+`TextToRight`(出力)+
+`SeparatorKey`(既定`"Custom"`)。`SeparatorKey`の値は実機で2種類確認
+できた——`"Custom"`(`Separator`に`"Last Name:"`/`"TaxID: "`等の
+リテラル文字列)と`"NewLine"`(`Separator="&#13;&#10;"`、CRLF)。
+いずれの場合も`Separator`属性自体には実際に使える分割文字列が
+正しく事前入力されている。
+
+公式ドキュメント(WebSearch経由確認)で「`Separator`の最初の出現
+位置で分割、区切り文字自体は出力に含まない」という仕様を確認した。
+`.NET`側の実装詳細(先頭からの文字列探索)は`Separator`の実際の値
+さえあれば再現でき、`SeparatorKey`自体はPython側のロジックには
+使わず区切り文字列選択の妥当性確認(`"Custom"`/`"NewLine"`以外は
+`Separator`の正確な事前入力が未確認のため`# TODO`)にのみ使う方針
+とした。`str.split(separator, 1)`で`.NET`側の「最初の出現位置で
+分割」を正確に再現する。
+
+`Separator`が`FullText`中に見つからない場合の挙動は、公式ドキュ
+メント・フォーラムいずれにも記載が無く未確認だった。フォールバック
+値を捏造せず自然な例外に委ねる既存方針(`GetRowItem`知見177/183・
+`UpdateRowItem`と同じ)に従い、`TextToRight`側の代入
+(`_parts[1]`)で未検出時に自然な`IndexError`が発生するに任せる設計
+とした——`TextToLeft`側(`_parts[0]`)は未検出でも常に安全
+(分割できなければ全体がそのまま`_parts[0]`に入る)。
+
+実機相当の構成(ラベルの前半分のみ・後半分のみを個別に出力先に
+捕捉する2パターン、区切り文字が見つからない場合の`IndexError`発生
+確認)を`exec()`経由で実際に実行し、分割位置・`IndexError`発生の
+両方を確認した。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全1008件通過、
+リポジトリ全体で全2094件通過(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

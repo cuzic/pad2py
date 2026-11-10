@@ -2480,6 +2480,42 @@ class MatchesNode:
 
 
 @dataclass
+class TextToLeftRightNode:
+    """`<ui:TextToLeftRight>`(知見222)。実機2件
+    (`adithya0414/StringManipulation_StringActivities`・
+    `DariusDangi/GenerateYearlyReports`)で属性構成を確認:
+    `FullText`+`Separator`+`TextToLeft`(出力)+`TextToRight`(出力)
+    +`SeparatorKey`(既定`"Custom"`、もう1種`"NewLine"`も実機確認、
+    いずれも`Separator`属性自体には実際の区切り文字列が常に
+    正しく入っている——`SeparatorKey="NewLine"`時は
+    `Separator="&#13;&#10;"`)。
+
+    公式ドキュメント(WebSearch経由確認)によれば「`Separator`の
+    最初の出現位置で分割、区切り文字自体は出力に含まない」。
+    `SeparatorKey`が`"Custom"`/`"NewLine"`以外の値を取る場合、
+    その時の`Separator`属性値が正しく事前入力されるか未確認のため
+    `# TODO`へ倒す——`SeparatorKey`自体はPython側のロジックには
+    使わず、常に`Separator`の実際の値で`str.split(sep, 1)`する
+    (2つの実機確認済みプリセットいずれも`Separator`属性が
+    直接使える値になっているため)。
+
+    `Separator`が`FullText`中に見つからない場合の挙動は公式
+    ドキュメント・フォーラムいずれにも記載が無く未確認——
+    `GetRowItem`(知見177/183)や`UpdateRowItem`と同じ「不明な場合は
+    推測せず自然な例外を出す」方針に従い、`TextToRight`側の
+    代入で`IndexError`が自然に発生するに任せる(フォールバック値を
+    捏造しない)。`CaseSensitive`(既定On)・`CustomSeparatorEnabled`は
+    実機でも確認用の差分として現れなかったため未対応。"""
+
+    display_name: str | None = None
+    full_text: Expr = None
+    separator: Expr = None
+    separator_key: str | None = None
+    text_to_left: Expr = None
+    text_to_right: Expr = None
+
+
+@dataclass
 class GetEnvironmentVariableNode:
     """`<ui:GetEnvironmentVariable Variable="..." VariableValue="..." />`
     (知見215、知見214のタグ名限定GitHub検索で再発掘)。実機5件
@@ -3237,6 +3273,7 @@ Node = (
     | IsMatchNode
     | ReplaceNode
     | MatchesNode
+    | TextToLeftRightNode
     | GetEnvironmentVariableNode
     | InvokeCodeNode
     | SetToClipboardNode

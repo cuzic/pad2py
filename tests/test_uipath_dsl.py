@@ -99,6 +99,7 @@ from dump_daemon.uipath_dsl import (
     IsMatchNode,
     ReplaceNode,
     MatchesNode,
+    TextToLeftRightNode,
     GetEnvironmentVariableNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
@@ -2754,6 +2755,41 @@ def test_matches_properties_with_first_match_output():
     assert node.regex_option == "IgnoreCase, Compiled"
     assert node.first_match == VbExpr(text="out_BankAcctName")
     assert node.result is None
+
+
+def test_text_to_left_right_properties_custom_separator():
+    """知見222: `ui:TextToLeftRight`。実機
+    `DariusDangi/GenerateYearlyReports`で確認した構成——
+    `SeparatorKey="Custom"`で`FullText`/`TextToLeft`が同じ変数
+    (インプレース上書き)。"""
+    xml = (
+        f"<ui:TextToLeftRight {_UI_XMLNS} "
+        'DisplayName="Text To Left/Right" FullText="[TempString]" '
+        'Separator="TaxID: " SeparatorKey="Custom" '
+        'TextToLeft="[TempString]" TextToRight="[out_TaxId]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TextToLeftRightNode)
+    assert node.full_text == VbExpr(text="TempString")
+    assert node.separator == Literal(value="TaxID: ")
+    assert node.separator_key == "Custom"
+    assert node.text_to_left == VbExpr(text="TempString")
+    assert node.text_to_right == VbExpr(text="out_TaxId")
+
+
+def test_text_to_left_right_properties_newline_separator():
+    """知見222: `SeparatorKey="NewLine"`時は`Separator`属性に
+    `&#13;&#10;`(CRLF)が実際の分割文字として入る
+    (`adithya0414/StringManipulation_StringActivities`で確認)。"""
+    xml = (
+        f"<ui:TextToLeftRight {_UI_XMLNS} "
+        'FullText="[FullText]" Separator="&#13;&#10;" '
+        'SeparatorKey="NewLine" TextToLeft="[Left]" TextToRight="[Right]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, TextToLeftRightNode)
+    assert node.separator == Literal(value="\r\n")
+    assert node.separator_key == "NewLine"
 
 
 def test_get_environment_variable_properties():
