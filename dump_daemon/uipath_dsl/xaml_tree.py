@@ -68,6 +68,7 @@ from .types import (
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
+    UpdateRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -1038,6 +1039,19 @@ def _parse_get_row_item(elem: etree._Element) -> GetRowItemNode:
     row = _attr_expr(elem, "Row") or _in_argument_property_expr(elem, "Row")
     value = _attr_expr(elem, "Value") or _in_argument_property_expr(elem, "Value")
     return GetRowItemNode(
+        row=row,
+        column=_attr_expr(elem, "Column"),
+        column_index=_attr_expr(elem, "ColumnIndex"),
+        column_name=_attr_expr(elem, "ColumnName"),
+        value=value,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_update_row_item(elem: etree._Element) -> UpdateRowItemNode:
+    row = _attr_expr(elem, "Row") or _in_argument_property_expr(elem, "Row")
+    value = _attr_expr(elem, "Value") or _in_argument_property_expr(elem, "Value")
+    return UpdateRowItemNode(
         row=row,
         column=_attr_expr(elem, "Column"),
         column_index=_attr_expr(elem, "ColumnIndex"),
@@ -2342,6 +2356,7 @@ _DISPATCH = {
     (UI_NS, "AddDataRow"): _parse_add_data_row,
     (UI_NS, "RemoveDataRow"): _parse_remove_data_row,
     (UI_NS, "GetRowItem"): _parse_get_row_item,
+    (UI_NS, "UpdateRowItem"): _parse_update_row_item,
     (UI_NS, "ClearDataTable"): _parse_clear_data_table,
     (UI_NS, "OutputDataTable"): _parse_output_data_table,
     (UI_NS, "AddDataColumn"): _parse_add_data_column,

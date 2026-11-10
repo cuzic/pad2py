@@ -10212,6 +10212,47 @@ test_uipath_codegen.py`4件)、UiPath関連テスト全972件通過、リポジ�
 残る候補`UpdateRowItem`/`ExtractFiles`/`CompressFiles`(タグ名限定
 検索未実施)を次の候補として記録する。
 
+## 216. `ui:UpdateRowItem`を新規実装——知見183の`GetRowItem`の対になる書き込み側、`ExtractFiles`/`CompressFiles`が別の名前空間(`uascw:`)を使うため`"ui:"`限定検索では0件だったことを発見
+
+知見215の次候補をタグ名限定検索で再調査した結果、`UpdateRowItem`
+(119件)が高く、`ExtractFiles`/`CompressFiles`は`"ui:"`プレフィックス
+限定検索で**0件**だった。ground-truthを直接確認したところ、これら
+2件は`UiPath.System.Activities`パッケージ内ではあるものの、
+`ui:`とは別の名前空間(`clr-namespace:UiPath.Activities.System.
+Compression.Workflow;assembly=UiPath.System.Activities`、一般的な
+別名は`uascw:`)を使っていることが分かった——`GetEnvironmentVariable`
+の調査時(知見215)に発見した`ChangeCase`の0件ヒットと同じ原因だった
+可能性が高い(別名前空間)。属性数も多く(`CompressFiles`は暗号化/
+パスワード/コードページ等11属性)、本tickでは`UpdateRowItem`を優先
+した——`ExtractFiles`/`CompressFiles`は正しい名前空間限定検索で
+再調査し直す必要がある、別tickでの候補として記録する。
+
+`UpdateRowItem`は知見183の`GetRowItem`の対になる書き込み側。
+ground-truthの属性構成は`ColumnIndex`+`ColumnName`+`Row`+`Value`
+(`Column`=`DataColumn`オブジェクト参照は無し)。実機2件
+(`Andrew-SOA/Loan_Approval`のVB実機3箇所・`Anusha-TX/
+TestAutomation`のC#実機13箇所)で確認した構成は、VB実機では
+`ColumnName`のみ(文字列フラット属性)、C#実機のみ`ColumnIndex`
+(数値フラット属性)——知見129の既存の限界により、C#実機は
+`CSharpValue`経由で自然に未対応(`# TODO`)として素通りする。
+
+`GetRowItem`(知見177・183の「でっち上げた値で静かに間違えるより、
+失敗する方が安全」という方針)と全く同じ判断を書き込み側に適用した:
+`ColumnName`指定時は`row[column_name] = value`という直接代入
+(list行表現なら`TypeError`で即座に失敗、静かに間違った動作をしない)。
+`ColumnIndex`指定時は`GetRowItem`と同じdict/list両対応だが、位置で
+値を**書き込む**ため`isinstance(row, dict)`分岐で`list(row.keys())
+[idx]`経由のキー解決(dict行)/直接添字代入(list行)の2経路に分岐する
+——`GetRowItem`の読み取り専用コードをそのまま書き込み用に反転した
+だけでは済まない(`list(row.values())[idx] = value`は新しいlistを
+作るだけで元のdictを変更しない)という実装上の違いを発見・対応した。
+
+実機相当の構成(`ColumnName`指定でdict行を更新、`ColumnIndex`指定で
+dict行・list行の両方を更新)を`exec()`経由で実際に実行し、正しく
+更新されることを確認した。回帰テスト追加(`tests/test_uipath_dsl.py`
+1件・`tests/test_uipath_codegen.py`8件)、UiPath関連テスト全980件
+通過、リポジトリ全体で全2066件通過(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

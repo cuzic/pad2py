@@ -81,6 +81,7 @@ from dump_daemon.uipath_dsl import (
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
+    UpdateRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -3864,6 +3865,132 @@ def test_get_row_item_with_both_column_index_and_column_name_is_todo_not_guessed
     )
     code = generate_python(wf)
     assert "# TODO: GetRowItem with both ColumnIndex and ColumnName set" in code
+    _compiles(code)
+
+
+def test_update_row_item_with_column_name_assigns_by_name():
+    """知見216: `ui:UpdateRowItem`(`GetRowItem`の対になる書き込み側)。
+    実機`Andrew-SOA/Loan_Approval`相当の`row[column_name] = value`
+    という直接代入——dict行なら正しく動作し、list行なら`TypeError`で
+    即座に失敗する(でっち上げた動作をしない)。"""
+    wf = _wrap(
+        [
+            UpdateRowItemNode(
+                row=VbExpr(text="row"),
+                column_name=Literal(value="Loan Approved"),
+                value=Literal(value="Yes"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "row['Loan Approved'] = 'Yes'" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    row = {"Loan Approved": "No"}
+    namespace["row"] = row
+    namespace["Test"]()
+    assert row == {"Loan Approved": "Yes"}
+
+
+def test_update_row_item_with_column_index_handles_both_representations():
+    """知見216: `ColumnIndex`は`GetRowItem`と同じdict/list両対応だが、
+    位置で値を書き込むため該当キーを求めてから代入する(dict行)/
+    直接添字代入する(list行)の2経路に分岐する。"""
+    wf = _wrap(
+        [
+            UpdateRowItemNode(
+                row=VbExpr(text="row"),
+                column_index=Literal(value="1"),
+                value=Literal(value="Maybe"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "isinstance(row, dict)" in code
+    assert "list(row.keys())" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+
+    dict_row = {"Name": "Carol", "Approved": "No"}
+    namespace["row"] = dict_row
+    namespace["Test"]()
+    assert dict_row == {"Name": "Carol", "Approved": "Maybe"}
+
+    list_row = ["Dave", "No"]
+    namespace["row"] = list_row
+    namespace["Test"]()
+    assert list_row == ["Dave", "Maybe"]
+
+
+def test_update_row_item_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            UpdateRowItemNode(
+                row=VbExpr(text="row"),
+                column_name=Literal(value="x"),
+                value=Literal(value="v"),
+                display_name="Update Row Item",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Update Row Item" in code
+    assert "row['x'] = 'v'" in code
+    _compiles(code)
+
+
+def test_update_row_item_with_no_row_is_todo():
+    wf = _wrap(
+        [UpdateRowItemNode(row=None, column_name=Literal(value="x"), value=Literal(value="v"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: UpdateRowItem with no Row captured" in code
+    _compiles(code)
+
+
+def test_update_row_item_with_no_value_is_todo():
+    wf = _wrap(
+        [UpdateRowItemNode(row=VbExpr(text="row"), column_name=Literal(value="x"), value=None)]
+    )
+    code = generate_python(wf)
+    assert "# TODO: UpdateRowItem with no Value captured" in code
+    _compiles(code)
+
+
+def test_update_row_item_with_column_is_todo_not_guessed():
+    """知見216: `Column`(既存の`DataColumn`オブジェクト参照)は未
+    モデル化のため`# TODO`——`GetRowItem`と同じ判断。"""
+    wf = _wrap(
+        [
+            UpdateRowItemNode(
+                row=VbExpr(text="row"),
+                column=VbExpr(text="someColumn"),
+                value=Literal(value="v"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: UpdateRowItem with Column set" in code
+    _compiles(code)
+
+
+def test_update_row_item_with_both_column_index_and_column_name_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            UpdateRowItemNode(
+                row=VbExpr(text="row"),
+                column_index=Literal(value="0"),
+                column_name=Literal(value="x"),
+                value=Literal(value="v"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: UpdateRowItem with both ColumnIndex and ColumnName set" in code
     _compiles(code)
 
 

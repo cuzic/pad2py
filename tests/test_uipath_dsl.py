@@ -56,6 +56,7 @@ from dump_daemon.uipath_dsl import (
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
+    UpdateRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -1716,6 +1717,25 @@ def test_get_row_item_with_column_name_properties():
     assert node.column_index is None
     assert node.column is None
     assert node.value == VbExpr(text="output")
+
+
+def test_update_row_item_with_column_name_properties():
+    """知見216: `ui:UpdateRowItem`(`GetRowItem`の対になる書き込み側)。
+    実機`Andrew-SOA/Loan_Approval`で確認した
+    `ColumnName="Loan Approved"`+`Value="[&quot;Yes&quot;]"`の実例。"""
+    xml = (
+        f"<ui:UpdateRowItem {_UI_XMLNS} "
+        'ColumnIndex="{x:Null}" ColumnName="Loan Approved" '
+        'DisplayName="Update Row Item Loan Approved" Row="[i_DataRow]" '
+        'Value="[&quot;Yes&quot;]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, UpdateRowItemNode)
+    assert node.row == VbExpr(text="i_DataRow")
+    assert node.column_name == Literal(value="Loan Approved")
+    assert node.column_index is None
+    assert node.column is None
+    assert node.value == VbExpr(text='"Yes"')
 
 
 def test_clear_data_table_properties():

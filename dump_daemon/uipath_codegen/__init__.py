@@ -107,6 +107,7 @@ from ..uipath_dsl.types import (
     GetPasswordNode,
     GetPdfPageCountNode,
     GetRowItemNode,
+    UpdateRowItemNode,
     GetTextNode,
     HighlightNode,
     HoverNode,
@@ -685,6 +686,8 @@ def _generate_node(
         return _generate_remove_data_row(node, indent)
     if isinstance(node, GetRowItemNode):
         return _generate_get_row_item(node, indent)
+    if isinstance(node, UpdateRowItemNode):
+        return _generate_update_row_item(node, indent)
     if isinstance(node, ClearDataTableNode):
         return _generate_clear_data_table(node, indent)
     if isinstance(node, OutputDataTableNode):
@@ -2915,6 +2918,61 @@ def _generate_get_row_item_body(node: GetRowItemNode, indent: int) -> list[str]:
             return todo
         return [f"{prefix}{target} = {row}[{column_name}]"]
     return [f"{prefix}# TODO: GetRowItem with no ColumnIndex/ColumnName/Column captured"]
+
+
+def _generate_update_row_item(node: UpdateRowItemNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_update_row_item_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_update_row_item_body(node: UpdateRowItemNode, indent: int) -> list[str]:
+    """知見216: `GetRowItem`(知見183)と全く同じ「でっち上げた値で静か
+    に間違えるより、失敗する方が安全」という方針——`ColumnName`指定時は
+    `row[column_name] = value`という直接代入(list行なら`TypeError`で
+    即座に失敗)。`ColumnIndex`指定時は`GetRowItem`と同じdict/list両
+    対応だが、位置で値を書き込むため該当キーを求めてから代入する。"""
+    prefix = INDENT * indent
+    if node.row is None:
+        return [f"{prefix}# TODO: UpdateRowItem with no Row captured"]
+    if node.value is None:
+        return [f"{prefix}# TODO: UpdateRowItem with no Value captured"]
+    if node.column is not None:
+        return [
+            f"{prefix}# TODO: UpdateRowItem with Column set "
+            f"({_describe_expr_for_comment(node.column)}) — DataColumn "
+            "object reference not modeled, refusing to guess"
+        ]
+    if node.column_index is not None and node.column_name is not None:
+        return [
+            f"{prefix}# TODO: UpdateRowItem with both ColumnIndex and "
+            "ColumnName set — priority between the two not confirmed, "
+            "refusing to guess"
+        ]
+    todo: list[str] = []
+    row = _render_value_or_todo(node.row, prefix, todo)
+    value = _render_value_or_todo(node.value, prefix, todo)
+    if node.column_index is not None:
+        column_index = _render_value_or_todo(node.column_index, prefix, todo)
+        if todo:
+            return todo
+        idx = f"round({VB_CDBL_HELPER_NAME}({column_index}))"
+        inner = INDENT * (indent + 1)
+        return [
+            f"{prefix}if isinstance({row}, dict):",
+            f"{inner}{row}[list({row}.keys())[{idx}]] = {value}",
+            f"{prefix}else:",
+            f"{inner}{row}[{idx}] = {value}",
+        ]
+    if node.column_name is not None:
+        column_name = _render_value_or_todo(node.column_name, prefix, todo)
+        if todo:
+            return todo
+        return [f"{prefix}{row}[{column_name}] = {value}"]
+    return [
+        f"{prefix}# TODO: UpdateRowItem with no ColumnIndex/ColumnName/"
+        "Column captured"
+    ]
 
 
 # 知見184: `ui:ClearDataTable`。`AddDataRow`/`RemoveDataRow`と同じ理由で

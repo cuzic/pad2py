@@ -2874,3 +2874,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      実行して正しさを確認。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`4件)、UiPath関連テスト全972
      件通過、リポジトリ全体で全2058件通過。
+
+174. **(完了、2026-11-10)** `ui:UpdateRowItem`を新規実装(知見216)
+     ——知見183の`GetRowItem`の対になる書き込み側。調査中に
+     `ExtractFiles`/`CompressFiles`が`ui:`とは別の名前空間
+     (`uascw:`)を使うため`"ui:"`限定検索で0件だったことを発見、
+     正しい名前空間での再調査を次tickの候補として記録。
+     `ColumnName`指定時は`GetRowItem`と同じ「でっち上げた値で静かに
+     間違えるより、失敗する方が安全」方針で`row[column_name] =
+     value`直接代入(list行は`TypeError`で即座に失敗)。`ColumnIndex`
+     指定時は`GetRowItem`と同じdict/list両対応だが、書き込みのため
+     `list(row.keys())[idx]`経由のキー解決(dict行)/直接添字代入
+     (list行)の2経路に分岐する——読み取り専用コードの単純な反転では
+     済まないという実装上の違いを発見・対応。実機相当の構成を
+     `exec()`経由で実際に実行して正しさを確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     8件)、UiPath関連テスト全980件通過、リポジトリ全体で全2066件
+     通過。

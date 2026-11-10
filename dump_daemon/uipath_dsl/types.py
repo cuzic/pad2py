@@ -1087,6 +1087,36 @@ class GetRowItemNode:
 
 
 @dataclass
+class UpdateRowItemNode:
+    """`<ui:UpdateRowItem>`(知見216、`GetRowItem`(知見183)の対になる
+    書き込み側、知見215のタグ名限定GitHub検索(`"ui:UpdateRowItem"`)で
+    再発掘)。ground-truthの属性構成は`ColumnIndex`+`ColumnName`+
+    `Row`+`Value`——`Column`(`DataColumn`オブジェクト参照)は無い。
+    実機2件(`Andrew-SOA/Loan_Approval`のVB実機3箇所・`Anusha-TX/
+    TestAutomation`のC#実機13箇所)で確認した構成は`ColumnName`
+    (VB実機、文字列フラット属性)/`ColumnIndex`(C#実機のみ、数値
+    フラット属性——VB実機では一度も非`{x:Null}`の値を確認できず)の
+    両方。`Row`は`ForEachRow`のループ変数(`[i_DataRow]`)、`Value`は
+    任意のVB式。
+
+    `GetRowItem`と全く同じ理由(知見177・183の「でっち上げた値で
+    静かに間違えるより、失敗する方が安全」という方針)で、
+    `ColumnName`指定時は`row[column_name] = value`という直接代入を
+    選ぶ——list行表現の場合は`TypeError`で実行時に即座に失敗する
+    (静かに間違った動作をしない)。`ColumnIndex`指定時は`GetRowItem`
+    と同じdict/list両対応だが、位置で値を**書き込む**ため
+    `list(row.keys())[idx]`で該当キーを求めてから代入する(dict行の
+    場合)/`row[idx] = value`(list行の場合)という2経路に分岐する。"""
+
+    row: Expr = None
+    column: Expr = None
+    column_index: Expr = None
+    column_name: Expr = None
+    value: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ClearDataTableNode:
     """`<ui:ClearDataTable DataTable="..." />`(知見184、GitHub code
     searchで225件ヒット)。`UiPath/skills`公式リポジトリのStudio実機
@@ -2961,6 +2991,7 @@ Node = (
     | AddDataRowNode
     | RemoveDataRowNode
     | GetRowItemNode
+    | UpdateRowItemNode
     | ClearDataTableNode
     | OutputDataTableNode
     | AddDataColumnNode
