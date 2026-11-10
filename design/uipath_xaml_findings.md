@@ -10666,6 +10666,42 @@ UiPath関連テスト全1023件通過、リポジトリ全体で全2109件通過
 残る`ui:RepeatNumberOfTimesX`(知見225で発見、265件ヒット、`ForEach`
 と同じ`ActivityAction<Int32>`本体構造)を次の候補として記録する。
 
+## 227. `ui:RepeatNumberOfTimesX`を新規実装——`ForEach`と同じ`ActivityAction<Int32>`本体構造、`StartAt`は反復回数ではなく`CurrentItem`の開始値のみを決めることを公式ドキュメントで確認
+
+知見225で発見した最後の候補`ui:RepeatNumberOfTimesX`
+(タグ名限定検索で265件ヒット)に着手した。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機複数件
+(`vajrang-b/UiPathIn30Days`・`Apress/Robotic-Process-Automation-
+Using-UiPath-StudioX`・`bogdanripa/Log-Me-In`・`RPA-UiPath-
+Projects/Sort-country-list`・`Juan-Rozo-UiPath/GitTesting`)いずれも
+`NumberOfTimes`+`StartAt`+`.Body`→`ActivityAction<x:Int32>`+
+`DelegateInArgument`(`CurrentItem`)+`Sequence`——既実装の`ForEach`
+(知見5)と構造が完全に同じ(唯一の違いは反復対象が明示的な
+コレクションではなく整数回数指定)ため、既存の`_find_activity_action`
+/`_unwrap_body_sequence`ヘルパーをそのまま再利用できた。
+
+公式ドキュメント(WebSearch経由確認、`repeat-number-of-times-x`
+ページ)で`StartAt`は「`CurrentItem`の開始値」(既定`1`)のみを
+決め、**反復回数には一切影響しない**——「`NumberOfTimes`回だけ常に
+実行する」ことを確認した。実機で`StartAt`省略(`Apress/...`の
+`NumberOfTimes="[3]"`のみの構成)と`StartAt="0"`(`RPA-UiPath-
+Projects/Sort-country-list`)の両方を発見——ground-truthの既定値
+`"1"`は実機で常に明示されるわけではなく、属性省略も実在することが
+分かった。`range(start_at, start_at + number_of_times)`に対応する
+——`RetryScope`の`_retry_max`(既存実装)と同じ`round(_vb_cdbl(...))`
+でInt32相当に丸める。`StartAt`省略時はPython側でリテラル`1`を補う。
+
+`StartAt=0`/`StartAt=1`省略時のどちらでも常に`NumberOfTimes`回だけ
+実行されることを`exec()`経由で実際に確認した(反復回数が`StartAt`
+の値に左右されないことの直接確認)。回帰テスト追加(`tests/
+test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+UiPath関連テスト全1028件通過、リポジトリ全体で全2114件通過
+(28件skip、変化無し)。
+
+これで知見225の発見パスで見つかった3件(`CommentOut`/`Continue`/
+`RepeatNumberOfTimesX`)全てに着手済みとなった。次の候補は無く、
+次のtickで新規発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

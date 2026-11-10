@@ -77,6 +77,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -1481,6 +1482,66 @@ def test_continue_generates_python_continue():
     with contextlib.redirect_stdout(stdout):
         namespace["Test"]()
     assert stdout.getvalue().splitlines() == ["1", "3"]
+
+
+def test_repeat_number_of_times_x_runs_exact_count_regardless_of_start_at():
+    """知見227: `StartAt`は`CurrentItem`の開始値のみを決め、反復回数
+    には影響しない(公式ドキュメント確認済み)——`StartAt=0`でも
+    `StartAt=1`でも常に`NumberOfTimes`回だけ実行されることを`exec()`
+    経由で確認する。"""
+    wf = _wrap(
+        [
+            RepeatNumberOfTimesXNode(
+                number_of_times=Literal(value=3),
+                start_at=Literal(value=0),
+                item_var="CurrentItem",
+                body=[WriteLineNode(text=VbExpr(text="CurrentItem"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "range(_rnt_start, _rnt_start + _rnt_count)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().splitlines() == ["0", "1", "2"]
+
+
+def test_repeat_number_of_times_x_defaults_start_at_to_one_when_omitted():
+    """知見227: 実機`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`で確認済み——`StartAt`省略時は公式ドキュメント確認済みの
+    既定値`1`を補う。"""
+    wf = _wrap(
+        [
+            RepeatNumberOfTimesXNode(
+                number_of_times=Literal(value=3),
+                start_at=None,
+                item_var="CurrentItem",
+                body=[WriteLineNode(text=VbExpr(text="CurrentItem"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        namespace["Test"]()
+    assert stdout.getvalue().splitlines() == ["1", "2", "3"]
+
+
+def test_repeat_number_of_times_x_with_missing_number_of_times_is_todo():
+    wf = _wrap(
+        [RepeatNumberOfTimesXNode(number_of_times=None, start_at=Literal(value=1))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: RepeatNumberOfTimesX with missing NumberOfTimes" in code
+    _compiles(code)
 
 
 def test_try_catch():

@@ -102,6 +102,7 @@ from ..uipath_dsl.types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -650,6 +651,10 @@ def _generate_node(
         return _generate_if(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, RepeatNumberOfTimesXNode):
+        return _generate_repeat_number_of_times_x(
+            node, indent, invoke_resolver, out_arg_resolver
+        )
     if isinstance(node, ForEachFileNode):
         return _generate_for_each_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, ForEachFolderNode):
@@ -1048,6 +1053,46 @@ def _generate_for_each(
     lines = [f"{prefix}for {node.item_var or '_item'} in {values}:"]
     body = _ensure_nonempty_suite(
         _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+    )
+    lines.extend(body)
+    return lines
+
+
+def _generate_repeat_number_of_times_x(
+    node: RepeatNumberOfTimesXNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見227: `ui:RepeatNumberOfTimesX`。`StartAt`は`CurrentItem`の
+    開始値のみを決め、反復回数には影響しない(公式ドキュメント確認
+    済み)——`NumberOfTimes`回だけ常に実行する`range(start_at, start_at
+    + number_of_times)`に対応する。`StartAt`省略時(実機で確認済み、
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`)は
+    公式ドキュメント確認済みの既定値`1`をPython側で補う。`RetryScope`
+    (`_retry_max`)と同じ`round(_vb_cdbl(...))`でInt32相当に丸める。"""
+    prefix = INDENT * indent
+    if node.number_of_times is None:
+        return [
+            f"{prefix}# TODO: RepeatNumberOfTimesX with missing NumberOfTimes"
+        ]
+    todo: list[str] = []
+    number_of_times = _render_value_or_todo(node.number_of_times, prefix, todo)
+    start_at = (
+        _render_value_or_todo(node.start_at, prefix, todo)
+        if node.start_at is not None
+        else "1"
+    )
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_rnt_start = round({VB_CDBL_HELPER_NAME}({start_at}))",
+        f"{prefix}_rnt_count = round({VB_CDBL_HELPER_NAME}({number_of_times}))",
+        f"{prefix}for {node.item_var or 'CurrentItem'} in "
+        "range(_rnt_start, _rnt_start + _rnt_count):",
+    ]
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver),
+        indent + 1,
     )
     lines.extend(body)
     return lines

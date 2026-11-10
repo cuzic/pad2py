@@ -63,6 +63,7 @@ from .types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -475,6 +476,30 @@ def _parse_for_each(elem: etree._Element) -> ForEachNode:
         values=_attr_expr(elem, "Values"),
         body=body,
         type_arguments=_attr(elem, "TypeArguments", X_NS) or "x:Object",
+    )
+
+
+def _parse_repeat_number_of_times_x(
+    elem: etree._Element,
+) -> RepeatNumberOfTimesXNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    item_var = "CurrentItem"
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                item_var = _attr(d, "Name") or item_var
+        body = _unwrap_body_sequence(action)
+    return RepeatNumberOfTimesXNode(
+        number_of_times=_attr_expr(elem, "NumberOfTimes")
+        or _in_argument_property_expr(elem, "NumberOfTimes"),
+        start_at=_attr_expr(elem, "StartAt")
+        or _in_argument_property_expr(elem, "StartAt"),
+        item_var=item_var,
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
     )
 
 
@@ -2532,6 +2557,7 @@ _DISPATCH = {
     (UI_NS, "InputDialog"): _parse_input_dialog,
     (UI_NS, "MultipleAssign"): _parse_multiple_assign,
     (UI_NS, "ForEach"): _parse_for_each,
+    (UI_NS, "RepeatNumberOfTimesX"): _parse_repeat_number_of_times_x,
     (WF_NS, "ForEach"): _parse_for_each,
     (UI_NS, "ForEachRow"): _parse_for_each_row,
     (UI_NS, "InterruptibleWhile"): _parse_while,

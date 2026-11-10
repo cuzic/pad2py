@@ -3060,3 +3060,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      UiPath関連テスト全1023件通過、リポジトリ全体で全2109件通過。
      残る`ui:RepeatNumberOfTimesX`(265件ヒット、`ForEach`と同じ
      `ActivityAction<Int32>`本体構造)を次の候補として記録。
+
+185. **(完了、2026-11-10)** `ui:RepeatNumberOfTimesX`を新規実装
+     (知見227)——`ForEach`(知見5)と構造が完全に同じ
+     `ActivityAction<Int32>`+`DelegateInArgument`(`CurrentItem`)本体、
+     タグ名限定検索で265件ヒット。既存の`_find_activity_action`/
+     `_unwrap_body_sequence`ヘルパーを再利用。公式ドキュメント確認
+     済みの仕様——`StartAt`は`CurrentItem`の開始値のみを決め**反復
+     回数には影響しない**、`NumberOfTimes`回だけ常に実行する——を
+     `range(start_at, start_at + number_of_times)`で再現、
+     `RetryScope`の`_retry_max`と同じ`round(_vb_cdbl(...))`で
+     Int32相当に丸める。実機で`StartAt`省略(`Apress/...`)と
+     `StartAt="0"`(`RPA-UiPath-Projects/Sort-country-list`)の両方を
+     発見——省略時は公式ドキュメント確認済みの既定値`1`を補う。
+     `StartAt`の値に関わらず常に`NumberOfTimes`回だけ実行される
+     ことを`exec()`経由で確認した。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+     UiPath関連テスト全1028件通過、リポジトリ全体で全2114件通過。
+     これで知見225の発見パスで見つかった3件(`CommentOut`/
+     `Continue`/`RepeatNumberOfTimesX`)全てに着手済み——次の候補は
+     無く、次のtickで新規発見パスが必要。

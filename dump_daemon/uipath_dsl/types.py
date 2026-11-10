@@ -205,6 +205,37 @@ class ForEachNode:
 
 
 @dataclass
+class RepeatNumberOfTimesXNode:
+    """`<ui:RepeatNumberOfTimesX NumberOfTimes="..." StartAt="...">
+    <ui:RepeatNumberOfTimesX.Body><ActivityAction x:TypeArguments="x:Int32">
+    <ActivityAction.Argument><DelegateInArgument x:TypeArguments="x:Int32"
+    Name="CurrentItem" /></ActivityAction.Argument><Sequence
+    DisplayName="Do">...</Sequence></ActivityAction></ui:
+    RepeatNumberOfTimesX.Body></ui:RepeatNumberOfTimesX>`(知見227、
+    `ForEach`(知見5)と同じ`ActivityAction`+`DelegateInArgument`構造——
+    唯一の違いは反復対象が明示的なコレクションではなく整数回数指定
+    (`NumberOfTimes`+`StartAt`)であること)。タグ名限定GitHub検索で
+    265件ヒット。`item_var`は`DelegateInArgument`の`Name`(実機全件で
+    `"CurrentItem"`、公式ドキュメント確認済みの既定名と一致)。
+
+    公式ドキュメント(WebSearch経由確認)で`StartAt`は「`CurrentItem`
+    の開始値」(既定`1`)、`NumberOfTimes`は「繰り返し回数」(開始値に
+    関わらず常にこの回数だけ実行)と確認済み——`StartAt`は反復回数には
+    影響しない。実機複数件で`StartAt`省略(`Apress/Robotic-Process-
+    Automation-Using-UiPath-StudioX`)・`StartAt="0"`(`RPA-UiPath-
+    Projects/Sort-country-list`)の両方を確認——ground-truthの既定値
+    `"1"`は常に実機で明示されるわけではなく、省略時はPython側で
+    リテラル`1`を補う。`range(start_at, start_at + number_of_times)`
+    に対応する。"""
+
+    number_of_times: Expr
+    start_at: Expr | None = None
+    item_var: str = "CurrentItem"
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class CatchArm:
     """`TryCatch.Catches`配下の`<Catch x:TypeArguments="...">`1本
     (知見6・知見「Populated TryCatch.Catches」)。`var_name`は
@@ -3320,6 +3351,7 @@ Node = (
     | InputDialogNode
     | IfNode
     | ForEachNode
+    | RepeatNumberOfTimesXNode
     | TryCatchNode
     | SwitchNode
     | WhileNode

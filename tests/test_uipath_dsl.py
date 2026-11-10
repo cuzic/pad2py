@@ -51,6 +51,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
@@ -2918,6 +2919,58 @@ def test_continue_properties():
     xml = f"<ui:Continue {_UI_XMLNS} />"
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ContinueNode)
+
+
+def test_repeat_number_of_times_x_properties():
+    """知見227: `ui:RepeatNumberOfTimesX`(`ForEach`(知見5)と同じ
+    `ActivityAction`+`DelegateInArgument`構造、タグ名限定GitHub検索で
+    265件ヒット)。実機`vajrang-b/UiPathIn30Days`相当の構成——
+    `NumberOfTimes`+`StartAt`+`CurrentItem`。"""
+    xml = (
+        f"<ui:RepeatNumberOfTimesX {_UI_XMLNS} "
+        'DisplayName="Repeat" NumberOfTimes="[arrayLength]" StartAt="1">'
+        "<ui:RepeatNumberOfTimesX.Body>"
+        '<ActivityAction x:TypeArguments="x:Int32">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Int32" Name="CurrentItem" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:LogMessage DisplayName="Log" Level="Info" Message="[CurrentItem]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:RepeatNumberOfTimesX.Body>"
+        "</ui:RepeatNumberOfTimesX>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RepeatNumberOfTimesXNode)
+    assert node.number_of_times == VbExpr(text="arrayLength")
+    assert node.start_at == Literal(value="1")
+    assert node.item_var == "CurrentItem"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], LogMessageNode)
+
+
+def test_repeat_number_of_times_x_start_at_omitted():
+    """知見227: 実機`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`で確認済み——`StartAt`省略も実在する(公式ドキュメント
+    確認済みの既定値`1`はコード生成側で補う、パーサー自体は`None`の
+    まま保持する)。"""
+    xml = (
+        f"<ui:RepeatNumberOfTimesX {_UI_XMLNS} "
+        'DisplayName="Repeat Number Of Times" NumberOfTimes="[3]">'
+        "<ui:RepeatNumberOfTimesX.Body>"
+        '<ActivityAction x:TypeArguments="x:Int32">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Int32" Name="CurrentItem" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do" />'
+        "</ActivityAction>"
+        "</ui:RepeatNumberOfTimesX.Body>"
+        "</ui:RepeatNumberOfTimesX>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, RepeatNumberOfTimesXNode)
+    assert node.start_at is None
 
 
 def test_excel_application_scope(main_wf):
