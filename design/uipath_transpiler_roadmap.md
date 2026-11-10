@@ -3563,3 +3563,25 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      検証手法。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
      `tests/test_uipath_codegen.py`8件)、リポジトリ全体で全2268件
      通過。
+
+209. **(完了、2026-11-10)** `ui:SaveMailAttachments`を新規実装
+     (知見251)——タグ名限定検索で329件ヒット、9回目発見パス最後の
+     候補。実機2件(`cameronmcnz/uipath-tutorials`・`JAYASIMMA/
+     Loan_Apply_Utility_Bot`)で確認——`Message`+`FolderPath`+
+     `ExcludeInlineAttachments`+`OverwriteExisting`。知見250で
+     見送った`_ImapMailMessage.Attachments`プロパティ
+     (`(filename, disposition, part)`タプルのリスト)を新規設計し、
+     `FolderPath`の自動作成(公式ドキュメント確認済み)に
+     `os.makedirs(..., exist_ok=True)`で対応した。`OverwriteExisting`
+     は公式ドキュメント自体が本文とプロパティ説明で矛盾した記述を
+     含み`"False"`/未設定時の重複ファイル名解決が未確認と判明した
+     ため`"True"`のみ対応(Pythonの`open(..., "wb")`の既定動作が
+     そのまま意味論と一致する幸運な一致)。実際のマルチパートMIME
+     メール(添付ファイル1件+インライン画像1件)を`imaplib.
+     IMAP4_SSL`モック経由で`GetIMAPMailMessages`→`ForEach`→
+     `SaveMailAttachments`という実機相当のパイプライン全体に流し、
+     `exec()`経由で実際に一時ディレクトリへファイルを書き出し、
+     インライン画像の除外・添付ファイル内容の正確性を確認した。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`4件)、リポジトリ全体で全2274件通過。
+     9回目発見パスはこれで完全に完了。

@@ -4197,6 +4197,46 @@ class GetIMAPMailMessagesNode:
 
 
 @dataclass
+class SaveMailAttachmentsNode:
+    """`<ui:SaveMailAttachments Message="..." FolderPath="..."
+    ExcludeInlineAttachments="..." OverwriteExisting="..."
+    Attachments="..." />`(知見251、`GetIMAPMailMessages`(知見250)で
+    意図的に見送った後続活動、タグ名限定GitHub検索で329件ヒット)。
+    実機2件(`cameronmcnz/uipath-tutorials`の`GmailAttachments/
+    Main.xaml`、`JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`)で
+    確認済み——`Message`(入力、`GetIMAPMailMessages`が生成する
+    `_ImapMailMessage`ラッパー)+`FolderPath`+
+    `ExcludeInlineAttachments`(`"False"`実機確認)+
+    `OverwriteExisting`(`"True"`実機確認、2件目のサンプルのみ設定、
+    1件目は未設定)+`Attachments`(出力、実機2件とも`{x:Null}`——
+    未確認のため設定されている場合は見送る)。
+
+    公式ドキュメント(WebFetch経由確認)で`FolderPath`が存在しない
+    場合は自動作成されることを確認した(`os.makedirs(...,
+    exist_ok=True)`に対応)。`OverwriteExisting="False"`(または未設定)
+    時の重複ファイル名解決(公式ドキュメント自体が本文と属性説明で
+    矛盾した記述——「上書きされる」と「選択時のみ上書き」——を含み、
+    旧StudioX版の別活動では「番号を付加する」という記述もあったが
+    本活動で確認できる実例が無い)は未確認のため`"True"`のみ対応する
+    ——Pythonの`open(..., "wb")`の既定動作(常に上書き)がそのまま
+    `"True"`の意味論と一致するため、追加のコードは不要。
+
+    `_ImapMailMessage`(知見250)に新規`.Attachments`プロパティ
+    (`(filename, disposition, part)`タプルのリスト)を追加した——
+    実機確認済みの`Mail.Attachments.Any`という別の下流利用(知見250で
+    発見、本活動の実装には不要だが同じプロパティを共有できる)にも
+    対応する土台になる(ただし`.Any`自体のレンダリング対応は今回の
+    スコープ外)。"""
+
+    message: Expr = None
+    folder_path: Expr = None
+    exclude_inline_attachments: str | None = None
+    overwrite_existing: str | None = None
+    attachments: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class MarkMailAsReadXNode:
     """`<umab:MarkMailAsReadX MailMessage="..." MarkAs="..." />`(知見229、
     `umab:` = `clr-namespace:UiPath.Mail.Activities.Business;
@@ -4460,6 +4500,7 @@ Node = (
     | SplitTextNode
     | CombineTextNode
     | GetIMAPMailMessagesNode
+    | SaveMailAttachmentsNode
     | ParallelNode
     | ClickNode
     | HoverNode

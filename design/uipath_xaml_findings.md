@@ -11910,6 +11910,47 @@ IMAPの`SEARCH`が返す昇順(古い順)のUID一覧を反転することで対
 test_uipath_codegen.py`8件)、リポジトリ全体で全2268件通過
 (28件skip)。
 
+## 251. `ui:SaveMailAttachments`を新規実装——`GetIMAPMailMessages`で意図的に見送った`.Attachments`プロパティを設計し、9回目発見パス最後の候補を完了した
+
+知見250で意図的に見送った`ui:SaveMailAttachments`(タグ名限定GitHub
+検索で329件ヒット)に着手した——これで9回目発見パスの全候補
+(知見242〜251)が完了した。
+
+実機2件(`cameronmcnz/uipath-tutorials`の`GmailAttachments/
+Main.xaml`、`JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`、
+いずれも知見250と同じソース)で属性を確認——`Message`(入力、
+`GetIMAPMailMessages`が生成する`_ImapMailMessage`)+`FolderPath`+
+`ExcludeInlineAttachments`(`"False"`実機確認)+`OverwriteExisting`
+(`"True"`実機確認、1件目は未設定)+`Attachments`(出力、実機2件とも
+`{x:Null}`、未確認のため設定されている場合は見送る)。
+
+`_ImapMailMessage`(知見250)に新規`.Attachments`プロパティ
+(`(filename, disposition, part)`タプルのリスト、`email.message.
+Message.walk()`でMIMEツリーを走査)を追加——知見250で「`.Attachments`
+は`SaveMailAttachments`と合わせて設計すべきため見送る」と記録して
+いた課題をこれで解消した。公式ドキュメント(WebFetch経由確認)で
+`FolderPath`が存在しない場合は自動作成されることを確認し
+`os.makedirs(..., exist_ok=True)`で対応した。
+
+`OverwriteExisting`の意味論を調べた結果、公式ドキュメント自体が
+本文(「同名ファイルは上書きされる」)とプロパティ説明(「選択時のみ
+上書き」)で矛盾した記述を含み、`"False"`/未設定時の重複ファイル名
+解決(旧StudioX版の別活動では「番号を付加する」という記述もあったが
+本活動での実例が無い)が未確認だと判明した——`"True"`のみ対応する
+(ground-truthと違いPythonの`open(..., "wb")`の既定動作(常に上書き)
+がそのまま意味論と一致するため追加のコードは不要、という幸運な
+一致)。
+
+実際のマルチパートMIMEメール(`email.message.EmailMessage`で添付
+ファイル1件+インライン画像1件を構築)を`imaplib.IMAP4_SSL`モック
+経由で`GetIMAPMailMessages`→`ForEach`→`SaveMailAttachments`という
+実機相当のパイプライン全体に流し、`exec()`経由で実際に一時
+ディレクトリへファイルを書き出し、インライン画像が正しく除外され
+添付ファイルの内容が正確であることを確認した。回帰テスト追加
+(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+4件)、リポジトリ全体で全2274件通過(28件skip)。9回目発見パスは
+これで完全に完了——次tickには新しい(10回目)発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

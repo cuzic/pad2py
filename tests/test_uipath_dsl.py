@@ -41,6 +41,7 @@ from dump_daemon.uipath_dsl import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    SaveMailAttachmentsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -3104,6 +3105,45 @@ def test_get_imap_mail_messages_with_secure_password_and_order_by_date():
     assert node.order_by_date == "NewestFirst"
     assert node.ignore_crl == "False"
     assert node.messages == VbExpr(text="List_Mails")
+
+
+def test_save_mail_attachments_properties():
+    """知見251: `ui:SaveMailAttachments`(`GetIMAPMailMessages`
+    (知見250)の後続活動、タグ名限定GitHub検索で329件ヒット)。実機
+    `cameronmcnz/uipath-tutorials`の`GmailAttachments/Main.xaml`で
+    確認した実例——`OverwriteExisting`/`ExcludeInlineAttachments`
+    いずれも未設定。"""
+    xml = (
+        f"<ui:SaveMailAttachments {_UI_XMLNS} Attachments=\"{{x:Null}}\" "
+        'DisplayName="Save Attachments" FolderPath="attachments" '
+        'Message="[email]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SaveMailAttachmentsNode)
+    assert node.message == VbExpr(text="email")
+    assert node.folder_path == Literal(value="attachments")
+    assert node.exclude_inline_attachments is None
+    assert node.overwrite_existing is None
+    assert node.attachments is None
+
+
+def test_save_mail_attachments_with_overwrite_and_exclude_inline():
+    """実機`JAYASIMMA/Loan_Apply_Utility_Bot`の`Main.xaml`で確認した
+    実例——`ExcludeInlineAttachments="False"`+`OverwriteExisting="True"`
+    +動的VB式の`FolderPath`。"""
+    xml = (
+        f"<ui:SaveMailAttachments {_UI_XMLNS} Attachments=\"{{x:Null}}\" "
+        'DisplayName="Save Attachments" '
+        'ExcludeInlineAttachments="False" '
+        'FolderPath="[Config(&quot;PathToSaveExcel&quot;).ToString]" '
+        'Message="[Mail]" OverwriteExisting="True" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SaveMailAttachmentsNode)
+    assert node.message == VbExpr(text="Mail")
+    assert node.folder_path == VbExpr(text='Config("PathToSaveExcel").ToString')
+    assert node.exclude_inline_attachments == "False"
+    assert node.overwrite_existing == "True"
 
 
 _MAIL_BUSINESS_XMLNS = (

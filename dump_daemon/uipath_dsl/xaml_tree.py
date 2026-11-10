@@ -45,6 +45,7 @@ from .types import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    SaveMailAttachmentsNode,
     BuildDataTableNode,
     CatchArm,
     CheckNode,
@@ -2702,6 +2703,19 @@ def _parse_get_imap_mail_messages(elem: etree._Element) -> GetIMAPMailMessagesNo
     )
 
 
+def _parse_save_mail_attachments(elem: etree._Element) -> SaveMailAttachmentsNode:
+    return SaveMailAttachmentsNode(
+        message=_attr_expr(elem, "Message") or _in_argument_property_expr(elem, "Message"),
+        folder_path=_attr_expr(elem, "FolderPath")
+        or _in_argument_property_expr(elem, "FolderPath"),
+        exclude_inline_attachments=_attr_or_none(elem, "ExcludeInlineAttachments"),
+        overwrite_existing=_attr_or_none(elem, "OverwriteExisting"),
+        attachments=_attr_expr(elem, "Attachments")
+        or _in_argument_property_expr(elem, "Attachments"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_mark_mail_as_read_x(elem: etree._Element) -> MarkMailAsReadXNode:
     return MarkMailAsReadXNode(
         display_name=_attr(elem, "DisplayName"),
@@ -3166,6 +3180,7 @@ _DISPATCH = {
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,
+    (UI_NS, "SaveMailAttachments"): _parse_save_mail_attachments,
     (MAIL_BUSINESS_NS, "MarkMailAsReadX"): _parse_mark_mail_as_read_x,
     (MAIL_BUSINESS_NS, "DeleteMailX"): _parse_delete_mail_x,
     (MAIL_BUSINESS_NS, "MoveMailX"): _parse_move_mail_x,

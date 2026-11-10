@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    SaveMailAttachmentsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -9829,6 +9830,113 @@ def test_get_imap_mail_messages_with_use_oauth_is_todo():
     wf = _wrap([_imap_node(use_oauth=Literal(value="True"))])
     code = generate_python(wf)
     assert "# TODO: GetIMAPMailMessages with UseOAuth set" in code
+    _compiles(code)
+
+
+def _save_mail_attachments_node(**overrides):
+    defaults = dict(
+        message=VbExpr(text="mail"),
+        folder_path=VbExpr(text="folderPath"),
+        exclude_inline_attachments="False",
+        overwrite_existing="True",
+    )
+    defaults.update(overrides)
+    return SaveMailAttachmentsNode(**defaults)
+
+
+def test_save_mail_attachments_full_pipeline_exec():
+    """知見251: `GetIMAPMailMessages`(知見250)→`ForEach`→
+    `SaveMailAttachments`の実機相当のパイプラインを`exec()`経由で
+    実際に実行し確認する——実際のマルチパートMIMEメール
+    (添付ファイル1件+インライン画像1件)を`imaplib.IMAP4_SSL`モック
+    経由で流し、インライン画像が除外され添付ファイルのみ実際に
+    ディスクへ書き出され内容が正しいことを確認する。"""
+    wf = WorkflowFile(
+        class_name="Test",
+        root=SequenceNode(
+            body=[
+                GetIMAPMailMessagesNode(
+                    messages=VbExpr(text="emails"),
+                    server=Literal(value="imap.gmail.com"),
+                    port=Literal(value="993"),
+                    email=Literal(value="user@gmail.com"),
+                    password=Literal(value="secret"),
+                    enable_ssl="True",
+                    secure_connection="Auto",
+                    mail_folder=Literal(value="Inbox"),
+                    mark_as_read="False",
+                    only_unread_messages="False",
+                    delete_messages="False",
+                ),
+                ForEachNode(
+                    item_var="mail",
+                    type_arguments="snm:MailMessage",
+                    values=VbExpr(text="emails"),
+                    body=[
+                        _save_mail_attachments_node(
+                            message=VbExpr(text="mail"),
+                            folder_path=VbExpr(text="folderPath"),
+                            exclude_inline_attachments="True",
+                        )
+                    ],
+                ),
+            ]
+        ),
+        arguments={"folderPath": "InArgument(x:String)"},
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "Report"
+    msg.set_content("Please see attached.")
+    msg.add_attachment(b"PDFDATA123", maintype="application", subtype="pdf", filename="report.pdf")
+    msg.add_attachment(b"\x89PNGfakeimage", maintype="image", subtype="png", filename="logo.png")
+    list(msg.iter_attachments())[-1].replace_header(
+        "Content-Disposition", 'inline; filename="logo.png"'
+    )
+    raw_bytes = msg.as_bytes()
+
+    fake_imap = unittest.mock.MagicMock()
+    fake_imap.search.return_value = ("OK", [b"1"])
+    fake_imap.fetch.return_value = ("OK", [(None, raw_bytes)])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        namespace: dict[str, object] = {}
+        exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+        with unittest.mock.patch("imaplib.IMAP4_SSL", return_value=fake_imap):
+            namespace["Test"](folderPath=tmp)
+        saved = sorted(os.listdir(tmp))
+        assert saved == ["report.pdf"]
+        with open(os.path.join(tmp, "report.pdf"), "rb") as f:
+            assert f.read() == b"PDFDATA123"
+
+
+def test_save_mail_attachments_with_missing_properties_is_todo():
+    wf = _wrap([_save_mail_attachments_node(message=None)])
+    code = generate_python(wf)
+    assert "# TODO: SaveMailAttachments with missing Message/FolderPath" in code
+    _compiles(code)
+
+
+def test_save_mail_attachments_with_overwrite_not_true_is_todo():
+    """知見251: `OverwriteExisting`が`"True"`以外(未設定/`"False"`)の
+    場合の重複ファイル名解決は未確認のため見送る。"""
+    wf = _wrap([_save_mail_attachments_node(overwrite_existing=None)])
+    code = generate_python(wf)
+    assert "# TODO: SaveMailAttachments with OverwriteExisting" in code
+    _compiles(code)
+
+
+def test_save_mail_attachments_with_attachments_output_bound_is_todo():
+    wf = _wrap(
+        [_save_mail_attachments_node(attachments=VbExpr(text="savedFiles"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: SaveMailAttachments with Attachments output bound" in code
     _compiles(code)
 
 

@@ -87,6 +87,7 @@ from ..uipath_dsl.types import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    SaveMailAttachmentsNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1019,6 +1020,8 @@ def _generate_node(
         return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, GetIMAPMailMessagesNode):
         return _generate_get_imap_mail_messages(node, indent)
+    if isinstance(node, SaveMailAttachmentsNode):
+        return _generate_save_mail_attachments(node, indent)
     if isinstance(node, MarkMailAsReadXNode):
         return _generate_mark_mail_as_read_x(node, indent)
     if isinstance(node, DeleteMailXNode):
@@ -8077,6 +8080,10 @@ def _generate_get_outlook_mail_messages_body(
 # `GetOutlookMailMessages`(知見120)の「生のネイティブオブジェクトを
 # そのまま返す」方針が通用しない——実機確認済みの下流アクセス
 # (`.Subject`のみ)に絞った最小限の薄いラッパークラスを注入する。
+# 知見251: `ui:SaveMailAttachments`向けに`.Attachments`プロパティ
+# (`(filename, disposition, part)`タプルのリスト)を追加——実機確認済み
+# の`Mail.Attachments.Any`という別の下流利用(知見250で発見)にも
+# 対応する土台になる(`.Any`自体のレンダリング対応は対象外)。
 _IMAP_MAIL_MESSAGE_HELPER_NAME = "_ImapMailMessage"
 _IMAP_MAIL_MESSAGE_HELPER_SOURCE = '''\
 class _ImapMailMessage:
@@ -8086,6 +8093,19 @@ class _ImapMailMessage:
     @property
     def Subject(self):
         return self._msg.get("Subject", "")
+
+    @property
+    def Attachments(self):
+        result = []
+        for part in self._msg.walk():
+            disposition = part.get_content_disposition()
+            if disposition not in ("attachment", "inline"):
+                continue
+            filename = part.get_filename()
+            if not filename:
+                continue
+            result.append((filename, disposition, part))
+        return result
 '''
 
 _IMAP_SECURE_CONNECTION_VALUES = (None, "Auto")
@@ -8205,6 +8225,74 @@ def _generate_get_imap_mail_messages_body(
             f"{prefix}_imap.close()",
             f"{prefix}_imap.logout()",
             f"{prefix}{target} = _imap_messages",
+        ]
+    )
+    return lines
+
+
+def _generate_save_mail_attachments(
+    node: SaveMailAttachmentsNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_save_mail_attachments_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_save_mail_attachments_body(
+    node: SaveMailAttachmentsNode, indent: int
+) -> list[str]:
+    """知見251: `ui:SaveMailAttachments`——`_ImapMailMessage.Attachments`
+    (知見250・251)を反復し`FolderPath`へ書き出す。公式ドキュメント
+    確認済みの「`FolderPath`が存在しない場合は自動作成される」を
+    `os.makedirs(..., exist_ok=True)`で再現する。`OverwriteExisting`は
+    `"True"`のみ対応——`open(..., "wb")`の既定動作(常に上書き)が
+    そのまま意味論と一致するため追加のコードは不要、`"False"`/未設定
+    時の重複ファイル名解決は未確認のため見送る。"""
+    prefix = INDENT * indent
+    if node.message is None or node.folder_path is None:
+        return [
+            f"{prefix}# TODO: SaveMailAttachments with missing Message/"
+            "FolderPath"
+        ]
+    if node.attachments is not None:
+        return [
+            f"{prefix}# TODO: SaveMailAttachments with Attachments output "
+            f"bound ({_describe_expr_for_comment(node.attachments)}) — "
+            "not confirmed in the wild, refusing to guess"
+        ]
+    if node.overwrite_existing != "True":
+        return [
+            f"{prefix}# TODO: SaveMailAttachments with OverwriteExisting "
+            f"{node.overwrite_existing!r} — only the confirmed \"True\" "
+            "value is implemented (duplicate-filename resolution for "
+            "False/unset is not confirmed), refusing to guess"
+        ]
+    if node.exclude_inline_attachments not in (None, "False", "True"):
+        return [
+            f"{prefix}# TODO: SaveMailAttachments with unrecognized "
+            f"ExcludeInlineAttachments ({node.exclude_inline_attachments!r})"
+        ]
+    todo: list[str] = []
+    message = _render_value_or_todo(node.message, prefix, todo)
+    folder_path = _render_value_or_todo(node.folder_path, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    lines = [
+        f"{prefix}os.makedirs({VB_CSTR_HELPER_NAME}({folder_path}), exist_ok=True)",
+        f"{prefix}for _attachment_filename, _attachment_disposition, "
+        f"_attachment_part in {message}.Attachments:",
+    ]
+    if node.exclude_inline_attachments == "True":
+        lines.append(f"{inner}if _attachment_disposition == 'inline':")
+        lines.append(f"{INDENT * (indent + 2)}continue")
+    lines.extend(
+        [
+            f"{inner}_attachment_dest = os.path.join("
+            f"{VB_CSTR_HELPER_NAME}({folder_path}), _attachment_filename)",
+            f"{inner}with open(_attachment_dest, 'wb') as _attachment_file:",
+            f"{INDENT * (indent + 2)}_attachment_file.write("
+            "_attachment_part.get_payload(decode=True))",
         ]
     )
     return lines
