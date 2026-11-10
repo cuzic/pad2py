@@ -683,7 +683,7 @@ _CHAINED_PROPERTY_TRANSLATIONS = {
 # このIdent分岐を通る)もここに追加しないと`_apply_chained_property`
 # 側の対応が素通りされ、`CurrentFile.FullName`がそのまま出力されて
 # 実行時`AttributeError`になる(実装直後にテストで発見・即修正)。
-_SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname")
+_SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname", "name")
 
 # 知見140: 呼び出しを伴わない静的クラスプロパティの完全修飾名(小文字化
 # 済み)→Python式。`_SAFE_BARE_MEMBERS`/`_CHAINED_PROPERTY_TRANSLATIONS`
@@ -811,6 +811,13 @@ def _apply_chained_property(base: str, member: str) -> str:
         # ——`.Copy()`を複数回呼んだ結果が元のDataTableと行データを
         # 共有しないことを保証する。
         return f"[dict(_r) for _r in {base}]"
+    if member_lower == "name":
+        # 知見233: `GetLastDownloadedFile`(知見233)の`File`出力——
+        # `ForEachFileX`/`ForEachFolderX`(知見190)と同じ「`FileInfo`/
+        # `DirectoryInfo`をでっち上げず絶対パス文字列そのものとして
+        # 表現する」既存方針の延長で、`.Name`(ファイル名のみ、
+        # ディレクトリ部分を除く)は`os.path.basename()`に対応する。
+        return f"os.path.basename({base})"
     if member_lower == "length":
         # 知見133: `Directory.GetFiles(path).Length`(`dexbob/RPA_Example`
         # の実機XAML、`.Length`は括弧省略形)。配列(`String()`等)・文字列

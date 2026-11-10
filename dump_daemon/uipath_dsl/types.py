@@ -2430,6 +2430,51 @@ class ExtractTextNode:
 
 
 @dataclass
+class GetLastDownloadedFileNode:
+    """`<ui:GetLastDownloadedFile DownloadFolder="..." File="..."
+    Timeout="..." IgnoreFiles="...">`(知見233、公式表示名「Wait for
+    Download」、サブエージェントによる5回目の新規発見パスで発見、
+    タグ名限定GitHub検索で129件ヒット)。ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)・実機多数(`alvaroqr14/
+    UiPath_Ejemplo_WaitForDownload`・`mantri13/Usecase2_ActiveLoans`・
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`)で確認
+    した構造——`.Body`配下は`ModifyText`(知見224)と同じ
+    `ActivityAction`(`DelegateInArgument`無し)+`Sequence`。
+
+    `File`出力は.NETの`FileInfo`型だが、`ForEachFileX`/`ForEachFolderX`
+    (知見190)の既存方針(`FileInfo`/`DirectoryInfo`をでっち上げず
+    絶対パス文字列そのものとして表現する)を再利用する——実機で確認
+    できたダウンストリーム利用は`.Name`(`alvaroqr14`の実例)と
+    `.FullName`(`mantri13`の実例、既存の`.fullname`ハンドラで対応
+    済み)のみで、`GetFileInfoX`/`GetFolderInfoX`(知見で見送り済み)
+    のような「未確認の多数のプロパティを持つ不透明な型付きオブジェ
+    クト」問題には当たらない——このため`render.py`の
+    `_apply_chained_property`に`.Name`(`os.path.basename()`)を
+    新規追加した。
+
+    `Timeout`省略時は公式ドキュメント確認済みの既定`300`秒。
+    `IgnoreFiles`(カンマ区切りの拡張子リスト、「ダウンロード完了
+    まで無視する拡張子」——ブラウザの一時ファイル拡張子
+    `.crdownload`/`.part`等を除外する用途、公式ドキュメント確認済み)
+    は実機で非null値(`"xlsx, crdownload"`)を確認済み。`DownloadFolder`
+    配下のファイル一覧をBody実行前後でスナップショット比較し、新規
+    出現したファイルのうち`IgnoreFiles`の拡張子に該当しないものを
+    ポーリングで探す近似実装とする(`知見206`の画像照合近似・
+    知見184/197のCSV変換近似と同じ「正確な再現ではなく近似と明記」
+    方針)——内部のポーリング間隔自体はUiPath側の正確な値が未確認の
+    ため本トランスパイラ独自の値を使う。`FileResource`は実機で一度も
+    非nullの値を確認できず未対応。"""
+
+    download_folder: Expr = None
+    file: Expr = None
+    timeout: Expr = None
+    ignore_files: Expr = None
+    file_resource: Expr = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
 class InvokeWorkflowFileNode:
     """`<ui:InvokeWorkflowFile WorkflowFileName="...">`(知見12)。
     `arguments`は`ui:InvokeWorkflowFile.Arguments`配下の`x:Key`付き
@@ -3697,6 +3742,7 @@ Node = (
     | BulkInsertNode
     | DatabaseTransactionNode
     | ExtractTextNode
+    | GetLastDownloadedFileNode
     | InvokeWorkflowFileNode
     | CopyFileNode
     | BuildDataTableNode

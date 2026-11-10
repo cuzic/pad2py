@@ -56,6 +56,7 @@ from .types import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    GetLastDownloadedFileNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -1777,6 +1778,27 @@ def _parse_extract_text(elem: etree._Element) -> ExtractTextNode:
     )
 
 
+def _parse_get_last_downloaded_file(
+    elem: etree._Element,
+) -> GetLastDownloadedFileNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return GetLastDownloadedFileNode(
+        display_name=_attr(elem, "DisplayName"),
+        download_folder=_attr_expr(elem, "DownloadFolder")
+        or _in_argument_property_expr(elem, "DownloadFolder"),
+        file=_attr_expr(elem, "File") or _in_argument_property_expr(elem, "File"),
+        timeout=_attr_expr(elem, "Timeout")
+        or _in_argument_property_expr(elem, "Timeout"),
+        ignore_files=_attr_expr(elem, "IgnoreFiles")
+        or _in_argument_property_expr(elem, "IgnoreFiles"),
+        file_resource=_attr_expr(elem, "FileResource")
+        or _in_argument_property_expr(elem, "FileResource"),
+        body=body,
+    )
+
+
 def _parse_copy_file(elem: etree._Element) -> CopyFileNode:
     return CopyFileNode(
         path=_attr_expr(elem, "Path"),
@@ -2769,6 +2791,7 @@ _DISPATCH = {
     (UI_NS, "BulkInsert"): _parse_bulk_insert,
     (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
     (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
+    (UI_NS, "GetLastDownloadedFile"): _parse_get_last_downloaded_file,
     (UI_NS, "InvokeWorkflowFile"): _parse_invoke_workflow_file,
     (UI_NS, "CopyFile"): _parse_copy_file,
     (UI_NS, "BuildDataTable"): _parse_build_data_table,

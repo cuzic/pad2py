@@ -50,6 +50,7 @@ from dump_daemon.uipath_dsl import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    GetLastDownloadedFileNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     ForEachFileNode,
@@ -811,6 +812,37 @@ def test_extract_text_properties():
     assert node.match_case == "False"
     assert node.ignore_duplicates == "False"
     assert node.extract_base_url_only == "False"
+
+
+def test_get_last_downloaded_file_unwraps_body_sequence():
+    """知見233: `ui:GetLastDownloadedFile`(公式表示名「Wait for
+    Download」、タグ名限定GitHub検索で129件ヒット)。実機
+    `alvaroqr14/UiPath_Ejemplo_WaitForDownload`で確認した構造——
+    `ModifyText`(知見224)と同じ`ActivityAction`(`DelegateInArgument`
+    無し)+`Sequence`。"""
+    xml = (
+        f"<ui:GetLastDownloadedFile {_UI_XMLNS} "
+        'FileResource="{x:Null}" DisplayName="Wait for Download" '
+        'DownloadFolder="[dlFolder]" File="[file_Studio]" '
+        'IgnoreFiles="xlsx, crdownload" Timeout="30">'
+        "<ui:GetLastDownloadedFile.Body>"
+        "<ActivityAction>"
+        '<Sequence DisplayName="Do">'
+        '<ui:SendHotkey DisplayName="Esc" Key="esc" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:GetLastDownloadedFile.Body>"
+        "</ui:GetLastDownloadedFile>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetLastDownloadedFileNode)
+    assert node.download_folder == VbExpr(text="dlFolder")
+    assert node.file == VbExpr(text="file_Studio")
+    assert node.timeout == Literal(value="30")
+    assert node.ignore_files == Literal(value="xlsx, crdownload")
+    assert node.file_resource is None
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], SendHotkeyNode)
 
 
 def test_excel_read_range_and_write_range():

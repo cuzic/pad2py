@@ -97,6 +97,7 @@ from ..uipath_dsl.types import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    GetLastDownloadedFileNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -503,12 +504,15 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `ForEachFolder`変換先、知見190)も同じ`os`モジュールのため同じ
     # 条件にまとめる。
     # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)・
-    # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)も
-    # 同じ`os`モジュールのため同じ条件にまとめる。
+    # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)・
+    # `os.listdir(`(`GetLastDownloadedFile`のダウンロードフォルダ
+    # ポーリング変換先、知見233)も同じ`os`モジュールのため同じ条件に
+    # まとめる。
     if any(
         "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
         or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
         or "os.rename(" in line or "os.environ." in line or "os.environ[" in line
+        or "os.listdir(" in line
         for line in body
     ):
         imports.append("import os")
@@ -842,6 +846,10 @@ def _generate_node(
         )
     if isinstance(node, ExtractTextNode):
         return _generate_extract_text(node, indent)
+    if isinstance(node, GetLastDownloadedFileNode):
+        return _generate_get_last_downloaded_file(
+            node, indent, invoke_resolver, out_arg_resolver
+        )
     if isinstance(node, InvokeWorkflowFileNode):
         return _generate_invoke_workflow_file(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, CopyFileNode):
@@ -5422,6 +5430,108 @@ def _generate_extract_text_body(node: ExtractTextNode, indent: int) -> list[str]
             ]
         )
     lines.append(f"{prefix}{target} = _et_source[_et_start_idx:_et_end_idx]")
+    return lines
+
+
+def _generate_get_last_downloaded_file(
+    node: GetLastDownloadedFileNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_last_downloaded_file_body(
+        node, indent, invoke_resolver, out_arg_resolver
+    )
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_last_downloaded_file_body(
+    node: GetLastDownloadedFileNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見233: `ui:GetLastDownloadedFile`(公式表示名「Wait for
+    Download」)。`File`出力は`ForEachFileX`/`ForEachFolderX`
+    (知見190)と同じ「絶対パス文字列そのもの」として表現する
+    ——`.Name`は`render.py`に新規追加した`os.path.basename()`対応、
+    `.FullName`は既存の`fullname`ハンドラ(base passthrough)で対応
+    済み。`DownloadFolder`配下のファイル一覧をBody実行前後でスナップ
+    ショット比較し、新規出現したファイルのうち`IgnoreFiles`の拡張子
+    (「ダウンロード完了まで無視する拡張子」、公式ドキュメント確認
+    済み)に該当しないものをポーリングで探す近似実装——内部の
+    ポーリング間隔自体はUiPath側の正確な値が未確認のため本トランス
+    パイラ独自の値(0.5秒)を使う(知見206の画像照合近似と同じ
+    「正確な再現ではなく近似と明記」方針)。`Timeout`省略時は公式
+    ドキュメント確認済みの既定`300`秒。"""
+    prefix = INDENT * indent
+    if node.file_resource is not None:
+        return [
+            f"{prefix}# TODO: GetLastDownloadedFile with FileResource set "
+            f"({_describe_expr_for_comment(node.file_resource)}) — "
+            "Integration Service resource handling not confirmed, "
+            "refusing to guess"
+        ]
+    if node.download_folder is None or node.file is None:
+        return [
+            f"{prefix}# TODO: GetLastDownloadedFile with missing "
+            "DownloadFolder/File"
+        ]
+    todo: list[str] = []
+    download_folder = _render_value_or_todo(node.download_folder, prefix, todo)
+    target = _render_value_or_todo(node.file, prefix, todo)
+    timeout = (
+        _render_value_or_todo(node.timeout, prefix, todo)
+        if node.timeout is not None
+        else "300"
+    )
+    ignore_files = (
+        _render_value_or_todo(node.ignore_files, prefix, todo)
+        if node.ignore_files is not None
+        else None
+    )
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    lines = [
+        f"{prefix}_glf_folder = {VB_CSTR_HELPER_NAME}({download_folder})",
+        f"{prefix}_glf_before = set(os.listdir(_glf_folder)) "
+        "if os.path.isdir(_glf_folder) else set()",
+    ]
+    lines.extend(
+        _ensure_nonempty_suite(
+            _generate_body(node.body, indent, invoke_resolver, out_arg_resolver),
+            indent,
+        )
+    )
+    ignore_expr = (
+        f"{{_e.strip().lower() for _e in "
+        f"{VB_CSTR_HELPER_NAME}({ignore_files}).split(',') if _e.strip()}}"
+        if ignore_files is not None
+        else "set()"
+    )
+    lines.extend(
+        [
+            f"{prefix}_glf_ignore_exts = {ignore_expr}",
+            f"{prefix}_glf_deadline = time.monotonic() + round({VB_CDBL_HELPER_NAME}({timeout}))",
+            f"{prefix}_glf_found = None",
+            f"{prefix}while time.monotonic() < _glf_deadline:",
+            f"{inner}_glf_new = (set(os.listdir(_glf_folder)) "
+            "if os.path.isdir(_glf_folder) else set()) - _glf_before",
+            f"{inner}_glf_candidates = [_f for _f in _glf_new if "
+            "os.path.splitext(_f)[1].lstrip('.').lower() not in "
+            "_glf_ignore_exts]",
+            f"{inner}if _glf_candidates:",
+            f"{INDENT * (indent + 2)}_glf_found = max(_glf_candidates, "
+            "key=lambda _f: os.path.getmtime(os.path.join(_glf_folder, _f)))",
+            f"{INDENT * (indent + 2)}break",
+            f"{inner}time.sleep(0.5)",
+            f"{prefix}if _glf_found is None:",
+            f"{inner}raise TimeoutError("
+            "f'GetLastDownloadedFile: no new file appeared in "
+            "{_glf_folder!r} within the timeout period')",
+            f"{prefix}{target} = os.path.join(_glf_folder, _glf_found)",
+        ]
+    )
     return lines
 
 

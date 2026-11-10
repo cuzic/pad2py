@@ -71,6 +71,7 @@ from dump_daemon.uipath_dsl import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    GetLastDownloadedFileNode,
     ExecuteQueryNode,
     ExtractPdfPageRangeNode,
     FlowchartNode,
@@ -7573,6 +7574,127 @@ def test_extract_text_with_ignore_duplicates_true_is_todo_not_guessed():
     wf = _wrap([_extract_text_node(ignore_duplicates="True")])
     code = generate_python(wf)
     assert "# TODO: ExtractText with IgnoreDuplicates set ('True')" in code
+    _compiles(code)
+
+
+def test_get_last_downloaded_file_finds_new_file_ignoring_temp_extension():
+    """知見233: `ui:GetLastDownloadedFile`。実機
+    `alvaroqr14/UiPath_Ejemplo_WaitForDownload`相当の構成
+    (`IgnoreFiles="crdownload"`)を`exec()`経由で実際の一時ディレクトリ
+    へ実行し、一時拡張子ファイルを無視して本体ファイルの出現を
+    ポーリングで検出することを確認する。"""
+    wf = _wrap(
+        [
+            GetLastDownloadedFileNode(
+                download_folder=VbExpr(text="folder"),
+                file=VbExpr(text="result_file"),
+                timeout=Literal(value="5"),
+                ignore_files=Literal(value="crdownload"),
+                body=[],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.listdir(" in code
+    assert "import os" in code
+    assert "import time" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(folder):")
+    code2 += "\n    return result_file"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import tempfile
+    import threading
+    import time as _time
+
+    with tempfile.TemporaryDirectory() as d:
+        def simulate_download():
+            _time.sleep(0.3)
+            with open(os.path.join(d, "temp.crdownload"), "w") as f:
+                f.write("partial")
+            _time.sleep(0.3)
+            os.remove(os.path.join(d, "temp.crdownload"))
+            with open(os.path.join(d, "report.xlsx"), "w") as f:
+                f.write("data")
+
+        t = threading.Thread(target=simulate_download)
+        t.start()
+        result = namespace["Test"](d)
+        t.join()
+        assert result == os.path.join(d, "report.xlsx")
+
+
+def test_get_last_downloaded_file_raises_timeout_error_when_nothing_appears():
+    """知見233: 新規ファイルが`Timeout`以内に出現しない場合は
+    `TimeoutError`を投げる(フォールバック値を捏造しない既存方針)
+    ことを`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            GetLastDownloadedFileNode(
+                download_folder=VbExpr(text="folder"),
+                file=VbExpr(text="result_file"),
+                timeout=Literal(value="1"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    code2 = code.replace("def Test():", "def Test(folder):")
+    code2 += "\n    return result_file"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        with pytest.raises(TimeoutError):
+            namespace["Test"](d)
+
+
+def test_get_last_downloaded_file_defaults_timeout_to_300_when_omitted():
+    """知見233: `Timeout`省略時は公式ドキュメント確認済みの既定`300`秒。"""
+    wf = _wrap(
+        [
+            GetLastDownloadedFileNode(
+                download_folder=VbExpr(text="folder"),
+                file=VbExpr(text="result_file"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "round(_vb_cdbl(300))" in code
+    _compiles(code)
+
+
+def test_get_last_downloaded_file_with_file_resource_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            GetLastDownloadedFileNode(
+                download_folder=VbExpr(text="folder"),
+                file=VbExpr(text="result_file"),
+                file_resource=Literal(value="x"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: GetLastDownloadedFile with FileResource set" in code
+    _compiles(code)
+
+
+def test_get_last_downloaded_file_name_and_fullname_attribute_access():
+    """知見233: `File`出力を絶対パス文字列として表現する既存方針
+    (`ForEachFileX`/`ForEachFolderX`知見190)により、`.Name`
+    (`render.py`に新規追加)と`.FullName`(既存の`fullname`ハンドラ)
+    の両方がダウンストリームで正しく解決されることを確認する。"""
+    from dump_daemon.uipath_codegen.render import render_expr
+
+    assert render_expr(VbExpr(text="file_Studio.Name")) == "os.path.basename(file_Studio)"
+    assert render_expr(VbExpr(text="file_Studio.FullName")) == "file_Studio"
+
+
+def test_get_last_downloaded_file_with_missing_properties_is_todo():
+    wf = _wrap([GetLastDownloadedFileNode(download_folder=None, file=VbExpr(text="r"))])
+    code = generate_python(wf)
+    assert "# TODO: GetLastDownloadedFile with missing DownloadFolder/File" in code
     _compiles(code)
 
 

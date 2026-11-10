@@ -10964,6 +10964,77 @@ UiPath関連テスト全1051件通過、リポジトリ全体で全2148件通過
 実機未確認)、`uix:NGetClipboard`/`NSetClipboard`/`NDragAndDrop`
 (5〜6件のみ)は確認不足のため見送り。
 
+## 233. `ui:GetLastDownloadedFile`を新規実装・`uix:NMouseScroll`はサブエージェントの「実機は常に裸(要素記述子無し)」という主張を再検証で反証し見送り——サブエージェントの主張を鵜呑みにせず独立に再検証する重要性の実例
+
+知見232で次候補として記録した2件(`uix:NMouseScroll`・
+`ui:GetLastDownloadedFile`)を実装前に独立で再検証した。
+
+**`uix:NMouseScroll`は見送り**。サブエージェントは「実機2件は常に
+裸(`SearchedElement`/記述子ターゲティング無し)で`SendHotkey`の
+兄弟相当」と報告したが、実際にXAML本文を取得して確認したところ
+**この主張は誤りだった**——
+`Its-Nishant-10/diet_planner`の実例は`uix:NMouseScroll.Target`配下に
+`uix:TargetAnchorable`(`FullSelectorArgument="<webctrl tag='NAV'
+/>"`付きの完全なWeb要素記述子)を持つ正式な要素ターゲティング構成
+だった。`bhanukumardev/MinorProject_NewsHeadlineScrapper`の実例は
+確かに裸(属性のみの自己終了タグ)だったが、**`ui:CommentOut.Body`
+配下に置かれ無効化されていた**(実行されない)——サブエージェントが
+見落としていた文脈。さらに`vajrang-b/UiPathIn30Days`・
+`taneysharma/FinalProject_1`・`Ashraaf7/TestAutomationProjectUIPath`・
+`Mehedi110011/rpa2024`等、追加で確認した全ての実機サンプルが
+`uix:SearchedElement`/`uix:TargetAnchorable`付きの完全な要素記述子
+ターゲティングを使っていた——`uix:NMouseScroll`は結局`NClick`/
+`NTypeInto`と同じUIAutomationNext要素記述子オブジェクトモデル
+(本トランスパイラが一度もモデル化していない「Modern」系、知見230の
+「Modern Excel」`ueab:`系と同種の判断)が必要で、見送りとした。
+**サブエージェントの報告を鵜呑みにせず実際のXAML本文を独立に
+再検証したことで誤った実装着手を未然に防げた教訓**として記録する
+——特に「実機確認済み」という断定的な表現が付いた報告でも、サンプル
+数が少ない(2件)場合は自分で最低1件は検証すべき。
+
+**`ui:GetLastDownloadedFile`は実装**(公式表示名「Wait for
+Download」、タグ名限定検索で129件ヒット)。ground-truth
+(`marcelocruzrpa/uipath-ai-skills`)・実機多数(`alvaroqr14/
+UiPath_Ejemplo_WaitForDownload`・`mantri13/Usecase2_ActiveLoans`・
+`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`)で確認した
+構造——`.Body`配下は`ModifyText`(知見224)と同じ`ActivityAction`
+(`DelegateInArgument`無し)+`Sequence`、既存の`_find_activity_action`
+/`_unwrap_body_sequence`を再利用。
+
+実装前の重要な検証: `File`出力は.NETの`FileInfo`型だが、`GetFileInfoX`/
+`GetFolderInfoX`(知見で見送り済み)と同じ「未モデル化の型付き
+オブジェクト」問題に当たるか確認した。実機でのダウンストリーム利用
+パターンを複数サンプルで調べたところ`.Name`(`alvaroqr14`の実例)
+と`.FullName`(`mantri13`の実例)の2プロパティのみに限定されていた
+——`ForEachFileX`/`ForEachFolderX`(知見190)の既存方針
+(`FileInfo`/`DirectoryInfo`をでっち上げず絶対パス文字列そのものと
+して表現する)を再利用すれば新規の型付きオブジェクトモデルは不要と
+判断した。`.FullName`は既存の`fullname`ハンドラ(base passthrough)
+で対応済みだったが、`.Name`は未対応だったため`render.py`の
+`_apply_chained_property`に`os.path.basename()`対応を新規追加した
+(`_SAFE_BARE_MEMBERS`にも追加)。
+
+公式ドキュメント(WebSearch経由確認、`get-last-downloaded-file`
+ページ)で`Timeout`省略時の既定値`300`秒、`IgnoreFiles`は「ダウン
+ロード完了まで無視する拡張子」(ブラウザの一時ファイル拡張子
+`.crdownload`/`.part`等を除外する用途)と確認した。`DownloadFolder`
+配下のファイル一覧をBody実行前後でスナップショット比較し、新規
+出現したファイルのうち`IgnoreFiles`の拡張子に該当しないものを
+0.5秒間隔でポーリングする近似実装とした(知見206の画像照合近似と
+同じ「正確な再現ではなく近似と明記」方針——内部のポーリング間隔
+自体はUiPath側の正確な値が未確認)。`FileResource`は実機で非null
+の値を一度も確認できず未対応。
+
+実際の一時ディレクトリへ`exec()`経由で実行し、別スレッドで一時
+ファイル(`.crdownload`)→本体ファイル(`.xlsx`)という2段階の
+ファイル出現をシミュレートして正しく本体ファイルだけを検出する
+こと、`Timeout`以内に何も出現しない場合は`TimeoutError`を投げる
+こと(フォールバック値を捏造しない既存方針)、`.Name`/`.FullName`
+の両方が正しく解決されることを確認した。回帰テスト追加(`tests/
+test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`6件)、
+UiPath関連テスト全1058件通過、リポジトリ全体で全2155件通過
+(28件skip、変化無し)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

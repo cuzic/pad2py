@@ -3189,3 +3189,29 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      処理)と`uix:NMouseScroll`(UIAutomationNextの`uix:`名前空間、
      219件ヒット、実機確認済みは要素記述子無しの単純なグローバル
      マウスホイールスクロール)を次の候補として記録。
+
+191. **(完了、2026-11-10)** `ui:GetLastDownloadedFile`を新規実装
+     (知見233、公式表示名「Wait for Download」)——タグ名限定検索で
+     129件ヒット。`.Body`配下は`ModifyText`(知見224)と同じ
+     `ActivityAction`+`Sequence`。`File`出力(.NET`FileInfo`)は
+     `ForEachFileX`/`ForEachFolderX`(知見190)の既存方針(絶対パス
+     文字列として表現)を再利用——実機のダウンストリーム利用が
+     `.Name`/`.FullName`の2プロパティのみに限定されていたため
+     `GetFileInfoX`/`GetFolderInfoX`の「未モデル化の型付き
+     オブジェクト」問題には当たらないと判断、`render.py`に`.Name`
+     →`os.path.basename()`対応を新規追加。公式ドキュメント確認済み
+     の`Timeout`既定`300`秒、`IgnoreFiles`(ダウンロード完了まで
+     無視する拡張子)を反映し、`DownloadFolder`配下のスナップショット
+     差分を0.5秒間隔でポーリングする近似実装とした(知見206の画像
+     照合近似と同じ方針)。実際の一時ディレクトリへ`exec()`経由で
+     実行し、一時ファイル→本体ファイルの2段階出現を正しく検出する
+     こと・`Timeout`超過時の`TimeoutError`・`.Name`/`.FullName`の
+     両方を確認した。**同じ候補群の`uix:NMouseScroll`はサブエージェ
+     ントの「実機は常に裸(要素記述子無し)」という主張を独立に
+     再検証して反証**(1件は`uix:TargetAnchorable`付きの完全な
+     要素記述子、もう1件は`CommentOut`で無効化済み)——UIAutomation
+     Next要素記述子オブジェクトモデル(未モデル化)が必要と判明し
+     見送り。サブエージェント報告を鵜呑みにせず独立に再検証する
+     重要性の実例として記録。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`6件)、UiPath関連テスト全
+     1058件通過、リポジトリ全体で全2155件通過。
