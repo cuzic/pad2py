@@ -11942,13 +11942,22 @@ def test_power_point_application_scope_full_round_trip_exec(tmp_path):
     assert f"PowerPoint = pptx.Presentation({tmpl_path!r})" in code
     assert "# TODO" not in code
     _compiles(code)
-    code2 = code.replace("def Test():", "def Test(today):")
     ns: dict[str, object] = {}
-    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
-    ns["Test"]("2026-11-10")
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]()
 
     prs_out = pptx.Presentation(out_path)
-    assert prs_out.slides[0].shapes.title.text == "Hello 2026-11-10 world"
+    # `replace_with=VbExpr(text="today")`(小文字)はVBの大文字小文字を
+    # 区別しない識別子規則によりVB組み込み`Today`と正しく一致し
+    # `datetime.date.today()`へ変換される(知見273)——実行時の実日付を
+    # 動的に比較する(ハードコードした日付文字列は、テストを書いた
+    # その日だけ通って翌日以降壊れる時限バグになる、2026-11-11に実際に
+    # 発生して発覚)。
+    import datetime
+
+    assert prs_out.slides[0].shapes.title.text == (
+        f"Hello {datetime.date.today().isoformat()} world"
+    )
     assert prs_out.slides[2].shapes.title.text == "New Title Three"
 
 

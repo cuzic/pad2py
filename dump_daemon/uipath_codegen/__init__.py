@@ -504,292 +504,287 @@ def _safe_func_name(class_name: str) -> str:
 
 
 def _collect_imports(body: list[str]) -> list[str]:
-    imports = []
-    if any("pyperclip." in line for line in body):
-        imports.append("import pyperclip")
-    if any("Desktop(" in line for line in body):
-        imports.append("from pywinauto import Desktop")
-    # `send_keys`(`CloseTab`→`send_keys('^w')`変換先、知見170——対象を
-    # 指定しないグローバルなキー送信)も同様。
-    if any("send_keys(" in line for line in body):
-        imports.append("from pywinauto.keyboard import send_keys")
-    # `PIL.Image`(`LoadImage`→`PIL.Image.open(...)`変換先、知見178)も
-    # 同様。Pillowは`pad_codegen`で既に確認済みの依存。
-    if any("PIL.Image.open(" in line for line in body):
-        imports.append("import PIL.Image")
-    # `PIL.ImageGrab`(`TakeScreenshot`のTarget省略時→`PIL.ImageGrab.
-    # grab()`変換先、知見179)も同様。
-    if any("PIL.ImageGrab.grab(" in line for line in body):
-        imports.append("import PIL.ImageGrab")
-    # `pytesseract`(`GetOCRText`の`GoogleOCR`(=Tesseract OCR)→
-    # `pytesseract.image_to_string(...)`変換先、知見180)も同様。
-    # `tests/test_ocr_fallback.py`で実機VM検証済みの既存確認済み依存。
-    if any("pytesseract.image_to_string(" in line for line in body):
-        imports.append("import pytesseract")
-    # `csv`/`io`(`OutputDataTable`→`csv.writer(io.StringIO())`変換先、
-    # 知見184。`ReadCsvFile`/`WriteCsvFile`→`csv.DictReader`/
-    # `csv.writer`変換先、知見185)も同様。標準ライブラリ。
-    if any("csv.writer(" in line or "csv.DictReader(" in line for line in body):
-        imports.append("import csv")
-    if any("io.StringIO(" in line for line in body):
-        imports.append("import io")
-    # `pypdf`(`ReadPDFText`→`pypdf.PdfReader(...).pages[...].
-    # extract_text()`変換先、知見199)。`pyproject.toml`で既に確認済み
-    # の依存(PAD側`pad_action_lib/pdf_actions.py`で既に実戦投入済み)。
-    if any("pypdf.PdfReader(" in line for line in body):
-        imports.append("import pypdf")
-    # `pymupdf`(`ExportPDFPageAsImage`→`pymupdf.open(...).get_pixmap(
-    # dpi=...).save(...)`変換先、知見209)も同様。`pyproject.toml`の
-    # `[project.optional-dependencies]`の`pdf-render`プラグイン群——
-    # `pypdf`と違い本体`dependencies`には無い、生成コードが参照する
-    # だけの「プラグイン」依存(知見209の設計判断)。
-    if any("pymupdf.open(" in line for line in body):
-        imports.append("import pymupdf")
-    # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
-    if any("requests.request(" in line for line in body):
-        imports.append("import requests")
-    # `requests`(`DownloadFileFromUrl`→`requests.get(...)`変換先、知見282)
-    # も同様。
-    if any("requests.get(" in line for line in body):
-        imports.append("import requests")
-    # `openpyxl`(`ExcelApplicationScope`→`openpyxl.load_workbook(...)`変換先、
-    # 知見97)も同様。
-    if any("openpyxl.load_workbook(" in line for line in body):
-        imports.append("import openpyxl")
-    # `docx`(`WordApplicationScope`→`docx.Document(...)`変換先、知見121)
-    # も同様。
-    if any("docx.Document(" in line for line in body):
-        imports.append("import docx")
-    # `pptx`(`PowerPointApplicationScope`→`pptx.Presentation(...)`変換先、
-    # 知見274——`python-pptx`は本体の既存`dependencies`、新規プラグイン
-    # 依存ではない)も同様。
-    if any("pptx.Presentation(" in line for line in body):
-        imports.append("import pptx")
-    # `win32com.client`(`SendOutlookMail`→`win32com.client.Dispatch(...)`
-    # 変換先、知見98)も同様。
-    if any("win32com.client.Dispatch(" in line for line in body):
-        imports.append("import win32com.client")
-    # `imaplib`/`email`(`GetIMAPMailMessages`→`imaplib.IMAP4_SSL(...)`・
-    # `email.message_from_bytes(...)`変換先、知見250)も同様。
-    if any("imaplib.IMAP4_SSL(" in line for line in body):
-        imports.append("import imaplib")
-    if any("email.message_from_bytes(" in line for line in body):
-        imports.append("import email")
-    # `poplib`(`GetPOP3MailMessages`→`poplib.POP3_SSL(...)`変換先、
-    # 知見268続き)も同様——`email.message_from_bytes(...)`は上の
-    # `imaplib`用トリガーと共有するため追加トリガー不要。
-    if any("poplib.POP3_SSL(" in line for line in body):
-        imports.append("import poplib")
-    # `psutil`(`GetProcesses`→`psutil.process_iter(...)`変換先、知見255、
-    # 既存のコア依存——`dump_daemon/uia_capture.py`で既に使用済み)も同様。
-    if any("psutil.process_iter(" in line for line in body):
-        imports.append("import psutil")
-    # `win32cred`/`pywintypes`(`GetSecureCredential`→`win32cred.
-    # CredRead(...)`・`AddCredential`→`win32cred.CredWrite(...)`変換先、
-    # 知見248)も同様——`pywintypes.error`は`_win32_cred_read`ヘルパー
-    # 自身が参照するため、ヘルパー注入時に一緒に`import`する。
-    if any(
-        "win32cred.CredRead(" in line or "win32cred.CredWrite(" in line
-        or f"{_WIN32_CRED_READ_HELPER_NAME}(" in line
-        for line in body
-    ):
-        imports.append("import win32cred")
-    if any(f"{_WIN32_CRED_READ_HELPER_NAME}(" in line for line in body):
-        imports.append("import pywintypes")
-    # `time`(`Click`の`DelayBefore`→`time.sleep(...)`変換先、知見106)も同様。
-    if any("time.sleep(" in line for line in body):
-        imports.append("import time")
-    # `sqlite3`(`DatabaseConnect`の`ProviderName="System.Data.SQLite"`→
-    # `sqlite3.connect(...)`変換先、知見114)も同様。標準ライブラリだが
-    # 他のヘルパー同様、使用時のみ注入する。
-    if any("sqlite3.connect(" in line for line in body):
-        imports.append("import sqlite3")
-    # `smtplib`/`email.mime.text`(`SendMail`→`smtplib.SMTP_SSL(...)`
-    # 変換先、知見116)も同様。標準ライブラリ。
-    if any("smtplib.SMTP_SSL(" in line for line in body):
-        imports.append("import smtplib")
-    if any("email.mime.text.MIMEText(" in line for line in body):
-        imports.append("import email.mime.text")
-    # `shutil`/`os`(`CopyFile`→`shutil.copy(...)`変換先、知見117。
-    # `MoveFile`→`shutil.move(...)`変換先、知見188。`DeleteFolder`
-    # (Recursive=True)→`shutil.rmtree(...)`変換先、知見189。
-    # `ExtractFiles`→`shutil.unpack_archive(...)`変換先、知見217)も
-    # 同様。
-    if any(
-        "shutil.copy(" in line or "shutil.move(" in line or "shutil.rmtree(" in line
-        or "shutil.unpack_archive(" in line or "shutil.copytree(" in line
-        for line in body
-    ):
-        imports.append("import shutil")
-    # `zipfile`(`CompressFiles`→`zipfile.ZipFile(...)`変換先、知見218)
-    # も同様。
-    if any("zipfile.ZipFile(" in line for line in body):
-        imports.append("import zipfile")
-    # `lxml.etree`(`DeserializeXml`→`lxml.etree.fromstring(...)`変換先、
-    # `ExecuteXPath`→`....xpath(...)`変換先、知見228)も同様。`pyproject.
-    # toml`で既に確認済みの依存(`xaml_tree.py`自身がXAMLパースに使う)
-    # ——`pymupdf`知見209のような新規「プラグイン」依存ではない。
-    if any("lxml.etree.fromstring(" in line or ".xpath(" in line for line in body):
-        imports.append("import lxml.etree")
-    # `os.getcwd()`(`Environment.CurrentDirectory`変換先、知見140)・
-    # `os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`(Recursive=
-    # False)変換先、知見189)・`os.scandir(`/`os.walk(`(`ForEachFile`/
-    # `ForEachFolder`変換先、知見190)も同じ`os`モジュールのため同じ
-    # 条件にまとめる。
-    # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)・
-    # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)・
-    # `os.listdir(`(`GetLastDownloadedFile`のダウンロードフォルダ
-    # ポーリング変換先、知見233)・`os.makedirs(`(`CreateDirectory`
-    # 変換先、知見235)も同じ`os`モジュールのため同じ条件にまとめる。
-    if any(
-        "os.path." in line or "os.getcwd(" in line or "os.remove(" in line
-        or "os.rmdir(" in line or "os.scandir(" in line or "os.walk(" in line
-        or "os.rename(" in line or "os.environ." in line or "os.environ[" in line
-        or "os.listdir(" in line or "os.makedirs(" in line
-        for line in body
-    ):
-        imports.append("import os")
-    # `datetime`(VB組み込み識別子`Today`/`Now`・`DateAndTime.Now`等の
-    # 変換先、知見273)も同様。
-    if any("datetime.date.today(" in line or "datetime.datetime.now(" in line for line in body):
-        imports.append("import datetime")
-    # `calendar`(`FindStartEndDateModification`→`calendar.monthrange(...)`
-    # 変換先、知見273)も同様。
-    if any("calendar.monthrange(" in line for line in body):
-        imports.append("import calendar")
-    # `platform`/`getpass`(`GetEnvironmentVariable`の`MachineName`/
-    # `UserName`特殊プロパティ変換先、知見215)も同様。
-    if any("platform.node(" in line for line in body):
-        imports.append("import platform")
-    if any("getpass.getuser(" in line or "getpass.getpass(" in line for line in body):
-        imports.append("import getpass")
-    # `winsound`(`Beep`→`winsound.MessageBeep()`変換先、知見277——
-    # Windows専用標準ライブラリ、本トランスパイラの対象実行環境
-    # (Windows)では常に利用可能)も同様。
-    if any("winsound.MessageBeep(" in line for line in body):
-        imports.append("import winsound")
-    # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
-    # 知見130)も同様。
-    if any("base64.b64encode(" in line for line in body):
-        imports.append("import base64")
-    # `datetime`(`File.GetLastWriteTime`→`datetime.datetime.
-    # fromtimestamp(...)`変換先、知見142)も同様。
-    if any("datetime.datetime.fromtimestamp(" in line for line in body):
-        imports.append("import datetime")
-    # `glob`(`Directory.GetFiles`の2引数searchPattern形→`glob.glob(...)`
-    # 変換先、知見134)も同様。
-    if any("glob.glob(" in line for line in body):
-        imports.append("import glob")
-    # `re`(`Regex.Replace`→`re.sub(...)`変換先、知見144。`IsMatch`→
-    # `re.search(...)`変換先、知見213)も同様。
-    if any("re.sub(" in line or "re.search(" in line for line in body):
-        imports.append("import re")
-    # `logging`(`LogMessage`→`logging.info(...)`/`.error(...)`変換先、
-    # 知見119)も同様。
-    if any("logging.info(" in line or "logging.error(" in line for line in body):
-        imports.append("import logging")
-    # `json`(`DeserializeJson`→`json.loads(...)`変換先、知見241)も同様。
-    if any("json.loads(" in line for line in body):
-        imports.append("import json")
-    # `subprocess`(`OpenApplication`→`subprocess.Popen(...)`変換先、
-    # 知見154、`KillProcess`→`subprocess.run(...)`変換先、知見169)も
-    # 同様。
-    if any("subprocess.Popen(" in line or "subprocess.run(" in line for line in body):
-        imports.append("import subprocess")
-    # `webbrowser`(`OpenBrowser`→`webbrowser.open(...)`変換先、知見168)
-    # も同様。
-    if any("webbrowser.open(" in line for line in body):
-        imports.append("import webbrowser")
+    """知見283: 旧実装は「トリガー部分文字列が`body`に出現するか」を1つの
+    import文につき1つの`if any(...)`ブロックで書く66連続ブロック(290行)
+    だった——毎回新しい活動を実装するたびに必ずこの1関数のこの場所に
+    ブロックを追記する運用で、並行稼働する他セッションとのgit衝突が
+    最も起きやすい単一箇所になっていた(知見206-282の全期間で一貫してこの
+    形のまま成長した)。挙動は変えず、データ(トリガー文字列の組→追加する
+    import行/ヘルパー定義)+2つの短いループへ変換した——新しい活動を
+    追加する際は、この関数自体を触らずタプルへ1行追記するだけで済む。
+    `imports.sort()`を挟む前後の2フェーズ構造(ソート対象のimport文→
+    ソート対象外で元の登録順のままヘルパー関数定義)は意味があるため保持
+    した。"""
+    # 単純な `import X` 1行だけを追加するトリガー群(`imports.sort()`で
+    # ソートされる対象)。
+    simple_import_triggers: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("pyperclip.",), "import pyperclip"),
+        (("Desktop(",), "from pywinauto import Desktop"),
+        # `send_keys`(`CloseTab`→`send_keys('^w')`変換先、知見170——対象を
+        # 指定しないグローバルなキー送信)。
+        (("send_keys(",), "from pywinauto.keyboard import send_keys"),
+        # `PIL.Image`(`LoadImage`→`PIL.Image.open(...)`変換先、知見178)。
+        # Pillowは`pad_codegen`で既に確認済みの依存。
+        (("PIL.Image.open(",), "import PIL.Image"),
+        # `PIL.ImageGrab`(`TakeScreenshot`のTarget省略時→`PIL.ImageGrab.
+        # grab()`変換先、知見179)。
+        (("PIL.ImageGrab.grab(",), "import PIL.ImageGrab"),
+        # `pytesseract`(`GetOCRText`の`GoogleOCR`(=Tesseract OCR)→
+        # `pytesseract.image_to_string(...)`変換先、知見180)。
+        # `tests/test_ocr_fallback.py`で実機VM検証済みの既存確認済み依存。
+        (("pytesseract.image_to_string(",), "import pytesseract"),
+        # `csv`/`io`(`OutputDataTable`→`csv.writer(io.StringIO())`変換先、
+        # 知見184。`ReadCsvFile`/`WriteCsvFile`→`csv.DictReader`/
+        # `csv.writer`変換先、知見185)。標準ライブラリ。
+        (("csv.writer(", "csv.DictReader("), "import csv"),
+        (("io.StringIO(",), "import io"),
+        # `pypdf`(`ReadPDFText`→`pypdf.PdfReader(...).pages[...].
+        # extract_text()`変換先、知見199)。`pyproject.toml`で既に確認済み
+        # の依存(PAD側`pad_action_lib/pdf_actions.py`で既に実戦投入済み)。
+        (("pypdf.PdfReader(",), "import pypdf"),
+        # `pymupdf`(`ExportPDFPageAsImage`→`pymupdf.open(...).get_pixmap(
+        # dpi=...).save(...)`変換先、知見209)。`pyproject.toml`の
+        # `[project.optional-dependencies]`の`pdf-render`プラグイン群——
+        # `pypdf`と違い本体`dependencies`には無い、生成コードが参照する
+        # だけの「プラグイン」依存(知見209の設計判断)。
+        (("pymupdf.open(",), "import pymupdf"),
+        # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)。
+        (("requests.request(",), "import requests"),
+        # `requests`(`DownloadFileFromUrl`→`requests.get(...)`変換先、
+        # 知見282)。
+        (("requests.get(",), "import requests"),
+        # `openpyxl`(`ExcelApplicationScope`→`openpyxl.load_workbook(...)`
+        # 変換先、知見97)。
+        (("openpyxl.load_workbook(",), "import openpyxl"),
+        # `docx`(`WordApplicationScope`→`docx.Document(...)`変換先、
+        # 知見121)。
+        (("docx.Document(",), "import docx"),
+        # `pptx`(`PowerPointApplicationScope`→`pptx.Presentation(...)`
+        # 変換先、知見274——`python-pptx`は本体の既存`dependencies`、
+        # 新規プラグイン依存ではない)。
+        (("pptx.Presentation(",), "import pptx"),
+        # `win32com.client`(`SendOutlookMail`→`win32com.client.
+        # Dispatch(...)`変換先、知見98)。
+        (("win32com.client.Dispatch(",), "import win32com.client"),
+        # `imaplib`/`email`(`GetIMAPMailMessages`→`imaplib.IMAP4_SSL(...)`・
+        # `email.message_from_bytes(...)`変換先、知見250)。
+        (("imaplib.IMAP4_SSL(",), "import imaplib"),
+        (("email.message_from_bytes(",), "import email"),
+        # `poplib`(`GetPOP3MailMessages`→`poplib.POP3_SSL(...)`変換先、
+        # 知見268続き)——`email.message_from_bytes(...)`は上の`imaplib`用
+        # トリガーと共有するため追加トリガー不要。
+        (("poplib.POP3_SSL(",), "import poplib"),
+        # `psutil`(`GetProcesses`→`psutil.process_iter(...)`変換先、
+        # 知見255、既存のコア依存——`dump_daemon/uia_capture.py`で既に
+        # 使用済み)。
+        (("psutil.process_iter(",), "import psutil"),
+        # `win32cred`/`pywintypes`(`GetSecureCredential`→`win32cred.
+        # CredRead(...)`・`AddCredential`→`win32cred.CredWrite(...)`変換先、
+        # 知見248)——`pywintypes.error`は`_win32_cred_read`ヘルパー自身が
+        # 参照するため、ヘルパー注入時に一緒に`import`する(下のヘルパー
+        # 側トリガーで対応)。
+        (
+            ("win32cred.CredRead(", "win32cred.CredWrite(", f"{_WIN32_CRED_READ_HELPER_NAME}("),
+            "import win32cred",
+        ),
+        ((f"{_WIN32_CRED_READ_HELPER_NAME}(",), "import pywintypes"),
+        # `time`(`Click`の`DelayBefore`→`time.sleep(...)`変換先、知見106)。
+        (("time.sleep(",), "import time"),
+        # `sqlite3`(`DatabaseConnect`の`ProviderName="System.Data.SQLite"`
+        # →`sqlite3.connect(...)`変換先、知見114)。標準ライブラリだが
+        # 他のヘルパー同様、使用時のみ注入する。
+        (("sqlite3.connect(",), "import sqlite3"),
+        # `smtplib`/`email.mime.text`(`SendMail`→`smtplib.SMTP_SSL(...)`
+        # 変換先、知見116)。標準ライブラリ。
+        (("smtplib.SMTP_SSL(",), "import smtplib"),
+        (("email.mime.text.MIMEText(",), "import email.mime.text"),
+        # `shutil`(`CopyFile`→`shutil.copy(...)`変換先、知見117。
+        # `MoveFile`→`shutil.move(...)`変換先、知見188。`DeleteFolder`
+        # (Recursive=True)→`shutil.rmtree(...)`変換先、知見189。
+        # `ExtractFiles`→`shutil.unpack_archive(...)`変換先、知見217)。
+        (
+            (
+                "shutil.copy(", "shutil.move(", "shutil.rmtree(",
+                "shutil.unpack_archive(", "shutil.copytree(",
+            ),
+            "import shutil",
+        ),
+        # `zipfile`(`CompressFiles`→`zipfile.ZipFile(...)`変換先、
+        # 知見218)。
+        (("zipfile.ZipFile(",), "import zipfile"),
+        # `lxml.etree`(`DeserializeXml`→`lxml.etree.fromstring(...)`変換先、
+        # `ExecuteXPath`→`....xpath(...)`変換先、知見228)。`pyproject.
+        # toml`で既に確認済みの依存(`xaml_tree.py`自身がXAMLパースに使う)
+        # ——`pymupdf`知見209のような新規「プラグイン」依存ではない。
+        (("lxml.etree.fromstring(", ".xpath("), "import lxml.etree"),
+        # `os`: `os.getcwd()`(`Environment.CurrentDirectory`変換先、
+        # 知見140)・`os.remove(`/`os.rmdir(`(`DeleteFile`/`DeleteFolder`
+        # (Recursive=False)変換先、知見189)・`os.scandir(`/`os.walk(`
+        # (`ForEachFile`/`ForEachFolder`変換先、知見190)・
+        # `os.environ.get(`(`GetEnvironmentVariable`変換先、知見215)・
+        # `os.environ[`(`SetEnvironmentVariable`変換先、知見223)・
+        # `os.listdir(`(`GetLastDownloadedFile`のダウンロードフォルダ
+        # ポーリング変換先、知見233)・`os.makedirs(`(`CreateDirectory`
+        # 変換先、知見235)は同じ`os`モジュールのため1つにまとめる。
+        (
+            (
+                "os.path.", "os.getcwd(", "os.remove(", "os.rmdir(", "os.scandir(",
+                "os.walk(", "os.rename(", "os.environ.", "os.environ[",
+                "os.listdir(", "os.makedirs(",
+            ),
+            "import os",
+        ),
+        # `datetime`(VB組み込み識別子`Today`/`Now`・`DateAndTime.Now`等の
+        # 変換先、知見273)。
+        (("datetime.date.today(", "datetime.datetime.now("), "import datetime"),
+        # `calendar`(`FindStartEndDateModification`→`calendar.
+        # monthrange(...)`変換先、知見273)。
+        (("calendar.monthrange(",), "import calendar"),
+        # `platform`/`getpass`(`GetEnvironmentVariable`の`MachineName`/
+        # `UserName`特殊プロパティ変換先、知見215)。
+        (("platform.node(",), "import platform"),
+        (("getpass.getuser(", "getpass.getpass("), "import getpass"),
+        # `winsound`(`Beep`→`winsound.MessageBeep()`変換先、知見277——
+        # Windows専用標準ライブラリ、本トランスパイラの対象実行環境
+        # (Windows)では常に利用可能)。
+        (("winsound.MessageBeep(",), "import winsound"),
+        # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
+        # 知見130)。
+        (("base64.b64encode(",), "import base64"),
+        # `datetime`(`File.GetLastWriteTime`→`datetime.datetime.
+        # fromtimestamp(...)`変換先、知見142)。上の`datetime`トリガーとは
+        # 別ブロック(元の実装どおり、重複する`import datetime`は無害)。
+        (("datetime.datetime.fromtimestamp(",), "import datetime"),
+        # `glob`(`Directory.GetFiles`の2引数searchPattern形→
+        # `glob.glob(...)`変換先、知見134)。
+        (("glob.glob(",), "import glob"),
+        # `re`(`Regex.Replace`→`re.sub(...)`変換先、知見144。`IsMatch`→
+        # `re.search(...)`変換先、知見213)。
+        (("re.sub(", "re.search("), "import re"),
+        # `logging`(`LogMessage`→`logging.info(...)`/`.error(...)`変換先、
+        # 知見119)。
+        (("logging.info(", "logging.error("), "import logging"),
+        # `json`(`DeserializeJson`→`json.loads(...)`変換先、知見241)。
+        (("json.loads(",), "import json"),
+        # `subprocess`(`OpenApplication`→`subprocess.Popen(...)`変換先、
+        # 知見154、`KillProcess`→`subprocess.run(...)`変換先、知見169)。
+        (("subprocess.Popen(", "subprocess.run("), "import subprocess"),
+        # `webbrowser`(`OpenBrowser`→`webbrowser.open(...)`変換先、
+        # 知見168)。
+        (("webbrowser.open(",), "import webbrowser"),
+    )
+    # 複数行のヘルパー関数定義(未使用時は注入しない)を追加するトリガー群
+    # ——importのソート対象外で、元の登録順のまま末尾に追加する。1トリガーに
+    # つき複数行追加するケース(`_Timer`/`_auto_rename_path`、自分自身が
+    # `import time`/`import os`を使うため併せて注入)もある。
+    helper_triggers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        # `_vb_cstr`(CStr/`&`の変換先、知見46)。
+        ((f"{VB_CSTR_HELPER_NAME}(",), (VB_CSTR_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_cmp`(比較演算子の型変換先、知見47)。
+        ((f"{VB_CMP_HELPER_NAME}(",), (VB_CMP_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_add`(`+`演算子の型混在ディスパッチ先、知見48)。
+        ((f"{VB_ADD_HELPER_NAME}(",), (VB_ADD_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_num`(`-`/`*`/`/`/`Mod`/`\`の数値強制先、知見49)。
+        ((f"{VB_NUM_HELPER_NAME}(",), (VB_NUM_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_div`(`/`のゼロ除算処理先、知見50)。
+        ((f"{VB_DIV_HELPER_NAME}(",), (VB_DIV_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_cdbl`(`CDbl`のNothing/桁区切り文字列強制先、知見52)。
+        ((f"{VB_CDBL_HELPER_NAME}(",), (VB_CDBL_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_mod`(`Mod`のゼロ除算の型依存処理先、知見54)。
+        ((f"{VB_MOD_HELPER_NAME}(",), (VB_MOD_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_and`/`_vb_or`/`_vb_xor`(`And`/`Or`/`Xor`の`Nothing`処理先、
+        # 知見59)。
+        ((f"{VB_AND_HELPER_NAME}(",), (VB_AND_HELPER_SOURCE.rstrip("\n"),)),
+        ((f"{VB_OR_HELPER_NAME}(",), (VB_OR_HELPER_SOURCE.rstrip("\n"),)),
+        ((f"{VB_XOR_HELPER_NAME}(",), (VB_XOR_HELPER_SOURCE.rstrip("\n"),)),
+        # `_vb_bool`(`AndAlso`/`OrElse`のBoolean変換先、知見60)。
+        ((f"{VB_BOOL_HELPER_NAME}(",), (VB_BOOL_HELPER_SOURCE.rstrip("\n"),)),
+        # `_pywinauto_type_keys_escape`(`TypeInto`→`type_keys()`の特殊
+        # 文字エスケープ先、知見110)。
+        (
+            (f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}(",),
+            (_TYPE_KEYS_ESCAPE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_pywinauto_set_toggle_state`(`Check`→`toggle()`の目的状態判定先、
+        # 知見165)。
+        (
+            (f"{_SET_TOGGLE_STATE_HELPER_NAME}(",),
+            (_SET_TOGGLE_STATE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_outlook_find_folder`(`MoveMailX`→`MailItem.Move(...)`の
+        # フォルダ解決先、知見229)。
+        (
+            (f"{_OUTLOOK_FIND_FOLDER_HELPER_NAME}(",),
+            (_OUTLOOK_FIND_FOLDER_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_log_fields_suffix`(`LogMessage`→`_log_fields`辞書のサフィックス
+        # 化、知見240)。
+        (
+            (f"{_LOG_FIELDS_SUFFIX_HELPER_NAME}(",),
+            (_LOG_FIELDS_SUFFIX_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_win32_cred_read`(`GetSecureCredential`→`win32cred.
+        # CredRead(...)`の「見つからない」例外を`None`へ変換する先、
+        # 知見248)。
+        (
+            (f"{_WIN32_CRED_READ_HELPER_NAME}(",),
+            (_WIN32_CRED_READ_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_ImapMailMessage`(`GetIMAPMailMessages`→`.Subject`属性アクセス
+        # 先、知見250)。
+        (
+            (f"{_IMAP_MAIL_MESSAGE_HELPER_NAME}(",),
+            (_IMAP_MAIL_MESSAGE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_Win32Credential`(`GetUsernamePasswordX`→`.Username`/
+        # `.Password`属性アクセス先、知見253)。
+        (
+            (f"{_WIN32_CREDENTIAL_HELPER_NAME}(",),
+            (_WIN32_CREDENTIAL_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_Timer`/`_TimeSpan`(`StartTimer`→`.Elapsed`/
+        # `.ElapsedMilliseconds`属性アクセス先、知見271)——`_Timer()`自体
+        # が`time.monotonic()`を使うため`import time`も併せて注入する。
+        (
+            (f"{_TIMER_HELPER_NAME}(",),
+            ("import time", _TIMER_HELPER_SOURCE.rstrip("\n")),
+        ),
+        # `_word_replace_picture`(`WordReplacePicture`→Alt Text検索+画像
+        # パーツの`._blob`直接上書き、知見263)。
+        (
+            (f"{_WORD_REPLACE_PICTURE_HELPER_NAME}(",),
+            (_WORD_REPLACE_PICTURE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_pptx_delete_slide`(`DeleteSlide`→OOXMLの`_sldIdLst`直接操作、
+        # 知見275)。
+        (
+            (f"{_PPTX_DELETE_SLIDE_HELPER_NAME}(",),
+            (_PPTX_DELETE_SLIDE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_XAttribute`(`GetXMLNodeAttributes`→`.Name`/`.Value`属性アクセス
+        # 先、知見280)。
+        (
+            (f"{_XATTRIBUTE_HELPER_NAME}(",),
+            (_XATTRIBUTE_HELPER_SOURCE.rstrip("\n"),),
+        ),
+        # `_auto_rename_path`(`DownloadFileFromUrl`の`ConflictResolution=
+        # "Rename"`→連番ファイル名探索、知見282)——ヘルパー自身が
+        # `os.path`を使うため、本体の`body`に`os.path.`文字列が無くても
+        # (`_download_path = _auto_rename_path(...)`という呼び出しのみ)
+        # `import os`を一緒に注入する。
+        (
+            (f"{_AUTO_RENAME_PATH_HELPER_NAME}(",),
+            ("import os", _AUTO_RENAME_PATH_HELPER_SOURCE.rstrip("\n")),
+        ),
+    )
+    imports: list[str] = []
+    for triggers, import_line in simple_import_triggers:
+        if any(trigger in line for line in body for trigger in triggers):
+            imports.append(import_line)
     imports.sort()
-    # `_vb_cstr`(CStr/`&`の変換先、知見46)はヘルパー関数定義そのものを
-    # 未使用時に増やさないよう、使われている場合のみ注入する——
-    # import文とは違い複数行の定義なので、importのソート対象外で末尾に
-    # 追加する。
-    if any(f"{VB_CSTR_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_CSTR_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_cmp`(比較演算子の型変換先、知見47)も同じ理由で使用時のみ注入する。
-    if any(f"{VB_CMP_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_CMP_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_add`(`+`演算子の型混在ディスパッチ先、知見48)も同様。
-    if any(f"{VB_ADD_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_ADD_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_num`(`-`/`*`/`/`/`Mod`/`\`の数値強制先、知見49)も同様。
-    if any(f"{VB_NUM_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_NUM_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_div`(`/`のゼロ除算処理先、知見50)も同様。
-    if any(f"{VB_DIV_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_DIV_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_cdbl`(`CDbl`のNothing/桁区切り文字列強制先、知見52)も同様。
-    if any(f"{VB_CDBL_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_CDBL_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_mod`(`Mod`のゼロ除算の型依存処理先、知見54)も同様。
-    if any(f"{VB_MOD_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_MOD_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_and`/`_vb_or`/`_vb_xor`(`And`/`Or`/`Xor`の`Nothing`処理先、
-    # 知見59)も同様。
-    if any(f"{VB_AND_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_AND_HELPER_SOURCE.rstrip("\n"))
-    if any(f"{VB_OR_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_OR_HELPER_SOURCE.rstrip("\n"))
-    if any(f"{VB_XOR_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_XOR_HELPER_SOURCE.rstrip("\n"))
-    # `_vb_bool`(`AndAlso`/`OrElse`のBoolean変換先、知見60)も同様。
-    if any(f"{VB_BOOL_HELPER_NAME}(" in line for line in body):
-        imports.append(VB_BOOL_HELPER_SOURCE.rstrip("\n"))
-    # `_pywinauto_type_keys_escape`(`TypeInto`→`type_keys()`の特殊文字
-    # エスケープ先、知見110)も同様。
-    if any(f"{_TYPE_KEYS_ESCAPE_HELPER_NAME}(" in line for line in body):
-        imports.append(_TYPE_KEYS_ESCAPE_HELPER_SOURCE.rstrip("\n"))
-    # `_pywinauto_set_toggle_state`(`Check`→`toggle()`の目的状態判定先、
-    # 知見165)も同様。
-    if any(f"{_SET_TOGGLE_STATE_HELPER_NAME}(" in line for line in body):
-        imports.append(_SET_TOGGLE_STATE_HELPER_SOURCE.rstrip("\n"))
-    # `_outlook_find_folder`(`MoveMailX`→`MailItem.Move(...)`のフォルダ
-    # 解決先、知見229)も同様。
-    if any(f"{_OUTLOOK_FIND_FOLDER_HELPER_NAME}(" in line for line in body):
-        imports.append(_OUTLOOK_FIND_FOLDER_HELPER_SOURCE.rstrip("\n"))
-    # `_log_fields_suffix`(`LogMessage`→`_log_fields`辞書のサフィックス化、
-    # 知見240)も同様。
-    if any(f"{_LOG_FIELDS_SUFFIX_HELPER_NAME}(" in line for line in body):
-        imports.append(_LOG_FIELDS_SUFFIX_HELPER_SOURCE.rstrip("\n"))
-    # `_win32_cred_read`(`GetSecureCredential`→`win32cred.CredRead(...)`の
-    # 「見つからない」例外を`None`へ変換する先、知見248)も同様。
-    if any(f"{_WIN32_CRED_READ_HELPER_NAME}(" in line for line in body):
-        imports.append(_WIN32_CRED_READ_HELPER_SOURCE.rstrip("\n"))
-    # `_ImapMailMessage`(`GetIMAPMailMessages`→`.Subject`属性アクセス先、
-    # 知見250)も同様。
-    if any(f"{_IMAP_MAIL_MESSAGE_HELPER_NAME}(" in line for line in body):
-        imports.append(_IMAP_MAIL_MESSAGE_HELPER_SOURCE.rstrip("\n"))
-    # `_Win32Credential`(`GetUsernamePasswordX`→`.Username`/`.Password`
-    # 属性アクセス先、知見253)も同様。
-    if any(f"{_WIN32_CREDENTIAL_HELPER_NAME}(" in line for line in body):
-        imports.append(_WIN32_CREDENTIAL_HELPER_SOURCE.rstrip("\n"))
-    # `_Timer`/`_TimeSpan`(`StartTimer`→`.Elapsed`/`.ElapsedMilliseconds`
-    # 属性アクセス先、知見271)も同様——`_Timer()`自体が`time.monotonic()`
-    # を使うため`import time`も併せて注入する。
-    if any(f"{_TIMER_HELPER_NAME}(" in line for line in body):
-        imports.append("import time")
-        imports.append(_TIMER_HELPER_SOURCE.rstrip("\n"))
-    # `_word_replace_picture`(`WordReplacePicture`→Alt Text検索+画像
-    # パーツの`._blob`直接上書き、知見263)も同様。
-    if any(f"{_WORD_REPLACE_PICTURE_HELPER_NAME}(" in line for line in body):
-        imports.append(_WORD_REPLACE_PICTURE_HELPER_SOURCE.rstrip("\n"))
-    # `_pptx_delete_slide`(`DeleteSlide`→OOXMLの`_sldIdLst`直接操作、
-    # 知見275)も同様。
-    if any(f"{_PPTX_DELETE_SLIDE_HELPER_NAME}(" in line for line in body):
-        imports.append(_PPTX_DELETE_SLIDE_HELPER_SOURCE.rstrip("\n"))
-    # `_XAttribute`(`GetXMLNodeAttributes`→`.Name`/`.Value`属性アクセス
-    # 先、知見280)も同様。
-    if any(f"{_XATTRIBUTE_HELPER_NAME}(" in line for line in body):
-        imports.append(_XATTRIBUTE_HELPER_SOURCE.rstrip("\n"))
-    # `_auto_rename_path`(`DownloadFileFromUrl`の`ConflictResolution=
-    # "Rename"`→連番ファイル名探索、知見282)も同様——ヘルパー自身が
-    # `os.path`を使うため、本体の`body`に`os.path.`文字列が無くても
-    # (`_download_path = _auto_rename_path(...)`という呼び出しのみ)
-    # `import os`を一緒に注入する。
-    if any(f"{_AUTO_RENAME_PATH_HELPER_NAME}(" in line for line in body):
-        imports.append("import os")
-        imports.append(_AUTO_RENAME_PATH_HELPER_SOURCE.rstrip("\n"))
+    for triggers, append_lines in helper_triggers:
+        if any(trigger in line for line in body for trigger in triggers):
+            imports.extend(append_lines)
     return imports
 
 
