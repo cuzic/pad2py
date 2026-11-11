@@ -3879,3 +3879,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      ラッパーをそのまま再利用(新規ラッパー不要)。回帰テスト追加
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      7件)、リポジトリ全体で全2427件通過(本活動の9件分の純増)。
+
+226. **(完了、2026-11-10)** `ParallelForEach`を新規実装(知見270)——
+     discovery-fresh-pass-8最後の有力候補、裸のcore WFタグ(`WF_NS`)。
+     実機3件(公式`UiPath-Services/StudioTemplates`の
+     `OrchestrationProcess`テンプレート×2・`mariokellner/
+     UiPath-Parallel-Background-RE-Framework`)で構造を確認——
+     `ForEachNode`(知見5・155)と完全に同一の`ActivityAction`+
+     `DelegateInArgument`構造だが意味論(並行実行)が異なるため、
+     `ParallelNode`(知見19・20)の「逐次実行+誠実な`# NOTE`コメント」
+     前例を継承した別ノード型`ParallelForEachNode`として実装
+     (`ForEachNode`と同型にすると近似コメントを出す判定ができない
+     ため)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`2件)、リポジトリ全体で全2431件
+     通過(本活動の4件分の純増)。discovery-fresh-pass-8の全候補が
+     これで完結。

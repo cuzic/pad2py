@@ -205,6 +205,42 @@ class ForEachNode:
 
 
 @dataclass
+class ParallelForEachNode:
+    """`<ParallelForEach x:TypeArguments="..." Values="...">
+    <ActivityAction>...<Sequence>...</Sequence></ActivityAction>
+    </ParallelForEach>`(知見270、discovery-fresh-pass-8で発見、裸の
+    core WFタグ(`ui:`プレフィックス無し、`WF_NS`)、タグ名限定GitHub
+    検索で多数の真の実機ヒット)。構造は`ForEachNode`(知見5)と完全に
+    同一(`ActivityAction`+`DelegateInArgument`、`.Body`明示ラップ・
+    `ParallelForEach`直下への暗黙配置の両形式とも実機確認——`ForEach`の
+    `.Body`有無両対応と同じ判断)で、唯一の違いは意味論(並行実行)。
+
+    実機3件(公式`UiPath-Services/StudioTemplates`の
+    `OrchestrationProcess`テンプレート(2箇所、`upaf:FormTaskData`の
+    単一タスク反復+`scg:List(upaf:FormTaskData)`のバッチ反復)、
+    `mariokellner/UiPath-Parallel-Background-RE-Framework`の
+    `Main.xaml`)で構成を確認——いずれも`ActivityAction`が
+    `ParallelForEach`の直接の子(`.Body`明示ラップ無し)、`Values`は
+    `[TaskList]`/`[TaskBatches]`/`[Enumerable.Range(1, cint(Config(...
+    )))]`という実機確認済みのVB式。
+
+    `ParallelNode`(知見19・20)が既に確立した「Pythonネイティブの軽量な
+    並行実行の代替が無いため、v1ではブランチを単純に順次実行する(でっち
+    上げた並行実行を装わない、明示的なコメント付きの簡略化)」という
+    誠実な前例をそのまま継承する——`ForEachNode`とは別のノード型・
+    生成関数として実装し(型が同一だと`_generate_node`のisinstance
+    判定で`ForEach`と区別できず、この近似コメントを出せなくなるため)、
+    コード生成自体は`_generate_for_each`の`for item in values:`と
+    全く同じロジックを呼ぶが、先頭に`ParallelNode`と同じ形式の
+    `# NOTE`コメントを追加する。"""
+
+    item_var: str
+    values: Expr
+    body: list["Node"] = field(default_factory=list)
+    type_arguments: str = "x:Object"
+
+
+@dataclass
 class RepeatNumberOfTimesXNode:
     """`<ui:RepeatNumberOfTimesX NumberOfTimes="..." StartAt="...">
     <ui:RepeatNumberOfTimesX.Body><ActivityAction x:TypeArguments="x:Int32">
@@ -5209,6 +5245,7 @@ Node = (
     | InputDialogNode
     | IfNode
     | ForEachNode
+    | ParallelForEachNode
     | RepeatNumberOfTimesXNode
     | TryCatchNode
     | SwitchNode

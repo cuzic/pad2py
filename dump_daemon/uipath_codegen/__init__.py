@@ -141,6 +141,7 @@ from ..uipath_dsl.types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    ParallelForEachNode,
     RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
@@ -809,6 +810,8 @@ def _generate_node(
         return _generate_deserialize_json_array(node, indent)
     if isinstance(node, ForEachNode):
         return _generate_for_each(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, ParallelForEachNode):
+        return _generate_parallel_for_each(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, RepeatNumberOfTimesXNode):
         return _generate_repeat_number_of_times_x(
             node, indent, invoke_resolver, out_arg_resolver
@@ -1455,6 +1458,31 @@ def _generate_for_each(
     # `NotImplementedError`をそのまま伝播させてコード生成自体を失敗させる。
     values = render_expr(node.values)
     lines = [f"{prefix}for {node.item_var or '_item'} in {values}:"]
+    body = _ensure_nonempty_suite(
+        _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
+    )
+    lines.extend(body)
+    return lines
+
+
+def _generate_parallel_for_each(
+    node: ParallelForEachNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見270: `ParallelForEach`——`ParallelNode`(知見19・20)が確立した
+    「Pythonネイティブの軽量な並行実行の代替が無いため、v1ではブランチを
+    単純に順次実行する(でっち上げた並行実行を装わない)」という誠実な
+    前例をそのまま継承し、`_generate_for_each`と同じ`for item in
+    values:`ループへ変換するが、先頭に`ParallelNode`と同じ形式の
+    `# NOTE`コメントを追加する。"""
+    prefix = INDENT * indent
+    values = render_expr(node.values)
+    lines = [
+        f"{prefix}# NOTE: source used ParallelForEach; iterations run "
+        "sequentially here",
+        f"{prefix}for {node.item_var or '_item'} in {values}:",
+    ]
     body = _ensure_nonempty_suite(
         _generate_body(node.body, indent + 1, invoke_resolver, out_arg_resolver), indent + 1
     )

@@ -120,6 +120,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    ParallelForEachNode,
     RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
@@ -13382,6 +13383,45 @@ def test_parallel_runs_sequentially_with_note():
     assert "NOTE: source used Parallel" in code
     assert "x = 'branch1'" in code
     _compiles(code)
+
+
+def test_parallel_for_each_runs_sequentially_with_note_exec():
+    """知見270: `ParallelForEach`——`ParallelNode`と同じ誠実な簡略化
+    (でっち上げた並行実行を装わず、`for`ループへの逐次実行として
+    変換することを明示的にコメントする)を`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            ParallelForEachNode(
+                item_var="task",
+                values=VbExpr(text='{1,2,3}'),
+                body=[MessageBoxNode(text=VbExpr(text="task"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "NOTE: source used ParallelForEach" in code
+    assert "for task in [1, 2, 3]:" in code
+    _compiles(code)
+
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - 信頼できる自作コード
+
+
+def test_parallel_for_each_with_unparseable_values_raises():
+    """知見270: `ParallelForEach.Values`も`ForEach.Values`と同じ厳格な
+    失敗モード——反復対象を誤って推測すると全ての反復が間違ったデータに
+    対して実行されてしまうため、コード生成自体を失敗させる。"""
+    wf = _wrap(
+        [
+            ParallelForEachNode(
+                item_var="task",
+                values=VbExpr(text='config("key").ToString()'),
+                body=[],
+            )
+        ]
+    )
+    with pytest.raises(NotImplementedError):
+        generate_python(wf)
 
 
 def test_workflow_arguments_become_function_params():

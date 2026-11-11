@@ -102,6 +102,7 @@ from .types import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    ParallelForEachNode,
     RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
@@ -685,6 +686,32 @@ def _parse_for_each(elem: etree._Element) -> ForEachNode:
                 item_var = _attr(d, "Name") or ""
         body = _unwrap_body_sequence(action)
     return ForEachNode(
+        item_var=item_var,
+        values=_attr_expr(elem, "Values"),
+        body=body,
+        type_arguments=_attr(elem, "TypeArguments", X_NS) or "x:Object",
+    )
+
+
+def _parse_parallel_for_each(elem: etree._Element) -> ParallelForEachNode:
+    """知見270: `ParallelForEach`(裸のcore WFタグ、`WF_NS`)——`ForEach`
+    (知見5・155)と同じ`.Body`明示ラップ/直接子の両形式に対応する。構造
+    パース自体は`_parse_for_each`と全く同じロジックだが、意味論上の
+    区別(並行実行の近似)のため別のノード型(`ParallelForEachNode`)を
+    返す。"""
+    body_elem = _find_property_element(elem, "Body")
+    if body_elem is None:
+        body_elem = elem
+    action = _find_activity_action(body_elem)
+    item_var = ""
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                item_var = _attr(d, "Name") or ""
+        body = _unwrap_body_sequence(action)
+    return ParallelForEachNode(
         item_var=item_var,
         values=_attr_expr(elem, "Values"),
         body=body,
@@ -3357,6 +3384,7 @@ _DISPATCH = {
     (UI_NS, "ForEach"): _parse_for_each,
     (UI_NS, "RepeatNumberOfTimesX"): _parse_repeat_number_of_times_x,
     (WF_NS, "ForEach"): _parse_for_each,
+    (WF_NS, "ParallelForEach"): _parse_parallel_for_each,
     (UI_NS, "ForEachRow"): _parse_for_each_row,
     (UI_NS, "InterruptibleWhile"): _parse_while,
     (UI_NS, "InterruptibleDoWhile"): _parse_do_while,

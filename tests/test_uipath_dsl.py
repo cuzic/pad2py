@@ -92,6 +92,7 @@ from dump_daemon.uipath_dsl import (
     ForEachFileNode,
     ForEachFolderNode,
     ForEachNode,
+    ParallelForEachNode,
     RepeatNumberOfTimesXNode,
     GenerateDataTableNode,
     GetAttributeNode,
@@ -342,6 +343,59 @@ def test_base_wf_for_each_explicit_body_wrapper():
     assert isinstance(node, ForEachNode)
     assert node.item_var == "incidentId"
     assert node.values == VbExpr(text="incidentIds")
+
+
+def test_parallel_for_each_implicit_body_direct_child():
+    """知見270: `ParallelForEach`(裸のcore WFタグ、`WF_NS`、discovery-
+    fresh-pass-8で発見)。実機`mariokellner/UiPath-Parallel-Background-
+    RE-Framework`の`Main.xaml`で確認した構成——`.Body`明示ラップ無し、
+    `ActivityAction`が直接の子(`ForEach`の暗黙形と同じ)。"""
+    xml = (
+        f"<ParallelForEach {_UI_XMLNS} "
+        'x:TypeArguments="x:Int32" DisplayName="Create Workers" '
+        'Values="[Enumerable.Range(1, cint(Config(&quot;N&quot;)))]">'
+        '<ActivityAction x:TypeArguments="x:Int32">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:Int32" Name="WorkerNumber" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Per Worker">'
+        '<WriteLine Text="[WorkerNumber]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ParallelForEach>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ParallelForEachNode)
+    assert node.item_var == "WorkerNumber"
+    assert node.values == VbExpr(text='Enumerable.Range(1, cint(Config("N")))')
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], WriteLineNode)
+
+
+def test_parallel_for_each_explicit_body_wrapper():
+    """知見270: `ParallelForEach`の`.Body`明示ラップ形——公式
+    `UiPath-Services/StudioTemplates`の`OrchestrationProcess`テンプレート
+    で確認した`Values="[TaskList]"`の単一タスク反復構成。"""
+    xml = (
+        f"<ParallelForEach {_UI_XMLNS} "
+        'x:TypeArguments="x:String" Values="[TaskList]" '
+        'DisplayName="Parallel for each task">'
+        "<ParallelForEach.Body>"
+        '<ActivityAction x:TypeArguments="x:String">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="x:String" Name="task" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Body">'
+        '<WriteLine Text="[task]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ParallelForEach.Body>"
+        "</ParallelForEach>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ParallelForEachNode)
+    assert node.item_var == "task"
+    assert node.values == VbExpr(text="TaskList")
     assert len(node.body) == 1
 
 

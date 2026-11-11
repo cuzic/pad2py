@@ -12928,6 +12928,49 @@ discovery-fresh-pass-8の残り候補のうち、`ParallelForEach`
 (既存の`Parallel`活動の「逐次実行+コメントで明示」という誠実な
 前例を再利用できる)が次の有力候補として残る。
 
+## 270. `ParallelForEach`を新規実装——discovery-fresh-pass-8最後の有力候補、`ParallelNode`の「逐次実行+誠実なコメント」前例を`ForEach`の裸WFタグ構造に適用した
+
+知見269で`GetPOP3MailMessages`を実装した直後の次ティックとして、
+discovery-fresh-pass-8の第3候補`ParallelForEach`(裸のcore WFタグ、
+`ui:`プレフィックス無し、`WF_NS`)に着手した。
+
+実機3件(公式`UiPath-Services/StudioTemplates`リポジトリの
+`OrchestrationProcess`テンプレート(`Main.xaml`内2箇所、
+`upaf:FormTaskData`単一タスク反復+`scg:List(upaf:FormTaskData)`
+バッチ反復)、`mariokellner/UiPath-Parallel-Background-RE-Framework`
+の`Main.xaml`)で構成を確認。いずれも`ActivityAction`が
+`ParallelForEach`の直接の子(`.Body`明示ラップ無し)で、既存の
+`ForEachNode`(知見5・155)が確立した「`.Body`明示ラップ/直接子の
+両形式対応」と全く同じ構造——`ActivityAction`+`DelegateInArgument`+
+`Sequence`。`Values`は`[TaskList]`/`[TaskBatches]`/
+`[Enumerable.Range(1, cint(Config("...")))]`という実機確認済みのVB式。
+
+構造が`ForEachNode`と完全に同一だが、意味論(並行実行)が異なるため、
+`ForEachRow`(知見118、構造も意味論も同一なので既存`ForEachNode`を
+再利用)とは違う判断を下した——`ParallelNode`(知見19・20)が既に
+確立した「Pythonネイティブの軽量な並行実行の代替が無いため、v1では
+ブランチを単純に順次実行する(でっち上げた並行実行を装わない、明示的な
+コメント付きの簡略化)」という誠実な前例をそのまま継承し、別の
+ノード型`ParallelForEachNode`+専用の生成関数`_generate_parallel_
+for_each`として実装した(`ForEachNode`と同じ型にすると
+`_generate_node`のisinstance判定で区別できず、この近似コメントを
+出せなくなるため)。コード生成自体は`_generate_for_each`と全く同じ
+`for item in values:`ロジックを呼ぶが、先頭に`ParallelNode`と同じ
+形式の`# NOTE: source used ParallelForEach; iterations run
+sequentially here`コメントを追加する。`Values`の厳格な失敗モード
+(変換できなければ`NotImplementedError`を伝播)も`ForEach`と同じ
+判断を継承した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件(`.Body`明示ラップ形・
+直接子形の両方)・`tests/test_uipath_codegen.py`2件、うち1件は
+`exec()`で実際に生成コードが実行できることを確認)、リポジトリ全体で
+全2431件通過(28件skip、本活動の4件分の純増)。
+
+discovery-fresh-pass-8の全候補(`ReadColumn`/`ReadRow`/
+`GetPOP3MailMessages`/`ParallelForEach`完了、`WordExportToPdf`/
+`GetExchangeMailMessages`/Orchestratorキューファミリーは赤旗判断で
+見送り)がこれで完結した——継続する場合は新規の発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
