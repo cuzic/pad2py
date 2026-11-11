@@ -4867,6 +4867,70 @@ class GetIMAPMailMessagesNode:
 
 
 @dataclass
+class GetPOP3MailMessagesNode:
+    """`<ui:GetPOP3MailMessages Server="..." Port="..." Email="..."
+    Password="..." EnableSSL="..." SecureConnection="..." Top="..."
+    DeleteMessages="..." Messages="..." />`(知見268続き、
+    discovery-fresh-pass-8の次点推奨候補、タグ名限定GitHub検索で14件
+    ヒット)。`GetIMAPMailMessagesNode`(知見250)のPOP3版だが、プロトコル
+    の制約上POP3にはフォルダ/未読フラグ/日付ソートの概念が無いため
+    `MailFolder`/`MarkAsRead`/`OnlyUnreadMessages`/`OrderByDate`は
+    存在しない(公式Studio ground-truth、`marcelocruzrpa/
+    uipath-ai-skills`リポジトリの`studio-ground-truth/UiPath.Mail.
+    Activities/2.8/GetPOP3MailMessages.xaml`で確認)。
+
+    実機3件(`rafifrizqullah111/RPA-Email-Automation`・`GSA/
+    AP-Email-Notifications`の`POP3 Sample Workflow - save
+    attachment.xaml`・`210927-Reston-UiPath/Mishuba`の
+    `GetMailByPOP3.xaml`)で確認した構成——`Server`(`"pop.gmail.com"`
+    という静的リテラル、`[str_pop_server]`という動的VB式の両方確認)、
+    `Port`(常に`"995"`——POP3Sの既知ポート)、`Email`/`Password`
+    (または`SecurePassword`、いずれも実機確認済み)、`EnableSSL`
+    (実機3件とも唯一の確認値**`"False"`**——`GetIMAPMailMessages`の
+    確認済み値`"True"`とは正反対だが、`SecureConnection="Auto"`
+    (実機3件とも唯一の確認値)と組み合わさり、Gmail(SSL必須)に対して
+    実際に動作していることから、実際の接続セキュリティは
+    `SecureConnection`側が制御しており`EnableSSL`はこの活動では
+    影響しないか無視される設計と判断——Port 995は確認済みの
+    POP3Sポートのため、常にSSL接続として実装する)、`DeleteMessages`
+    (`"False"`/`"True"`両方実機確認済み)、`Top`(`"200"`という静的
+    リテラル、属性省略(既定値`"30"`)の両方確認)。
+
+    下流アクセスは`GetIMAPMailMessages`と全く同一パターン
+    (`mail.subject.ToString.Contains(...)`+`ui:SaveMailAttachments
+    Message="[mail]"`)——`.Subject`/`.Attachments`のみという狭い
+    確認済みサーフェスのため、既存の`_ImapMailMessage`ラッパーを
+    そのまま再利用する(新規ラッパークラスは注入しない)。
+
+    `ConnectionMode`/`UseISConnection`(いずれもground-truthの既定値
+    `"Undefined"`/`"False"`以外は実機未確認)・`TimeoutMS`・
+    `UseOAuth`・`IgnoreCRL`(`"False"`のみ実機確認)はいずれも
+    `GetIMAPMailMessages`と同じ判断で`# TODO`へ倒す。POP3には
+    `OrderByDate`に相当する確認済みの並び替え制御が無いため、`Top`は
+    サーバーが返す自然な順序(通常は受信順)の先頭から数える——実際の
+    順序保証は公式ドキュメントでも曖昧であることをdocstringに明記
+    する(本トランスパイラ独自の仮定であり、UiPath自体の確定仕様では
+    ない)。"""
+
+    messages: Expr = None
+    server: Expr = None
+    port: Expr = None
+    email: Expr = None
+    password: Expr = None
+    secure_password: Expr = None
+    enable_ssl: str | None = None
+    secure_connection: str | None = None
+    top: Expr = None
+    delete_messages: str | None = None
+    timeout_ms: Expr = None
+    use_oauth: Expr = None
+    ignore_crl: str | None = None
+    connection_mode: str | None = None
+    use_is_connection: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class SaveMailAttachmentsNode:
     """`<ui:SaveMailAttachments Message="..." FolderPath="..."
     ExcludeInlineAttachments="..." OverwriteExisting="..."
@@ -5170,6 +5234,7 @@ Node = (
     | SplitTextNode
     | CombineTextNode
     | GetIMAPMailMessagesNode
+    | GetPOP3MailMessagesNode
     | SaveMailAttachmentsNode
     | SelectFolderNode
     | GetUsernamePasswordXNode

@@ -12876,6 +12876,58 @@ exchangelib`が必要、より高複雑度)・Orchestratorキューファミリ�
 のModern UI亜種への誤マッチ、`ui:Pick`/`ui:DragDrop`と同じ偽陽性
 クラス)を既存の偽陽性リストへ追加。
 
+## 269. `ui:GetPOP3MailMessages`を新規実装——discovery-fresh-pass-8の次点推奨候補、既存の`_ImapMailMessage`ラッパーと`GetIMAPMailMessages`基盤をそのまま再利用し`EnableSSL="False"`+SSLポートという一見矛盾する実機確認済みの組み合わせを正しく解釈した
+
+知見268で`ReadColumn`/`ReadRow`を実装した直後の次ティックとして、
+discovery-fresh-pass-8の次点推奨候補`ui:GetPOP3MailMessages`
+(タグ名限定GitHub検索で14件ヒット)に着手した。
+
+実機3件(`rafifrizqullah111/RPA-Email-Automation`の`Main.xaml`、
+`GSA/AP-Email-Notifications`の`POP3 Sample Workflow - save
+attachment.xaml`、`210927-Reston-UiPath/Mishuba`の
+`GetMailByPOP3.xaml`)+公式Studio ground-truth
+(`marcelocruzrpa/uipath-ai-skills`リポジトリ)で構成を確認。
+`GetIMAPMailMessagesNode`(知見250)のPOP3版だが、プロトコルの制約上
+POP3にはフォルダ/未読フラグ/日付ソートの概念が無いため
+`MailFolder`/`MarkAsRead`/`OnlyUnreadMessages`/`OrderByDate`は存在
+しない(ground-truthで確認)。
+
+**実機確認で見つけた一見矛盾する組み合わせ**: 3件とも`EnableSSL=
+"False"`+`SecureConnection="Auto"`+`Port="995"`(POP3Sの既知ポート)
+という、`GetIMAPMailMessages`の確認済み値(`EnableSSL="True"`)とは
+正反対の組み合わせで、Gmail(SSL必須)に対して実際に動作している。
+WebSearchで公式ドキュメントを確認したところ、実際の接続セキュリティは
+`SecureConnection`(`None`/`Auto`/`SslOnConnect`/`StartTls`/
+`StartTlsWhenAvailable`)側が制御する設計であり、`EnableSSL`は
+この活動では影響しないか無視されると判断——Port 995という確認済みの
+POP3Sポートの実例を踏まえ、常にSSL接続(`poplib.POP3_SSL`)として
+実装する。
+
+下流アクセスパターンが`GetIMAPMailMessages`と全く同一(`mail.subject.
+ToString.Contains(...)`+`ui:SaveMailAttachments Message="[mail]"`)
+だったため、新規ラッパークラスは注入せず既存の`_ImapMailMessage`
+(`.Subject`/`.Attachments`)をそのまま再利用した——インターフェースが
+完全に一致する場合は新規抽象を作らないという本調査一貫した方針。
+`poplib.POP3_SSL`→`.user()`→`.pass_()`→`.stat()`(メッセージ数取得)
+→`Top`による先頭からのスライス→各メッセージを`.retr()`→
+`email.message_from_bytes(b"\n".join(lines))`→`DeleteMessages="True"`
+時は`.dele()`→最後に`.quit()`(キューされた削除を確定して切断)。
+POP3には`OrderByDate`に相当する確認済みの並び替え制御が無いため、
+`Top`はサーバーが返す自然な順序の先頭から数える(`GetIMAPMailMessages`
+がTop省略時に全件取得する判断もそのまま継承、本トランスパイラ独自の
+仮定であることをdocstringに明記)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`7件、うち2件は`unittest.mock.patch`で
+`poplib.POP3_SSL`自体をモックし`exec()`経由で実際の制御フロー
+——`user`/`pass_`呼び出し・`Top`による絞り込み・`DeleteMessages`時の
+`dele()`呼び出し・`quit()`・`.Subject`ラッパープロパティ——を確認)、
+リポジトリ全体で全2427件通過(28件skip、本活動の9件分の純増)。
+
+discovery-fresh-pass-8の残り候補のうち、`ParallelForEach`
+(既存の`Parallel`活動の「逐次実行+コメントで明示」という誠実な
+前例を再利用できる)が次の有力候補として残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

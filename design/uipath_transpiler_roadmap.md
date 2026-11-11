@@ -3866,3 +3866,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`_generate_read_column_or_row_body`)。回帰テスト追加
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      10件)、リポジトリ全体で全2418件通過(本活動の12件分の純増)。
+
+225. **(完了、2026-11-10)** `ui:GetPOP3MailMessages`を新規実装
+     (知見269)——discovery-fresh-pass-8の次点推奨候補。タグ名限定
+     検索で14件ヒット。`GetIMAPMailMessagesNode`(知見250)のPOP3版だが、
+     POP3にはフォルダ/未読フラグ/日付ソートが無い。実機3件とも
+     `EnableSSL="False"`+`SecureConnection="Auto"`+`Port="995"`という
+     一見矛盾する組み合わせでGmail(SSL必須)に動作しており、公式
+     ドキュメント確認の上で実際の接続セキュリティは`SecureConnection`
+     側が制御すると判断し常に`poplib.POP3_SSL`で実装。下流アクセスが
+     `GetIMAPMailMessages`と同一パターンのため既存の`_ImapMailMessage`
+     ラッパーをそのまま再利用(新規ラッパー不要)。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     7件)、リポジトリ全体で全2427件通過(本活動の9件分の純増)。

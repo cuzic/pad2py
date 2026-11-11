@@ -65,6 +65,7 @@ from dump_daemon.uipath_dsl import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    GetPOP3MailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
@@ -10413,6 +10414,113 @@ def test_get_imap_mail_messages_with_use_oauth_is_todo():
     wf = _wrap([_imap_node(use_oauth=Literal(value="True"))])
     code = generate_python(wf)
     assert "# TODO: GetIMAPMailMessages with UseOAuth set" in code
+    _compiles(code)
+
+
+def _pop3_node(**overrides):
+    defaults = dict(
+        messages=VbExpr(text="emails"),
+        server=Literal(value="pop.gmail.com"),
+        port=Literal(value="995"),
+        email=Literal(value="user@gmail.com"),
+        password=Literal(value="secret"),
+        enable_ssl="False",
+        secure_connection="Auto",
+        top=Literal(value="2"),
+        delete_messages="False",
+    )
+    defaults.update(overrides)
+    return GetPOP3MailMessagesNode(**defaults)
+
+
+def test_get_pop3_mail_messages_full_exec_with_top():
+    """知見268続き: `ui:GetPOP3MailMessages`。`poplib`/`email`は標準
+    ライブラリ——`poplib.POP3_SSL`自体をモックして`exec()`経由で実際の
+    制御フロー(`user`/`pass_`/`stat`/`Top`による絞り込み/`retr`/
+    `.Subject`ラッパープロパティ、既存の`_ImapMailMessage`を再利用)を
+    確認する。"""
+    wf = _wrap([_pop3_node()])
+    code = generate_python(wf)
+    assert "import poplib" in code
+    assert "import email" in code
+    assert "_ImapMailMessage" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    raw_msgs = {
+        1: b"Subject: Hello One\r\n\r\nBody1",
+        2: b"Subject: Hello Two\r\n\r\nBody2",
+        3: b"Subject: Hello Three\r\n\r\nBody3",
+    }
+    fake_pop = unittest.mock.MagicMock()
+    fake_pop.stat.return_value = (3, 1234)
+    fake_pop.retr.side_effect = lambda num: ("+OK", raw_msgs[num].split(b"\r\n"), 100)
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("poplib.POP3_SSL", return_value=fake_pop) as mock_ssl:
+        result = namespace["Test"]()
+
+    assert [m.Subject for m in result] == ["Hello One", "Hello Two"]
+    mock_ssl.assert_called_once_with("pop.gmail.com", 995)
+    fake_pop.user.assert_called_once_with("user@gmail.com")
+    fake_pop.pass_.assert_called_once_with("secret")
+    fake_pop.dele.assert_not_called()
+    fake_pop.quit.assert_called_once()
+
+
+def test_get_pop3_mail_messages_delete_messages_exec():
+    wf = _wrap([_pop3_node(delete_messages="True", top=None)])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+
+    fake_pop = unittest.mock.MagicMock()
+    fake_pop.stat.return_value = (1, 100)
+    fake_pop.retr.return_value = ("+OK", [b"Subject: Bye", b"", b"Body"], 100)
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return emails", namespace)  # noqa: S102 - 信頼できる自作コード
+    with unittest.mock.patch("poplib.POP3_SSL", return_value=fake_pop):
+        result = namespace["Test"]()
+
+    assert [m.Subject for m in result] == ["Bye"]
+    fake_pop.dele.assert_called_once_with(1)
+    fake_pop.quit.assert_called_once()
+
+
+def test_get_pop3_mail_messages_with_missing_properties_is_todo():
+    wf = _wrap([_pop3_node(messages=None)])
+    code = generate_python(wf)
+    assert "# TODO: GetPOP3MailMessages with no output Messages captured" in code
+    _compiles(code)
+
+
+def test_get_pop3_mail_messages_with_unconfirmed_enable_ssl_is_todo():
+    wf = _wrap([_pop3_node(enable_ssl="True")])
+    code = generate_python(wf)
+    assert "# TODO: GetPOP3MailMessages with EnableSSL" in code
+    _compiles(code)
+
+
+def test_get_pop3_mail_messages_with_unconfirmed_secure_connection_is_todo():
+    wf = _wrap([_pop3_node(secure_connection="StartTls")])
+    code = generate_python(wf)
+    assert "# TODO: GetPOP3MailMessages with SecureConnection" in code
+    _compiles(code)
+
+
+def test_get_pop3_mail_messages_with_use_oauth_is_todo():
+    wf = _wrap([_pop3_node(use_oauth=Literal(value="True"))])
+    code = generate_python(wf)
+    assert "# TODO: GetPOP3MailMessages with UseOAuth set" in code
+    _compiles(code)
+
+
+def test_get_pop3_mail_messages_with_unconfirmed_connection_mode_is_todo():
+    wf = _wrap([_pop3_node(connection_mode="Pop3")])
+    code = generate_python(wf)
+    assert "# TODO: GetPOP3MailMessages with ConnectionMode" in code
     _compiles(code)
 
 

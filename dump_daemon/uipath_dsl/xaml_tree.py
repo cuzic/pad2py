@@ -45,6 +45,7 @@ from .types import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    GetPOP3MailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
@@ -3006,6 +3007,28 @@ def _parse_get_imap_mail_messages(elem: etree._Element) -> GetIMAPMailMessagesNo
     )
 
 
+def _parse_get_pop3_mail_messages(elem: etree._Element) -> GetPOP3MailMessagesNode:
+    return GetPOP3MailMessagesNode(
+        messages=_attr_expr(elem, "Messages") or _in_argument_property_expr(elem, "Messages"),
+        server=_attr_expr(elem, "Server") or _in_argument_property_expr(elem, "Server"),
+        port=_attr_expr(elem, "Port") or _in_argument_property_expr(elem, "Port"),
+        email=_attr_expr(elem, "Email") or _in_argument_property_expr(elem, "Email"),
+        password=_attr_expr(elem, "Password") or _in_argument_property_expr(elem, "Password"),
+        secure_password=_attr_expr(elem, "SecurePassword")
+        or _in_argument_property_expr(elem, "SecurePassword"),
+        enable_ssl=_attr_or_none(elem, "EnableSSL"),
+        secure_connection=_attr_or_none(elem, "SecureConnection"),
+        top=_attr_expr(elem, "Top") or _in_argument_property_expr(elem, "Top"),
+        delete_messages=_attr_or_none(elem, "DeleteMessages"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
+        use_oauth=_attr_expr(elem, "UseOAuth"),
+        ignore_crl=_attr_or_none(elem, "IgnoreCRL"),
+        connection_mode=_attr_or_none(elem, "ConnectionMode"),
+        use_is_connection=_attr_or_none(elem, "UseISConnection"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_save_mail_attachments(elem: etree._Element) -> SaveMailAttachmentsNode:
     return SaveMailAttachmentsNode(
         message=_attr_expr(elem, "Message") or _in_argument_property_expr(elem, "Message"),
@@ -3504,6 +3527,7 @@ _DISPATCH = {
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,
+    (UI_NS, "GetPOP3MailMessages"): _parse_get_pop3_mail_messages,
     (UI_NS, "SaveMailAttachments"): _parse_save_mail_attachments,
     (MAIL_BUSINESS_NS, "MarkMailAsReadX"): _parse_mark_mail_as_read_x,
     (MAIL_BUSINESS_NS, "DeleteMailX"): _parse_delete_mail_x,

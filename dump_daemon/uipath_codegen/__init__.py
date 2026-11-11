@@ -87,6 +87,7 @@ from ..uipath_dsl.types import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    GetPOP3MailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
@@ -543,6 +544,11 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import imaplib")
     if any("email.message_from_bytes(" in line for line in body):
         imports.append("import email")
+    # `poplib`(`GetPOP3MailMessages`→`poplib.POP3_SSL(...)`変換先、
+    # 知見268続き)も同様——`email.message_from_bytes(...)`は上の
+    # `imaplib`用トリガーと共有するため追加トリガー不要。
+    if any("poplib.POP3_SSL(" in line for line in body):
+        imports.append("import poplib")
     # `psutil`(`GetProcesses`→`psutil.process_iter(...)`変換先、知見255、
     # 既存のコア依存——`dump_daemon/uia_capture.py`で既に使用済み)も同様。
     if any("psutil.process_iter(" in line for line in body):
@@ -1077,6 +1083,8 @@ def _generate_node(
         return _generate_get_outlook_mail_messages(node, indent)
     if isinstance(node, GetIMAPMailMessagesNode):
         return _generate_get_imap_mail_messages(node, indent)
+    if isinstance(node, GetPOP3MailMessagesNode):
+        return _generate_get_pop3_mail_messages(node, indent)
     if isinstance(node, SaveMailAttachmentsNode):
         return _generate_save_mail_attachments(node, indent)
     if isinstance(node, MarkMailAsReadXNode):
@@ -9187,6 +9195,127 @@ def _generate_get_imap_mail_messages_body(
             f"{prefix}_imap.close()",
             f"{prefix}_imap.logout()",
             f"{prefix}{target} = _imap_messages",
+        ]
+    )
+    return lines
+
+
+_POP3_SECURE_CONNECTION_VALUES = (None, "Auto")
+_POP3_CONNECTION_MODE_VALUES = (None, "Undefined")
+_POP3_USE_IS_CONNECTION_VALUES = (None, "False")
+
+
+def _generate_get_pop3_mail_messages(
+    node: GetPOP3MailMessagesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_pop3_mail_messages_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_pop3_mail_messages_body(
+    node: GetPOP3MailMessagesNode, indent: int
+) -> list[str]:
+    """知見268続き: `poplib.POP3_SSL`に対応する——実機3件とも`EnableSSL
+    ="False"`+`SecureConnection="Auto"`+`Port="995"`(POP3Sの既知
+    ポート)という一見矛盾する組み合わせでGmail(SSL必須)に対して実際に
+    動作しているため、実際の接続セキュリティは`SecureConnection`側が
+    制御していると判断し常にSSL接続として実装する(`EnableSSL`の値は
+    確認済みの`"False"`であること自体を検証するが、接続方式の分岐には
+    使わない)。下流アクセスパターンが`GetIMAPMailMessagesNode`
+    (知見250)と全く同一(`.Subject`/`.Attachments`のみ)のため、同じ
+    `_ImapMailMessage`ラッパーをそのまま再利用する。POP3には
+    `OrderByDate`に相当する確認済みの並び替え制御が無いため、`Top`は
+    サーバーが返す自然な順序の先頭から数える(本トランスパイラ独自の
+    仮定、`GetIMAPMailMessagesNode`がTop省略時に全件取得する判断も
+    そのまま継承)。"""
+    prefix = INDENT * indent
+    if node.messages is None:
+        return [f"{prefix}# TODO: GetPOP3MailMessages with no output Messages captured"]
+    if node.server is None or node.port is None or node.email is None:
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with missing Server/Port/Email"
+        ]
+    password_expr = node.password if node.password is not None else node.secure_password
+    if password_expr is None:
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with no Password/"
+            "SecurePassword captured"
+        ]
+    if node.enable_ssl not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with EnableSSL "
+            f"{node.enable_ssl!r} — only the confirmed \"False\" value is "
+            "implemented, refusing to guess"
+        ]
+    if node.secure_connection not in _POP3_SECURE_CONNECTION_VALUES:
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with SecureConnection "
+            f"{node.secure_connection!r} — only the confirmed \"Auto\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.connection_mode not in _POP3_CONNECTION_MODE_VALUES:
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with ConnectionMode "
+            f"{node.connection_mode!r} — refusing to guess"
+        ]
+    if node.use_is_connection not in _POP3_USE_IS_CONNECTION_VALUES:
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with UseISConnection "
+            f"{node.use_is_connection!r} — refusing to guess"
+        ]
+    for label, value in (
+        ("TimeoutMS", node.timeout_ms),
+        ("UseOAuth", node.use_oauth),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: GetPOP3MailMessages with {label} set "
+                f"({_describe_expr_for_comment(value)}) — refusing to guess"
+            ]
+    if node.ignore_crl not in (None, "False"):
+        return [
+            f"{prefix}# TODO: GetPOP3MailMessages with IgnoreCRL "
+            f"{node.ignore_crl!r} — only the confirmed \"False\" value is "
+            "implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.messages, prefix, todo)
+    server = _render_value_or_todo(node.server, prefix, todo)
+    port = _render_value_or_todo(node.port, prefix, todo)
+    email_addr = _render_value_or_todo(node.email, prefix, todo)
+    password = _render_value_or_todo(password_expr, prefix, todo)
+    top = _render_value_or_todo(node.top, prefix, todo) if node.top is not None else None
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_pop = poplib.POP3_SSL({VB_CSTR_HELPER_NAME}({server}), "
+        f"int({VB_NUM_HELPER_NAME}({port})))",
+        f"{prefix}_pop.user({VB_CSTR_HELPER_NAME}({email_addr}))",
+        f"{prefix}_pop.pass_({VB_CSTR_HELPER_NAME}({password}))",
+        f"{prefix}_pop_count, _pop_size = _pop.stat()",
+        f"{prefix}_pop_nums = list(range(1, _pop_count + 1))",
+    ]
+    if top is not None:
+        lines.append(
+            f"{prefix}_pop_nums = _pop_nums[:round({VB_CDBL_HELPER_NAME}({top}))]"
+        )
+    inner = INDENT * (indent + 1)
+    lines.extend(
+        [
+            f"{prefix}_pop_messages = []",
+            f"{prefix}for _pop_num in _pop_nums:",
+            f"{inner}_resp, _pop_lines, _octets = _pop.retr(_pop_num)",
+            f"{inner}_pop_messages.append({_IMAP_MAIL_MESSAGE_HELPER_NAME}("
+            f"email.message_from_bytes(b'\\n'.join(_pop_lines))))",
+        ]
+    )
+    if node.delete_messages == "True":
+        lines.append(f"{inner}_pop.dele(_pop_num)")
+    lines.extend(
+        [
+            f"{prefix}_pop.quit()",
+            f"{prefix}{target} = _pop_messages",
         ]
     )
     return lines

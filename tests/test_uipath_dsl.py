@@ -41,6 +41,7 @@ from dump_daemon.uipath_dsl import (
     SplitTextNode,
     CombineTextNode,
     GetIMAPMailMessagesNode,
+    GetPOP3MailMessagesNode,
     SaveMailAttachmentsNode,
     SelectFolderNode,
     GetUsernamePasswordXNode,
@@ -3508,6 +3509,60 @@ def test_get_imap_mail_messages_with_secure_password_and_order_by_date():
     assert node.order_by_date == "NewestFirst"
     assert node.ignore_crl == "False"
     assert node.messages == VbExpr(text="List_Mails")
+
+
+def test_get_pop3_mail_messages_properties():
+    """知見268続き: `ui:GetPOP3MailMessages`(`GetIMAPMailMessages`の
+    POP3版、タグ名限定GitHub検索で14件ヒット)。実機`210927-Reston-
+    UiPath/Mishuba`の`GetMailByPOP3.xaml`で確認した構成——
+    `EnableSSL="False"`+`SecureConnection="Auto"`+`Port="995"`という
+    一見矛盾する組み合わせ(実際はSSL接続)、平文`Password`。"""
+    xml = (
+        f"<ui:GetPOP3MailMessages {_UI_XMLNS} SecurePassword=\"{{x:Null}}\" "
+        'TimeoutMS="{x:Null}" DeleteMessages="True" '
+        'DisplayName="Get POP3 Mail Messages" '
+        'Email="fakeMarielleNolasco@gmail.com" EnableSSL="False" '
+        'Messages="[messages]" Password="f@k3Mars" Port="995" '
+        'SecureConnection="Auto" Server="pop.gmail.com" Top="30" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetPOP3MailMessagesNode)
+    assert node.server == Literal(value="pop.gmail.com")
+    assert node.port == Literal(value="995")
+    assert node.email == Literal(value="fakeMarielleNolasco@gmail.com")
+    assert node.password == Literal(value="f@k3Mars")
+    assert node.secure_password is None
+    assert node.enable_ssl == "False"
+    assert node.secure_connection == "Auto"
+    assert node.top == Literal(value="30")
+    assert node.delete_messages == "True"
+    assert node.messages == VbExpr(text="messages")
+
+
+def test_get_pop3_mail_messages_with_secure_password_and_dynamic_server():
+    """知見268続き: 実機`rafifrizqullah111/RPA-Email-Automation`の
+    `Main.xaml`で確認した実例——`SecurePassword`経由、動的VB式の
+    `Server`/`Port`/`Email`。"""
+    xml = (
+        f"<ui:GetPOP3MailMessages {_UI_XMLNS} Password=\"{{x:Null}}\" "
+        'TimeoutMS="{x:Null}" UseOAuth="{x:Null}" '
+        'DeleteMessages="False" Email="[email_username]" '
+        'EnableSSL="False" IgnoreCRL="False" Messages="[email_inbox]" '
+        'Port="[int_port_pop_server]" SecureConnection="Auto" '
+        'SecurePassword="[email_password]" Server="[str_pop_server]" '
+        'Top="200" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetPOP3MailMessagesNode)
+    assert node.server == VbExpr(text="str_pop_server")
+    assert node.port == VbExpr(text="int_port_pop_server")
+    assert node.email == VbExpr(text="email_username")
+    assert node.password is None
+    assert node.secure_password == VbExpr(text="email_password")
+    assert node.ignore_crl == "False"
+    assert node.top == Literal(value="200")
+    assert node.delete_messages == "False"
+    assert node.messages == VbExpr(text="email_inbox")
 
 
 def test_save_mail_attachments_properties():
