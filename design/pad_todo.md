@@ -831,7 +831,7 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   往復では一度も検証されていなかった**ことも確定した(FilterDataTable/JoinDataTableの
   入力スキーマ自体の確証は正しいが、そのスキーマをPython側のcodegenから実際に組み立てる
   変換のテストカバレッジには大きな穴があった)。
-- [ ] 💻 ローカル`main`とGitHub `origin/main`のコミット分岐(履歴相違)の整理 — 複数セッションが
+- [x] 💻 ローカル`main`とGitHub `origin/main`のコミット分岐(履歴相違)の整理 — 複数セッションが
   同じローカル作業ディレクトリに直接コミットし続けている状態の整理(force-push等の破壊的操作は
   ユーザー確認必須)。
   🔍 診断(読み取りのみ、このtick): `git merge-base --is-ancestor origin/main main`が偽——
@@ -843,6 +843,12 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   動かすと、別セッションの`git add`/`git commit`が意図せずその中間状態を取り込む実害がある。
   **推奨**: 整理するなら、他セッションの同時コミットを一時的に止めた上で(ユーザーの調整が
   必要)、ユーザー自身が`git merge`/`git rebase`/`push --force`のいずれで整理するかを判断する。
+  ✅ **2026-11-06、ユーザー判断で解決済み**: `backup/origin-main-pre-force-push-20261106`
+  タグでorigin側の状態を保存した上で、ローカルmainを正本として`--force-with-lease`で
+  push——その時点で`git rev-list --left-right --count HEAD...origin/main`が`0 0`になり
+  完全同期を確認した。以降は分岐しておらず、現在(本tick確認時)は`HEAD`が`origin/main`から
+  70コミット先行・0コミット遅れ(=通常のpush待ち状態、再分岐ではない)——
+  単純な`git push`で同期できる状態であり、整理自体は完了している。
 - [x] 💻 **テスト手法の死角の機械的横展開**: 知見129で「実際に`exec()`するテストでも、
   出力変数への代入先の値自体をアサートしていなければ戻り値の型不一致(`None`化)のような
   バグを素通りさせる」という死角を確定させた。
