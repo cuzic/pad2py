@@ -119,6 +119,7 @@ from dump_daemon.uipath_dsl import (
     HighlightNode,
     HoverNode,
     HttpClientNode,
+    DownloadFileFromUrlNode,
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
@@ -5668,3 +5669,55 @@ def test_parse_workflow_file_identifier_case_normalization_skips_member_access(t
     assign = wf.root.body[0]
     assert isinstance(assign, AssignNode)
     assert assign.value == VbExpr(text="obj.MyVar.ToString()")
+
+
+_FILE_OPERATIONS_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:uasf="clr-namespace:UiPath.Activities.System.FileOperations;'
+    'assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_download_file_from_url_vb_expression_attrs_and_enum_conflict_resolution():
+    """知見282: `uasf:DownloadFileFromUrl`(discovery-fresh-pass-12が報告、
+    `UiPath.System.Activities`パッケージ)。実機`RajdipDuttaa/
+    ACME_Data_Extraction`の`DownloadCheckRequestPDF.xaml`で確認した
+    構成——`Url`/`FileName`はVB式のプレーン属性、`ConflictResolution`は
+    列挙型のフルパス参照をVB式として埋め込む形(`[UiPath.Activities.
+    System.FileOperations.FileConflictBehavior.Replace]`)。"""
+    xml = (
+        f"<uasf:DownloadFileFromUrl {_FILE_OPERATIONS_XMLNS} "
+        'DisplayName="Download Check Request PDF" '
+        'Url="[str_PDFDownloadURL]" FileName="[str_PDFReportPath]" '
+        "ConflictResolution=\"[UiPath.Activities.System.FileOperations."
+        'FileConflictBehavior.Replace]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DownloadFileFromUrlNode)
+    assert node.url == VbExpr(text="str_PDFDownloadURL")
+    assert node.file_name == VbExpr(text="str_PDFReportPath")
+    assert node.conflict_resolution == VbExpr(
+        text="UiPath.Activities.System.FileOperations.FileConflictBehavior.Replace"
+    )
+    assert node.timeout is None
+    assert node.user_agent_header is None
+    assert node.response_attachment is None
+
+
+def test_download_file_from_url_plain_literal_conflict_resolution():
+    """知見282: `ConflictResolution`はプレーンな文字列リテラル形
+    (`"Rename"`、`Adam974Moran/UiPathInvoicesTestTask`等の実機で確認)
+    も取りうる——VB式参照形(上記テスト)との2形式どちらも`Expr`として
+    そのまま捕捉され、どちらを実際の`"Rename"`/`"Replace"`へ解決するかは
+    `uipath_codegen`側の責務(`test_uipath_codegen.py`で確認済み)。"""
+    xml = (
+        f"<uasf:DownloadFileFromUrl {_FILE_OPERATIONS_XMLNS} "
+        'Url="https://example.com/report.pdf" FileName="report.pdf" '
+        'ConflictResolution="Rename" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DownloadFileFromUrlNode)
+    assert node.url == Literal(value="https://example.com/report.pdf")
+    assert node.file_name == Literal(value="report.pdf")
+    assert node.conflict_resolution == Literal(value="Rename")

@@ -5759,6 +5759,58 @@ class HttpClientNode:
 
 
 @dataclass
+class DownloadFileFromUrlNode:
+    """`<uasf:DownloadFileFromUrl Url="..." FileName="..."
+    ConflictResolution="..." Timeout="..." UserAgentHeader="..."
+    ResponseAttachment="..." />`(知見282、discovery-fresh-pass-12で
+    発見、`UiPath.Activities.System.FileOperations`名前空間(`uasf:`、
+    本調査初出)、タグ名限定GitHub検索で19件ヒット)。
+
+    ground-truth(`marcelocruzrpa/uipath-ai-skills`、`ConflictResolution
+    ="Rename"`が既定値)+実機3件(`PolinaGlebovich/Invoices`・
+    `Adam974Moran/UiPathInvoicesTestTask`——いずれもC#式言語プロジェクト
+    (`CSharpValue`/`CSharpReference`、知見129で既に対象外と確認済み)
+    で`FileName`が`{x:Null}`のまま`ResponseAttachment`(型未確認の
+    `upr:ILocalResource`)経由+後続の`ui:MoveFile`で最終配置する構成
+    のため本実装の対象外、`RajdipDuttaa/ACME_Data_Extraction`の
+    `DownloadCheckRequestPDF.xaml`——VB式言語プロジェクトで`Url=
+    "[str_PDFDownloadURL]"`+`FileName="[str_PDFReportPath]"`+
+    `ConflictResolution="[UiPath.Activities.System.FileOperations.
+    FileConflictBehavior.Replace]"`という完結した構成を確認)で構成を
+    確認。
+
+    `ConflictResolution`は確認済み2値——ground-truthの既定値`"Rename"`
+    (プレーンな文字列リテラル)と、実機で確認した`[UiPath.Activities.
+    System.FileOperations.FileConflictBehavior.Replace]`という完全
+    修飾名のVB式参照の両方の直列化形がある——コード生成時にリテラル
+    文字列/VB式どちらの形でも末尾が`Rename`/`Replace`のいずれかに
+    一致する場合のみ対応する。公式ドキュメント(WebSearch経由確認)
+    で確認した3つ目の選択肢(「置き換えない」、実機未確認)は未対応。
+
+    `ResponseAttachment`(出力、`upr:ILocalResource`という型未確認の
+    .NETオブジェクト、実機では常に`{x:Null}`かC#専用の参照先)は
+    `GetFileInfoX`等と同じ「未確認の型付きオブジェクトをでっち上げない」
+    判断で未対応。`Timeout`/`UserAgentHeader`も実機で非null値を一度も
+    確認できず未対応。`FileName`は実機確認できた唯一の使い方
+    (`ResponseAttachment`経由ではなく直接指定)のみ対応——未指定時の
+    「URL情報から自動決定する」挙動(公式ドキュメント確認済みだが実機
+    未確認)はでっち上げない。
+
+    既存の確認済みコア依存`requests`(`HttpClientNode`、知見29/96で
+    既に使用)の`requests.get(url, stream=True)`+ストリーミング書き込み
+    で実装する——`requests`は本体の`dependencies`に既に存在する
+    (discovery-fresh-pass-12が`pyproject.toml`を確認して報告済み)。"""
+
+    url: Expr = None
+    file_name: Expr = None
+    conflict_resolution: Expr = None
+    timeout: Expr = None
+    user_agent_header: Expr = None
+    response_attachment: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class FlowStepNode:
     """`<FlowStep>`(知見100、実際のUiPath/.NET保存済みXAMLで確認済み)。
     直接の子として実行する活動を0〜1個持つ(複数ステップなら`Sequence`で
@@ -6051,6 +6103,7 @@ Node = (
     | MoveMailXNode
     | SendMailNode
     | HttpClientNode
+    | DownloadFileFromUrlNode
     | UnknownActivityNode
 )
 

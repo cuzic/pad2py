@@ -147,6 +147,7 @@ from dump_daemon.uipath_dsl import (
     HighlightNode,
     HoverNode,
     HttpClientNode,
+    DownloadFileFromUrlNode,
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
@@ -9728,6 +9729,149 @@ def test_verify_expression_with_operator_with_unconfirmed_operator_is_todo_not_g
     assert (
         "# TODO: VerifyExpressionWithOperator with unconfirmed Operator" in code
     )
+    _compiles(code)
+
+
+def test_download_file_from_url_default_conflict_resolution_auto_renames_exec():
+    """知見282: `uasf:DownloadFileFromUrl`。`ConflictResolution`未設定時の
+    既定値は実機確認済みの`"Rename"`(公式ドキュメントの説明通り、既存
+    ファイルがある場合は連番`name (N).ext`で自動的に別名保存する)。
+    `requests.get`をモックして、既存ファイルが上書きされず新規内容が
+    `(1)`付きファイル名へ書かれることを`exec()`経由で確認する。"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        target = os.path.join(tmp_dir, "report.pdf")
+        with open(target, "wb") as f:
+            f.write(b"original")
+        wf = _wrap(
+            [
+                DownloadFileFromUrlNode(
+                    url=Literal(value="https://example.com/report.pdf"),
+                    file_name=Literal(value=target),
+                )
+            ]
+        )
+        code = generate_python(wf)
+        assert "# TODO" not in code
+        assert "import os" in code
+        assert "import requests" in code
+        _compiles(code)
+        fake_resp = unittest.mock.Mock()
+        fake_resp.iter_content.return_value = [b"downloaded"]
+        namespace: dict[str, object] = {}
+        with unittest.mock.patch("requests.get", return_value=fake_resp) as mock_get:
+            exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+            namespace["Test"]()
+        mock_get.assert_called_once_with("https://example.com/report.pdf", stream=True)
+        fake_resp.raise_for_status.assert_called_once()
+        renamed = os.path.join(tmp_dir, "report (1).pdf")
+        assert os.path.exists(renamed)
+        with open(renamed, "rb") as f:
+            assert f.read() == b"downloaded"
+        with open(target, "rb") as f:
+            assert f.read() == b"original"
+
+
+def test_download_file_from_url_replace_conflict_resolution_literal_overwrites_exec():
+    """知見282: `ConflictResolution="Replace"`(プレーン文字列リテラル形)は
+    既存ファイルを上書きする。"""
+    from dump_daemon.uipath_codegen import _AUTO_RENAME_PATH_HELPER_NAME
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        target = os.path.join(tmp_dir, "report.pdf")
+        with open(target, "wb") as f:
+            f.write(b"original")
+        wf = _wrap(
+            [
+                DownloadFileFromUrlNode(
+                    url=Literal(value="https://example.com/report.pdf"),
+                    file_name=Literal(value=target),
+                    conflict_resolution=Literal(value="Replace"),
+                )
+            ]
+        )
+        code = generate_python(wf)
+        assert "# TODO" not in code
+        assert f"{_AUTO_RENAME_PATH_HELPER_NAME}(" not in code
+        _compiles(code)
+        fake_resp = unittest.mock.Mock()
+        fake_resp.iter_content.return_value = [b"downloaded"]
+        namespace: dict[str, object] = {}
+        with unittest.mock.patch("requests.get", return_value=fake_resp):
+            exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+            namespace["Test"]()
+        with open(target, "rb") as f:
+            assert f.read() == b"downloaded"
+
+
+def test_download_file_from_url_conflict_resolution_vb_enum_expression_resolves():
+    """知見282: `ConflictResolution`がVB式形
+    (`[UiPath.Activities.System.FileOperations.FileConflictBehavior.
+    Replace]`、実機`RajdipDuttaa/ACME_Data_Extraction`で確認)の場合も
+    コード生成時に静的解決される——`# TODO`に倒れない。"""
+    from dump_daemon.uipath_codegen import _AUTO_RENAME_PATH_HELPER_NAME
+
+    wf = _wrap(
+        [
+            DownloadFileFromUrlNode(
+                url=Literal(value="https://example.com/report.pdf"),
+                file_name=Literal(value="report.pdf"),
+                conflict_resolution=VbExpr(
+                    text="UiPath.Activities.System.FileOperations."
+                    "FileConflictBehavior.Replace"
+                ),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert f"{_AUTO_RENAME_PATH_HELPER_NAME}(" not in code
+    _compiles(code)
+
+
+def test_download_file_from_url_with_missing_url_or_file_name_is_todo():
+    wf = _wrap([DownloadFileFromUrlNode(url=None, file_name=None)])
+    code = generate_python(wf)
+    assert "# TODO: DownloadFileFromUrl with missing Url/FileName" in code
+    _compiles(code)
+
+
+@pytest.mark.parametrize(
+    "kwarg,label",
+    [
+        ("timeout", "Timeout"),
+        ("user_agent_header", "UserAgentHeader"),
+        ("response_attachment", "ResponseAttachment"),
+    ],
+)
+def test_download_file_from_url_with_unconfirmed_optional_attrs_is_todo(kwarg, label):
+    """知見282: `Timeout`/`UserAgentHeader`/`ResponseAttachment`は実機で
+    設定済みの例が未確認のため、でっち上げず`# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            DownloadFileFromUrlNode(
+                url=Literal(value="https://example.com/report.pdf"),
+                file_name=Literal(value="report.pdf"),
+                **{kwarg: VbExpr(text="x")},
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert f"# TODO: DownloadFileFromUrl with {label} set" in code
+    _compiles(code)
+
+
+def test_download_file_from_url_unconfirmed_conflict_resolution_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            DownloadFileFromUrlNode(
+                url=Literal(value="https://example.com/report.pdf"),
+                file_name=Literal(value="report.pdf"),
+                conflict_resolution=Literal(value="Skip"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: DownloadFileFromUrl with unconfirmed ConflictResolution" in code
     _compiles(code)
 
 

@@ -168,6 +168,7 @@ from ..uipath_dsl.types import (
     HighlightNode,
     HoverNode,
     HttpClientNode,
+    DownloadFileFromUrlNode,
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
@@ -547,6 +548,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # `requests`(`HttpClient`→`requests.request(...)`変換先、知見96)も同様。
     if any("requests.request(" in line for line in body):
         imports.append("import requests")
+    # `requests`(`DownloadFileFromUrl`→`requests.get(...)`変換先、知見282)
+    # も同様。
+    if any("requests.get(" in line for line in body):
+        imports.append("import requests")
     # `openpyxl`(`ExcelApplicationScope`→`openpyxl.load_workbook(...)`変換先、
     # 知見97)も同様。
     if any("openpyxl.load_workbook(" in line for line in body):
@@ -777,6 +782,14 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 先、知見280)も同様。
     if any(f"{_XATTRIBUTE_HELPER_NAME}(" in line for line in body):
         imports.append(_XATTRIBUTE_HELPER_SOURCE.rstrip("\n"))
+    # `_auto_rename_path`(`DownloadFileFromUrl`の`ConflictResolution=
+    # "Rename"`→連番ファイル名探索、知見282)も同様——ヘルパー自身が
+    # `os.path`を使うため、本体の`body`に`os.path.`文字列が無くても
+    # (`_download_path = _auto_rename_path(...)`という呼び出しのみ)
+    # `import os`を一緒に注入する。
+    if any(f"{_AUTO_RENAME_PATH_HELPER_NAME}(" in line for line in body):
+        imports.append("import os")
+        imports.append(_AUTO_RENAME_PATH_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -1132,6 +1145,8 @@ def _generate_node(
         return _generate_build_data_table(node, indent)
     if isinstance(node, HttpClientNode):
         return _generate_http_client(node, indent)
+    if isinstance(node, DownloadFileFromUrlNode):
+        return _generate_download_file_from_url(node, indent)
     if isinstance(node, AttachWindowNode):
         return _generate_attach_window(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, OpenApplicationNode):
@@ -10506,6 +10521,103 @@ def _generate_http_client(node: HttpClientNode, indent: int) -> list[str]:
     if header_items:
         kwargs.append(f"headers={{{', '.join(header_items)}}}")
     return [f"{prefix}requests.request({', '.join(kwargs)})"]
+
+
+# 知見282: `uasf:DownloadFileFromUrl`。`ConflictResolution`は確認済み
+# 2値(プレーンな文字列リテラル`"Rename"`/`"Replace"`、またはVB式参照
+# `UiPath.Activities.System.FileOperations.FileConflictBehavior.Rename`
+# /`.Replace`)のいずれかのシリアライズ形を取る——コード生成時に静的に
+# 解決する(`WriteRange`の`AddHeaders`等、既存の他の列挙型属性と同じ
+# 「実行時値ではなくコード生成時定数として扱う」判断)。
+def _resolve_conflict_resolution(expr: Expr) -> str | None:
+    if expr is None:
+        return "Rename"
+    if isinstance(expr, Literal) and expr.value in ("Rename", "Replace"):
+        return expr.value
+    if isinstance(expr, VbExpr):
+        text = expr.text.strip()
+        if text.endswith(".Rename"):
+            return "Rename"
+        if text.endswith(".Replace"):
+            return "Replace"
+    return None
+
+
+# 知見282続き: `Rename`(既定値、「存在する場合は自動的に連番を付けて
+# 別名で保存する」、公式ドキュメント確認済み)の自動リネームを注入
+# ヘルパー関数として実装する——Windows Explorer/UiPath共通の
+# `名前 (N).拡張子`という確認済みの連番命名規約。
+_AUTO_RENAME_PATH_HELPER_NAME = "_auto_rename_path"
+_AUTO_RENAME_PATH_HELPER_SOURCE = '''\
+def _auto_rename_path(path):
+    if not os.path.exists(path):
+        return path
+    base, ext = os.path.splitext(path)
+    n = 1
+    while True:
+        candidate = f"{base} ({n}){ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        n += 1
+'''
+
+
+def _generate_download_file_from_url(
+    node: DownloadFileFromUrlNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_download_file_from_url_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_download_file_from_url_body(
+    node: DownloadFileFromUrlNode, indent: int
+) -> list[str]:
+    """知見282: `requests.get(url, stream=True)`+ストリーミング書き込み
+    で実装する——`requests`は本体の既存コア依存(`HttpClientNode`、
+    知見29/96で既に使用)。"""
+    prefix = INDENT * indent
+    if node.url is None or node.file_name is None:
+        return [
+            f"{prefix}# TODO: DownloadFileFromUrl with missing Url/FileName"
+        ]
+    for label, value in (
+        ("Timeout", node.timeout),
+        ("UserAgentHeader", node.user_agent_header),
+        ("ResponseAttachment", node.response_attachment),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: DownloadFileFromUrl with {label} set "
+                f"({_describe_expr_for_comment(value)}) — refusing to guess"
+            ]
+    conflict_resolution = _resolve_conflict_resolution(node.conflict_resolution)
+    if conflict_resolution is None:
+        return [
+            f"{prefix}# TODO: DownloadFileFromUrl with unconfirmed "
+            f"ConflictResolution ({_describe_expr_for_comment(node.conflict_resolution)}) "
+            "— only \"Rename\"/\"Replace\" are confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    url = _render_value_or_todo(node.url, prefix, todo)
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}_download_path = {VB_CSTR_HELPER_NAME}({file_name})"]
+    if conflict_resolution == "Rename":
+        lines.append(
+            f"{prefix}_download_path = {_AUTO_RENAME_PATH_HELPER_NAME}(_download_path)"
+        )
+    lines.extend(
+        [
+            f"{prefix}_resp = requests.get({VB_CSTR_HELPER_NAME}({url}), stream=True)",
+            f"{prefix}_resp.raise_for_status()",
+            f'{prefix}with open(_download_path, "wb") as _f:',
+            f"{INDENT * (indent + 1)}for _chunk in _resp.iter_content(chunk_size=8192):",
+            f"{INDENT * (indent + 2)}_f.write(_chunk)",
+        ]
+    )
+    return lines
 
 
 def _describe_expr_for_comment(expr: Expr) -> str:

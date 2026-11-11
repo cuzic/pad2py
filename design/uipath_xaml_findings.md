@@ -13514,6 +13514,63 @@ DownloadFileFromUrl`・`umab:ReplyToMailX`/`ForwardMailX`・`uta:
 AttachDocument`——後者はOrchestrator関連の意味論判断が必要)は未実装
 のまま残る。
 
+## 282. `uasf:DownloadFileFromUrl`を新規実装——`ConflictResolution`のプレーン文字列リテラル形とVB式の列挙型フルパス参照形という2つのシリアライズ形を発見・両対応し、既存コア依存`requests`のストリーミング書き込み+Windows/UiPath共通の`name (N).ext`自動リネーム規約という新規注入ヘルパーで対応した
+
+知見281で`uta:VerifyExpressionWithOperator`を実装した後に残った
+discovery-fresh-pass-12の候補のうち、最も単純そうな`uasf:
+DownloadFileFromUrl`(`UiPath.System.Activities`パッケージ、`UiPath.
+Activities.System.FileOperations`名前空間)に着手した。
+
+実機サンプルを3件独立に取得したところ、明確な分裂を発見した——
+`PolinaGlebovich/Invoices`と`Adam974Moran/UiPathInvoicesTestTask`は
+いずれもC#式言語のTestCaseプロジェクト(知見129・281と同じ既知の
+対象外範囲)で、前者は`FileName`が未設定(`ResponseAttachment`+
+`MoveFile`の組み合わせで後から保存する構成、本活動のスコープ外)。
+VB式言語の実機サンプルは`RajdipDuttaa/ACME_Data_Extraction`の
+`DownloadCheckRequestPDF.xaml`で確認でき、`Url="[str_PDFDownloadURL]"`
+`FileName="[str_PDFReportPath]"`という通常のVB式属性に加え、
+`ConflictResolution="[UiPath.Activities.System.FileOperations.
+FileConflictBehavior.Replace]"`という、列挙型のフルパスをVB式として
+埋め込む形を確認した——これは`Adam974Moran`のC#サンプルで見た
+プレーンな文字列リテラル形(`"Rename"`)とは異なる第2のシリアライズ形
+であり、両方を静的に解決する`_resolve_conflict_resolution()`ヘルパーを
+コード生成側に追加した(`WriteRange.AddHeaders`等、既存の他の列挙型
+属性と同じ「実行時値ではなくコード生成時定数として扱う」判断)。
+公式ドキュメントで確認した`ConflictResolution`の既定値`"Rename"`
+(未設定時に自動的に連番ファイル名で保存)・`"Replace"`(上書き)の
+2値のみを確認済みとして対応し、ドキュメントに記載がある第3の値は
+3件のサンプルいずれにも実例が無いため見送った(`None`を返し
+`# TODO`へ倒す、でっち上げない)。
+
+`Rename`の自動連番は、Windows Explorer/UiPathに共通する`名前
+(N).拡張子`という確認済みの命名規約を新規注入ヘルパー
+`_auto_rename_path()`として実装した(`os.path.exists`/
+`os.path.splitext`を使用)。実装中、ヘルパー自身が`os`モジュールを
+使うにもかかわらず`import os`が生成コードに注入されない潜在バグを
+`exec()`による対話的検証で発見した——既存の`_collect_imports`の
+「本体コードのテキストに`os.path.`という文字列が含まれるかで
+`import os`を判定する」汎用機構は、ヘルパー自身のソース文字列を
+スキャン対象にしていない(ヘルパーソースは判定が終わった後に別途
+`imports`リストへ追加されるだけ)ため、本体側が`_auto_rename_path(...)`
+としか書かれていない場合は見逃される。ヘルパーの呼び出しマーカーを
+検出した際に`import os`を明示的に追加するよう修正した——**今後、
+`os`/他の標準・サードパーティ依存を使う新しい注入ヘルパーを追加する
+際は、本体コードのテキストスキャンに頼らず、ヘルパーソース注入と
+セットで該当importを明示的に追加する必要がある**という汎用的な教訓。
+
+`Timeout`/`UserAgentHeader`/`ResponseAttachment`は3件のサンプル
+いずれにも設定例が無いため、設定されている場合は`# TODO`へ倒す
+(でっち上げない)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`8件、うち`exec()`経由で`requests.get`を
+モックして既存ファイルとの競合時の自動リネーム/上書き挙動を実際に
+確認するテストを含む)、リポジトリ全体で全2510件通過(28件skip、
+本活動の10件分の純増)。
+
+discovery-fresh-pass-12が報告した残りの候補(`umab:ReplyToMailX`/
+`ForwardMailX`・`uta:AttachDocument`)は未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

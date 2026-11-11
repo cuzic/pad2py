@@ -4049,3 +4049,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      ベースのソフトアサーション機構を継承。回帰テスト追加
      (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
      4件)、リポジトリ全体で全2500件通過(本活動の6件分の純増)。
+
+238. **(完了、2026-11-10)** `uasf:DownloadFileFromUrl`を新規実装
+     (知見282)——discovery-fresh-pass-12が残した候補、実機サンプル
+     3件で発見した`ConflictResolution`の2つのシリアライズ形
+     (プレーン文字列リテラル`"Rename"`/`"Replace"`、またはVB式の
+     列挙型フルパス参照)を`_resolve_conflict_resolution()`で静的に
+     解決。既存コア依存`requests`の`stream=True`+チャンク書き込みで
+     ダウンロード、`Rename`(既定値)時はWindows/UiPath共通の
+     `名前 (N).拡張子`命名規約を新規注入ヘルパー`_auto_rename_path()`
+     で実装。実装中、注入ヘルパー自身が使う`import os`が本体コードの
+     テキストスキャンでは検出されず生成コードから欠落するバグを
+     対話的検証で発見・修正(今後の注入ヘルパー追加時の汎用的な
+     教訓として知見282に記録)。`Timeout`/`UserAgentHeader`/
+     `ResponseAttachment`は実機未確認のため`# TODO`へ倒す。回帰テスト
+     追加(`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     8件、`exec()`経由で`requests.get`をモックした自動リネーム/
+     上書き挙動の確認を含む)、リポジトリ全体で全2510件通過
+     (本活動の10件分の純増)。

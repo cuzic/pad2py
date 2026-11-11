@@ -129,6 +129,7 @@ from .types import (
     HighlightNode,
     HoverNode,
     HttpClientNode,
+    DownloadFileFromUrlNode,
     IfNode,
     InputDialogNode,
     InvokeCodeNode,
@@ -308,6 +309,13 @@ DATE_MODIFICATIONS_NS = (
 # と同じ理由(CLRネームスペース文字列そのものをXML名前空間URIとして
 # 使う形)で既存の`(namespace, tag)`ディスパッチ機構のまま対応できる。
 TESTING_NS = "clr-namespace:UiPath.Testing.Activities;assembly=UiPath.Testing.Activities"
+# 知見282: `uasf:DownloadFileFromUrl`が使う、`UiPath.System.Activities`
+# パッケージ内の非`UI_NS`名前空間(本調査初出、`SYSTEM_TEXT_NS`/
+# `SYSTEM_NS`の兄弟)。
+FILE_OPERATIONS_NS = (
+    "clr-namespace:UiPath.Activities.System.FileOperations;"
+    "assembly=UiPath.System.Activities"
+)
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -3438,6 +3446,20 @@ def _parse_http_client(elem: etree._Element) -> HttpClientNode:
     )
 
 
+def _parse_download_file_from_url(elem: etree._Element) -> DownloadFileFromUrlNode:
+    return DownloadFileFromUrlNode(
+        display_name=_attr(elem, "DisplayName"),
+        url=_attr_expr(elem, "Url") or _in_argument_property_expr(elem, "Url"),
+        file_name=_attr_expr(elem, "FileName")
+        or _in_argument_property_expr(elem, "FileName"),
+        conflict_resolution=_attr_expr(elem, "ConflictResolution"),
+        timeout=_attr_expr(elem, "Timeout"),
+        user_agent_header=_attr_expr(elem, "UserAgentHeader"),
+        response_attachment=_attr_expr(elem, "ResponseAttachment")
+        or _in_argument_property_expr(elem, "ResponseAttachment"),
+    )
+
+
 _FLOW_NODE_LOCAL_NAMES = {"FlowStep", "FlowDecision", "FlowSwitch"}
 
 
@@ -3837,6 +3859,7 @@ _DISPATCH = {
     (MAIL_BUSINESS_NS, "MoveMailX"): _parse_move_mail_x,
     (UI_NS, "SendMail"): _parse_send_mail,
     (UI_NS, "HttpClient"): _parse_http_client,
+    (FILE_OPERATIONS_NS, "DownloadFileFromUrl"): _parse_download_file_from_url,
 }
 
 
