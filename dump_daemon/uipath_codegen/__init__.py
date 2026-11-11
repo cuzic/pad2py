@@ -134,6 +134,7 @@ from ..uipath_dsl.types import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    VerifyExpressionNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -1083,6 +1084,8 @@ def _generate_node(
         return _generate_check_true(node, indent)
     if isinstance(node, CheckFalseNode):
         return _generate_check_false(node, indent)
+    if isinstance(node, VerifyExpressionNode):
+        return _generate_verify_expression(node, indent)
     if isinstance(node, CreateDirectoryNode):
         return _generate_create_directory(node, indent)
     if isinstance(node, MergeDataTableNode):
@@ -6931,6 +6934,70 @@ def _generate_check_false(node: CheckFalseNode, indent: int) -> list[str]:
     prefix = INDENT * indent
     lines = _check_true_false_family_body(node, indent, "CheckFalse", negate=False)
     return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_verify_expression(node: VerifyExpressionNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_verify_expression_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_verify_expression_body(node: VerifyExpressionNode, indent: int) -> list[str]:
+    """知見278: `uta:VerifyExpression`——`CheckTrueNode`(知見234)と
+    同じ`_vb_bool()`によるブール変換+`raise Exception(...)`パターン
+    だが、`ContinueOnFailure`(公式ドキュメント確認済みの.NET API既定値
+    `False`、Studioのシリアライズ既定値`"True"`)が`"True"`の場合は
+    例外を投げずに続行する——テスト自動化フレームワーク専用のソフト
+    アサーション機構。`Result`(出力、任意)が捕捉されている場合は
+    検証結果(ブール値)を代入する。"""
+    prefix = INDENT * indent
+    if node.expression is None:
+        return [f"{prefix}# TODO: VerifyExpression with no Expression captured"]
+    for label, value in (
+        ("AlternativeVerificationTitle", node.alternative_verification_title),
+        ("OutputMessageFormat", node.output_message_format),
+        ("KeepScreenshots", node.keep_screenshots),
+        ("ScreenshotsPath", node.screenshots_path),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: VerifyExpression with {label} set "
+                f"({_describe_expr_for_comment(value)}) — refusing to guess"
+            ]
+    for label, value in (
+        (
+            "TakeScreenshotInCaseOfFailingAssertion",
+            node.take_screenshot_in_case_of_failing_assertion,
+        ),
+        (
+            "TakeScreenshotInCaseOfSucceedingAssertion",
+            node.take_screenshot_in_case_of_succeeding_assertion,
+        ),
+    ):
+        if value not in (None, "False"):
+            return [
+                f"{prefix}# TODO: VerifyExpression with {label} {value!r} "
+                "— only the confirmed \"False\" value is implemented, "
+                "refusing to guess"
+            ]
+    todo: list[str] = []
+    expression = _render_value_or_todo(node.expression, prefix, todo)
+    target = (
+        _render_value_or_todo(node.result, prefix, todo)
+        if node.result is not None
+        else None
+    )
+    if todo:
+        return todo
+    lines = [f"{prefix}_verify_result = {VB_BOOL_HELPER_NAME}({expression})"]
+    if target is not None:
+        lines.append(f"{prefix}{target} = _verify_result")
+    if node.continue_on_failure != "True":
+        lines.append(f"{prefix}if not _verify_result:")
+        lines.append(
+            f'{INDENT * (indent + 1)}raise Exception("VerifyExpression failed")'
+        )
+    return lines
 
 
 # 知見235: `ui:CreateDirectory`。`Output`(.NET`DirectoryInfo`、

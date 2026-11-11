@@ -3421,6 +3421,52 @@ class CheckFalseNode:
 
 
 @dataclass
+class VerifyExpressionNode:
+    """`<uta:VerifyExpression Expression="..." ContinueOnFailure="..."
+    Result="..." .../>`(知見278、discovery-fresh-pass-11で発見、
+    `UiPath.Testing.Activities`パッケージ、タグ名限定GitHub検索で
+    2644件ヒット)。`CheckTrueNode`(知見234)と同じ「式がfalseの場合に
+    例外を投げる」意味論だが、`ContinueOnFailure`(確認済みの既定値
+    `"True"`)により失敗時に例外を投げず続行できる点が異なる——
+    テスト自動化フレームワーク(UiPath Test Manager/Studio Test
+    Automation)専用のソフトアサーション機構。
+
+    公式ドキュメント(WebSearch経由確認、`verify-expression`
+    API参照ページ)で「`ContinueOnFailure`の.NET API既定値は`False`
+    (式がfalseなら例外を投げて実行を停止)、`True`なら例外を投げずに
+    続行する」と確認済み——ただしStudioが新規配置時に自動補完する
+    シリアライズ既定値はground-truth(`marcelocruzrpa/
+    uipath-ai-skills`)で`"True"`(.NET API既定値とは異なる、Studio
+    自体の UI既定選択)。実機`flindersuni/rpa-Flinders.Foundation`の
+    `TestCases/TestDetectEnvironmentTest.xaml`(`CheckTrue`/
+    `CheckFalse`(知見234)と同じ作者の別リポジトリ)で`Expression`
+    (ブール式)+`ContinueOnFailure="True"`(実機確認済みの値)+
+    `TakeScreenshotInCaseOfFailingAssertion`/`...Succeeding...`
+    (いずれも`"False"`)の構成を確認——`Result`は同サンプルでは
+    未使用(純粋なアサーション用途)だが出力として捕捉対応する。
+
+    `AlternativeVerificationTitle`/`OutputMessageFormat`/
+    `KeepScreenshots`/`ScreenshotsPath`は実機で非null値を一度も確認
+    できず未対応(`GetFileInfoX`等と同じ「未確認の設定値は推測しない」
+    判断)。`ErrorMessage`相当の属性はこの活動には存在しないため、
+    本トランスパイラ独自の汎用メッセージを使う。姉妹活動`uta:
+    VerifyExpressionWithOperator`(`Operator`列挙型+`FirstExpression`/
+    `SecondExpression`の2項比較版)は別途の確認が必要なため今回は
+    対象外とする。"""
+
+    expression: Expr = None
+    continue_on_failure: str | None = None
+    result: Expr = None
+    alternative_verification_title: Expr = None
+    output_message_format: Expr = None
+    keep_screenshots: Expr = None
+    screenshots_path: Expr = None
+    take_screenshot_in_case_of_failing_assertion: str | None = None
+    take_screenshot_in_case_of_succeeding_assertion: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class CreateDirectoryNode:
     """`<ui:CreateDirectory Path="..." ContinueOnError="..."
     Output="..." />`(知見235、`CopyFile`/`MoveFile`/`CreateFile`の
@@ -5780,6 +5826,7 @@ Node = (
     | GetLastDownloadedFileNode
     | CheckTrueNode
     | CheckFalseNode
+    | VerifyExpressionNode
     | CreateDirectoryNode
     | MergeDataTableNode
     | FormatValueNode

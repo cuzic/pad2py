@@ -89,6 +89,7 @@ from dump_daemon.uipath_dsl import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    VerifyExpressionNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -1140,6 +1141,51 @@ def test_check_true_and_check_false_properties():
     assert isinstance(false_node, CheckFalseNode)
     assert false_node.expression == VbExpr(text="String.IsNullOrWhiteSpace(credentialName)")
     assert false_node.error_message == Literal(value="A credential name must be supplied")
+
+
+_TESTING_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:uta="clr-namespace:UiPath.Testing.Activities;'
+    'assembly=UiPath.Testing.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_verify_expression_properties():
+    """知見278: `uta:VerifyExpression`(discovery-fresh-pass-11で発見、
+    `UiPath.Testing.Activities`パッケージ、タグ名限定GitHub検索で
+    2644件ヒット)。実機`flindersuni/rpa-Flinders.Foundation`の
+    `TestCases/TestDetectEnvironmentTest.xaml`(`CheckTrue`/
+    `CheckFalse`と同じ作者の別リポジトリ)で確認した構成——`Result`は
+    未使用(純粋なアサーション用途)、`ContinueOnFailure="True"`。"""
+    xml = (
+        f"<uta:VerifyExpression {_TESTING_XMLNS} "
+        'KeepScreenshots="{x:Null}" ScreenshotsPath="{x:Null}" '
+        'ContinueOnFailure="True" DisplayName="Verify Expression" '
+        'Expression="[detectedEnvironment = &quot;test&quot;]" '
+        'TakeScreenshotInCaseOfFailingAssertion="False" '
+        'TakeScreenshotInCaseOfSucceedingAssertion="False" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, VerifyExpressionNode)
+    assert node.expression == VbExpr(text='detectedEnvironment = "test"')
+    assert node.continue_on_failure == "True"
+    assert node.result is None
+    assert node.take_screenshot_in_case_of_failing_assertion == "False"
+    assert node.take_screenshot_in_case_of_succeeding_assertion == "False"
+
+
+def test_verify_expression_with_result_bound():
+    """知見278: `Result`が捕捉されている場合も確認する(合成データ、
+    discovery-fresh-pass-11が報告した`VerifyExpressionWithOperator`の
+    実機確認済みパターンを単純な`VerifyExpression`で再現)。"""
+    xml = (
+        f"<uta:VerifyExpression {_TESTING_XMLNS} "
+        'ContinueOnFailure="True" Expression="[x = 1]" Result="[Passed]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, VerifyExpressionNode)
+    assert node.result == VbExpr(text="Passed")
 
 
 def test_create_directory_properties():

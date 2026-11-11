@@ -112,6 +112,7 @@ from dump_daemon.uipath_dsl import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    VerifyExpressionNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -9420,6 +9421,82 @@ def test_check_true_and_check_false_with_missing_properties_is_todo():
     code2 = generate_python(wf2)
     assert "# TODO: CheckFalse with missing Expression/ErrorMessage" in code2
     _compiles(code2)
+
+
+def test_verify_expression_continues_and_sets_result_when_continue_on_failure_true():
+    """知見278: `uta:VerifyExpression`——実機確認済みの
+    `ContinueOnFailure="True"`では式がfalseでも例外を投げず続行し、
+    `Result`(捕捉されている場合)へ検証結果のブール値を代入する
+    ことを`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            VerifyExpressionNode(
+                expression=VbExpr(text="x = 1"),
+                continue_on_failure="True",
+                result=VbExpr(text="passed"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(x):") + "\n    return passed"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"](1) is True
+    assert namespace["Test"](2) is False
+
+
+def test_verify_expression_raises_when_continue_on_failure_not_true():
+    """知見278: `ContinueOnFailure`省略時(公式ドキュメント確認済みの
+    .NET API既定値`False`)は式がfalseの場合に例外を投げることを
+    `exec()`経由で確認する。"""
+    wf = _wrap([VerifyExpressionNode(expression=VbExpr(text="x = 1"))])
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code.replace("def Test():", "def Test(x):"), namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"](1)
+    with pytest.raises(Exception, match="VerifyExpression failed"):
+        namespace["Test"](2)
+
+
+def test_verify_expression_with_no_expression_is_todo():
+    wf = _wrap([VerifyExpressionNode(expression=None)])
+    code = generate_python(wf)
+    assert "# TODO: VerifyExpression with no Expression captured" in code
+    _compiles(code)
+
+
+def test_verify_expression_with_unconfirmed_screenshot_setting_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            VerifyExpressionNode(
+                expression=VbExpr(text="x"),
+                take_screenshot_in_case_of_failing_assertion="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: VerifyExpression with TakeScreenshotInCaseOfFailingAssertion" in code
+    )
+    _compiles(code)
+
+
+def test_verify_expression_with_alternative_verification_title_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            VerifyExpressionNode(
+                expression=VbExpr(text="x"),
+                alternative_verification_title=Literal(value="Custom check"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: VerifyExpression with AlternativeVerificationTitle set" in code
+    _compiles(code)
 
 
 def test_create_directory_makes_nested_dirs_idempotently():

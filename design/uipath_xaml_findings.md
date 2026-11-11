@@ -13320,6 +13320,57 @@ skip、本活動の3件分の純増)。discovery-fresh-pass-10が報告した
 `ui:ReplaceShapeWithMedia`、いずれも個別の検証が必要な複雑度)は
 未実装のまま残る。
 
+## 278. `uta:VerifyExpression`を新規実装——discovery-fresh-pass-11が報告した`UiPath.Testing.Activities`パッケージの最有力候補、ContinueOnFailureによる「例外を投げずに続行するソフトアサーション」という`CheckTrue`との意味論の違いを公式ドキュメントで確認して実装した
+
+知見277で`ui:Beep`を実装した直後の次ティックとして、discovery-
+fresh-pass-11が最有力候補として報告した`uta:VerifyExpression`
+(`UiPath.Testing.Activities`パッケージ、タグ名限定GitHub検索で
+2644件ヒット)に着手した。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機
+`flindersuni/rpa-Flinders.Foundation`の`TestCases/
+TestDetectEnvironmentTest.xaml`(既実装の`CheckTrue`/`CheckFalse`
+(知見234)と同じ作者の別リポジトリ——同じ開発者が両活動を実際に
+使い分けている実例)で構成を確認——`Expression`(ブール式)+
+`ContinueOnFailure`(実機確認済みの値`"True"`)+
+`TakeScreenshotInCaseOfFailingAssertion`/`...Succeeding...`
+(いずれも`"False"`)+`Result`(出力、任意——同サンプルでは未使用の
+純粋なアサーション用途)。
+
+`CheckTrueNode`(知見234、「式がfalseの場合に例外を投げる」)と構造は
+似ているが、`ContinueOnFailure`という本質的に異なる意味論を持つ——
+WebSearchで公式ドキュメント(`verify-expression`のAPI参照ページ)を
+確認したところ、「.NET API既定値は`False`(式がfalseなら例外を投げて
+実行を停止)、`True`なら例外を投げずに続行する」というソフト
+アサーション機構だと判明した。ground-truthのStudioシリアライズ既定値
+が`"True"`(.NET API既定値`False`とは異なる、Studio自体のUI既定選択)
+という食い違いも発見——実機サンプルも`"True"`を明示的に設定していた
+ため、両方の確認済み値(`"True"`/`"False"`)に対応した。
+
+実装は`_vb_bool()`で検証結果を計算し、`Result`が捕捉されていれば
+代入し、`ContinueOnFailure != "True"`の場合のみ`raise Exception(...)`
+する——`CheckTrueNode`の既存パターンを「続行オプション」で拡張した
+形。`ErrorMessage`相当の属性がこの活動には存在しないため、本
+トランスパイラ独自の汎用メッセージ("VerifyExpression failed")を
+使う。`AlternativeVerificationTitle`/`OutputMessageFormat`/
+`KeepScreenshots`/`ScreenshotsPath`(実機で非null値未確認)が設定
+されている場合は`# TODO`へ倒す。姉妹活動`uta:
+VerifyExpressionWithOperator`(`Operator`列挙型+`FirstExpression`/
+`SecondExpression`の2項比較版)は別途の確認が必要なため今回は対象外
+とした。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`5件、うち2件は`exec()`経由で
+`ContinueOnFailure="True"`時に例外を投げず`Result`へブール値を
+代入すること・既定値(.NET API既定の`False`相当)時に例外を投げる
+ことの両方を確認)、リポジトリ全体で全2484件通過(28件skip、本活動
+の7件分の純増)。
+
+discovery-fresh-pass-11が報告した残りの候補(`uta:
+VerifyExpressionWithOperator`・`uast:FindAndReplace`(standalone版)
+・`uast:ChangeCase`(standalone版)・`ui:GetXMLNodeAttributes`)は
+未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

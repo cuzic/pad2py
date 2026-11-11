@@ -3994,3 +3994,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      テスト規約に従った。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`2件)、リポジトリ全体で
      全2477件通過(本活動の3件分の純増)。
+
+234. **(完了、2026-11-10)** `uta:VerifyExpression`を新規実装
+     (知見278)——discovery-fresh-pass-11最有力候補、`UiPath.
+     Testing.Activities`パッケージ、タグ名限定検索で2644件ヒット。
+     `CheckTrue`(知見234)と似た構造だが`ContinueOnFailure`
+     (公式ドキュメント確認済み: .NET API既定値`False`→例外で停止、
+     `True`→続行、Studioシリアライズ既定値は`"True"`)という異なる
+     意味論を持つソフトアサーション機構。`Result`捕捉時はブール値を
+     代入。`AlternativeVerificationTitle`等の未確認属性は`# TODO`へ
+     倒す。姉妹活動`VerifyExpressionWithOperator`は別途確認が必要
+     なため対象外。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`5件)、リポジトリ全体で全2484件
+     通過(本活動の7件分の純増)。

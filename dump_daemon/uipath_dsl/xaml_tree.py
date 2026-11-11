@@ -93,6 +93,7 @@ from .types import (
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
+    VerifyExpressionNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -298,6 +299,11 @@ DATE_MODIFICATIONS_NS = (
     "clr-namespace:UiPath.Core.Activities.DateModifications;"
     "assembly=UiPath.System.Activities"
 )
+# 知見278: `uta:VerifyExpression`等が使う、`UiPath.Testing.Activities`
+# パッケージ専用の非`UI_NS`名前空間——`PDF_NS`/`TEXT_MODIFICATIONS_NS`
+# と同じ理由(CLRネームスペース文字列そのものをXML名前空間URIとして
+# 使う形)で既存の`(namespace, tag)`ディスパッチ機構のまま対応できる。
+TESTING_NS = "clr-namespace:UiPath.Testing.Activities;assembly=UiPath.Testing.Activities"
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -2217,6 +2223,26 @@ def _parse_check_true(elem: etree._Element) -> CheckTrueNode:
     )
 
 
+def _parse_verify_expression(elem: etree._Element) -> VerifyExpressionNode:
+    return VerifyExpressionNode(
+        display_name=_attr(elem, "DisplayName"),
+        expression=_attr_expr(elem, "Expression")
+        or _in_argument_property_expr(elem, "Expression"),
+        continue_on_failure=_attr_or_none(elem, "ContinueOnFailure"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        alternative_verification_title=_attr_expr(elem, "AlternativeVerificationTitle"),
+        output_message_format=_attr_expr(elem, "OutputMessageFormat"),
+        keep_screenshots=_attr_expr(elem, "KeepScreenshots"),
+        screenshots_path=_attr_expr(elem, "ScreenshotsPath"),
+        take_screenshot_in_case_of_failing_assertion=_attr_or_none(
+            elem, "TakeScreenshotInCaseOfFailingAssertion"
+        ),
+        take_screenshot_in_case_of_succeeding_assertion=_attr_or_none(
+            elem, "TakeScreenshotInCaseOfSucceedingAssertion"
+        ),
+    )
+
+
 def _parse_check_false(elem: etree._Element) -> CheckFalseNode:
     return CheckFalseNode(
         display_name=_attr(elem, "DisplayName"),
@@ -3662,6 +3688,7 @@ _DISPATCH = {
     (UI_NS, "GetLastDownloadedFile"): _parse_get_last_downloaded_file,
     (UI_NS, "CheckTrue"): _parse_check_true,
     (UI_NS, "CheckFalse"): _parse_check_false,
+    (TESTING_NS, "VerifyExpression"): _parse_verify_expression,
     (UI_NS, "CreateDirectory"): _parse_create_directory,
     (UI_NS, "MergeDataTable"): _parse_merge_data_table,
     (UI_NS, "FormatValue"): _parse_format_value,
