@@ -76,6 +76,7 @@ from .types import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelGetWorkbookSheetsNode,
+    ExcelCopySheetNode,
     ReadRangeNode,
     WriteRangeNode,
     ReadCellNode,
@@ -2731,6 +2732,15 @@ def _parse_excel_get_workbook_sheets(elem: etree._Element) -> ExcelGetWorkbookSh
     )
 
 
+def _parse_excel_copy_sheet(elem: etree._Element) -> ExcelCopySheetNode:
+    return ExcelCopySheetNode(
+        sheet_name=_attr_expr(elem, "SheetName"),
+        destination_file_path=_attr_expr(elem, "DestinationFilePath"),
+        destination_sheet_name=_attr_expr(elem, "DestinationSheetName"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
@@ -3820,6 +3830,7 @@ _DISPATCH = {
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
     (UI_NS, "ExcelReadCell"): _parse_excel_read_cell,
     (UI_NS, "ExcelGetWorkbookSheets"): _parse_excel_get_workbook_sheets,
+    (UI_NS, "ExcelCopySheet"): _parse_excel_copy_sheet,
     (UI_NS, "Comment"): _parse_comment,
     (UI_NS, "CommentOut"): _parse_comment_out,
     (UI_NS, "LogMessage"): _parse_log_message,

@@ -5217,6 +5217,36 @@ class ExcelGetWorkbookSheetsNode:
 
 
 @dataclass
+class ExcelCopySheetNode:
+    """`<ui:ExcelCopySheet SheetName="..." DestinationFilePath="..."
+    DestinationSheetName="..." />`(知見285、discovery-fresh-pass-13が
+    発見、タグ名限定GitHub検索で56件ヒット)。`ExcelApplicationScope`配下
+    専用の子活動。discovery-fresh-pass-13の報告(「実機は常に
+    DestinationFilePath/DestinationSheetNameがnull」)を独立に再検証
+    したところ誤りと判明——`Jeehay28/rpa-uipath`は確かにnull/null
+    (同一ワークブック内コピー)だが、`Pk-NY/
+    yes24TicketRanking_RPA_Uipath`と`jaydeepsinghchouhan/AcroScholar`は
+    どちらもnull**ではない**`DestinationFilePath`/`DestinationSheetName`
+    を使っていた(別ワークブックへのコピー)——公式ドキュメント
+    (`DestinationFilePath`: 空なら現在のスコープワークブック内コピー、
+    値があれば別ワークブックへコピー)でも裏付けられる、実際にはむしろ
+    一般的な使い方。`DestinationFilePath`が空の同一ワークブック内コピー
+    のみ対応し(`openpyxl.Workbook.copy_worksheet()`で書式も含め忠実に
+    再現できる確定済みケース)、別ワークブックへのコピーは
+    (a) 対象ファイルが未存在の場合の生成有無が未確認、(b) 既存の
+    スコープ機構が単一ワークブックの開く→操作→スコープ終了時保存
+    モデルのみを想定しており別ファイルを中間で開いて即時保存する
+    仕組みが無い、という2つの理由で`# TODO`へ倒す(知見230の
+    `DatabaseTransaction.UseTransaction=True`と同じ「アーキテクチャ上の
+    不整合を素直に認めて見送る」判断)。"""
+
+    sheet_name: Expr = None
+    destination_file_path: Expr = None
+    destination_sheet_name: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ReadRangeNode:
     """`<ui:ReadRange WorkbookPath="..." SheetName="..." DataTable="..."
     AddHeaders="..." Range="..." />`(知見256、Excel/Word/マウスキーボード
@@ -6105,6 +6135,7 @@ Node = (
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
     | ExcelGetWorkbookSheetsNode
+    | ExcelCopySheetNode
     | ReadRangeNode
     | WriteRangeNode
     | ReadCellNode

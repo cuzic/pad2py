@@ -101,6 +101,7 @@ from dump_daemon.uipath_dsl import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelGetWorkbookSheetsNode,
+    ExcelCopySheetNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -13851,6 +13852,95 @@ def test_excel_get_workbook_sheets_outside_scope_is_unresolved_activity():
     クラッシュしないことを確認する(`ExcelReadCellNode`等と同じ既存の
     フォールバック経路)。"""
     wf = _wrap([ExcelGetWorkbookSheetsNode(sheets=VbExpr(text="sheetnames"))])
+    code = generate_python(wf)
+    assert "# TODO" in code
+    _compiles(code)
+
+
+def test_excel_copy_sheet_same_workbook_generates_real_code_exec(tmp_path):
+    """知見285: `ui:ExcelCopySheet`——`DestinationFilePath`/
+    `DestinationSheetName`が両方未設定の同一ワークブック内コピーで、
+    実際の`openpyxl`ワークブックに対して`exec()`経由で
+    `copy_worksheet()`が本当にシートを複製することを確認する。"""
+    import openpyxl
+
+    wb_path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws["A1"] = "hello"
+    wb.save(wb_path)
+
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path=wb_path,
+                body=[
+                    ExcelCopySheetNode(
+                        sheet_name=Literal(value="Sheet1"),
+                        display_name="Copy Sheet",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Copy Sheet" in code
+    assert "ExcelWorkbookScope.copy_worksheet(ExcelWorkbookScope['Sheet1'])" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"]()
+
+    wb_out = openpyxl.load_workbook(wb_path)
+    assert wb_out.sheetnames == ["Sheet1", "Sheet1 Copy"]
+    assert wb_out["Sheet1 Copy"]["A1"].value == "hello"
+
+
+def test_excel_copy_sheet_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelCopySheetNode(sheet_name=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Copy Sheet with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_excel_copy_sheet_cross_workbook_is_todo_not_guessed():
+    """知見285: discovery-fresh-pass-13の「実機は常にnull」という報告を
+    独立再検証で覆した、`DestinationFilePath`が設定された別ワークブック
+    コピーのケース——ファイル生成有無が未確認のため、でっち上げず
+    `# TODO`に倒す。"""
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[
+                    ExcelCopySheetNode(
+                        sheet_name=Literal(value="Scholarship"),
+                        destination_file_path=Literal(value="NewScholarship.xlsx"),
+                        destination_sheet_name=Literal(value="Scholarship"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: Excel Copy Sheet with DestinationFilePath/"
+        "DestinationSheetName set" in code
+    )
+    _compiles(code)
+
+
+def test_excel_copy_sheet_outside_scope_is_unresolved_activity():
+    wf = _wrap([ExcelCopySheetNode(sheet_name=Literal(value="Sheet1"))])
     code = generate_python(wf)
     assert "# TODO" in code
     _compiles(code)

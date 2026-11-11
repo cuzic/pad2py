@@ -117,6 +117,7 @@ from ..uipath_dsl.types import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelGetWorkbookSheetsNode,
+    ExcelCopySheetNode,
     ReadRangeNode,
     WriteRangeNode,
     ReadCellNode,
@@ -1225,6 +1226,7 @@ def _generate_node(
             ExcelWriteRangeNode,
             ExcelAppendRangeNode,
             ExcelGetWorkbookSheetsNode,
+            ExcelCopySheetNode,
             WordReplaceTextNode,
             WordAppendTextNode,
             WordSaveAsNode,
@@ -8420,6 +8422,12 @@ def _generate_excel_application_scope(
                     prefix,
                 )
             )
+        elif isinstance(child, ExcelCopySheetNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_excel_copy_sheet_in_scope(child, indent, var), prefix
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
@@ -9091,6 +9099,36 @@ def _generate_excel_get_workbook_sheets_in_scope(
     if todo:
         return todo
     return [f"{prefix}{target} = list({scope_var}.sheetnames)"]
+
+
+# 知見285: `ui:ExcelCopySheet`——discovery-fresh-pass-13の報告(「実機は
+# 常にDestinationFilePath/DestinationSheetNameがnull」)を独立に再検証
+# した結果、誤りと判明(`types.py`の`ExcelCopySheetNode`docstring参照)。
+# `DestinationFilePath`が空の同一ワークブック内コピーのみ対応する——
+# `openpyxl.Workbook.copy_worksheet()`は同一`Workbook`インスタンス内の
+# 複写のみ対応(書式も含めて忠実)で、UiPath公式ドキュメント確認済みの
+# 「空なら現在のスコープワークブック内コピー」という挙動と正確に一致
+# する。別ワークブックへのコピー(`DestinationFilePath`が非null)は
+# 対象ファイルの生成有無が未確認+既存のスコープ機構がこの「別ファイルを
+# 中間で開いて即時保存する」モデルに対応していないため`# TODO`へ倒す。
+def _generate_excel_copy_sheet_in_scope(
+    node: ExcelCopySheetNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: Excel Copy Sheet with no SheetName captured"]
+    if node.destination_file_path is not None or node.destination_sheet_name is not None:
+        return [
+            f"{prefix}# TODO: Excel Copy Sheet with DestinationFilePath/"
+            "DestinationSheetName set (copy into a different workbook — "
+            "unconfirmed file-creation semantics, no existing infra for "
+            "opening/saving a second workbook mid-scope) — refusing to guess"
+        ]
+    todo: list[str] = []
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{scope_var}.copy_worksheet({scope_var}[{sheet_name}])"]
 
 
 # 知見119: `ui:Comment`。純粋な注釈で実行時の挙動は無い——Pythonの`#`

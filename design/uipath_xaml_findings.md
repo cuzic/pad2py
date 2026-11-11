@@ -13657,6 +13657,47 @@ discovery-fresh-pass-13が報告した残りの候補(`ui:ExcelCopySheet`・
 `ui:GetSheets`・`exchangelib`待ちの`GetExchangeMailMessages`/
 `SendExchangeMail`)は未実装のまま残る。
 
+## 285. `ui:ExcelCopySheet`を新規実装——discovery-fresh-pass-13の「実機は常にDestinationFilePath/DestinationSheetNameがnull」という報告を独立再検証で覆し、むしろ別ワークブックへのコピーの方が一般的だったことを発見した上で、確実に対応できる同一ワークブック内コピーのみ実装した
+
+知見284で`ExcelGetWorkbookSheets`を実装した後、discovery-fresh-pass-13
+が報告した次の候補`ui:ExcelCopySheet`(56件ヒット)に着手した。
+エージェントの報告は「実機サンプル(`Jeehay28/rpa-uipath`)は常に
+`DestinationFilePath`/`DestinationSheetName`が`{x:Null}`(同一
+ワークブック内コピー)」というものだったが、本調査で確立した「エージェ
+ントの報告は常に独立検証する」方針(知見265の`AnchorBase`教訓)に従い、
+`gh api search/code`で同じ56件ヒットを独立に確認した上で報告とは別の
+2リポジトリ(`Pk-NY/yes24TicketRanking_RPA_Uipath`・`jaydeepsinghchouhan/
+AcroScholar`)を追加で取得したところ、**両方とも`DestinationFilePath`/
+`DestinationSheetName`に実際の値を持っていた**(別ワークブックへの
+コピー)——3件中2件が別ワークブック形で、報告された「常にnull」は
+誤りと判明した。公式ドキュメント(`DestinationFilePath`: 空なら現在の
+スコープワークブック内コピー、値があれば別ワークブックへコピー)も
+この分裂を裏付ける——むしろ別ワークブックコピーの方が一般的な使い方
+である可能性が高い。
+
+同一ワークブック内コピー(`DestinationFilePath`が空)は
+`openpyxl.Workbook.copy_worksheet()`で書式も含めて忠実に対応できる
+確定済みケースのため実装した(`exec()`経由で実際に`Sheet1`→
+`Sheet1 Copy`という`openpyxl`自身の既存の自動命名規約でコピーされ、
+セル値も引き継がれることを確認)。別ワークブックへのコピーは
+(a) 対象ファイルが未存在の場合に新規作成されるのか既存ファイルへの
+追記なのかが実機サンプルからも公式ドキュメントからも確認できない、
+(b) 既存の`ExcelApplicationScope`機構は単一ワークブックを「開く→
+操作→スコープ終了時に保存」するモデルのみを想定しており、スコープの
+途中で別のワークブックファイルを開いて即座に保存する仕組みが無い
+(知見231の`DatabaseTransaction.UseTransaction=True`と同じ「既存の
+アーキテクチャと噛み合わない」という理由での見送り判断)、という2つの
+理由で`# TODO`へ倒した——でっち上げず正直に見送る既存方針を継承。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件(同一ワークブック内・
+別ワークブックの両方のパース確認)・`tests/test_uipath_codegen.py`
+4件、うち1件は実際の`openpyxl`ワークブックで`exec()`経由の確認を
+含む)、リポジトリ全体で全2520件通過(28件skip、本活動の6件分の純増)。
+
+discovery-fresh-pass-13が報告した残りの候補(`ui:GetSheets`・
+`exchangelib`待ちの`GetExchangeMailMessages`/`SendExchangeMail`)は
+未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

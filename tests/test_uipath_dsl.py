@@ -78,6 +78,7 @@ from dump_daemon.uipath_dsl import (
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
     ExcelGetWorkbookSheetsNode,
+    ExcelCopySheetNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1645,6 +1646,45 @@ def test_excel_get_workbook_sheets_properties():
     assert isinstance(node, ExcelGetWorkbookSheetsNode)
     assert node.sheets == VbExpr(text="sheetnames")
     assert node.display_name == "Get Workbook Sheets"
+
+
+def test_excel_copy_sheet_same_workbook_properties():
+    """知見285: `ui:ExcelCopySheet`(discovery-fresh-pass-13が発見、
+    タグ名限定GitHub検索で56件ヒット)。実機`Jeehay28/rpa-uipath`の
+    `02_source/02_Excel_Reports/Copy_AllSheets.xaml`で確認した
+    同一ワークブック内コピーの構成——`DestinationFilePath`/
+    `DestinationSheetName`はどちらも`{x:Null}`、`SheetName`はVB式。"""
+    xml = (
+        f"<ui:ExcelCopySheet {_UI_XMLNS} "
+        'DestinationFilePath="{x:Null}" DestinationSheetName="{x:Null}" '
+        'DisplayName="Copy Sheet" SheetName="[in_SheetName_01]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelCopySheetNode)
+    assert node.sheet_name == VbExpr(text="in_SheetName_01")
+    assert node.destination_file_path is None
+    assert node.destination_sheet_name is None
+    assert node.display_name == "Copy Sheet"
+
+
+def test_excel_copy_sheet_cross_workbook_properties():
+    """知見285: discovery-fresh-pass-13の報告(「実機は常にnull」)を
+    独立に再検証した結果見つけた、別ワークブックへのコピーの実機構成
+    (`jaydeepsinghchouhan/AcroScholar`の`Main.xaml`)——
+    `DestinationFilePath`/`DestinationSheetName`はどちらも実際の値を
+    持つ(公式ドキュメント確認済みの「別ワークブックへコピー」の
+    使い方)。"""
+    xml = (
+        f"<ui:ExcelCopySheet {_UI_XMLNS} "
+        'DestinationFilePath="D:\\Output\\NewScholarship.xlsx" '
+        'DestinationSheetName="Scholarship" DisplayName="Copy Sheet" '
+        'SheetName="Scholarship" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelCopySheetNode)
+    assert node.sheet_name == Literal(value="Scholarship")
+    assert node.destination_file_path == Literal(value="D:\\Output\\NewScholarship.xlsx")
+    assert node.destination_sheet_name == Literal(value="Scholarship")
 
 
 def test_comment_properties():

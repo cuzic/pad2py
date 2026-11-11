@@ -4100,3 +4100,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
      3件、うち1件は実際の3シート`openpyxl`ワークブックで`exec()`経由の
      確認を含む)、リポジトリ全体で全2514件通過(本活動の4件分の純増)。
+
+241. **(完了、2026-11-11)** `ui:ExcelCopySheet`を新規実装(知見285)——
+     discovery-fresh-pass-13の「実機は常にDestinationFilePath/
+     DestinationSheetNameがnull」という報告を独立再検証で覆し
+     (`Pk-NY/yes24TicketRanking_RPA_Uipath`・`jaydeepsinghchouhan/
+     AcroScholar`の2リポジトリが実は別ワークブックへのコピーだった)、
+     公式ドキュメントでも裏付けが取れる2パターンのうち確実に対応できる
+     同一ワークブック内コピー(`DestinationFilePath`が空)のみ
+     `openpyxl.Workbook.copy_worksheet()`で実装。別ワークブックへの
+     コピーは、対象ファイルの生成有無が未確認+既存のスコープ機構が
+     別ファイルを中間で開いて即時保存するモデルに未対応という2つの
+     理由で`# TODO`へ倒す(知見231の`DatabaseTransaction.
+     UseTransaction=True`と同じ判断クラス)。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     4件、うち1件は実際の`openpyxl`ワークブックで`exec()`経由の確認を
+     含む)、リポジトリ全体で全2520件通過(本活動の6件分の純増)。
