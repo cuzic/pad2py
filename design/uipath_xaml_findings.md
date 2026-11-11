@@ -13120,6 +13120,74 @@ test_uipath_codegen.py`7件——`ModifyDate`本体5件、`Today`/`Now`
 通常年2月末日(2026-02-28)両方の正しい計算を確認)、リポジトリ
 全体で全2452件通過(28件skip、本活動+バグ修正の8件分の純増)。
 
+## 274. `ui:PowerPointApplicationScope`+`FindAndReplaceTextInPresentation`/`InsertTextInPresentation`/`SavePresentationFileAs`を新規実装——discovery-fresh-pass-9が「新規オプション依存が必要」と誤報告した新活動ファミリー、実際は既存のpython-pptxコア依存で対応できた
+
+discovery-fresh-pass-9が最有力候補として報告した
+`UiPath.PowerPoint.Activities`ファミリー(pad2pyにこれまで一切実装が
+無かった新しい活動パッケージ)に着手した。
+
+**エージェントの報告の誤りを発見**: エージェントは「`python-pptx`
+という新規オプション依存が必要」と報告したが、`pyproject.toml`を
+確認したところ`python-pptx>=1.0.2`は既に本体の`dependencies`
+(コア依存)に含まれていた——`openpyxl`/`python-docx`と全く同じ
+既存の確認済み依存で、新規依存の追加判断は不要だった。エージェントは
+`pyproject.toml`を確認せずにコード内の`import`文の有無だけで
+「未使用=新規依存が必要」と誤って推測したと考えられる——`ui:
+AnchorBase`(知見265)のケースと同じ「エージェントの確信度の高い
+主張でも独立検証する」教訓の新たな実例。
+
+実機2件(公式`UiPath-Services/StudioTemplates`の
+`CreatePowerPointPresentation`テンプレート、`Apress/
+Robotic-Process-Automation-Using-UiPath-StudioX`の
+`Chapter_10-PresentationAutomationExercise/Main.xaml`)で構成を確認。
+`ExcelApplicationScopeNode`(知見97)/`WordApplicationScopeNode`
+(知見121)と同じ`ActivityAction`+`DelegateInArgument`構造だが、子
+活動が`scope_var`への暗黙のコンテキスト伝播ではなく明示的な
+`Presentation`引数を取る点が構造上大きく異なる(`Presentation=
+"[PowerPoint]"`という明示属性、実機2件とも確認)——このため子活動を
+通常の独立したトップレベル活動として実装でき、Excel/Word版のような
+専用の`_in_scope`ディスパッチ機構が一切不要だった。
+
+`PresentationPath`(実機2件とも静的リテラルのみ確認、`WordApplication
+ScopeNode.file_name`と同じ判断で`Expr`へ昇格しない)、`Password`
+(実機2件とも`{x:Null}`)、`CreateIfNotExists`(実機2件とも`"True"`、
+公式ドキュメント(WebSearch経由確認)で「オンにすると存在しないファイル
+を新規作成、オフ(既定)だと存在しない場合エラー」という明確な意味論を
+確認した上で両方の値に対応)、`AutoSave`(実機2件とも唯一の確認値
+`"False"`——公式ドキュメント確認済みの既定値`"True"`(変更ごとの
+自動保存)とは異なり、`"False"`時は全ての子活動完了後に明示的な
+`SavePresentationFileAs`が必要、実機2件とも事実その構成)、
+`TemplatePath`(公式サンプルでのみ出現、`PresentationPath`と同じ値
+——別活動`Create New PowerPoint Document`の役割と判明、本スコープ自体
+には意味が無いため`PresentationPath`と異なる値の場合のみ`# TODO`へ
+倒す)。
+
+`FindAndReplaceTextInPresentation`は`WordReplaceTextNode`(知見121)
+と同じ「各段落の各run単体に対して文字列置換する」標準的なイディオムを
+スライド/シェイプの2段階ループへ拡張して実装(`MatchCase`/
+`WholeWordsOnly`は実機2件とも唯一の確認値`"False"`のみ対応)。
+`InsertTextInPresentation`の`SlideIndex`は1始まりと推定した(本
+トランスパイラ独自の推定——既存の`ExtractPDFPageRange`等の1始まり
+ページ番号系属性との一貫性に基づく判断、UiPath自体の確定済み仕様
+としての直接確認ではないことを明記)、`python-pptx`の0始まり
+`.slides[idx]`へ`-1`して対応。`SavePresentationFileAs`は
+`Presentation.save(file_path)`が直接対応する。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`7件、うち2件は実際の`python-pptx`
+プレゼンテーションに対して`exec()`経由でスコープ全体
+(`FindAndReplaceTextInPresentation`→`InsertTextInPresentation`→
+`SavePresentationFileAs`の順)を実行し、テキスト置換・スライド
+タイトル挿入・別名保存が全て正しく反映されることを確認——`Create
+IfNotExists="True"`時に存在しないファイルから新規プレゼンテーションを
+作成するパスも別途確認)、リポジトリ全体で全2460件通過(28件skip、
+本活動の8件分の純増)。
+
+discovery-fresh-pass-9が報告したこのファミリーの第2波候補
+(`InsertSlide`/`DeleteSlide`/`CopyPasteSlide`/`ReplaceShapeWithMedia`
+/`SavePresentationAsPdf`、いずれも実機1件のみでの確認——今回実装した
+4活動より確証度が低い)は未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

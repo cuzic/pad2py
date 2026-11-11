@@ -4528,6 +4528,116 @@ class WordApplicationScopeNode:
 
 
 @dataclass
+class PowerPointApplicationScopeNode:
+    """`<ui:PowerPointApplicationScope PresentationPath="..."
+    Password="..." CreateIfNotExists="..." AutoSave="..."
+    TemplatePath="...">...</ui:PowerPointApplicationScope>`(知見274、
+    discovery-fresh-pass-9が報告した新規活動ファミリー`UiPath.
+    PowerPoint.Activities`——`python-pptx`は本体の`dependencies`に
+    **既に存在する**既存の確認済み依存(エージェントが「新規オプション
+    依存が必要」と報告したのは誤り、`pyproject.toml`を未確認だった)。
+    `ExcelApplicationScopeNode`(知見97)/`WordApplicationScopeNode`
+    (知見121)と同じ`ActivityAction`+`DelegateInArgument`構造だが、
+    子活動が`scope_var`への暗黙のコンテキスト伝播ではなく明示的な
+    `Presentation`引数を取る点が異なる(実機で確認済み、`Presentation=
+    "[PowerPoint]"`という明示属性)——このため子活動は通常の独立した
+    トップレベル活動として実装でき、Excel/Word版のような専用の
+    `_in_scope`ディスパッチ機構は不要。
+
+    実機2件(公式`UiPath-Services/StudioTemplates`の
+    `CreatePowerPointPresentation`テンプレート、`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`の
+    `Chapter_10-PresentationAutomationExercise/Main.xaml`)で構成を
+    確認。`PresentationPath`(実機2件とも静的リテラルのみ確認——動的式
+    の実例が無いため`WordApplicationScopeNode.file_name`と同じ判断で
+    `str`型のまま、`Expr`へ昇格しない)、`Password`(実機2件とも
+    `{x:Null}`)、`CreateIfNotExists`(実機2件とも`"True"`——公式
+    ドキュメント確認済みの「オンにすると存在しないファイルを新規作成、
+    オフ(既定)だと存在しない場合エラー」という明確な意味論のため、
+    両方の値を対応する)、`AutoSave`(実機2件とも唯一の確認値
+    `"False"`——公式ドキュメント確認済みの既定値`"True"`(変更ごとに
+    自動保存)とは異なり、`"False"`時は全ての子活動完了後に`Save
+    PowerPoint File As`等で明示的に保存する必要がある、両サンプルとも
+    事実その構成——`"True"`(変更ごとの自動保存)は実機未確認のため
+    未対応)。`TemplatePath`(公式サンプルでのみ出現、`PresentationPath`
+    と同じ値——公式ドキュメント確認済みでテンプレート指定は別活動
+    `Create New PowerPoint Document`の役割であり本スコープ自体には
+    意味が無いと判断、`PresentationPath`と異なる値の場合のみ`# TODO`
+    へ倒す)。
+
+    `openpyxl`/`python-docx`と同じファイルベース(ライブPowerPoint
+    プロセス不要)の`python-pptx`で実装する——`AutoSave="False"`
+    確認済みのため、スコープ自身は末尾で自動保存しない(`WordApplication
+    ScopeNode`の無条件末尾`.save()`とは異なる判断、実機のAutoSave
+    属性が明示的に異なる値だったことの反映)。"""
+
+    presentation_path: str
+    scope_var: str = "PowerPointPresentationScope"
+    password: Expr = None
+    create_if_not_exists: str | None = None
+    auto_save: str | None = None
+    template_path: Expr = None
+    body: list["Node"] = field(default_factory=list)
+    display_name: str | None = None
+
+
+@dataclass
+class FindAndReplaceTextInPresentationNode:
+    """`<ui:FindAndReplaceTextInPresentation Presentation="..."
+    SearchFor="..." ReplaceWith="..." MatchCase="..."
+    WholeWordsOnly="..." NumberOfReplacements="..." />`(知見274、
+    `ui:PowerPointApplicationScope`配下で使われる(が明示的な
+    `Presentation`引数を取るため構造上は独立した活動)。実機2件で
+    `MatchCase="False"`+`WholeWordsOnly="False"`(両サンプルとも唯一の
+    確認値)+`NumberOfReplacements="{x:Null}"`(出力、両サンプルとも
+    未使用)を確認。`SearchFor`は静的リテラルのみ確認、`ReplaceWith`は
+    動的VB式(`Excel.Sheet(...).Cell(...)`等)の実例を確認済みのため
+    `Expr`型。`WholeWordsOnly="True"`(単語境界一致)は実機未確認のため
+    `# TODO`へ倒す。"""
+
+    presentation: Expr = None
+    search_for: Expr = None
+    replace_with: Expr = None
+    match_case: str | None = None
+    whole_words_only: str | None = None
+    number_of_replacements: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class InsertTextInPresentationNode:
+    """`<ui:InsertTextInPresentation Presentation="..." ShapeName="..."
+    SlideIndex="..." Text="..." />`(知見274)。実機2件で`ShapeName`
+    (`"Title 1"`/`"Content Placeholder 2"`、PowerPointのプレース
+    ホルダー名)+`SlideIndex`(リテラル整数`"3"`/`"4"`/`"5"`、または
+    別の活動の出力変数経由の動的値)+`Text`(静的リテラル、動的VB式
+    両方確認)を確認。`SlideIndex`は1始まりと推定する(本トランス
+    パイラ独自の推定——`ExtractPDFPageRange`等、既存の全ページ番号系
+    属性が1始まりで確認済みという一貫した判断に合わせた、UiPath自体の
+    確定済み仕様としての直接確認ではない)——`python-pptx`の0始まり
+    `Presentation.slides[idx]`へは`-1`して対応する。"""
+
+    presentation: Expr = None
+    shape_name: Expr = None
+    slide_index: Expr = None
+    text: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class SavePresentationFileAsNode:
+    """`<ui:SavePresentationFileAs Presentation="..." FilePath="..." />`
+    (知見274)。実機2件で`FilePath`の静的リテラル(`"Opportunities.
+    pptx"`)・動的VB式(`[string.Format("...Report_{0}", ...)]`)の
+    両方を確認。`python-pptx`の`Presentation.save(file_path)`が
+    直接対応する。"""
+
+    presentation: Expr = None
+    file_path: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class WordReplaceTextNode:
     """`<ui:ReplaceTextInDocument>`/`<ui:WordReplaceText>`(知見121、
     `WordApplicationScope`配下の子活動)。実機で2つの異なるタグ名を確認
@@ -5578,6 +5688,10 @@ Node = (
     | OpenBrowserNode
     | ExcelApplicationScopeNode
     | WordApplicationScopeNode
+    | PowerPointApplicationScopeNode
+    | FindAndReplaceTextInPresentationNode
+    | InsertTextInPresentationNode
+    | SavePresentationFileAsNode
     | WordReplaceTextNode
     | WordAppendTextNode
     | WordSaveAsNode

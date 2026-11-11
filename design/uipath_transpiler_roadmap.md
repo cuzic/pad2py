@@ -3937,3 +3937,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      バグを発見・修正した。回帰テスト追加(`tests/test_uipath_dsl.py`
      1件・`tests/test_uipath_codegen.py`7件)、リポジトリ全体で
      全2452件通過(本活動+バグ修正の8件分の純増)。
+
+230. **(完了、2026-11-10)** `ui:PowerPointApplicationScope`+
+     `FindAndReplaceTextInPresentation`/`InsertTextInPresentation`/
+     `SavePresentationFileAs`を新規実装(知見274)——discovery-fresh-
+     pass-9最有力候補、新パッケージ`UiPath.PowerPoint.Activities`。
+     **エージェント報告の誤り訂正**: 「`python-pptx`が新規オプション
+     依存として必要」という報告は誤りで、`pyproject.toml`確認により
+     既にコア依存だったと判明。実機2件(公式`UiPath-Services/
+     StudioTemplates`+`Apress/...StudioX`)で構造確認——Excel/Word
+     スコープと違い子活動が明示的な`Presentation`引数を取るため
+     `_in_scope`専用ディスパッチが不要な単純な設計。`AutoSave="False"`
+     (実機確認済みの唯一値)のためスコープ自身は自動保存しない。
+     回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+     test_uipath_codegen.py`7件、うち2件は実際の`.pptx`に対する
+     `exec()`確認)、リポジトリ全体で全2460件通過(本活動の8件分の
+     純増)。

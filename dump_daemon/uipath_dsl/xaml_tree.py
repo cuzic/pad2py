@@ -206,6 +206,10 @@ from .types import (
     WhileNode,
     WindowStateNode,
     WordApplicationScopeNode,
+    PowerPointApplicationScopeNode,
+    FindAndReplaceTextInPresentationNode,
+    InsertTextInPresentationNode,
+    SavePresentationFileAsNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -2942,6 +2946,68 @@ def _parse_word_application_scope(elem: etree._Element) -> WordApplicationScopeN
     )
 
 
+def _parse_power_point_application_scope(
+    elem: etree._Element,
+) -> PowerPointApplicationScopeNode:
+    """知見274: `ui:PowerPointApplicationScope`。`_parse_word_application_
+    scope`と同じ構造パーサー(`ActivityAction`+`DelegateInArgument`)
+    だが、ファイルパス属性(`PresentationPath`)は実機で動的式の実例が
+    無いため`WordApplicationScopeNode.file_name`と同じ判断で`_attr`
+    (プレーン文字列)のまま。"""
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    scope_var = "PowerPointPresentationScope"
+    body: list[Node] = []
+    if action is not None:
+        arg_elem = _find_property_element(action, "Argument")
+        if arg_elem is not None:
+            for d in _direct_children(arg_elem):
+                scope_var = _attr(d, "Name") or scope_var
+        body = _unwrap_body_sequence(action)
+    return PowerPointApplicationScopeNode(
+        presentation_path=_attr(elem, "PresentationPath") or "",
+        scope_var=scope_var,
+        password=_attr_expr(elem, "Password"),
+        create_if_not_exists=_attr_or_none(elem, "CreateIfNotExists"),
+        auto_save=_attr_or_none(elem, "AutoSave"),
+        template_path=_attr_expr(elem, "TemplatePath"),
+        body=body,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_find_and_replace_text_in_presentation(
+    elem: etree._Element,
+) -> FindAndReplaceTextInPresentationNode:
+    return FindAndReplaceTextInPresentationNode(
+        presentation=_attr_expr(elem, "Presentation"),
+        search_for=_attr_expr(elem, "SearchFor"),
+        replace_with=_attr_expr(elem, "ReplaceWith"),
+        match_case=_attr_or_none(elem, "MatchCase"),
+        whole_words_only=_attr_or_none(elem, "WholeWordsOnly"),
+        number_of_replacements=_attr_expr(elem, "NumberOfReplacements"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_insert_text_in_presentation(elem: etree._Element) -> InsertTextInPresentationNode:
+    return InsertTextInPresentationNode(
+        presentation=_attr_expr(elem, "Presentation"),
+        shape_name=_attr_expr(elem, "ShapeName"),
+        slide_index=_attr_expr(elem, "SlideIndex"),
+        text=_attr_expr(elem, "Text"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_save_presentation_file_as(elem: etree._Element) -> SavePresentationFileAsNode:
+    return SavePresentationFileAsNode(
+        presentation=_attr_expr(elem, "Presentation"),
+        file_path=_attr_expr(elem, "FilePath"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_word_replace_text(elem: etree._Element) -> WordReplaceTextNode:
     return WordReplaceTextNode(
         search=_attr_expr(elem, "Search"),
@@ -3611,6 +3677,12 @@ _DISPATCH = {
     (UI_NS, "OpenBrowser"): _parse_open_browser,
     (UI_NS, "ExcelApplicationScope"): _parse_excel_application_scope,
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
+    (UI_NS, "PowerPointApplicationScope"): _parse_power_point_application_scope,
+    (UI_NS, "FindAndReplaceTextInPresentation"): (
+        _parse_find_and_replace_text_in_presentation
+    ),
+    (UI_NS, "InsertTextInPresentation"): _parse_insert_text_in_presentation,
+    (UI_NS, "SavePresentationFileAs"): _parse_save_presentation_file_as,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,
     (UI_NS, "WordReplaceText"): _parse_word_replace_text,
     (WORD_NS, "WordApplicationScope"): _parse_word_application_scope,

@@ -242,6 +242,10 @@ from ..uipath_dsl.types import (
     WhileNode,
     WindowStateNode,
     WordApplicationScopeNode,
+    PowerPointApplicationScopeNode,
+    FindAndReplaceTextInPresentationNode,
+    InsertTextInPresentationNode,
+    SavePresentationFileAsNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -542,6 +546,11 @@ def _collect_imports(body: list[str]) -> list[str]:
     # も同様。
     if any("docx.Document(" in line for line in body):
         imports.append("import docx")
+    # `pptx`(`PowerPointApplicationScope`→`pptx.Presentation(...)`変換先、
+    # 知見274——`python-pptx`は本体の既存`dependencies`、新規プラグイン
+    # 依存ではない)も同様。
+    if any("pptx.Presentation(" in line for line in body):
+        imports.append("import pptx")
     # `win32com.client`(`SendOutlookMail`→`win32com.client.Dispatch(...)`
     # 変換先、知見98)も同様。
     if any("win32com.client.Dispatch(" in line for line in body):
@@ -1111,6 +1120,16 @@ def _generate_node(
         return _generate_read_row(node, indent)
     if isinstance(node, WordApplicationScopeNode):
         return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
+    if isinstance(node, PowerPointApplicationScopeNode):
+        return _generate_power_point_application_scope(
+            node, indent, invoke_resolver, out_arg_resolver
+        )
+    if isinstance(node, FindAndReplaceTextInPresentationNode):
+        return _generate_find_and_replace_text_in_presentation(node, indent)
+    if isinstance(node, InsertTextInPresentationNode):
+        return _generate_insert_text_in_presentation(node, indent)
+    if isinstance(node, SavePresentationFileAsNode):
+        return _generate_save_presentation_file_as(node, indent)
     if isinstance(node, SendMailNode):
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
@@ -8022,6 +8041,211 @@ def _generate_excel_application_scope(
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
     return lines
+
+
+def _generate_power_point_application_scope(
+    node: PowerPointApplicationScopeNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_power_point_application_scope_body(
+        node, indent, invoke_resolver, out_arg_resolver
+    )
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_power_point_application_scope_body(
+    node: PowerPointApplicationScopeNode, indent: int,
+    invoke_resolver: dict[str, str] | None = None,
+    out_arg_resolver: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """知見274: `python-pptx`(本体の既存`dependencies`)への実コード
+    生成——`AutoSave="False"`確認済みのため、スコープ自身は末尾で
+    自動保存しない(`WordApplicationScopeNode`の無条件末尾`.save()`
+    とは異なる判断)。子活動(`FindAndReplaceTextInPresentation`等)は
+    明示的な`Presentation`引数を取るため、`WordApplicationScopeNode`の
+    ような専用の`_in_scope`ディスパッチは不要——通常の`_generate_node`
+    再帰だけで正しく動作する。"""
+    prefix = INDENT * indent
+    if not node.presentation_path:
+        return [
+            f"{prefix}# TODO: PowerPointApplicationScope with no "
+            "PresentationPath captured"
+        ]
+    if node.password is not None:
+        return [
+            f"{prefix}# TODO: PowerPointApplicationScope with Password set "
+            f"({_describe_expr_for_comment(node.password)}) — refusing to guess"
+        ]
+    if node.create_if_not_exists not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: PowerPointApplicationScope with "
+            f"CreateIfNotExists {node.create_if_not_exists!r} — refusing "
+            "to guess"
+        ]
+    if node.auto_save not in (None, "False"):
+        return [
+            f"{prefix}# TODO: PowerPointApplicationScope with AutoSave "
+            f"{node.auto_save!r} — only the confirmed \"False\" value is "
+            "implemented, refusing to guess"
+        ]
+    if node.template_path is not None and not (
+        isinstance(node.template_path, Literal)
+        and node.template_path.value == node.presentation_path
+    ):
+        return [
+            f"{prefix}# TODO: PowerPointApplicationScope with TemplatePath "
+            "differing from PresentationPath — unconfirmed semantics, "
+            "refusing to guess"
+        ]
+    var = node.scope_var
+    path_literal = repr(node.presentation_path)
+    if node.create_if_not_exists == "True":
+        lines = [
+            f"{prefix}{var} = pptx.Presentation({path_literal}) if "
+            f"os.path.exists({path_literal}) else pptx.Presentation()"
+        ]
+    else:
+        lines = [f"{prefix}{var} = pptx.Presentation({path_literal})"]
+    lines.extend(_generate_body(node.body, indent, invoke_resolver, out_arg_resolver))
+    return lines
+
+
+def _generate_find_and_replace_text_in_presentation(
+    node: FindAndReplaceTextInPresentationNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_find_and_replace_text_in_presentation_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_find_and_replace_text_in_presentation_body(
+    node: FindAndReplaceTextInPresentationNode, indent: int
+) -> list[str]:
+    """知見274: `python-pptx`には組み込みの検索置換が無いため、
+    `WordReplaceTextNode`(知見121)と同じ「各段落の各run単体に対して
+    文字列置換する」標準的なイディオムを、スライド/シェイプの2段階
+    ループへ拡張して適用する——検索対象の文字列が複数のrunに分割
+    されている場合は置換されない、同じ既知の限界を継承する。"""
+    prefix = INDENT * indent
+    if node.presentation is None or node.search_for is None or node.replace_with is None:
+        return [
+            f"{prefix}# TODO: FindAndReplaceTextInPresentation with missing "
+            "Presentation/SearchFor/ReplaceWith"
+        ]
+    if node.match_case not in (None, "False"):
+        return [
+            f"{prefix}# TODO: FindAndReplaceTextInPresentation with "
+            f"MatchCase {node.match_case!r} — only the confirmed \"False\" "
+            "value is implemented, refusing to guess"
+        ]
+    if node.whole_words_only not in (None, "False"):
+        return [
+            f"{prefix}# TODO: FindAndReplaceTextInPresentation with "
+            f"WholeWordsOnly {node.whole_words_only!r} — only the "
+            "confirmed \"False\" value is implemented, refusing to guess"
+        ]
+    if node.number_of_replacements is not None:
+        return [
+            f"{prefix}# TODO: FindAndReplaceTextInPresentation with "
+            "NumberOfReplacements set "
+            f"({_describe_expr_for_comment(node.number_of_replacements)}) "
+            "— refusing to guess"
+        ]
+    todo: list[str] = []
+    presentation = _render_value_or_todo(node.presentation, prefix, todo)
+    search_for = _render_value_or_todo(node.search_for, prefix, todo)
+    replace_with = _render_value_or_todo(node.replace_with, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    inner3 = INDENT * (indent + 3)
+    inner4 = INDENT * (indent + 4)
+    return [
+        f"{prefix}for _slide in {presentation}.slides:",
+        f"{inner}for _shape in _slide.shapes:",
+        f"{inner2}if not _shape.has_text_frame:",
+        f"{inner3}continue",
+        f"{inner2}for _p in _shape.text_frame.paragraphs:",
+        f"{inner3}for _r in _p.runs:",
+        f"{inner4}if {VB_CSTR_HELPER_NAME}({search_for}) in _r.text:",
+        f"{INDENT * (indent + 5)}_r.text = _r.text.replace("
+        f"{VB_CSTR_HELPER_NAME}({search_for}), "
+        f"{VB_CSTR_HELPER_NAME}({replace_with}))",
+    ]
+
+
+def _generate_insert_text_in_presentation(
+    node: InsertTextInPresentationNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_insert_text_in_presentation_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_insert_text_in_presentation_body(
+    node: InsertTextInPresentationNode, indent: int
+) -> list[str]:
+    """知見274: `SlideIndex`は1始まりと推定する(本トランスパイラ独自の
+    推定、`ExtractPDFPageRange`等の既存の1始まりページ番号系属性との
+    一貫性に基づく判断——`python-pptx`の0始まり`.slides[idx]`へは`-1`
+    して対応する)。`ShapeName`で名前一致するシェイプを探して
+    `.text_frame.text`を上書きする。"""
+    prefix = INDENT * indent
+    if (
+        node.presentation is None
+        or node.shape_name is None
+        or node.slide_index is None
+        or node.text is None
+    ):
+        return [
+            f"{prefix}# TODO: InsertTextInPresentation with missing "
+            "Presentation/ShapeName/SlideIndex/Text"
+        ]
+    todo: list[str] = []
+    presentation = _render_value_or_todo(node.presentation, prefix, todo)
+    shape_name = _render_value_or_todo(node.shape_name, prefix, todo)
+    slide_index = _render_value_or_todo(node.slide_index, prefix, todo)
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    inner2 = INDENT * (indent + 2)
+    return [
+        f"{prefix}_slide = {presentation}.slides[round({VB_CDBL_HELPER_NAME}"
+        f"({slide_index})) - 1]",
+        f"{prefix}for _shape in _slide.shapes:",
+        f"{inner}if _shape.name == {VB_CSTR_HELPER_NAME}({shape_name}):",
+        f"{inner2}_shape.text_frame.text = {VB_CSTR_HELPER_NAME}({text})",
+        f"{inner2}break",
+    ]
+
+
+def _generate_save_presentation_file_as(
+    node: SavePresentationFileAsNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_save_presentation_file_as_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_save_presentation_file_as_body(
+    node: SavePresentationFileAsNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.presentation is None or node.file_path is None:
+        return [
+            f"{prefix}# TODO: SavePresentationFileAs with missing "
+            "Presentation/FilePath"
+        ]
+    todo: list[str] = []
+    presentation = _render_value_or_todo(node.presentation, prefix, todo)
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{presentation}.save({file_path})"]
 
 
 def _generate_word_application_scope(

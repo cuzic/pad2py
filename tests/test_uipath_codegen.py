@@ -222,6 +222,10 @@ from dump_daemon.uipath_dsl import (
     WhileNode,
     WindowStateNode,
     WordApplicationScopeNode,
+    PowerPointApplicationScopeNode,
+    FindAndReplaceTextInPresentationNode,
+    InsertTextInPresentationNode,
+    SavePresentationFileAsNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -11311,6 +11315,151 @@ def test_word_application_scope_with_replace_text_generates_real_code_together()
     )
     assert "WordDocumentScope.save('letter.docx')" in code
     assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_power_point_application_scope_full_round_trip_exec(tmp_path):
+    """知見274: `PowerPointApplicationScopeNode`+`FindAndReplaceTextIn
+    PresentationNode`+`InsertTextInPresentationNode`+
+    `SavePresentationFileAsNode`を実際の`python-pptx`で`exec()`経由で
+    確認する——`AutoSave="False"`確認済みのためスコープ自身は自動保存
+    せず、`SavePresentationFileAs`で明示的に保存する構成(実機2件とも
+    この構成)。"""
+    import pptx
+
+    tmpl_path = str(tmp_path / "tmpl.pptx")
+    out_path = str(tmp_path / "out.pptx")
+    prs = pptx.Presentation()
+    layout = prs.slide_layouts[1]
+    for _ in range(3):
+        slide = prs.slides.add_slide(layout)
+    prs.slides[0].shapes.title.text = "Hello <REPORTDATE> world"
+    prs.slides[2].shapes.title.text = "Old Title"
+    prs.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            PowerPointApplicationScopeNode(
+                presentation_path=tmpl_path,
+                scope_var="PowerPoint",
+                create_if_not_exists="False",
+                auto_save="False",
+                body=[
+                    FindAndReplaceTextInPresentationNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        search_for=Literal(value="<REPORTDATE>"),
+                        replace_with=VbExpr(text="today"),
+                        match_case="False",
+                        whole_words_only="False",
+                    ),
+                    InsertTextInPresentationNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        shape_name=Literal(value="Title 1"),
+                        slide_index=Literal(value="3"),
+                        text=Literal(value="New Title Three"),
+                    ),
+                    SavePresentationFileAsNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        file_path=Literal(value=out_path),
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import pptx" in code
+    assert f"PowerPoint = pptx.Presentation({tmpl_path!r})" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(today):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]("2026-11-10")
+
+    prs_out = pptx.Presentation(out_path)
+    assert prs_out.slides[0].shapes.title.text == "Hello 2026-11-10 world"
+    assert prs_out.slides[2].shapes.title.text == "New Title Three"
+
+
+def test_power_point_application_scope_create_if_not_exists_true_exec(tmp_path):
+    import os as os_module
+    import pptx
+
+    new_path = str(tmp_path / "brand_new.pptx")
+    assert not os_module.path.exists(new_path)
+
+    wf = _wrap(
+        [
+            PowerPointApplicationScopeNode(
+                presentation_path=new_path,
+                scope_var="PowerPoint",
+                create_if_not_exists="True",
+                auto_save="False",
+                body=[
+                    SavePresentationFileAsNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        file_path=Literal(value=new_path),
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "os.path.exists(" in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]()
+    assert os_module.path.exists(new_path)
+    pptx.Presentation(new_path)  # doesn't raise
+
+
+def test_power_point_application_scope_with_no_presentation_path_is_todo():
+    wf = _wrap([PowerPointApplicationScopeNode(presentation_path="")])
+    code = generate_python(wf)
+    assert "# TODO: PowerPointApplicationScope with no PresentationPath captured" in code
+    _compiles(code)
+
+
+def test_power_point_application_scope_with_auto_save_true_is_todo_not_guessed():
+    wf = _wrap(
+        [PowerPointApplicationScopeNode(presentation_path="x.pptx", auto_save="True")]
+    )
+    code = generate_python(wf)
+    assert "# TODO: PowerPointApplicationScope with AutoSave" in code
+    _compiles(code)
+
+
+def test_find_and_replace_text_in_presentation_with_whole_words_only_true_is_todo():
+    wf = _wrap(
+        [
+            FindAndReplaceTextInPresentationNode(
+                presentation=VbExpr(text="p"),
+                search_for=Literal(value="x"),
+                replace_with=Literal(value="y"),
+                whole_words_only="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: FindAndReplaceTextInPresentation with WholeWordsOnly" in code
+    _compiles(code)
+
+
+def test_insert_text_in_presentation_with_missing_properties_is_todo():
+    wf = _wrap([InsertTextInPresentationNode(presentation=VbExpr(text="p"))])
+    code = generate_python(wf)
+    assert (
+        "# TODO: InsertTextInPresentation with missing "
+        "Presentation/ShapeName/SlideIndex/Text" in code
+    )
+    _compiles(code)
+
+
+def test_save_presentation_file_as_with_missing_properties_is_todo():
+    wf = _wrap([SavePresentationFileAsNode(presentation=None, file_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: SavePresentationFileAs with missing Presentation/FilePath" in code
     _compiles(code)
 
 

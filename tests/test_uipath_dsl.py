@@ -191,6 +191,10 @@ from dump_daemon.uipath_dsl import (
     WhileNode,
     WindowStateNode,
     WordApplicationScopeNode,
+    PowerPointApplicationScopeNode,
+    FindAndReplaceTextInPresentationNode,
+    InsertTextInPresentationNode,
+    SavePresentationFileAsNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -4860,6 +4864,67 @@ def test_word_application_scope_and_replace_text_in_document():
     assert replace.search == Literal(value="{{Candidate}}")
     assert replace.replace == VbExpr(text="candidate")
     assert replace.display_name == "Replace Text in Document"
+
+
+def test_power_point_application_scope_full_body():
+    """知見274: `ui:PowerPointApplicationScope`(discovery-fresh-pass-9
+    が発見、タグ名限定GitHub検索で多数の実機ヒット)。実機2件(公式
+    `UiPath-Services/StudioTemplates`の`CreatePowerPointPresentation`
+    テンプレート、`Apress/Robotic-Process-Automation-Using-UiPath-
+    StudioX`の`Chapter_10-PresentationAutomationExercise/Main.xaml`)
+    で確認した構成を合成XMLで再現する——`AutoSave="False"`+
+    `CreateIfNotExists="True"`、子活動は明示的な`Presentation`引数を
+    取る(`ExcelApplicationScope`/`WordApplicationScope`とは違う構造)。"""
+    xml = (
+        f"<ui:PowerPointApplicationScope {_UI_XMLNS} "
+        'DisplayName="Use PowerPoint Presentation" Password="{x:Null}" '
+        'AutoSave="False" CreateIfNotExists="True" '
+        'PresentationPath="C:\\BookSamples\\Chapter_10\\ReportTemplate.pptm">'
+        "<ui:PowerPointApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="ui:IPresentationQuickHandle">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="ui:IPresentationQuickHandle" '
+        'Name="ReportTemplatePPT" />'
+        "</ActivityAction.Argument>"
+        '<Sequence DisplayName="Do">'
+        '<ui:FindAndReplaceTextInPresentation NumberOfReplacements="{x:Null}" '
+        'DisplayName="Replace Text in Presentation" MatchCase="False" '
+        'Presentation="[ReportTemplatePPT]" '
+        'ReplaceWith="[Notes.Sheet(&quot;Date&quot;).Cell(&quot;Today&quot;)]" '
+        'SearchFor="&lt;REPORTDATE&gt;" WholeWordsOnly="False" />'
+        '<ui:InsertTextInPresentation DisplayName="Add Text to Slide" '
+        'Presentation="[ReportTemplatePPT]" ShapeName="Title 1" '
+        'SlideIndex="3" Text="Top Trending Products List" />'
+        '<ui:SavePresentationFileAs DisplayName="Save PowerPoint File As" '
+        'FilePath="[string.Format(&quot;C:\\Report_{0}&quot;, today)]" '
+        'Presentation="[ReportTemplatePPT]" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:PowerPointApplicationScope.Body>"
+        "</ui:PowerPointApplicationScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, PowerPointApplicationScopeNode)
+    assert node.presentation_path == "C:\\BookSamples\\Chapter_10\\ReportTemplate.pptm"
+    assert node.scope_var == "ReportTemplatePPT"
+    assert node.password is None
+    assert node.auto_save == "False"
+    assert node.create_if_not_exists == "True"
+    assert len(node.body) == 3
+    find_replace, insert_text, save_as = node.body
+    assert isinstance(find_replace, FindAndReplaceTextInPresentationNode)
+    assert find_replace.presentation == VbExpr(text="ReportTemplatePPT")
+    assert find_replace.search_for == Literal(value="<REPORTDATE>")
+    assert find_replace.replace_with == VbExpr(text='Notes.Sheet("Date").Cell("Today")')
+    assert find_replace.match_case == "False"
+    assert find_replace.number_of_replacements is None
+    assert isinstance(insert_text, InsertTextInPresentationNode)
+    assert insert_text.shape_name == Literal(value="Title 1")
+    assert insert_text.slide_index == Literal(value="3")
+    assert insert_text.text == Literal(value="Top Trending Products List")
+    assert isinstance(save_as, SavePresentationFileAsNode)
+    assert save_as.presentation == VbExpr(text="ReportTemplatePPT")
+    assert save_as.file_path == VbExpr(text='string.Format("C:\\Report_{0}", today)')
 
 
 def test_word_replace_text_alternate_tag_name():
