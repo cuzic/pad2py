@@ -48,6 +48,8 @@ from dump_daemon.uipath_dsl import (
     GetProcessesNode,
     ReadRangeNode,
     WriteRangeNode,
+    ReadCellNode,
+    WriteCellNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1216,6 +1218,47 @@ def test_write_range_with_dynamic_workbook_path_and_nested_starting_cell():
     )
     assert node.starting_cell == Literal(value="")
     assert node.add_headers == "True"
+
+
+def test_read_cell_properties():
+    """知見259: `ui:ReadCell`(`ExcelReadCellNode`の単独動作版、同じ
+    スコープ無し"Workbook"系ファミリー、タグ名限定GitHub検索で53件
+    ヒット)。実機`masiref/HandyML`の`HandyML_Predictor/Main.xaml`で
+    確認した構成。"""
+    xml = (
+        f"<ui:ReadCell {_UI_XMLNS} "
+        'Cell="B1" DisplayName="Model path" SheetName="HandyML_Predictor" '
+        'WorkbookPath="[str_Filepath]">'
+        "<ui:ReadCell.Result>"
+        '<OutArgument x:TypeArguments="x:String">[str_ModelPath]</OutArgument>'
+        "</ui:ReadCell.Result>"
+        "</ui:ReadCell>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadCellNode)
+    assert node.workbook_path == VbExpr(text="str_Filepath")
+    assert node.sheet_name == Literal(value="HandyML_Predictor")
+    assert node.cell == Literal(value="B1")
+    assert node.result == VbExpr(text="str_ModelPath")
+
+
+def test_write_cell_properties_with_dynamic_cell_and_literal_workbook_path():
+    """知見259: `ui:WriteCell`(`ReadCellNode`の書き込み側、タグ名限定
+    GitHub検索で465件ヒット)。実機`vajrang-b/UiPathIn30Days`の
+    `Task15/Main.xaml`で確認した構成——`Cell`が知見119と同じ連番
+    セル指定パターン、`WorkbookPath`が角括弧無しのリテラルパス。"""
+    xml = (
+        f"<ui:WriteCell {_UI_XMLNS} "
+        'Cell="[&quot;D&quot;+(Cell_Index+2).ToString]" '
+        'DisplayName="Write Cell Workbook" SheetName="Sheet1" '
+        'Text="[Full_Name]" WorkbookPath="Input1.xlsx" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WriteCellNode)
+    assert node.workbook_path == Literal(value="Input1.xlsx")
+    assert node.sheet_name == Literal(value="Sheet1")
+    assert node.cell == VbExpr(text='"D"+(Cell_Index+2).ToString')
+    assert node.text == VbExpr(text="Full_Name")
 
 
 def test_excel_write_cell_with_dynamic_cell_expression():

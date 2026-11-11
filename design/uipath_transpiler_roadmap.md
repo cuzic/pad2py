@@ -3714,3 +3714,22 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      リポジトリ全体で全2347件通過(本活動の14件分の純増)。残る
      Word classic(`WordInsertDataTable`等)・マウスキーボード系
      (`ui:SetFocus`等)の候補は次のティックで継続実装。
+
+217. **(完了、2026-11-10)** `ui:ReadCell`/`ui:WriteCell`を新規実装
+     (知見259)——`ReadRange`/`WriteRange`(知見256/257)と同じ
+     スコープ無し"Workbook"系ファミリー。タグ名限定検索で53件/465件
+     ヒット。**マウスキーボード系の`ui:SetFocus`(前ティックの候補)
+     は知見164で既に`ActivateNode`へ実装済みの偽陽性と判明**——
+     Node-class名リストのみでの除外照合では見つからない既存実装を
+     再発見しないよう、知見247の二重除外リスト方針を再確認。実機4件
+     で`Cell`(静的/動的両方、知見119と同じ連番セル指定パターン)・
+     `SheetName`・`WorkbookPath`(動的/静的両方)・`Result`
+     (`ReadCell`の出力、テキスト直書き`OutArgument`形)を確認。
+     `ExcelReadCellNode`/`ExcelWriteCellNode`(知見22/119)の
+     `workbook[sheet_name][cell]`添字記法をそのまま再利用し、自分
+     自身で`load_workbook()`する。実際の`openpyxl`で静的読み取り・
+     動的連番書き込みの両方を`exec()`経由で確認。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     9件)、リポジトリ全体で全2358件通過(本活動の11件分の純増)。
+     残るWord classic(`WordInsertDataTable`等)・マウスキーボード系
+     (`ui:GetActiveWindow`等)の候補は次のティックで継続実装。

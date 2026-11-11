@@ -72,6 +72,8 @@ from dump_daemon.uipath_dsl import (
     GetProcessesNode,
     ReadRangeNode,
     WriteRangeNode,
+    ReadCellNode,
+    WriteCellNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -11532,6 +11534,145 @@ def test_write_range_with_unparseable_starting_cell_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: Write Range with unparseable StartingCell" in code
+    _compiles(code)
+
+
+def test_read_cell_resolves_via_openpyxl_exec(tmp_path):
+    """知見259: `ui:ReadCell`——`ExcelReadCellNode`(知見119)が確立した
+    `workbook[sheet_name][cell].value`をそのまま再利用することを
+    実際の`openpyxl`で`exec()`経由で確認する。"""
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    wb.active.title = "Sheet1"
+    wb.active["B1"] = "hello"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            ReadCellNode(
+                workbook_path=Literal(value=path),
+                sheet_name=Literal(value="Sheet1"),
+                cell=Literal(value="B1"),
+                result=VbExpr(text="val"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return val", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert ns["Test"]() == "hello"
+
+
+def test_read_cell_with_no_workbook_path_is_todo():
+    wf = _wrap([ReadCellNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Cell with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_read_cell_with_no_cell_is_todo():
+    wf = _wrap([ReadCellNode(workbook_path=Literal(value="wb.xlsx"), cell=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Cell with no Cell captured" in code
+    _compiles(code)
+
+
+def test_read_cell_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ReadCellNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                cell=Literal(value="A1"),
+                sheet_name=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Cell with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_cell_with_no_output_result_is_todo():
+    wf = _wrap(
+        [
+            ReadCellNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                cell=Literal(value="A1"),
+                sheet_name=Literal(value="S"),
+                result=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Cell with no output Result captured" in code
+    _compiles(code)
+
+
+def test_write_cell_with_dynamic_cell_expression_resolves_via_openpyxl_exec(tmp_path):
+    """知見259: `ui:WriteCell`——`ExcelWriteCellNode`(知見22/119)が
+    確立した`workbook[sheet_name][cell] = _vb_cstr(value)`をそのまま
+    再利用し、知見119で確認済みの連番セル指定パターンも含めて実際の
+    `openpyxl`で`exec()`経由で確認する。"""
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    wb.active.title = "Sheet1"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            WriteCellNode(
+                workbook_path=Literal(value=path),
+                sheet_name=Literal(value="Sheet1"),
+                cell=VbExpr(text='"D"+(idx+2).ToString'),
+                text=VbExpr(text="name"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(idx, name):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"](3, "Alice")
+    wb2 = openpyxl.load_workbook(path)
+    assert wb2.active["D5"].value == "Alice"
+
+
+def test_write_cell_with_no_workbook_path_is_todo():
+    wf = _wrap([WriteCellNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Write Cell with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_write_cell_with_no_cell_is_todo():
+    wf = _wrap([WriteCellNode(workbook_path=Literal(value="wb.xlsx"), cell=None)])
+    code = generate_python(wf)
+    assert "# TODO: Write Cell with no Cell captured" in code
+    _compiles(code)
+
+
+def test_write_cell_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            WriteCellNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                cell=Literal(value="A1"),
+                sheet_name=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Write Cell with no SheetName captured" in code
     _compiles(code)
 
 

@@ -12336,6 +12336,65 @@ test_uipath_codegen.py`10件)、リポジトリ全体で全2347件通過
 (`WordInsertDataTable`・`WordAddImage`・`WordReplacePicture`)・
 マウスキーボード系(`ui:SetFocus`等)の候補は次のティックで継続実装。
 
+## 259. `ui:ReadCell`/`ui:WriteCell`を新規実装——同時に、マウスキーボード系の次善候補として引き継いだ`ui:SetFocus`が実は知見164で`ActivateNode`へ既に実装済みという偽陽性だったことも確認した
+
+マウスキーボード系の次の候補として知見255の調査パス報告が挙げていた
+`ui:SetFocus`(72件ヒット)に着手しようとしたところ、
+`dump_daemon/uipath_dsl/types.py`の`ActivateNode`のdocstringを
+確認し、**知見164で既に`ui:SetFocus`(`UiPath/skills`公式
+ground-truth+`JoeIaquinto/UiPath-VidCreator`等の実機XAML、68件
+ヒット)が`ui:Activate`と完全に同一の属性構成の同義別名活動と判明し、
+同じ`_parse_activate`で`(UI_NS, "SetFocus"): _parse_activate`として
+ディスパッチ登録済み**であることが分かった——調査パスの報告は
+Node-class名のみでの除外リスト照合だったため、`ActivateNode`という
+別クラス名の下で既に実装されている活動を新規候補として誤検知した
+偽陽性だった(知見247で確立した「Node-class名リストとXAMLディスパッチ
+タグ名リストの両方で照合する」という既存の二重除外リスト方針を
+今回も徹底していれば避けられた見落とし——このメモリファイルの
+今後の調査候補リストを訂正した)。
+
+方針をExcel classic系へ戻し、`ReadRange`/`WriteRange`(知見256/257)
+と同じスコープ無し"Workbook"系ファミリーの残り候補`ui:ReadCell`
+(タグ名限定GitHub検索で53件ヒット)・`ui:WriteCell`(465件ヒット)に
+着手した。
+
+実機4件(`masiref/HandyML`の`HandyML_Predictor/Main.xaml`・
+`HandyML_Trainer/1_6_Report.xaml`、`WingsMaker/uipath_chatgpt`の
+`Main.xaml`、`vajrang-b/UiPathIn30Days`の`Task15/Main.xaml`)で
+独立に確認した構成——`Cell`(静的リテラル`"B1"`、動的VB式
+`["D"+(Cell_Index+2).ToString]`——知見119で`ExcelWriteCellNode.cell`
+を`Expr`型へ昇格した時と同じ連番セル指定パターンを独立に再確認)、
+`SheetName`(静的リテラルのみ確認)、`WorkbookPath`(動的VB式、
+角括弧無しのリテラルパスの両方確認、`ReadRange`/`WriteRange`と同じ
+パターン)、`Result`(`ReadCell`の出力、`<ui:ReadCell.Result>
+<OutArgument x:TypeArguments="x:String">[変数名]</OutArgument>
+</ui:ReadCell.Result>`という、子要素を持たずテキストを直書きする
+`OutArgument`形——`ReadRangeNode`/`WriteRangeNode`の`InArgument`形
+とは入出力が逆だが、同じ`_in_argument_property_expr`ヘルパーが
+`nested`が空の場合に`in_arg.text`を直接解析する分岐でそのまま
+対応できることを確認した)、`Text`(`WriteCell`の入力)。
+
+`ExcelReadCellNode`/`ExcelWriteCellNode`(知見22/119、
+`ExcelApplicationScope`配下限定)が確立した`workbook[sheet_name]
+[cell].value`/`workbook[sheet_name][cell] = _vb_cstr(value)`という
+添字記法をそのまま再利用するが、スコープ無しの単独活動のため
+自分自身で`openpyxl.load_workbook()`→読み取り/書き込み→
+`.close()`/`.save()`する(`ReadRangeNode`/`WriteRangeNode`と同じ
+判断)。
+
+実際の`openpyxl`で生成した`.xlsx`ファイルに対して`exec()`経由で
+動作確認した——静的セル指定の読み取り、動的連番セル指定(`idx+2`を
+`.ToString`経由で行番号へ変換)での書き込みの両方が正しく機能する
+ことを確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`9件)、リポジトリ全体で全2358件通過
+(28件skip、本活動の11件分の純増)。残るWord classic系
+(`WordInsertDataTable`・`WordAddImage`・`WordReplacePicture`)・
+マウスキーボード系(`ui:GetActiveWindow`・`ui:SelectMultipleItems`、
+いずれも知見255の調査パスで確認済みだが`ui:SetFocus`ほど単純ではない
+候補)の候補は次のティックで継続実装。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

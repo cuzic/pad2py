@@ -4379,6 +4379,65 @@ class WriteRangeNode:
 
 
 @dataclass
+class ReadCellNode:
+    """`<ui:ReadCell WorkbookPath="..." SheetName="..." Cell="..." />`
+    (知見259、`ReadRangeNode`/`WriteRangeNode`(知見256/257)と同じ
+    スコープ無し"Workbook"系ファミリー、タグ名限定GitHub検索で53件
+    ヒット)。`ExcelReadCellNode`(知見119、`ExcelApplicationScope`配下
+    限定)の単独動作版。
+
+    実機2件(`masiref/HandyML`の`HandyML_Predictor/Main.xaml`、
+    `WingsMaker/uipath_chatgpt`の`Main.xaml`)で確認した構成——
+    `Cell`(静的リテラル`"B1"`/`"B2"`のみ確認)、`SheetName`
+    (静的リテラルのみ確認)、`WorkbookPath`(動的VB式`[str_Filepath]`
+    、角括弧無しのリテラルパス`"bot_config.xlsx"`の両方確認)、
+    `Result`(出力、ネストした`<ui:ReadCell.Result><OutArgument
+    x:TypeArguments="x:String">[変数名]</OutArgument></ui:
+    ReadCell.Result>`形——子要素を持たないテキスト直書きの
+    `OutArgument`、`ReadRangeNode`/`WriteRangeNode`の`InArgument`形
+    とは逆向きだが同じ`_in_argument_property_expr`で対応できる)。
+
+    `ExcelReadCellNode`の`workbook[sheet_name][cell].value`という
+    確認済みの変換をそのまま再利用するが、スコープ無しの単独活動
+    のため自分自身で`openpyxl.load_workbook()`→読み取り→`.close()`
+    する(`ReadRangeNode`と同じ判断)。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    cell: Expr = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class WriteCellNode:
+    """`<ui:WriteCell WorkbookPath="..." SheetName="..." Cell="..."
+    Text="..." />`(知見259、`ReadCellNode`の書き込み側、同じスコープ
+    無し"Workbook"系ファミリー、タグ名限定GitHub検索で465件ヒット)。
+    `ExcelWriteCellNode`(知見22/119、`ExcelApplicationScope`配下限定)
+    の単独動作版。
+
+    実機2件(`masiref/HandyML`の`HandyML_Trainer/1_6_Report.xaml`、
+    `vajrang-b/UiPathIn30Days`の`Task15/Main.xaml`)で確認した構成——
+    `Cell`(静的リテラル`"B1"`、動的VB式`["D"+(Cell_Index+2).ToString]`
+    ——知見119で`ExcelWriteCellNode.cell`を`Expr`型へ昇格した時と同じ
+    連番セル指定パターンを独立に再確認)、`SheetName`(静的リテラルの
+    み確認)、`Text`(入力)、`WorkbookPath`(動的VB式`[argIn_str_...]`、
+    角括弧無しのリテラルパス`"Input1.xlsx"`の両方確認)。
+
+    `ExcelWriteCellNode`の`workbook[sheet_name][cell] = _vb_cstr(value)`
+    という確認済みの変換をそのまま再利用するが、スコープ無しの単独
+    活動のため自分自身で`openpyxl.load_workbook()`→書き込み→`.save()`
+    する(`WriteRangeNode`と同じ判断)。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    cell: Expr = None
+    text: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendOutlookMailNode:
     """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
 
@@ -4928,6 +4987,8 @@ Node = (
     | ExcelAppendRangeNode
     | ReadRangeNode
     | WriteRangeNode
+    | ReadCellNode
+    | WriteCellNode
     | SendOutlookMailNode
     | GetOutlookMailMessagesNode
     | MarkMailAsReadXNode

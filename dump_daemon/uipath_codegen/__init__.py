@@ -112,6 +112,8 @@ from ..uipath_dsl.types import (
     ExcelAppendRangeNode,
     ReadRangeNode,
     WriteRangeNode,
+    ReadCellNode,
+    WriteCellNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1039,6 +1041,10 @@ def _generate_node(
         return _generate_read_range(node, indent)
     if isinstance(node, WriteRangeNode):
         return _generate_write_range(node, indent)
+    if isinstance(node, ReadCellNode):
+        return _generate_read_cell(node, indent)
+    if isinstance(node, WriteCellNode):
+        return _generate_write_cell(node, indent)
     if isinstance(node, WordApplicationScopeNode):
         return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendMailNode):
@@ -8211,6 +8217,70 @@ def _generate_write_range_body(node: WriteRangeNode, indent: int) -> list[str]:
     )
     lines.append(f"{prefix}_wb.save({workbook_path})")
     return lines
+
+
+# 知見259: `ui:ReadCell`/`ui:WriteCell`——`ReadRangeNode`/`WriteRangeNode`
+# (知見256/257)と同じスコープ無し"Workbook"系ファミリー。
+# `ExcelReadCellNode`/`ExcelWriteCellNode`(知見22/119)が確立した
+# `workbook[sheet_name][cell]`添字記法をそのまま再利用するが、スコープ
+# 無しの単独活動のため自分自身で`openpyxl.load_workbook()`を呼ぶ。
+def _generate_read_cell(node: ReadCellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_cell_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_cell_body(node: ReadCellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.workbook_path is None:
+        return [f"{prefix}# TODO: Read Cell with no WorkbookPath captured"]
+    if node.cell is None:
+        return [f"{prefix}# TODO: Read Cell with no Cell captured"]
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: Read Cell with no SheetName captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: Read Cell with no output Result captured"]
+    todo: list[str] = []
+    workbook_path = _render_value_or_todo(node.workbook_path, prefix, todo)
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    cell = _render_value_or_todo(node.cell, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_wb = openpyxl.load_workbook({workbook_path})",
+        f"{prefix}{target} = _wb[{VB_CSTR_HELPER_NAME}({sheet_name})][{cell}].value",
+        f"{prefix}_wb.close()",
+    ]
+
+
+def _generate_write_cell(node: WriteCellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_write_cell_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_write_cell_body(node: WriteCellNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.workbook_path is None:
+        return [f"{prefix}# TODO: Write Cell with no WorkbookPath captured"]
+    if node.cell is None:
+        return [f"{prefix}# TODO: Write Cell with no Cell captured"]
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: Write Cell with no SheetName captured"]
+    todo: list[str] = []
+    workbook_path = _render_value_or_todo(node.workbook_path, prefix, todo)
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    cell = _render_value_or_todo(node.cell, prefix, todo)
+    value = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}_wb = openpyxl.load_workbook({workbook_path})",
+        f"{prefix}_wb[{VB_CSTR_HELPER_NAME}({sheet_name})][{cell}] = "
+        f"{VB_CSTR_HELPER_NAME}({value})",
+        f"{prefix}_wb.save({workbook_path})",
+    ]
 
 
 # 知見102: Outlook `MailItem`の`Importance`/`Sensitivity`/`IsBodyHtml`/
