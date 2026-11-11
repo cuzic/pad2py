@@ -902,11 +902,18 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
   確保・`pad2py-pad-host`へのOffice/Outlookインストール後)。知見208で実装完了(decompile
   ベース、7系統14 action_id、実機未確認)。`Email`/`FTP`/`SFTP`/`Printer`/`Registry`/
   `Remote Desktop`/`Terminal`/`System`は依然ユーザー判断待ちのまま未着手。
-- [ ] 🖥️ **`Outlook`モジュールの実機DSLキャプチャ・round-trip確認(知見208)**: 現在の
-  実装は全てdecompile(`Microsoft.Flow.RPA.Desktop.Modules.Outlook.Actions.dll`)ベースの
-  推定で、実機未確認。VMが空いてOutlookへの実際のサインインが済んだタイミングで、
-  知見75の往復確認手法を使い、14 action_id全てのDSL文字列・パラメータ名・
-  `ToContains`のBcc除外仕様(decompile確認済みだが実機未確認)を実証確認する。
+- [ ] 🖥️ **`Outlook`モジュールの実機DSLキャプチャ・round-trip確認(知見208・210)**: 14
+  action_idのうち`Launch`/`Close`/`RetrieveEmailMessages.RetrieveEmails`(フィルタ付き)は
+  知見210で実機確認済み(`MailFolder`はローカライズされた表示名が必要——日本語環境では
+  `受信トレイ`、`Inbox`では失敗することを確認・修正。フィルタ無しの全件取得は巨大な
+  受信トレイで10分以上かかる実機制約も確認、`pad_action_lib`側は1:1の忠実な再現を優先し
+  独自の上限を設けない方針)。残り(`SendEmailThroughOutlook`/`RespondToMailMessage`/
+  `SaveOutlookEmailMessages`/`ProcessEmailMessages`/`RetrieveEmailsAndSaveAttachments`)は
+  実際にメールを送信・変更する副作用を伴うため、ユーザーに「テストメール送信の許可」を
+  確認中(知見210時点で未回答)。許可が得られたら、`SendEmailThroughOutlook.SendEmail`→
+  一意な件名で`SubjectContains`絞り込み`RetrieveEmails`で受信確認、という
+  Excel/Word/PowerPint(知見209)と同じ「書いて読み戻す」パターンで検証する。
+  `ToContains`のBcc除外仕様(decompile確認済みだが実機未確認)も引き続き要確認。
 
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 
