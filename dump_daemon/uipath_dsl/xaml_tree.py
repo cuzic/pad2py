@@ -197,6 +197,7 @@ from .types import (
     WordAppendTextNode,
     WordSaveAsNode,
     WordReadTextNode,
+    WordAddImageNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -2774,6 +2775,16 @@ def _parse_word_read_text(elem: etree._Element) -> WordReadTextNode:
     )
 
 
+def _parse_word_add_image(elem: etree._Element) -> WordAddImageNode:
+    return WordAddImageNode(
+        image_path=_attr_expr(elem, "ImagePath")
+        or _in_argument_property_expr(elem, "ImagePath"),
+        insert_relative_to=_attr_or_none(elem, "InsertRelativeTo"),
+        position=_attr_or_none(elem, "Position"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _SEND_OUTLOOK_MAIL_KNOWN_ATTRS = {
     "To", "Subject", "Body", "Cc", "Bcc", "Importance", "Sensitivity", "IsBodyHtml", "IsDraft",
 }
@@ -3339,6 +3350,7 @@ _DISPATCH = {
     (WORD_NS, "WordAppendText"): _parse_word_append_text,
     (WORD_NS, "WordSaveAs"): _parse_word_save_as,
     (WORD_NS, "WordReadText"): _parse_word_read_text,
+    (WORD_NS, "WordAddImage"): _parse_word_add_image,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,

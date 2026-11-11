@@ -182,6 +182,7 @@ from dump_daemon.uipath_dsl import (
     WordAppendTextNode,
     WordSaveAsNode,
     WordReadTextNode,
+    WordAddImageNode,
     WriteCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
@@ -4559,6 +4560,37 @@ def test_word_read_text_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, WordReadTextNode)
     assert node.text == VbExpr(text="extractedText")
+
+
+def test_word_add_image_properties_with_explicit_defaults():
+    """知見260: `ui:WordAddImage`(実機3件で確認、49件ヒット)。
+    `spritlesoftware/Uipath-RPA-AutomationProjects`の実機XAMLで確認
+    した構成——`InsertRelativeTo`/`Position`が明示的に確認済みの
+    既定値。"""
+    xml = (
+        f"<p:WordAddImage {_WORD_XMLNS} "
+        'DisplayName="Add Picture" ImagePath="C:\\Users\\SPRITLE\\Pictures\\Cmd.png" '
+        'InsertRelativeTo="Document" Position="End" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordAddImageNode)
+    assert node.image_path == Literal(value="C:\\Users\\SPRITLE\\Pictures\\Cmd.png")
+    assert node.insert_relative_to == "Document"
+    assert node.position == "End"
+
+
+def test_word_add_image_properties_with_omitted_defaults():
+    """知見260: `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`
+    の実機XAMLで確認した構成——`InsertRelativeTo`/`Position`が完全に
+    省略される実例(公式ドキュメント確認済みの既定値と同じ意味)。"""
+    xml = (
+        f"<p:WordAddImage {_WORD_XMLNS} "
+        'DisplayName="Add Picture" ImagePath="C:\\BookSamples\\Chapter_06\\Input\\Damage_Evidence.jpg" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordAddImageNode)
+    assert node.insert_relative_to is None
+    assert node.position is None
 
 
 def test_send_outlook_mail_and_set_to_clipboard(main_wf):

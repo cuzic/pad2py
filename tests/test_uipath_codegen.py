@@ -213,6 +213,7 @@ from dump_daemon.uipath_dsl import (
     WordAppendTextNode,
     WordSaveAsNode,
     WordReadTextNode,
+    WordAddImageNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -10907,6 +10908,88 @@ def test_word_read_text_with_no_output_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Word Read Text with no output Text captured" in code
+    _compiles(code)
+
+
+def test_word_add_image_generates_real_code_exec(tmp_path):
+    """知見260: `ui:WordAddImage`——公式ドキュメント確認済みの
+    `python-docx`の`Document.add_picture()`(ドキュメント末尾に新しい
+    段落として画像を追加する)が「Document」+「End」の確認済み既定動作
+    に正確に対応することを、実際の画像ファイルで`exec()`経由で確認
+    する。"""
+    import docx
+    from PIL import Image
+
+    img_path = str(tmp_path / "pic.png")
+    Image.new("RGB", (10, 10), color="red").save(img_path)
+    tmpl_path = str(tmp_path / "tmpl.docx")
+    doc = docx.Document()
+    doc.add_paragraph("Hello")
+    doc.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name=tmpl_path,
+                body=[WordAddImageNode(image_path=Literal(value=img_path))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "WordDocumentScope.add_picture(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]()
+    doc2 = docx.Document(tmpl_path)
+    assert len(doc2.inline_shapes) == 1
+
+
+def test_word_add_image_with_no_image_path_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx", body=[WordAddImageNode(image_path=None)]
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Add Image with no ImagePath captured" in code
+    _compiles(code)
+
+
+def test_word_add_image_with_unconfirmed_insert_relative_to_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordAddImageNode(
+                        image_path=Literal(value="x.png"), insert_relative_to="Text"
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Add Image with InsertRelativeTo set" in code
+    _compiles(code)
+
+
+def test_word_add_image_with_unconfirmed_position_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordAddImageNode(image_path=Literal(value="x.png"), position="Before")
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Add Image with Position set" in code
     _compiles(code)
 
 

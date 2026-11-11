@@ -4248,6 +4248,35 @@ class WordReadTextNode:
 
 
 @dataclass
+class WordAddImageNode:
+    """`<ui:WordAddImage ImagePath="..." />`(知見260、`WordApplicationScope`
+    配下の子活動、`WORD_NS`限定——GitHub検索で49件ヒット)。実機3件
+    (`starmanfrommars/Robotic-Process-Automation-Lab`・`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`・
+    `spritlesoftware/Uipath-RPA-AutomationProjects`)で確認した
+    構成——`ImagePath`(動的VB式、角括弧無しのリテラルパスの両方
+    確認)+`InsertRelativeTo`/`Position`(実機3件中2件で明示的に
+    `"Document"`/`"End"`、1件は両属性とも完全に省略——公式ドキュメント
+    確認済みの既定値がまさに`"Document"`/`"End"`のため、明示/省略の
+    いずれも同じ意味)。`Bookmark`/`OccurrenceIndex`/`Text`(他の挿入
+    モード専用プロパティ)は実機3件中2件で`{x:Null}`、1件は完全に省略
+    ——いずれも非表示/無関係な既定状態。
+
+    `InsertRelativeTo`/`Position`が確認済みの既定(`"Document"`/
+    `"End"`)以外の場合は`# TODO`へ倒す——公式ドキュメント確認済みの
+    他モード(`Text`相対/`Bookmark`相対)は実機未確認のため対応しない。
+    `python-docx`の`Document.add_picture(image_path)`
+    (公式ドキュメント確認済み:「ドキュメント末尾に新しい段落として
+    画像を追加する」)が「Document」+「End」の確認済み既定動作に
+    正確に対応する。"""
+
+    image_path: Expr = None
+    insert_relative_to: str | None = None
+    position: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelReadRangeNode:
     """`<ui:ExcelReadRange>`(知見115、`ExcelApplicationScope`配下の子活動、
     `ExcelWriteCellNode`と同じ「スコープと連動する」活動)。`range`は
@@ -4982,6 +5011,7 @@ Node = (
     | WordAppendTextNode
     | WordSaveAsNode
     | WordReadTextNode
+    | WordAddImageNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode

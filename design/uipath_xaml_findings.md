@@ -12395,6 +12395,48 @@ test_uipath_codegen.py`9件)、リポジトリ全体で全2358件通過
 いずれも知見255の調査パスで確認済みだが`ui:SetFocus`ほど単純ではない
 候補)の候補は次のティックで継続実装。
 
+## 260. `ui:WordAddImage`を新規実装——`InsertRelativeTo`/`Position`が実機で省略される場合と明示される場合の両方を確認し、公式ドキュメントで両者が同じ既定値であることを裏取りした
+
+Word classic系の残り候補`ui:WordAddImage`(タグ名限定GitHub検索で
+49件ヒット)に着手した。実機3件(`starmanfrommars/
+Robotic-Process-Automation-Lab`・`Apress/Robotic-Process-Automation-
+Using-UiPath-StudioX`・`spritlesoftware/Uipath-RPA-
+AutomationProjects`)で確認した構成——`ImagePath`(動的VB式、角括弧
+無しのリテラルパスの両方確認)+`InsertRelativeTo`/`Position`。
+
+実機3件中2件は`InsertRelativeTo="Document"`/`Position="End"`を
+明示的に書き出していたが、残り1件(`Apress`)は両属性を完全に
+省略していた——公式ドキュメント(`UiPath/skills`の
+`WordAddImage.md`)で両プロパティの既定値がまさに`"Document"`/
+`"End"`であることを確認し、明示・省略いずれも同じ意味であると
+裏取りした(知見176/230等で繰り返し確認してきた「ground-truthの
+非網羅性」の逆パターン——今回は実機サンプル間で明示/省略が揺れて
+いたが、公式ドキュメントとの対比で矛盾なく解決できた)。
+`Bookmark`/`OccurrenceIndex`/`Text`(他の挿入モード専用プロパティ、
+`InsertRelativeTo`が`"Text"`/`"Bookmark"`の場合のみ意味を持つ)は
+実機3件とも無関係な既定状態(`{x:Null}`または完全省略)。
+
+`InsertRelativeTo`/`Position`が確認済みの既定以外の場合は
+`# TODO`へ倒す——公式ドキュメントが記載する他モード(`Text`相対/
+`Bookmark`相対)は実機未確認のため対応しない。`python-docx`の
+`Document.add_picture(image_path)`(公式ドキュメント確認済み:
+「ドキュメント末尾に新しい段落として画像を追加する」)が
+「Document」+「End」の確認済み既定動作に正確に対応することを
+確認——`WordAppendTextNode`(知見258)の`add_paragraph()`と同じ
+「末尾に追加する」操作のテキスト版/画像版という対になる関係。
+
+実際に`PIL`で生成したテスト用画像ファイルを`python-docx`の
+`.docx`テンプレートへ挿入する実コードを`exec()`経由で動作確認し
+(`doc.inline_shapes`が1件増えることを確認)、`InsertRelativeTo`/
+`Position`の非確認済み値での`# TODO`判定も確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`4件)、リポジトリ全体で全2364件通過
+(28件skip、本活動の6件分の純増)。残るWord classic系
+(`WordInsertDataTable`・`WordReplacePicture`)・マウスキーボード系
+(`ui:GetActiveWindow`・`ui:SelectMultipleItems`)の候補は次のティック
+で継続実装。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

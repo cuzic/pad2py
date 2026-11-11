@@ -233,6 +233,7 @@ from ..uipath_dsl.types import (
     WordAppendTextNode,
     WordSaveAsNode,
     WordReadTextNode,
+    WordAddImageNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -1092,6 +1093,7 @@ def _generate_node(
             WordAppendTextNode,
             WordSaveAsNode,
             WordReadTextNode,
+            WordAddImageNode,
         ),
     ):
         return _generate_unresolved_activity(node, indent)
@@ -7604,6 +7606,12 @@ def _generate_word_application_scope(
                     child, _generate_word_read_text_in_scope(child, indent, var), prefix
                 )
             )
+        elif isinstance(child, WordAddImageNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_word_add_image_in_scope(child, indent, var), prefix
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.file_name!r})")
@@ -7708,6 +7716,36 @@ def _generate_word_read_text_in_scope(
     return [
         f'{prefix}{target} = "\\n".join(_p.text for _p in {scope_var}.paragraphs)'
     ]
+
+
+# 知見260: `ui:WordAddImage`——実機3件とも確認済みの既定(`InsertRelativeTo
+# ="Document"`・`Position="End"`)のみ対応する。`python-docx`の
+# `Document.add_picture(image_path)`(公式ドキュメント確認済み:
+# 「ドキュメント末尾に新しい段落として画像を追加する」)が正確に
+# 対応する。
+def _generate_word_add_image_in_scope(
+    node: WordAddImageNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.image_path is None:
+        return [f"{prefix}# TODO: Word Add Image with no ImagePath captured"]
+    if node.insert_relative_to not in (None, "Document"):
+        return [
+            f"{prefix}# TODO: Word Add Image with InsertRelativeTo set "
+            f"{node.insert_relative_to!r} — only the confirmed default "
+            '("Document") is implemented, refusing to guess'
+        ]
+    if node.position not in (None, "End"):
+        return [
+            f"{prefix}# TODO: Word Add Image with Position set "
+            f"{node.position!r} — only the confirmed default (\"End\") is "
+            "implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    image_path = _render_value_or_todo(node.image_path, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{scope_var}.add_picture({image_path})"]
 
 
 def _generate_excel_write_cell_in_scope(

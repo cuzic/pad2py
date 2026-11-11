@@ -3733,3 +3733,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      9件)、リポジトリ全体で全2358件通過(本活動の11件分の純増)。
      残るWord classic(`WordInsertDataTable`等)・マウスキーボード系
      (`ui:GetActiveWindow`等)の候補は次のティックで継続実装。
+
+218. **(完了、2026-11-10)** `ui:WordAddImage`を新規実装(知見260)
+     ——タグ名限定検索で49件ヒット。実機3件中2件は`InsertRelativeTo
+     ="Document"`/`Position="End"`を明示、1件は両属性とも完全に
+     省略——公式ドキュメントで両方が同じ既定値であることを裏取り
+     した。それ以外の値(`Text`/`Bookmark`相対モード)は実機未確認の
+     ため`# TODO`へ倒す。`python-docx`の`Document.add_picture()`
+     (公式ドキュメント確認済み:「ドキュメント末尾に新しい段落として
+     画像を追加する」)が確認済みの既定動作に正確に対応——
+     `WordAppendTextNode`(知見258)の`add_paragraph()`と対になる
+     テキスト版/画像版の関係。実際のPIL生成画像ファイルで`exec()`
+     経由の動作確認済み。回帰テスト追加(`tests/test_uipath_dsl.py`
+     2件・`tests/test_uipath_codegen.py`4件)、リポジトリ全体で全
+     2364件通過(本活動の6件分の純増)。残るWord classic
+     (`WordInsertDataTable`・`WordReplacePicture`)・マウスキーボード系
+     (`ui:GetActiveWindow`等)の候補は次のティックで継続実装。
