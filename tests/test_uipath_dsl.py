@@ -50,6 +50,8 @@ from dump_daemon.uipath_dsl import (
     WriteRangeNode,
     ReadCellNode,
     WriteCellNode,
+    ReadColumnNode,
+    ReadRowNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -1332,6 +1334,43 @@ def test_write_cell_properties_with_dynamic_cell_and_literal_workbook_path():
     assert node.sheet_name == Literal(value="Sheet1")
     assert node.cell == VbExpr(text='"D"+(Cell_Index+2).ToString')
     assert node.text == VbExpr(text="Full_Name")
+
+
+def test_read_column_properties():
+    """知見268: `ui:ReadColumn`(discovery-fresh-pass-8で発見、`ReadRangeNode`
+    /`ReadCellNode`と同じスコープ無し"Workbook"系ファミリー、タグ名限定
+    GitHub検索で12件ヒット)。実機`CertifaiAI/rpa-insurance-fraud`の
+    `workflow/ClaimFormOps/GetEachValue.xaml`で確認した構成。"""
+    xml = (
+        f"<ui:ReadColumn {_UI_XMLNS} "
+        'DisplayName="Read Column B1" Result="[temp1]" '
+        'SheetName="ClaimsForm" StartingCell="B1" WorkbookPath="[excel_path]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadColumnNode)
+    assert node.workbook_path == VbExpr(text="excel_path")
+    assert node.sheet_name == Literal(value="ClaimsForm")
+    assert node.starting_cell == Literal(value="B1")
+    assert node.result == VbExpr(text="temp1")
+    assert node.display_name == "Read Column B1"
+
+
+def test_read_row_properties_with_dynamic_sheet_name():
+    """知見268: `ui:ReadRow`(`ReadColumnNode`の水平方向の鏡像、タグ名
+    限定GitHub検索で11件ヒット)。実機`S1L3NTANG3L/UIPath-Mark-Splitter`の
+    `Process Only/Main.xaml`で確認した構成——`SheetName`が動的VB式。"""
+    xml = (
+        f"<ui:ReadRow {_UI_XMLNS} "
+        'DisplayName="Read studentNumbers Row" Result="[studentNumbers]" '
+        'SheetName="[markSchemaSheet]" StartingCell="A2" '
+        'WorkbookPath="[markSchemaPath]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadRowNode)
+    assert node.workbook_path == VbExpr(text="markSchemaPath")
+    assert node.sheet_name == VbExpr(text="markSchemaSheet")
+    assert node.starting_cell == Literal(value="A2")
+    assert node.result == VbExpr(text="studentNumbers")
 
 
 def test_excel_write_cell_with_dynamic_cell_expression():

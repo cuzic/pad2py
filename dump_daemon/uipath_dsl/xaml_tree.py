@@ -73,6 +73,8 @@ from .types import (
     WriteRangeNode,
     ReadCellNode,
     WriteCellNode,
+    ReadColumnNode,
+    ReadRowNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -2698,6 +2700,32 @@ def _parse_write_cell(elem: etree._Element) -> WriteCellNode:
     )
 
 
+def _parse_read_column(elem: etree._Element) -> ReadColumnNode:
+    return ReadColumnNode(
+        workbook_path=_attr_expr(elem, "WorkbookPath")
+        or _in_argument_property_expr(elem, "WorkbookPath"),
+        sheet_name=_attr_expr(elem, "SheetName")
+        or _in_argument_property_expr(elem, "SheetName"),
+        starting_cell=_attr_expr(elem, "StartingCell")
+        or _in_argument_property_expr(elem, "StartingCell"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_read_row(elem: etree._Element) -> ReadRowNode:
+    return ReadRowNode(
+        workbook_path=_attr_expr(elem, "WorkbookPath")
+        or _in_argument_property_expr(elem, "WorkbookPath"),
+        sheet_name=_attr_expr(elem, "SheetName")
+        or _in_argument_property_expr(elem, "SheetName"),
+        starting_cell=_attr_expr(elem, "StartingCell")
+        or _in_argument_property_expr(elem, "StartingCell"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_attach_window(elem: etree._Element) -> AttachWindowNode:
     body_elem = _find_property_element(elem, "Body")
     body = _unwrap_body_sequence(body_elem)
@@ -3453,6 +3481,8 @@ _DISPATCH = {
     (UI_NS, "WriteRange"): _parse_write_range,
     (UI_NS, "ReadCell"): _parse_read_cell,
     (UI_NS, "WriteCell"): _parse_write_cell,
+    (UI_NS, "ReadColumn"): _parse_read_column,
+    (UI_NS, "ReadRow"): _parse_read_row,
     (UI_NS, "AttachWindow"): _parse_attach_window,
     (UI_NS, "WindowScope"): _parse_window_scope,
     (UI_NS, "BrowserScope"): _parse_browser_scope,

@@ -3853,3 +3853,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      通過(本活動の10件分の純増)。10回目発見パスの全候補のうち
      `InvokeVBA`(ライブExcel COM注入が必要、高リスク)のみが残る
      最後の候補。
+
+224. **(完了、2026-11-10)** `ui:ReadColumn`/`ui:ReadRow`を新規実装
+     (知見268)——discovery-fresh-pass-8(両バックログ完結を受けて
+     起動した無制限8回目発見パス)の最上位推奨候補。タグ名限定検索で
+     それぞれ12件/11件ヒット、10件以上の独立リポジトリに分散。
+     `ReadRangeNode`/`ReadCellNode`(知見256/259)と同じスコープ無し
+     "Workbook"系ファミリーだが、`StartingCell`から1方向(下/右)へ
+     最初の空セルまで読む挙動には`openpyxl`の`Cell.offset(row=1)`/
+     `Cell.offset(column=1)`APIを使い、セル座標の文字列解析を自前で
+     行わずに動的`StartingCell`にも対応できる形に一般化
+     (`_generate_read_column_or_row_body`)。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     10件)、リポジトリ全体で全2418件通過(本活動の12件分の純増)。

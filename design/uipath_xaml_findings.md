@@ -12812,6 +12812,70 @@ Excel/Word/マウスキーボード網羅性向上の調査パス(知見256以�
 または`ExcelApplicationScope`のライブCOM対応という大きめの
 アーキテクチャ投資)が必要。
 
+## 268. `ui:ReadColumn`/`ui:ReadRow`を新規実装——discovery-fresh-pass-8の最上位推奨候補、`ReadRange`/`ReadCell`と同じスコープ無し"Workbook"系ファミリーの垂直/水平の鏡像
+
+知見267で10回目発見パス+Excel/Word/マウスキーボード網羅性向上の
+両バックログが完結したのを受け、新たに起動した無制限の8回目発見パス
+(discovery-fresh-pass-8)の報告が戻った。報告は`ui:ReadColumn`/
+`ui:ReadRow`のペアを「赤旗ゼロ・最広の独立リポジトリ分散(各10件
+以上)・既存の`WorkbookPath`+`openpyxl`パターンへそのまま乗る」
+最上位推奨として挙げた——エージェントの報告は常に独立検証する方針
+(知見265の`AnchorBase`教訓)に従い、以下を自分で裏取りした。
+
+**`ui:ReadColumn`**(タグ名限定GitHub検索で12件ヒット):`CertifaiAI/
+rpa-insurance-fraud`の`workflow/ClaimFormOps/GetEachValue.xaml`(実機
+2件目は`S1L3NTANG3L/UIPath-Mark-Splitter`の`Process Only/Main.xaml`
+でも独立に構成を確認)で`WorkbookPath="[excel_path]"`(動的VB式)、
+`SheetName="ClaimsForm"`(静的リテラル)、`StartingCell="B1"`(静的
+リテラル)、`Result="[temp1]"`——直後の`Assign`で`string.Join(",",
+temp1)`と使われており出力がコレクション/イテラブル型であることを
+確認。`marcelocruzrpa/uipath-ai-skills`の公式Studio ground-truth
+参照(`studio-ground-truth/UiPath.Excel.Activities/3.4/ReadColumn.xaml`)
+でも同じ4属性(`Result`/`SheetName`/`StartingCell`+`WorkbookPath`は
+本体属性として確認済み)の構成を確認。
+
+**`ui:ReadRow`**(タグ名限定GitHub検索で11件ヒット):`S1L3NTANG3L/
+UIPath-Mark-Splitter`の同ファイルで`WorkbookPath="[markSchemaPath]"`
+・`SheetName="[markSchemaSheet]"`(ここでは動的VB式を確認——
+`ReadColumn`の実機確認は静的リテラルのみだったため、`sheet_name`を
+両活動とも最初から`Expr`型として扱う判断を裏付けた)・
+`StartingCell="A2"`・`Result="[studentNumbers]"`。公式Studio
+ground-truthでも同じ構成を確認。
+
+実装は`ReadRangeNode`/`ReadCellNode`(知見256/259)が確立した
+`WorkbookPath`単独指定+`openpyxl.load_workbook()`の自己完結パターンを
+再利用するが、`StartingCell`から1方向(下/右)へ最初の空セルまで読む
+という挙動には新しいアプローチを採った——`WriteRangeNode`(知見257)
+のように`coordinate_from_string()`でセル座標をコード生成時に静的
+解析するのではなく、`openpyxl`の`Cell.offset(row=1)`/
+`Cell.offset(column=1)`APIを実行時に使うことで、セル座標の文字列解析
+を自前で行わずに済み、`StartingCell`が動的式(リテラルでない)の
+場合でも実行時に自然に対応できる——`ReadColumnNode`/`ReadRowNode`
+共通のコード生成関数`_generate_read_column_or_row_body`
+(`offset_kwarg`で`"row"`/`"column"`を切り替えるだけ)に一般化した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`10件、うち2件は`exec()`経由で実際の
+`openpyxl`ワークブックに対する読み取りを確認——`ReadColumn`は
+縦方向`["x1","x2","x3"]`、`ReadRow`は動的`SheetName`込みで横方向
+`["r1","r2","r3"]`)、リポジトリ全体で全2418件通過(28件skip、
+本活動の12件分の純増)。
+
+discovery-fresh-pass-8は他に`ui:GetPOP3MailMessages`(14件ヒット、
+既存の`GetIMAPMailMessages`基盤をそのまま再利用可能、stdlib
+`poplib`のみで新規依存不要)と`ParallelForEach`(core WF、既存の
+`ParallelNode`の「`Parallel`も実際は逐次実行+コメントで明示」という
+誠実な前例をそのまま再利用できる)を次点候補として報告——いずれも
+次ティックで着手可能。`ui:WordExportToPdf`(1リポジトリの公式
+トラブルシュート用フィクスチャのみ、独立実例とは言えないため見送り)
+・`ui:GetExchangeMailMessages`(EWS+OAuth+サードパーティ依存`
+exchangelib`が必要、より高複雑度)・Orchestratorキューファミリー
+(`AddQueueItem`/`GetTransactionItem`、ライブOrchestrator REST API
+というこれまでと異なるカテゴリの外部SaaS依存、明示的なアーキテクチャ
+判断が必要)は赤旗候補として保留。`ui:GetCellColor`(`GetCellColorX`
+のModern UI亜種への誤マッチ、`ui:Pick`/`ui:DragDrop`と同じ偽陽性
+クラス)を既存の偽陽性リストへ追加。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -114,6 +114,8 @@ from ..uipath_dsl.types import (
     WriteRangeNode,
     ReadCellNode,
     WriteCellNode,
+    ReadColumnNode,
+    ReadRowNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1061,6 +1063,10 @@ def _generate_node(
         return _generate_read_cell(node, indent)
     if isinstance(node, WriteCellNode):
         return _generate_write_cell(node, indent)
+    if isinstance(node, ReadColumnNode):
+        return _generate_read_column(node, indent)
+    if isinstance(node, ReadRowNode):
+        return _generate_read_row(node, indent)
     if isinstance(node, WordApplicationScopeNode):
         return _generate_word_application_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, SendMailNode):
@@ -8713,6 +8719,58 @@ def _generate_write_cell_body(node: WriteCellNode, indent: int) -> list[str]:
         f"{prefix}_wb[{VB_CSTR_HELPER_NAME}({sheet_name})][{cell}] = "
         f"{VB_CSTR_HELPER_NAME}({value})",
         f"{prefix}_wb.save({workbook_path})",
+    ]
+
+
+# 知見268: `ui:ReadColumn`/`ui:ReadRow`——`ReadRangeNode`/`ReadCellNode`
+# (知見256/259)と同じスコープ無し"Workbook"系ファミリー。`StartingCell`
+# から1方向(下/右)に、最初の空セルまで値を読み取ってコレクションへ
+# 格納する。`openpyxl`の`Cell.offset(row=..., column=...)`APIを使うことで
+# セル座標の文字列解析(`coordinate_from_string`等)を自前で行わずに済み、
+# `StartingCell`が動的式(リテラルでない)の場合でも実行時に自然に対応
+# できる(`WriteRangeNode`の静的解決限定という制約を踏襲しない)。
+def _generate_read_column(node: ReadColumnNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_column_or_row_body(node, indent, offset_kwarg="row")
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_row(node: ReadRowNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_column_or_row_body(node, indent, offset_kwarg="column")
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_column_or_row_body(
+    node: ReadColumnNode | ReadRowNode, indent: int, *, offset_kwarg: str
+) -> list[str]:
+    prefix = INDENT * indent
+    label = "Read Column" if offset_kwarg == "row" else "Read Row"
+    if node.workbook_path is None:
+        return [f"{prefix}# TODO: {label} with no WorkbookPath captured"]
+    if node.starting_cell is None:
+        return [f"{prefix}# TODO: {label} with no StartingCell captured"]
+    if node.sheet_name is None:
+        return [f"{prefix}# TODO: {label} with no SheetName captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: {label} with no output Result captured"]
+    todo: list[str] = []
+    workbook_path = _render_value_or_todo(node.workbook_path, prefix, todo)
+    sheet_name = _render_value_or_todo(node.sheet_name, prefix, todo)
+    starting_cell = _render_value_or_todo(node.starting_cell, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f"{prefix}_wb = openpyxl.load_workbook({workbook_path})",
+        f"{prefix}_cell = _wb[{VB_CSTR_HELPER_NAME}({sheet_name})]"
+        f"[{VB_CSTR_HELPER_NAME}({starting_cell})]",
+        f"{prefix}{target} = []",
+        f"{prefix}while _cell.value is not None:",
+        f"{inner}{target}.append(_cell.value)",
+        f"{inner}_cell = _cell.offset({offset_kwarg}=1)",
+        f"{prefix}_wb.close()",
     ]
 
 

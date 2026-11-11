@@ -74,6 +74,8 @@ from dump_daemon.uipath_dsl import (
     WriteRangeNode,
     ReadCellNode,
     WriteCellNode,
+    ReadColumnNode,
+    ReadRowNode,
     BuildDataTableNode,
     CheckNode,
     ClearDataTableNode,
@@ -12400,6 +12402,169 @@ def test_write_cell_with_no_sheet_name_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Write Cell with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_column_resolves_via_openpyxl_cell_offset_exec(tmp_path):
+    """知見268: `ui:ReadColumn`——`StartingCell`から下方向に、最初の
+    空セルまで`openpyxl`の`Cell.offset(row=1)`で読み進めることを実際の
+    `openpyxl`で`exec()`経由で確認する。"""
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws["B1"] = "x1"
+    ws["B2"] = "x2"
+    ws["B3"] = "x3"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            ReadColumnNode(
+                workbook_path=Literal(value=path),
+                sheet_name=Literal(value="Sheet1"),
+                starting_cell=Literal(value="B1"),
+                result=VbExpr(text="col"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert ".offset(row=1)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code + "\n    return col", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert ns["Test"]() == ["x1", "x2", "x3"]
+
+
+def test_read_column_with_no_workbook_path_is_todo():
+    wf = _wrap([ReadColumnNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Column with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_read_column_with_no_starting_cell_is_todo():
+    wf = _wrap(
+        [ReadColumnNode(workbook_path=Literal(value="wb.xlsx"), starting_cell=None)]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Column with no StartingCell captured" in code
+    _compiles(code)
+
+
+def test_read_column_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ReadColumnNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                starting_cell=Literal(value="B1"),
+                sheet_name=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Column with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_column_with_no_output_result_is_todo():
+    wf = _wrap(
+        [
+            ReadColumnNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                starting_cell=Literal(value="B1"),
+                sheet_name=Literal(value="S"),
+                result=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Column with no output Result captured" in code
+    _compiles(code)
+
+
+def test_read_row_resolves_via_openpyxl_cell_offset_with_dynamic_sheet_name_exec(tmp_path):
+    """知見268: `ui:ReadRow`——`ReadColumnNode`の水平方向の鏡像、
+    `Cell.offset(column=1)`で読み進めることと、`SheetName`が動的VB式の
+    場合も実際の`openpyxl`で`exec()`経由で確認する。"""
+    import openpyxl
+
+    path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "StudentSheet"
+    ws["A2"] = "r1"
+    ws["B2"] = "r2"
+    ws["C2"] = "r3"
+    wb.save(path)
+
+    wf = _wrap(
+        [
+            ReadRowNode(
+                workbook_path=Literal(value=path),
+                sheet_name=VbExpr(text="sheet_name"),
+                starting_cell=Literal(value="A2"),
+                result=VbExpr(text="row"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "openpyxl.load_workbook(" in code
+    assert ".offset(column=1)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(sheet_name):")
+    ns: dict[str, object] = {}
+    exec(code2 + "\n    return row", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert ns["Test"]("StudentSheet") == ["r1", "r2", "r3"]
+
+
+def test_read_row_with_no_workbook_path_is_todo():
+    wf = _wrap([ReadRowNode(workbook_path=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Row with no WorkbookPath captured" in code
+    _compiles(code)
+
+
+def test_read_row_with_no_starting_cell_is_todo():
+    wf = _wrap([ReadRowNode(workbook_path=Literal(value="wb.xlsx"), starting_cell=None)])
+    code = generate_python(wf)
+    assert "# TODO: Read Row with no StartingCell captured" in code
+    _compiles(code)
+
+
+def test_read_row_with_no_sheet_name_is_todo():
+    wf = _wrap(
+        [
+            ReadRowNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                starting_cell=Literal(value="A1"),
+                sheet_name=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Row with no SheetName captured" in code
+    _compiles(code)
+
+
+def test_read_row_with_no_output_result_is_todo():
+    wf = _wrap(
+        [
+            ReadRowNode(
+                workbook_path=Literal(value="wb.xlsx"),
+                starting_cell=Literal(value="A1"),
+                sheet_name=Literal(value="S"),
+                result=None,
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Read Row with no output Result captured" in code
     _compiles(code)
 
 

@@ -4692,6 +4692,60 @@ class WriteCellNode:
 
 
 @dataclass
+class ReadColumnNode:
+    """`<ui:ReadColumn WorkbookPath="..." SheetName="..." StartingCell="..."
+    Result="..." />`(知見268、discovery-fresh-pass-8で発見、タグ名限定
+    GitHub検索で12件ヒット・10件以上の独立リポジトリに分散)。`ReadRangeNode`
+    /`ReadCellNode`(知見256/259)と同じスコープ無し"Workbook"系ファミリー
+    の兄弟活動——`StartingCell`から下方向に、最初の空セルまで1列分の値を
+    読み取って`Result`(出力コレクション)へ格納する。
+
+    実機2件(`CertifaiAI/rpa-insurance-fraud`の`workflow/ClaimFormOps/
+    GetEachValue.xaml`、`S1L3NTANG3L/UIPath-Mark-Splitter`の
+    `Process Only/Main.xaml`)で確認した構成——`WorkbookPath`
+    (`[excel_path]`という動的VB式)、`SheetName`(`"ClaimsForm"`という
+    静的リテラルのみ確認)、`StartingCell`(`"B1"`/`"C1"`等の静的リテラル
+    のみ確認——動的式は未確認だが、後述のコード生成は`openpyxl`の
+    `Cell.offset()`API経由で動的式にも自然に対応できるため制約しない)、
+    `Result`(出力、`string.Join(",", temp1)`という実機コードで
+    イテラブル/コレクション型と確認済み)。公式ドキュメント(Studio
+    ground-truth参照、`marcelocruzrpa/uipath-ai-skills`リポジトリの
+    `studio-ground-truth/UiPath.Excel.Activities/3.4/ReadColumn.xaml`)
+    でも同じ3属性+`Result`の構成を確認。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    starting_cell: Expr = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ReadRowNode:
+    """`<ui:ReadRow WorkbookPath="..." SheetName="..." StartingCell="..."
+    Result="..." />`(知見268、`ReadColumnNode`の水平方向の鏡像——
+    `StartingCell`から右方向に、最初の空セルまで1行分の値を読み取って
+    `Result`へ格納する。discovery-fresh-pass-8で発見、タグ名限定GitHub
+    検索で11件ヒット。
+
+    実機2件(`S1L3NTANG3L/UIPath-Mark-Splitter`の`Process Only/Main.xaml`、
+    `Varun-Chowdary-V/ResumeGeneratorBotUiPath`)で確認した構成——
+    `WorkbookPath`(`[markSchemaPath]`という動的VB式)、`SheetName`
+    (`[markSchemaSheet]`という動的VB式——`ReadColumnNode`の実機確認は
+    静的リテラルのみだったが、こちらで動的式の実例も確認できたため
+    `sheet_name`も最初から`Expr`型として扱う判断を裏付ける)、
+    `StartingCell`(`"A2"`という静的リテラル)、`Result`(出力コレクション)。
+    公式ドキュメント(Studio ground-truth)でも`ReadColumn`と同じ3属性+
+    `Result`の構成を確認。"""
+
+    workbook_path: Expr = None
+    sheet_name: Expr = None
+    starting_cell: Expr = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class SendOutlookMailNode:
     """`<ui:SendOutlookMail To="..." Subject="..." Body="..." />`(知見24)。
 
@@ -5249,6 +5303,8 @@ Node = (
     | WriteRangeNode
     | ReadCellNode
     | WriteCellNode
+    | ReadColumnNode
+    | ReadRowNode
     | SendOutlookMailNode
     | GetOutlookMailMessagesNode
     | MarkMailAsReadXNode
