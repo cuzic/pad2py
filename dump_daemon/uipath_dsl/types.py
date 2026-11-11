@@ -5203,6 +5203,20 @@ class ExcelAppendRangeNode:
 
 
 @dataclass
+class ExcelGetWorkbookSheetsNode:
+    """`<ui:ExcelGetWorkbookSheets Sheets="[...]" />`(知見284、
+    discovery-fresh-pass-13が発見、タグ名限定GitHub検索で128件ヒット)。
+    `ExcelApplicationScope`配下専用の子活動(`ExcelReadCellNode`等と同じ
+    ファミリー)。属性は`Sheets`(出力変数、プレーン属性形——
+    `ExcelReadCellNode.Result`のような`<Foo.Result>`プロパティ要素形
+    ではない、`Shivamkr99/Sales-Report-Automation`・`Orica-4S/
+    Capybara_Fin028_Performer_Part3`の実機XAMLで確認)の1つだけ。"""
+
+    sheets: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ReadRangeNode:
     """`<ui:ReadRange WorkbookPath="..." SheetName="..." DataTable="..."
     AddHeaders="..." Range="..." />`(知見256、Excel/Word/マウスキーボード
@@ -6090,6 +6104,7 @@ Node = (
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
+    | ExcelGetWorkbookSheetsNode
     | ReadRangeNode
     | WriteRangeNode
     | ReadCellNode

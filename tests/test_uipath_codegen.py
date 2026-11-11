@@ -100,6 +100,7 @@ from dump_daemon.uipath_dsl import (
     DeleteFolderNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelGetWorkbookSheetsNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -13791,6 +13792,67 @@ def test_excel_read_cell_with_no_output_result_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Excel Read Cell with no output Result captured" in code
+    _compiles(code)
+
+
+def test_excel_get_workbook_sheets_generates_real_code_exec(tmp_path):
+    """知見284: `ui:ExcelGetWorkbookSheets`——実際の`openpyxl`ワークブック
+    (3シート)に対して`exec()`経由で`list(scope_var.sheetnames)`が本当に
+    全シート名のリストを返すことを確認する。"""
+    import openpyxl
+
+    wb_path = str(tmp_path / "wb.xlsx")
+    wb = openpyxl.Workbook()
+    wb.active.title = "Sheet1"
+    wb.create_sheet("Data")
+    wb.create_sheet("Summary")
+    wb.save(wb_path)
+
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path=wb_path,
+                body=[
+                    ExcelGetWorkbookSheetsNode(
+                        sheets=VbExpr(text="sheetnames"),
+                        display_name="Get Workbook Sheets",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Get Workbook Sheets" in code
+    assert "sheetnames = list(ExcelWorkbookScope.sheetnames)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return sheetnames", namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]() == ["Sheet1", "Data", "Summary"]
+
+
+def test_excel_get_workbook_sheets_with_no_output_sheets_is_todo():
+    wf = _wrap(
+        [
+            ExcelApplicationScopeNode(
+                workbook_path="wb.xlsx",
+                body=[ExcelGetWorkbookSheetsNode(sheets=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Excel Get Workbook Sheets with no output Sheets captured" in code
+    _compiles(code)
+
+
+def test_excel_get_workbook_sheets_outside_scope_is_unresolved_activity():
+    """知見284: スコープ外で遭遇した場合(未確認の構造)は
+    `_generate_unresolved_activity`の安全な`# TODO`へ倒れ、`TypeError`で
+    クラッシュしないことを確認する(`ExcelReadCellNode`等と同じ既存の
+    フォールバック経路)。"""
+    wf = _wrap([ExcelGetWorkbookSheetsNode(sheets=VbExpr(text="sheetnames"))])
+    code = generate_python(wf)
+    assert "# TODO" in code
     _compiles(code)
 
 

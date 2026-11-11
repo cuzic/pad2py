@@ -13624,6 +13624,39 @@ isinstance`ディスパッチ鎖(402行)、(2) `_collect_imports`の66連続
 リポジトリ全体で全2510件通過(28件skip、純増はテスト修正1件のみで
 新規テスト追加は無し——本活動はリファクタ+既存バグ修正のため)。
 
+## 284. `ui:ExcelGetWorkbookSheets`を新規実装——discovery-fresh-pass-13が報告した4候補のうち最高確信度のものを独立検証し、既存`ExcelApplicationScope`の子活動ディスパッチへ`openpyxl.Workbook.sheetnames`経由で追加した
+
+知見283のリファクタ完了後、discovery-fresh-pass-13(知見282での
+`umab:ReplyToMailX`/`ForwardMailX`/`uta:AttachDocument`の却下を受けて
+起動した13回目の発見パス)が4候補を報告した——(1)
+`ui:ExcelGetWorkbookSheets`(scope子活動、128件ヒット)、(2)
+`ui:ExcelCopySheet`(scope子活動、56件ヒット、同一ワークブック内コピー
+のみ実機確認)、(3) `ui:GetSheets`(スコープ無し単独活動、
+`WorkbookPathResource="[LocalResource.FromPath(...)]"`の分解が必要)、
+(4) `ui:GetExchangeMailMessages`/`SendExchangeMail`(実機証拠は強いが
+新規依存`exchangelib`が必要なため確認保留、[[feedback_new_dependency_
+requires_confirmation]]の既存ルールに従いサイレント追加しなかった)。
+
+最高確信度の(1)から着手し、エージェントの報告を独自に再検証した
+(`gh api search/code`で同じ128件ヒットを確認し、報告と同じ2つの実機
+リポジトリ——`Shivamkr99/Sales-Report-Automation`・`Orica-4S/
+Capybara_Fin028_Performer_Part3`——を自分で取得して同じ属性構成
+(`Sheets`属性1つだけ、`ExcelApplicationScope.Body`配下)を確認した)。
+既存の`ExcelReadCellNode`/`ExcelWriteCellNode`等と同じ「`ExcelApplication
+Scope`配下でのみ`scope_var`束縛を使った実コードを生成し、スコープ外で
+遭遇した場合は`_generate_unresolved_activity`の安全な`# TODO`へ倒れる」
+という確立済みパターンをそのまま再利用——`openpyxl.Workbook.sheetnames`
+(`list[str]`互換のリスト風オブジェクト)を素の`list()`で包んで代入する
+だけの薄い実装。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+`tests/test_uipath_codegen.py`3件、うち1件は実際に3シートの`openpyxl`
+ワークブックを生成して`exec()`経由で全シート名のリストが正しく
+返ることを確認)、リポジトリ全体で全2514件通過(28件skip、本活動の
+4件分の純増)。
+
+discovery-fresh-pass-13が報告した残りの候補(`ui:ExcelCopySheet`・
+`ui:GetSheets`・`exchangelib`待ちの`GetExchangeMailMessages`/
+`SendExchangeMail`)は未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

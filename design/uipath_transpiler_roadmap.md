@@ -4087,3 +4087,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      2026-11-11に本セッション中に実際に失敗した)も修正した——テストを
      実行時の実日付と比較する形に直した。リポジトリ全体で全2510件通過
      (28件skip、新規テスト追加は無し、既存テスト1件の時限バグ修正のみ)。
+
+240. **(完了、2026-11-11)** `ui:ExcelGetWorkbookSheets`を新規実装
+     (知見284)——discovery-fresh-pass-13が報告した4候補中最高確信度の
+     もの、タグ名限定128件ヒットを独立に再検証し同じ2実機リポジトリ
+     (`Shivamkr99/Sales-Report-Automation`・`Orica-4S/
+     Capybara_Fin028_Performer_Part3`)で確認。既存の`ExcelReadCellNode`
+     等と同じ`ExcelApplicationScope`配下専用の子活動ディスパッチパターン
+     を再利用し、`openpyxl.Workbook.sheetnames`を`list()`で包んで代入する
+     薄い実装。スコープ外で遭遇した場合は既存の安全な`_generate_
+     unresolved_activity`フォールバックへ倒れることも確認。回帰テスト
+     追加(`tests/test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`
+     3件、うち1件は実際の3シート`openpyxl`ワークブックで`exec()`経由の
+     確認を含む)、リポジトリ全体で全2514件通過(本活動の4件分の純増)。

@@ -77,6 +77,7 @@ from dump_daemon.uipath_dsl import (
     DoWhileNode,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelGetWorkbookSheetsNode,
     ExcelReadCellNode,
     ExcelReadRangeNode,
     ExcelWriteCellNode,
@@ -1628,6 +1629,22 @@ def test_excel_read_cell_properties():
     assert node.sheet_name == "Sheet1"
     assert node.result == VbExpr(text="strImagePath")
     assert node.display_name == "Read Cell"
+
+
+def test_excel_get_workbook_sheets_properties():
+    """知見284: `ui:ExcelGetWorkbookSheets`(discovery-fresh-pass-13が
+    発見、タグ名限定GitHub検索で128件ヒット)。実機`Shivamkr99/
+    Sales-Report-Automation`・`Orica-4S/Capybara_Fin028_Performer_Part3`
+    で確認した構成——`Sheets`はプレーン属性形(`ExcelReadCellNode.Result`
+    のような`<Foo.Result>`プロパティ要素形ではない)。"""
+    xml = (
+        f"<ui:ExcelGetWorkbookSheets {_UI_XMLNS} "
+        'DisplayName="Get Workbook Sheets" Sheets="[sheetnames]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ExcelGetWorkbookSheetsNode)
+    assert node.sheets == VbExpr(text="sheetnames")
+    assert node.display_name == "Get Workbook Sheets"
 
 
 def test_comment_properties():

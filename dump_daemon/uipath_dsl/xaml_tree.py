@@ -75,6 +75,7 @@ from .types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelGetWorkbookSheetsNode,
     ReadRangeNode,
     WriteRangeNode,
     ReadCellNode,
@@ -2723,6 +2724,13 @@ def _parse_excel_read_cell(elem: etree._Element) -> ExcelReadCellNode:
     )
 
 
+def _parse_excel_get_workbook_sheets(elem: etree._Element) -> ExcelGetWorkbookSheetsNode:
+    return ExcelGetWorkbookSheetsNode(
+        sheets=_attr_expr(elem, "Sheets"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_comment(elem: etree._Element) -> CommentNode:
     return CommentNode(text=_attr(elem, "Text") or "")
 
@@ -3811,6 +3819,7 @@ _DISPATCH = {
     (UI_NS, "GetFromClipboard"): _parse_get_from_clipboard,
     (UI_NS, "ExcelWriteCell"): _parse_excel_write_cell,
     (UI_NS, "ExcelReadCell"): _parse_excel_read_cell,
+    (UI_NS, "ExcelGetWorkbookSheets"): _parse_excel_get_workbook_sheets,
     (UI_NS, "Comment"): _parse_comment,
     (UI_NS, "CommentOut"): _parse_comment_out,
     (UI_NS, "LogMessage"): _parse_log_message,

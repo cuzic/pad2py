@@ -116,6 +116,7 @@ from ..uipath_dsl.types import (
     Expr,
     ExcelApplicationScopeNode,
     ExcelAppendRangeNode,
+    ExcelGetWorkbookSheetsNode,
     ReadRangeNode,
     WriteRangeNode,
     ReadCellNode,
@@ -1223,6 +1224,7 @@ def _generate_node(
             ExcelReadRangeNode,
             ExcelWriteRangeNode,
             ExcelAppendRangeNode,
+            ExcelGetWorkbookSheetsNode,
             WordReplaceTextNode,
             WordAppendTextNode,
             WordSaveAsNode,
@@ -8410,6 +8412,14 @@ def _generate_excel_application_scope(
                     child, _generate_excel_append_range_in_scope(child, indent, var), prefix
                 )
             )
+        elif isinstance(child, ExcelGetWorkbookSheetsNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child,
+                    _generate_excel_get_workbook_sheets_in_scope(child, indent, var),
+                    prefix,
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.workbook_path!r})")
@@ -9062,6 +9072,25 @@ def _generate_excel_read_cell_in_scope(
     if todo:
         return todo
     return [f"{prefix}{target} = {scope_var}[{node.sheet_name!r}][{cell}].value"]
+
+
+# 知見284: `ui:ExcelGetWorkbookSheets`(discovery-fresh-pass-13が発見、
+# `ExcelReadCellNode`等と同じ`ExcelApplicationScope`配下専用の子活動
+# ファミリー)。`openpyxl.Workbook.sheetnames`は`list[str]`を返す
+# プロパティ(実際は`_WorkbookChild`由来のリスト風オブジェクト)——UiPath
+# 側の`Sheets`が素朴な文字列配列であることに合わせ、確実な`list[str]`へ
+# 変換する。
+def _generate_excel_get_workbook_sheets_in_scope(
+    node: ExcelGetWorkbookSheetsNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.sheets is None:
+        return [f"{prefix}# TODO: Excel Get Workbook Sheets with no output Sheets captured"]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.sheets, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{target} = list({scope_var}.sheetnames)"]
 
 
 # 知見119: `ui:Comment`。純粋な注釈で実行時の挙動は無い——Pythonの`#`
