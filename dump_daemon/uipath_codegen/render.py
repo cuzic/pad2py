@@ -589,6 +589,20 @@ def _render_node(node: ExprNode) -> str:
                 # 無くなった時点の既存の`_canonical_name()`分岐)。
                 return _apply_chained_property(_render_node(Ident(name=prefix)), last)
         else:
+            # 知見273: VB組み込みの裸の識別子`Today`/`Now`——いずれも
+            # VB.NET予約語のため実際の変数名と衝突する可能性が無い
+            # (`_canonical_name`より先に判定して安全)。`ui:ModifyDate`
+            # の実機確認済み`SourceDate="[Today]"`を正しく解決するために
+            # 追加した一般修正——`ModifyDate`専用ではなく、他の任意の式で
+            # これらを使っていた既存の(未発見の)バグも同時に解消する
+            # (これまでは無変換のまま素通しされ、生成コード側で未定義の
+            # `Today`/`Now`という裸の名前への参照になり`NameError`に
+            # なっていた)。
+            name_lower = node.name.lower()
+            if name_lower == "today":
+                return "datetime.date.today()"
+            if name_lower == "now":
+                return "datetime.datetime.now()"
             return _canonical_name(node.name)
         return node.name
     if isinstance(node, StringLiteral):
@@ -728,6 +742,15 @@ _SAFE_BARE_MEMBERS = ("tostring", "copy", "length", "fullname", "name", "count")
 # 持ち、任意の変数の同名メンバだと誤認するリスクがあるため。
 _STATIC_PROPERTY_TRANSLATIONS = {
     "environment.currentdirectory": "os.getcwd()",
+    # 知見273: `DateAndTime.Now`/`DateTime.Now`(同じ.NET挙動を指す
+    # 2つの修飾名——`Microsoft.VisualBasic.DateAndTime`モジュールと
+    # `System.DateTime`構造体の静的プロパティ、両方実機で確認済みの
+    # 表記ゆれ、知見257の`WriteRangeNode`docstring参照)も裸の
+    # `Today`/`Now`(上記`_render_node`の`Ident`分岐)と同じ変換。
+    "dateandtime.now": "datetime.datetime.now()",
+    "dateandtime.today": "datetime.date.today()",
+    "datetime.now": "datetime.datetime.now()",
+    "datetime.today": "datetime.date.today()",
 }
 
 

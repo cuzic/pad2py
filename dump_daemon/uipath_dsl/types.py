@@ -4011,6 +4011,77 @@ class ModifyTextNode:
 
 
 @dataclass
+class FindStartEndDateModificationNode:
+    """`<ucad:FindStartEndDateModification Location="..." TimeUnit="..." />`
+    (知見273、`ui:ModifyDate`専用の子活動)。公式ドキュメント
+    (`modify-date`ページ、WebSearch経由確認)——「Find」(`Location`、
+    対象期間の最初/最後の日を選ぶ)+「Of」(`TimeUnit`、対象期間の単位
+    ——週/月/年)という2属性構成。実機(`AravindS-26/Fitness_Tracker`の
+    `Main.xaml`)で`Location="LastDay"`+`TimeUnit="Month"`(「今月の
+    最終日を求める」)という組み合わせのみ確認——`Location="FirstDay"`
+    や`TimeUnit="Week"`/`"Year"`は実機未確認のため未対応。"""
+
+    display_name: str | None = None
+    location: str | None = None
+    time_unit: str | None = None
+
+
+@dataclass
+class ModifyDateNode:
+    """`<ui:ModifyDate SourceDate="..." OutDate="..." OutText="..."
+    CustomDateFormat="..." UseCustomDateFormat="..." FormatAsText="...">`
+    (知見273、discovery-fresh-pass-9が報告した`ModifyDate`(`
+    AddOrSubtractFromDate`とは別のground-truthファイル、知見227で
+    "too thin"と判断した`AddOrSubtractFromDate`とは異なる活動)、
+    タグ名限定GitHub検索で12件ヒット)。`ModifyTextNode`(知見224)と
+    全く同じ`.Body`配下`ActivityAction`(`DelegateInArgument`無し)+
+    `Sequence`構造——`SourceDate`を起点に`body`内の子活動
+    (`FindStartEndDateModificationNode`のみ対応)を順番に適用し
+    `OutDate`へ代入する「日付を線形に通す」処理。
+
+    実機2件(`PakamTharunReddy/RPA`の`RPA_Training/Format.xaml`、
+    `AravindS-26/Fitness_Tracker`の`Main.xaml`)で構成を確認したが、
+    前者は`FindDayOfWeekDateModification`(`Direction`のみ設定、
+    `DayOfWeek`属性が無く設定不完全)・`AddSubtractTimePeriodDate
+    Modification`(`Value`のみ設定、単位/符号の属性が無く設定不完全)
+    という2つの子活動を含む——明らかに未完成の研修用プレースホルダー
+    (属性が意味を成す最小限のセットすら揃っていない)と判断し、この
+    2つの子活動は実装対象に含めない(`ModifyTextNode`が実機ヒット0件の
+    `CombineTextModification`を見送った判断と同じクラス)。後者
+    (`AravindS-26/Fitness_Tracker`)は`FindStartEndDateModification
+    Location="LastDay" TimeUnit="Month"`という単一の子活動のみで
+    構成が完結しており(`OutDate`が`s:DateTime`型変数、`If Condition=
+    "[todaydate=lastday]"`という下流の等価比較のみ確認——型未確認の
+    広い下流アクセスという懸念には当たらない)、こちらのみを実装対象と
+    する。
+
+    `SourceDate="[Today]"`という実機確認済みの動的式は、VB組み込み
+    識別子`Today`(裸の識別子、ドット無し)——本修正まで`render.py`に
+    一切対応が無く(確認済みのギャップ、`DateTime.Now`等の静的クラス
+    参照も同様に無変換のまま素通しされていた)、本活動の実装の前提
+    として`render.py`へ`Today`→`datetime.date.today()`・`Now`→
+    `datetime.datetime.now()`(裸の識別子、及び`DateAndTime.`/
+    `DateTime.`修飾形の両方)という一般的な修正を追加した——`ModifyDate`
+    専用ではなく、任意の式でこれらのVB組み込み識別子を使っていた
+    既存の(未発見の)バグも同時に解消する。
+
+    `OutText`/`UseCustomDateFormat`/`CustomDateFormat`/`FormatAsText`
+    は実機2件とも(前者は設定不完全な研修用プレースホルダーのため
+    判断材料にならない、後者は`OutText={x:Null}`/`CustomDateFormat=
+    {x:Null}`で未使用)クリーンな確認済み実例が無いため、いずれかが
+    設定されている場合は活動全体を`# TODO`へ倒す(`OutDate`のみ対応)。"""
+
+    display_name: str | None = None
+    source_date: Expr = None
+    out_date: Expr = None
+    out_text: Expr = None
+    use_custom_date_format: str | None = None
+    custom_date_format: Expr = None
+    format_as_text: str | None = None
+    body: list[Node] = field(default_factory=list)
+
+
+@dataclass
 class InvokeCodeNode:
     """`<ui:InvokeCode Code="...">`(知見17、インラインVB.NETコードは
     プレーンな文字列属性)。`code`はVB.NETコードのプレーン文字列で、
@@ -5488,6 +5559,8 @@ Node = (
     | TrimTextModificationNode
     | ToUpperLowerTextModificationNode
     | ModifyTextNode
+    | FindStartEndDateModificationNode
+    | ModifyDateNode
     | InvokeCodeNode
     | SetToClipboardNode
     | CommentNode

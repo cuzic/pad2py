@@ -210,6 +210,8 @@ from ..uipath_dsl.types import (
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
     ModifyTextNode,
+    FindStartEndDateModificationNode,
+    ModifyDateNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -624,6 +626,14 @@ def _collect_imports(body: list[str]) -> list[str]:
         for line in body
     ):
         imports.append("import os")
+    # `datetime`(VB組み込み識別子`Today`/`Now`・`DateAndTime.Now`等の
+    # 変換先、知見273)も同様。
+    if any("datetime.date.today(" in line or "datetime.datetime.now(" in line for line in body):
+        imports.append("import datetime")
+    # `calendar`(`FindStartEndDateModification`→`calendar.monthrange(...)`
+    # 変換先、知見273)も同様。
+    if any("calendar.monthrange(" in line for line in body):
+        imports.append("import calendar")
     # `platform`/`getpass`(`GetEnvironmentVariable`の`MachineName`/
     # `UserName`特殊プロパティ変換先、知見215)も同様。
     if any("platform.node(" in line for line in body):
@@ -885,6 +895,8 @@ def _generate_node(
         return _generate_get_environment_folder(node, indent)
     if isinstance(node, ModifyTextNode):
         return _generate_modify_text(node, indent)
+    if isinstance(node, ModifyDateNode):
+        return _generate_modify_date(node, indent)
     if isinstance(node, ReadTextFileNode):
         return _generate_read_text_file(node, indent)
     if isinstance(node, SetToClipboardNode):
@@ -2546,6 +2558,82 @@ def _generate_modify_text_body(node: ModifyTextNode, indent: int) -> list[str]:
             ]
         lines.extend(child_lines)
     lines.append(f"{prefix}{output_text} = _mod_text")
+    return lines
+
+
+def _generate_find_start_end_date_modification_line(
+    node: FindStartEndDateModificationNode, var_name: str, prefix: str
+) -> list[str] | None:
+    """知見273: 実機確認済みの`Location="LastDay"`+`TimeUnit="Month"`
+    (「今月の最終日を求める」)のみ対応する——`calendar.monthrange()`
+    (月の日数を返す標準ライブラリ関数)で最終日の日数を求め、
+    `.replace(day=...)`で日付を書き換える(`datetime.date`/`datetime.
+    datetime`いずれにも存在するメソッド、どちらの型でも動作する)。"""
+    if node.location != "LastDay" or node.time_unit != "Month":
+        return None
+    return [
+        f"{prefix}{var_name} = {var_name}.replace(day=calendar.monthrange("
+        f"{var_name}.year, {var_name}.month)[1])"
+    ]
+
+
+def _generate_modify_date_child_lines(
+    child: Node, var_name: str, prefix: str
+) -> list[str] | None:
+    if isinstance(child, FindStartEndDateModificationNode):
+        return _generate_find_start_end_date_modification_line(child, var_name, prefix)
+    return None
+
+
+def _generate_modify_date(node: ModifyDateNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_modify_date_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_modify_date_body(node: ModifyDateNode, indent: int) -> list[str]:
+    """知見273: `ModifyTextNode`(知見224)と同じ「`SourceDate`を起点に
+    `body`内の子活動を順番に適用し`OutDate`へ代入する」線形処理——
+    未対応の子活動や未確認の設定値が1つでもあれば、途中の変換だけ
+    欠落した誤った日付を`OutDate`へ渡してしまわないよう活動全体を
+    `# TODO`へ倒す(部分適用はしない、`ModifyText`と同じ判断)。"""
+    prefix = INDENT * indent
+    if node.source_date is None or node.out_date is None:
+        return [f"{prefix}# TODO: ModifyDate with missing SourceDate/OutDate"]
+    for label, value in (
+        ("OutText", node.out_text),
+        ("CustomDateFormat", node.custom_date_format),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: ModifyDate with {label} set "
+                f"({_describe_expr_for_comment(value)}) — refusing to guess"
+            ]
+    for label, value in (
+        ("UseCustomDateFormat", node.use_custom_date_format),
+        ("FormatAsText", node.format_as_text),
+    ):
+        if value not in (None, "False"):
+            return [
+                f"{prefix}# TODO: ModifyDate with {label} {value!r} — only "
+                "the confirmed \"False\"/unset default is implemented, "
+                "refusing to guess"
+            ]
+    todo: list[str] = []
+    source_date = _render_value_or_todo(node.source_date, prefix, todo)
+    out_date = _render_value_or_todo(node.out_date, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}_mod_date = {source_date}"]
+    for child in node.body:
+        child_lines = _generate_modify_date_child_lines(child, "_mod_date", prefix)
+        if child_lines is None:
+            return [
+                f"{prefix}# TODO: ModifyDate with unsupported or unconfirmed "
+                f"child modification ({type(child).__name__})"
+            ]
+        lines.extend(child_lines)
+    lines.append(f"{prefix}{out_date} = _mod_date")
     return lines
 
 

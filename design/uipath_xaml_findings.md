@@ -13065,6 +13065,61 @@ test_uipath_codegen.py`5件、うち1件は実際のCSVファイルに対して
 /list行の両方が正しく追記されることを確認)、リポジトリ全体で
 全2444件通過(28件skip、本活動の6件分の純増)。
 
+## 273. `ui:ModifyDate`(`FindStartEndDateModification`子活動のみ)を新規実装——VB組み込み識別子`Today`/`Now`がこれまで一切変換されず素通しされていた既存バグを発見・修正した副産物も伴う
+
+discovery-fresh-pass-9が報告した`ModifyDate`(`AddOrSubtractFromDate`
+とは別のground-truthファイル、知見227で"too thin"と見送った方とは
+異なる活動、タグ名限定GitHub検索で12件ヒット)に着手した。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`リポジトリ)
+で`ModifyTextNode`(知見224)と全く同じ`.Body`配下`ActivityAction`
+(`DelegateInArgument`無し)+`Sequence`構造を確認。実機2件
+(`PakamTharunReddy/RPA`の`RPA_Training/Format.xaml`、`AravindS-26/
+Fitness_Tracker`の`Main.xaml`)を取得したが、前者は`FindDayOfWeek
+DateModification`(`Direction`のみ設定、`DayOfWeek`属性が無く設定
+不完全)・`AddSubtractTimePeriodDateModification`(`Value`のみ設定、
+単位/符号の属性が無く設定不完全)という2つの子活動を含む——明らかに
+未完成の研修用プレースホルダー(属性が意味を成す最小限のセットすら
+揃っていない)と判断し、この2つの子活動は実装対象に含めない
+(`ModifyTextNode`が実機ヒット0件の`CombineTextModification`を見送った
+判断と同じクラス)。後者(`AravindS-26/Fitness_Tracker`)は
+`FindStartEndDateModification Location="LastDay" TimeUnit="Month"`
+という単一の子活動のみで構成が完結しており(`OutDate`が`s:DateTime`
+型変数、`If Condition="[todaydate=lastday]"`という下流の等価比較
+のみ確認——型未確認の広い下流アクセスという懸念には当たらない)、
+こちらのみを実装対象とした。公式ドキュメント(`modify-date`ページ、
+WebSearch経由確認)で「Find」(`Location`、最初/最後の日を選ぶ)
++「Of」(`TimeUnit`、週/月/年の単位)という2属性構成を確認——実機
+確認済みの`Location="LastDay"`+`TimeUnit="Month"`(「今月の最終日を
+求める」)のみ対応、`calendar.monthrange()`(月の日数を返す標準
+ライブラリ関数)+`.replace(day=...)`で実装した。
+
+**実装の前提として発見・修正した既存バグ**: 実機確認済みの
+`SourceDate="[Today]"`というVB組み込み識別子(裸の`Today`、ドット
+無し)を解決しようとしたところ、`render.py`にこれまで`Today`/`Now`
+への変換が一切存在しなかったことが判明した——既存のコメント自体が
+「`DateTime.Now`等の静的クラス参照を含む)は...無変換でそのまま」と
+明記していた(知見119のコメント)が、これは`ModifyDate`専用ではなく
+任意の式でこれらのVB組み込み識別子を使った場合に常に未定義の裸の
+名前への参照になり`NameError`になる既存の(未発見の)バグだった。
+`render.py`の`_render_node`の`Ident`分岐へ、VB.NET予約語(ユーザー
+変数名との衝突が構文上あり得ない)である裸の`Today`/`Now`を
+`_canonical_name()`より先に判定する一般修正を追加し
+(`datetime.date.today()`/`datetime.datetime.now()`)、同時に
+`_STATIC_PROPERTY_TRANSLATIONS`へ`DateAndTime.Now`/`DateTime.Now`/
+`DateAndTime.Today`/`DateTime.Today`(知見257の`WriteRangeNode`
+docstringで既に実機確認済みの表記ゆれ)も追加した。既存テスト
+`test_assign_bare_dotted_ident_without_known_suffix_is_unchanged`が
+「無変換の例」として`DateTime.Now`を使っていたため、この修正で
+意図的に動作が変わった(正しくなった)ことを確認し、未確認のまま
+残る`DateTime.UtcNow`に例を差し替えた。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`7件——`ModifyDate`本体5件、`Today`/`Now`
+一般修正の検証2件、うち`exec()`経由で閏年2月末日(2024-02-29)・
+通常年2月末日(2026-02-28)両方の正しい計算を確認)、リポジトリ
+全体で全2452件通過(28件skip、本活動+バグ修正の8件分の純増)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

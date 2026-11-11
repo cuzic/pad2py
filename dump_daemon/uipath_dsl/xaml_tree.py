@@ -173,6 +173,8 @@ from .types import (
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
     ModifyTextNode,
+    FindStartEndDateModificationNode,
+    ModifyDateNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -280,6 +282,14 @@ SYSTEM_NS = "clr-namespace:UiPath.Activities.System;assembly=UiPath.System.Activ
 # こちらは「別名前空間」ではなく「本当に異なるURI文字列」)。両方を
 # ディスパッチ登録する。
 WORD_NS = "http://schemas.uipath.com/workflow/activities/word"
+# 知見273: `ModifyDate`内部専用の子活動(`FindStartEndDateModification`
+# 等)が使う、`TEXT_MODIFICATIONS_NS`(`ModifyText`専用、知見224)と
+# 同じ理由の非`UI_NS`名前空間——ツールボックスの独立した活動ではなく
+# `ModifyDate`内部専用のため`ui:`配下に無い。
+DATE_MODIFICATIONS_NS = (
+    "clr-namespace:UiPath.Core.Activities.DateModifications;"
+    "assembly=UiPath.System.Activities"
+)
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -2529,6 +2539,33 @@ def _parse_modify_text(elem: etree._Element) -> ModifyTextNode:
     )
 
 
+def _parse_find_start_end_date_modification(
+    elem: etree._Element,
+) -> FindStartEndDateModificationNode:
+    return FindStartEndDateModificationNode(
+        display_name=_attr(elem, "DisplayName"),
+        location=_attr(elem, "Location"),
+        time_unit=_attr(elem, "TimeUnit"),
+    )
+
+
+def _parse_modify_date(elem: etree._Element) -> ModifyDateNode:
+    body_elem = _find_property_element(elem, "Body")
+    action = _find_activity_action(body_elem) if body_elem is not None else None
+    body = _unwrap_body_sequence(action) if action is not None else []
+    return ModifyDateNode(
+        display_name=_attr(elem, "DisplayName"),
+        source_date=_attr_expr(elem, "SourceDate")
+        or _in_argument_property_expr(elem, "SourceDate"),
+        out_date=_attr_expr(elem, "OutDate") or _in_argument_property_expr(elem, "OutDate"),
+        out_text=_attr_expr(elem, "OutText") or _in_argument_property_expr(elem, "OutText"),
+        use_custom_date_format=_attr_or_none(elem, "UseCustomDateFormat"),
+        custom_date_format=_attr_expr(elem, "CustomDateFormat"),
+        format_as_text=_attr_or_none(elem, "FormatAsText"),
+        body=body,
+    )
+
+
 def _parse_invoke_code(elem: etree._Element) -> InvokeCodeNode:
     args: dict[str, Expr] = {}
     args_elem = _find_property_element(elem, "Arguments")
@@ -3536,6 +3573,10 @@ _DISPATCH = {
     (UI_NS, "SetEnvironmentVariable"): _parse_set_environment_variable,
     (UI_NS, "GetEnvironmentFolder"): _parse_get_environment_folder,
     (UI_NS, "ModifyText"): _parse_modify_text,
+    (UI_NS, "ModifyDate"): _parse_modify_date,
+    (DATE_MODIFICATIONS_NS, "FindStartEndDateModification"): (
+        _parse_find_start_end_date_modification
+    ),
     (
         TEXT_MODIFICATIONS_NS,
         "FindAndReplaceTextModification",

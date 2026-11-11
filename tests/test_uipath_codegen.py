@@ -187,6 +187,8 @@ from dump_daemon.uipath_dsl import (
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
     ModifyTextNode,
+    FindStartEndDateModificationNode,
+    ModifyDateNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -1116,11 +1118,53 @@ def test_assign_bare_variable_dot_toupper_renders_correctly():
 
 def test_assign_bare_dotted_ident_without_known_suffix_is_unchanged():
     """安全性の確認: 末尾が確認済みの安全なメンバ名(`ToString`/
-    `ToUpper`/`ToLower`/`Trim`)以外の場合は、既存の(無変換の)挙動を
-    変えない——`DateTime.Now`等の静的クラス参照を誤って変換しない。"""
-    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="DateTime.Now"))])
+    `ToUpper`/`ToLower`/`Trim`)以外、かつ`_STATIC_PROPERTY_
+    TRANSLATIONS`にも無い場合は、既存の(無変換の)挙動を変えない——
+    任意の未確認静的クラス参照を誤って変換しない。`DateTime.Now`
+    自体は知見273で`_STATIC_PROPERTY_TRANSLATIONS`へ追加したため、
+    もはやこのテストの「無変換」の例としては使えない(別のテスト
+    `test_assign_date_static_property_translations_are_converted`で
+    別途確認する)——ここでは未確認のまま残る`DateTime.UtcNow`を例に
+    差し替えた。"""
+    wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text="DateTime.UtcNow"))])
     code = generate_python(wf)
-    assert "x = DateTime.Now" in code
+    assert "x = DateTime.UtcNow" in code
+
+
+def test_assign_date_static_property_translations_are_converted():
+    """知見273: `DateAndTime.Now`/`DateTime.Now`/`DateAndTime.Today`/
+    `DateTime.Today`(いずれも実機確認済みの表記ゆれ、知見257の
+    `WriteRangeNode`docstring参照)が`_STATIC_PROPERTY_TRANSLATIONS`
+    経由で正しく変換されることを確認する。"""
+    for vb_expr, expected in [
+        ("DateAndTime.Now", "datetime.datetime.now()"),
+        ("DateTime.Now", "datetime.datetime.now()"),
+        ("DateAndTime.Today", "datetime.date.today()"),
+        ("DateTime.Today", "datetime.date.today()"),
+    ]:
+        wf = _wrap([AssignNode(target=VbExpr(text="x"), value=VbExpr(text=vb_expr))])
+        code = generate_python(wf)
+        assert f"x = {expected}" in code
+        assert "import datetime" in code
+        _compiles(code)
+
+
+def test_assign_bare_today_and_now_builtins_are_converted():
+    """知見273: VB組み込みの裸の識別子`Today`/`Now`(ドット無し、
+    `ui:ModifyDate.SourceDate="[Today]"`で実機確認済み)が
+    `datetime.date.today()`/`datetime.datetime.now()`へ変換される
+    ことを確認する——`ModifyDate`専用ではない一般修正。"""
+    wf = _wrap(
+        [
+            AssignNode(target=VbExpr(text="x"), value=VbExpr(text="Today")),
+            AssignNode(target=VbExpr(text="y"), value=VbExpr(text="Now")),
+        ]
+    )
+    code = generate_python(wf)
+    assert "x = datetime.date.today()" in code
+    assert "y = datetime.datetime.now()" in code
+    assert "import datetime" in code
+    _compiles(code)
 
 
 def test_assign_chained_equals_call_renders_as_comparison():
@@ -14808,6 +14852,110 @@ def test_modify_text_with_missing_properties_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: ModifyText with missing SourceText/OutputText" in code
+    _compiles(code)
+
+
+def test_modify_date_finds_last_day_of_month_exec():
+    """知見273: `ui:ModifyDate`。実機`AravindS-26/Fitness_Tracker`
+    相当の`FindStartEndDateModification Location="LastDay"
+    TimeUnit="Month"`を`exec()`経由で実際に実行し、`SourceDate`→
+    `OutDate`への「今月の最終日を求める」変換を確認する——`calendar.
+    monthrange()`による月末日数の算出。"""
+    wf = _wrap(
+        [
+            ModifyDateNode(
+                source_date=VbExpr(text="src"),
+                out_date=VbExpr(text="lastday"),
+                body=[FindStartEndDateModificationNode(location="LastDay", time_unit="Month")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import calendar" in code
+    assert "calendar.monthrange(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(src):")
+    code2 += "\n    return lastday"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import datetime
+
+    assert namespace["Test"](datetime.date(2026, 2, 10)) == datetime.date(2026, 2, 28)
+    assert namespace["Test"](datetime.date(2024, 2, 10)) == datetime.date(2024, 2, 29)
+
+
+def test_modify_date_source_date_today_builtin_exec():
+    """知見273: `SourceDate="[Today]"`というVB組み込み識別子(裸の
+    `Today`)が`datetime.date.today()`へ正しく変換されることを
+    `exec()`経由で確認する——本活動の実装のために`render.py`へ
+    追加した一般修正の検証。"""
+    wf = _wrap(
+        [
+            ModifyDateNode(
+                source_date=VbExpr(text="Today"),
+                out_date=VbExpr(text="lastday"),
+                body=[FindStartEndDateModificationNode(location="LastDay", time_unit="Month")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "import datetime" in code
+    assert "datetime.date.today()" in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return lastday", namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    import datetime
+
+    today = datetime.date.today()
+    expected_day = __import__("calendar").monthrange(today.year, today.month)[1]
+    assert namespace["Test"]() == today.replace(day=expected_day)
+
+
+def test_modify_date_declines_unsupported_child_without_partial_application():
+    wf = _wrap(
+        [
+            ModifyDateNode(
+                source_date=VbExpr(text="src"),
+                out_date=VbExpr(text="out"),
+                body=[
+                    UnknownActivityNode(
+                        tag="ucad:FindDayOfWeekDateModification",
+                        display_name=None,
+                        attrs={},
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: ModifyDate with unsupported or unconfirmed child "
+        "modification (UnknownActivityNode)" in code
+    )
+    _compiles(code)
+
+
+def test_modify_date_with_out_text_set_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ModifyDateNode(
+                source_date=VbExpr(text="src"),
+                out_date=VbExpr(text="out"),
+                out_text=VbExpr(text="text_out"),
+                body=[FindStartEndDateModificationNode(location="LastDay", time_unit="Month")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ModifyDate with OutText set" in code
+    _compiles(code)
+
+
+def test_modify_date_with_missing_properties_is_todo():
+    wf = _wrap([ModifyDateNode(source_date=None, out_date=VbExpr(text="out"), body=[])])
+    code = generate_python(wf)
+    assert "# TODO: ModifyDate with missing SourceDate/OutDate" in code
     _compiles(code)
 
 

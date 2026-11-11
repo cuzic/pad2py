@@ -3920,3 +3920,20 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      トリガーをそのまま再利用。回帰テスト追加(`tests/
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
      リポジトリ全体で全2444件通過(本活動の6件分の純増)。
+
+229. **(完了、2026-11-10)** `ui:ModifyDate`(`FindStartEndDate
+     Modification`子活動のみ)を新規実装(知見273)——discovery-
+     fresh-pass-9の候補、タグ名限定検索で12件ヒット。`ModifyText`
+     (知見224)と同じ`.Body`/`ActivityAction`/`Sequence`構造。実機2件
+     のうち1件(研修用プレースホルダー、属性設定不完全)の子活動2種
+     (`FindDayOfWeekDateModification`/`AddSubtractTimePeriodDate
+     Modification`)は見送り、もう1件で完結した`FindStartEndDate
+     Modification Location="LastDay" TimeUnit="Month"`(今月の最終日
+     を求める)のみ対応、`calendar.monthrange()`で実装。**副産物の
+     バグ修正**: 実機確認済みの`SourceDate="[Today]"`を解決する過程
+     で、VB組み込みの裸の識別子`Today`/`Now`(及び`DateAndTime.`/
+     `DateTime.`修飾形)が`render.py`でこれまで一切変換されず
+     素通しされ`NameError`になる既存の(`ModifyDate`専用ではない)
+     バグを発見・修正した。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`7件)、リポジトリ全体で
+     全2452件通過(本活動+バグ修正の8件分の純増)。

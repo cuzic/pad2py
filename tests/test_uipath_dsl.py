@@ -159,6 +159,8 @@ from dump_daemon.uipath_dsl import (
     TrimTextModificationNode,
     ToUpperLowerTextModificationNode,
     ModifyTextNode,
+    FindStartEndDateModificationNode,
+    ModifyDateNode,
     RefreshBrowserNode,
     RemoveDataColumnNode,
     RemoveDataRowNode,
@@ -4094,6 +4096,14 @@ _TEXT_MODIFICATIONS_XMLNS = (
     'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
 )
 
+_DATE_MODIFICATIONS_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+    'xmlns:ucad="clr-namespace:UiPath.Core.Activities.DateModifications;'
+    'assembly=UiPath.System.Activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
 
 def test_modify_text_wraps_find_and_replace_trim_and_case_children():
     """知見224: `ui:ModifyText`。実機
@@ -4132,6 +4142,41 @@ def test_modify_text_wraps_find_and_replace_trim_and_case_children():
     assert isinstance(trim, TrimTextModificationNode)
     assert isinstance(case, ToUpperLowerTextModificationNode)
     assert case.modification_type == "Lowercase"
+
+
+def test_modify_date_wraps_find_start_end_date_modification_child():
+    """知見273: `ui:ModifyDate`(discovery-fresh-pass-9で発見、タグ名
+    限定GitHub検索で12件ヒット)。実機`AravindS-26/Fitness_Tracker`の
+    `Main.xaml`で確認した構成——`SourceDate`/`OutDate`+`.Body`配下
+    `ActivityAction`+`Sequence`に`FindStartEndDateModification
+    Location="LastDay" TimeUnit="Month"`(今月の最終日を求める)1個
+    のみ。`SourceDate="[Today]"`というVB組み込み識別子も確認。"""
+    xml = (
+        f"<ui:ModifyDate {_DATE_MODIFICATIONS_XMLNS} "
+        'CustomDateFormat="{x:Null}" OutText="{x:Null}" '
+        'DisplayName="Modify Date" OutDate="[lastday]" SourceDate="[Today]">'
+        "<ui:ModifyDate.Body>"
+        "<ActivityAction>"
+        '<Sequence DisplayName="Do">'
+        '<ucad:FindStartEndDateModification '
+        'DisplayName="Find Start/End of Week/Month/Year" '
+        'Location="LastDay" TimeUnit="Month" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</ui:ModifyDate.Body>"
+        "</ui:ModifyDate>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ModifyDateNode)
+    assert node.source_date == VbExpr(text="Today")
+    assert node.out_date == VbExpr(text="lastday")
+    assert node.out_text is None
+    assert node.custom_date_format is None
+    assert len(node.body) == 1
+    child = node.body[0]
+    assert isinstance(child, FindStartEndDateModificationNode)
+    assert child.location == "LastDay"
+    assert child.time_unit == "Month"
 
 
 def test_find_and_replace_text_modification_with_match_case():
