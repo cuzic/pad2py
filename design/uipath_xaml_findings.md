@@ -13032,6 +13032,39 @@ discovery-fresh-pass-9は他に新しい活動ファミリー候補
 でのテスト方法を要検討)を報告——いずれも次ティック以降の候補として
 保留。
 
+## 272. `ui:AppendCsvFile`を新規実装——discovery-fresh-pass-9が報告した「既存パスで見落とされた未実装候補」、`WriteCsvFile`の追記側だが`AddHeaders`属性が存在しないぶん単純だった
+
+知見271で`StartTimer`系4活動を実装した直後の次ティックとして、
+discovery-fresh-pass-9が報告した最も安価な候補
+`ui:AppendCsvFile`(「以前のパスで"trivial"と記録されたが実際には
+未実装のまま残っていた」とエージェントが指摘)に着手した。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`リポジトリ)
++実機2件(`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`
+の`Chapter_8_CSVAutomationExercise/Main.xaml`、`piyushagarwal08/
+JU-Notes`の`UiPath/Vendor_Certification/Process.xaml`)で構成を確認
+——`DataTable`+`FilePath`+`Delimitator`(実機2件とも唯一の確認値
+`"Comma"`、`WriteCsvFileNode`(知見185)と同じ)+`Encoding`(実機2件
+とも`{x:Null}`)。ground-truthで`AddHeaders`/`ShouldQuote`属性が
+**存在しない**ことを確認——追記先の既存CSVには既にヘッダー行がある
+ため、ヘッダー再出力の選択肢自体が意味論上無い(`WriteCsvFileNode`
+より単純な理由)。`DelimitatorForViewModel`はStudioのドロップダウン
+UI用のミラー属性(`Delimitator`の値を常に複製)でコード生成に無関係、
+捕捉しない。
+
+`WriteCsvFileNode`の`isinstance(data_table[0], dict)`分岐
+(`OutputDataTable`(知見184)以来確立済みのdict行/list行両対応)を
+そのまま踏襲するが、ヘッダー出力判断が無いぶん単純——常にモード
+`"a"`(追記)で開き、値のみを書き込む。既存の`"import csv"`トリガー
+(`csv.writer(`文字列一致)をそのまま再利用、新規トリガー追加は不要
+だった。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`5件、うち1件は実際のCSVファイルに対して
+`exec()`で追記を実行し、既存のヘッダー行が保持されたままdict行
+/list行の両方が正しく追記されることを確認)、リポジトリ全体で
+全2444件通過(28件skip、本活動の6件分の純増)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

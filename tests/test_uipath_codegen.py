@@ -229,6 +229,7 @@ from dump_daemon.uipath_dsl import (
     WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
+    AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
     WriteLineNode,
@@ -6108,6 +6109,80 @@ def test_write_csv_file_with_non_true_should_quote_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: WriteCsvFile with non-default ShouldQuote" in code
+    _compiles(code)
+
+
+def test_append_csv_file_appends_without_rewriting_header_exec(tmp_path):
+    """知見272: `ui:AppendCsvFile`——`AddHeaders`属性が存在しないため
+    常にヘッダー無しで追記モード(`"a"`)書き込みすることを、実際の
+    ファイルに対して`exec()`経由で確認する(dict行/list行の両方)。"""
+    path = str(tmp_path / "out.csv")
+    with open(path, "w", newline="") as f:
+        f.write("a,b\n1,2\n")
+
+    wf = _wrap(
+        [
+            AppendCsvFileNode(
+                file_path=Literal(value=path),
+                data_table=VbExpr(text="dt"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "csv.writer(_f)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    code2 = code.replace("def Test():", "def Test(dt):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]([{"a": 3, "b": 4}])
+    ns["Test"]([[5, 6]])
+    with open(path) as f:
+        assert f.read().splitlines() == ["a,b", "1,2", "3,4", "5,6"]
+
+
+def test_append_csv_file_with_no_file_path_is_todo():
+    wf = _wrap([AppendCsvFileNode(file_path=None, data_table=VbExpr(text="dt"))])
+    code = generate_python(wf)
+    assert "# TODO: AppendCsvFile with no FilePath captured" in code
+    _compiles(code)
+
+
+def test_append_csv_file_with_no_data_table_is_todo():
+    wf = _wrap([AppendCsvFileNode(file_path=Literal(value="out.csv"), data_table=None)])
+    code = generate_python(wf)
+    assert "# TODO: AppendCsvFile with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_append_csv_file_with_encoding_set_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AppendCsvFileNode(
+                file_path=Literal(value="out.csv"),
+                data_table=VbExpr(text="dt"),
+                encoding=Literal(value="UTF-8"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AppendCsvFile with Encoding set" in code
+    _compiles(code)
+
+
+def test_append_csv_file_with_non_comma_delimitator_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            AppendCsvFileNode(
+                file_path=Literal(value="out.csv"),
+                data_table=VbExpr(text="dt"),
+                delimitator="Tab",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: AppendCsvFile with non-default Delimitator" in code
     _compiles(code)
 
 

@@ -249,6 +249,7 @@ from ..uipath_dsl.types import (
     WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
+    AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
     WriteLineNode,
@@ -944,6 +945,8 @@ def _generate_node(
         return _generate_manage_pdf_password(node, indent)
     if isinstance(node, WriteCsvFileNode):
         return _generate_write_csv_file(node, indent)
+    if isinstance(node, AppendCsvFileNode):
+        return _generate_append_csv_file(node, indent)
     if isinstance(node, DeserializeXmlNode):
         return _generate_deserialize_xml(node, indent)
     if isinstance(node, ExecuteXPathNode):
@@ -4993,6 +4996,49 @@ def _generate_write_csv_file_body(node: WriteCsvFileNode, indent: int) -> list[s
         ]
     )
     return lines
+
+
+def _generate_append_csv_file(node: AppendCsvFileNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_append_csv_file_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_append_csv_file_body(node: AppendCsvFileNode, indent: int) -> list[str]:
+    """知見272: `ui:AppendCsvFile`——`WriteCsvFileNode`(知見185)の追記側。
+    `AddHeaders`/`ShouldQuote`属性が存在しない(ground-truth確認済み)
+    ため、ヘッダー出力判断自体が無い——常に値のみを追記モード(`"a"`)で
+    書き込む。"""
+    prefix = INDENT * indent
+    if node.file_path is None:
+        return [f"{prefix}# TODO: AppendCsvFile with no FilePath captured"]
+    if node.data_table is None:
+        return [f"{prefix}# TODO: AppendCsvFile with no DataTable captured"]
+    if node.encoding is not None:
+        return [
+            f"{prefix}# TODO: AppendCsvFile with Encoding set "
+            f"({_describe_expr_for_comment(node.encoding)}) — codec "
+            "mapping not confirmed, refusing to guess"
+        ]
+    if node.delimitator not in (None, "Comma"):
+        return [
+            f"{prefix}# TODO: AppendCsvFile with non-default Delimitator "
+            f"({node.delimitator!r}) — only Comma is confirmed, refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    data_table = _render_value_or_todo(node.data_table, prefix, todo)
+    if todo:
+        return todo
+    inner = INDENT * (indent + 1)
+    return [
+        f'{prefix}with open({file_path}, "a", newline="") as _f:',
+        f"{inner}_writer = csv.writer(_f)",
+        f"{inner}for _row in {data_table}:",
+        f"{INDENT * (indent + 2)}_writer.writerow("
+        f"_row.values() if isinstance(_row, dict) else _row)",
+    ]
 
 
 def _generate_deserialize_xml(node: DeserializeXmlNode, indent: int) -> list[str]:

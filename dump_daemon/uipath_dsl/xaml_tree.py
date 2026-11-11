@@ -213,6 +213,7 @@ from .types import (
     WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
+    AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
     WriteLineNode,
@@ -1530,6 +1531,16 @@ def _parse_write_csv_file(elem: etree._Element) -> WriteCsvFileNode:
         add_headers=_attr_or_none(elem, "AddHeaders"),
         delimitator=_attr_or_none(elem, "Delimitator"),
         should_quote=_attr_or_none(elem, "ShouldQuote"),
+        encoding=_attr_expr(elem, "Encoding"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_append_csv_file(elem: etree._Element) -> AppendCsvFileNode:
+    return AppendCsvFileNode(
+        file_path=_attr_expr(elem, "FilePath"),
+        data_table=_attr_expr(elem, "DataTable"),
+        delimitator=_attr_or_none(elem, "Delimitator"),
         encoding=_attr_expr(elem, "Encoding"),
         display_name=_attr(elem, "DisplayName"),
     )
@@ -3443,6 +3454,7 @@ _DISPATCH = {
     (COMPRESSION_NS, "CompressFiles"): _parse_compress_files,
     (PDF_NS, "ManagePDFPassword"): _parse_manage_pdf_password,
     (UI_NS, "WriteCsvFile"): _parse_write_csv_file,
+    (UI_NS, "AppendCsvFile"): _parse_append_csv_file,
     (UI_NS, "DeserializeXml"): _parse_deserialize_xml,
     (UI_NS, "ExecuteXPath"): _parse_execute_xpath,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,

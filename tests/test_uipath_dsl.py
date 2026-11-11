@@ -197,6 +197,7 @@ from dump_daemon.uipath_dsl import (
     WordInsertDataTableNode,
     WordReplacePictureNode,
     WriteCsvFileNode,
+    AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
     WriteLineNode,
@@ -3035,6 +3036,25 @@ def test_write_csv_file_properties():
     assert node.data_table == VbExpr(text="TestData")
     assert node.add_headers == "True"
     assert node.delimitator == "Comma"
+
+
+def test_append_csv_file_properties():
+    """知見272: `ui:AppendCsvFile`(`WriteCsvFile`(知見185)の追記側、
+    discovery-fresh-pass-9で「未実装」として発見、タグ名限定GitHub
+    検索で48件ヒット)。実機`piyushagarwal08/JU-Notes`の`UiPath/
+    Vendor_Certification/Process.xaml`で確認した構成——`AddHeaders`/
+    `ShouldQuote`属性は無い(ground-truthで確認済み)。"""
+    xml = (
+        f"<ui:AppendCsvFile {_UI_XMLNS} DisplayName=\"Append To CSV\" "
+        'Encoding="{x:Null}" DataTable="[dtAppend]" '
+        'Delimitator="Comma" FilePath="Data\\vendor.csv" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, AppendCsvFileNode)
+    assert node.file_path == Literal(value="Data\\vendor.csv")
+    assert node.data_table == VbExpr(text="dtAppend")
+    assert node.delimitator == "Comma"
+    assert node.encoding is None
 
 
 def test_deserialize_xml_properties():

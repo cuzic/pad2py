@@ -3909,3 +3909,14 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      ため、`render.py`側の変更は一切不要だった。回帰テスト追加
      (`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
      3件)、リポジトリ全体で全2438件通過(本活動の7件分の純増)。
+
+228. **(完了、2026-11-10)** `ui:AppendCsvFile`を新規実装(知見272)——
+     discovery-fresh-pass-9が報告した「以前のパスで見落とされていた
+     未実装候補」、タグ名限定検索で48件ヒット。`WriteCsvFile`
+     (知見185)の追記側だが`AddHeaders`/`ShouldQuote`属性がground-
+     truthに存在しない(追記先に既にヘッダーがあるため当然)ぶん単純。
+     実機2件で`Delimitator="Comma"`/`Encoding={x:Null}`の確認済み
+     組み合わせのみ対応、既存の`isinstance(dict)`分岐と`import csv`
+     トリガーをそのまま再利用。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`5件)、
+     リポジトリ全体で全2444件通過(本活動の6件分の純増)。

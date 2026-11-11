@@ -2052,6 +2052,43 @@ class WriteCsvFileNode:
 
 
 @dataclass
+class AppendCsvFileNode:
+    """`<ui:AppendCsvFile DataTable="..." FilePath="..."
+    Delimitator="Comma" DelimitatorForViewModel="Comma" />`(知見272、
+    `WriteCsvFileNode`(知見185)の追記側、discovery-fresh-pass-9で
+    「未実装」として発見、タグ名限定GitHub検索で48件ヒット)。公式
+    Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`リポジトリ)
+    で`AddHeaders`/`ShouldQuote`属性が**存在しない**ことを確認——
+    追記先の既存CSVファイルには既にヘッダー行があるため、ヘッダーを
+    再出力する選択肢自体が無い(意味論上当然の設計)。
+
+    実機2件(`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`
+    の`Chapter_8_CSVAutomationExercise/Main.xaml`、`piyushagarwal08/
+    JU-Notes`の`UiPath/Vendor_Certification/Process.xaml`)で確認した
+    構成——`DataTable`、`FilePath`(拡張子無しの相対パス`"Data\\
+    vendor.csv"`、絶対パス`"C:\\BookSamples\\..."`の両方確認)、
+    `Delimitator`(実機2件とも唯一の確認値`"Comma"`、`WriteCsvFileNode`
+    と同じ確認済み値)、`Encoding`(実機2件とも`{x:Null}`、
+    `WriteCsvFileNode`と同じ「設定時は未確認のためTODO」判断を継承)。
+    `DelimitatorForViewModel`はStudioのドロップダウンUI用のミラー属性
+    (`Delimitator`の値を常に複製しているだけ)でコード生成に無関係、
+    捕捉しない。
+
+    `WriteCsvFileNode`の`"w"`モードでの`csv.writer`書き込みを踏襲する
+    が、ヘッダー出力判断が存在しないぶん単純——常にモード`"a"`
+    (追記)で開き、`isinstance(data_table[0], dict)`分岐
+    (`WriteCsvFileNode`/`OutputDataTable`(知見184/185)と同じ既存の
+    dict行/list行両対応)で値のみを書き込む(ヘッダー行は常に出力
+    しない)。"""
+
+    file_path: Expr = None
+    data_table: Expr = None
+    delimitator: str | None = None
+    encoding: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class DeserializeXmlNode:
     """`<ui:DeserializeXml XMLString="..." XMLDocument="...">`(知見228、
     `UiPath.WebAPI.Activities`名前空間だがタグは`ui:`、タグ名限定
@@ -5390,6 +5427,7 @@ Node = (
     | ExtractImagesFromPdfNode
     | ManagePdfPasswordNode
     | WriteCsvFileNode
+    | AppendCsvFileNode
     | DeserializeXmlNode
     | ExecuteXPathNode
     | InvokePowerShellNode
