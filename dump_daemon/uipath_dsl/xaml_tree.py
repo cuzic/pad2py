@@ -96,6 +96,7 @@ from .types import (
     CheckTrueNode,
     CheckFalseNode,
     VerifyExpressionNode,
+    VerifyExpressionWithOperatorNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -2278,6 +2279,31 @@ def _parse_verify_expression(elem: etree._Element) -> VerifyExpressionNode:
     )
 
 
+def _parse_verify_expression_with_operator(
+    elem: etree._Element,
+) -> VerifyExpressionWithOperatorNode:
+    return VerifyExpressionWithOperatorNode(
+        display_name=_attr(elem, "DisplayName"),
+        first_expression=_attr_expr(elem, "FirstExpression")
+        or _in_argument_property_expr(elem, "FirstExpression"),
+        second_expression=_attr_expr(elem, "SecondExpression")
+        or _in_argument_property_expr(elem, "SecondExpression"),
+        operator=_attr_or_none(elem, "Operator"),
+        continue_on_failure=_attr_or_none(elem, "ContinueOnFailure"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        alternative_verification_title=_attr_expr(elem, "AlternativeVerificationTitle"),
+        output_message_format=_attr_expr(elem, "OutputMessageFormat"),
+        keep_screenshots=_attr_expr(elem, "KeepScreenshots"),
+        screenshots_path=_attr_expr(elem, "ScreenshotsPath"),
+        take_screenshot_in_case_of_failing_assertion=_attr_or_none(
+            elem, "TakeScreenshotInCaseOfFailingAssertion"
+        ),
+        take_screenshot_in_case_of_succeeding_assertion=_attr_or_none(
+            elem, "TakeScreenshotInCaseOfSucceedingAssertion"
+        ),
+    )
+
+
 def _parse_check_false(elem: etree._Element) -> CheckFalseNode:
     return CheckFalseNode(
         display_name=_attr(elem, "DisplayName"),
@@ -3727,6 +3753,7 @@ _DISPATCH = {
     (UI_NS, "CheckTrue"): _parse_check_true,
     (UI_NS, "CheckFalse"): _parse_check_false,
     (TESTING_NS, "VerifyExpression"): _parse_verify_expression,
+    (TESTING_NS, "VerifyExpressionWithOperator"): _parse_verify_expression_with_operator,
     (UI_NS, "CreateDirectory"): _parse_create_directory,
     (UI_NS, "MergeDataTable"): _parse_merge_data_table,
     (UI_NS, "FormatValue"): _parse_format_value,

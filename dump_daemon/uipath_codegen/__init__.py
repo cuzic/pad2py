@@ -137,6 +137,7 @@ from ..uipath_dsl.types import (
     CheckTrueNode,
     CheckFalseNode,
     VerifyExpressionNode,
+    VerifyExpressionWithOperatorNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -1099,6 +1100,8 @@ def _generate_node(
         return _generate_check_false(node, indent)
     if isinstance(node, VerifyExpressionNode):
         return _generate_verify_expression(node, indent)
+    if isinstance(node, VerifyExpressionWithOperatorNode):
+        return _generate_verify_expression_with_operator(node, indent)
     if isinstance(node, CreateDirectoryNode):
         return _generate_create_directory(node, indent)
     if isinstance(node, MergeDataTableNode):
@@ -7125,6 +7128,102 @@ def _generate_verify_expression_body(node: VerifyExpressionNode, indent: int) ->
         lines.append(f"{prefix}if not _verify_result:")
         lines.append(
             f'{INDENT * (indent + 1)}raise Exception("VerifyExpression failed")'
+        )
+    return lines
+
+
+# 知見281: `uta:VerifyExpressionWithOperator`——実機確認済みの`Operator`
+# 値(`Equality`/`Inequality`/`GreaterThan`/`LessThan`)は既存の
+# `VB_CMP_HELPER_NAME`(`_vb_cmp`、`Switch`の値アーム等で既に確立済み)
+# を再利用する比較、`Contains`のみ.NET `String.Contains()`の確定済み
+# 意味論(`FirstExpression.Contains(SecondExpression)`)に対応する
+# 文字列包含判定。
+_VERIFY_OPERATOR_PYTHON_OPS = {
+    "Equality": "==",
+    "Inequality": "!=",
+    "GreaterThan": ">",
+    "LessThan": "<",
+}
+
+
+def _generate_verify_expression_with_operator(
+    node: VerifyExpressionWithOperatorNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_verify_expression_with_operator_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_verify_expression_with_operator_body(
+    node: VerifyExpressionWithOperatorNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.first_expression is None or node.second_expression is None:
+        return [
+            f"{prefix}# TODO: VerifyExpressionWithOperator with missing "
+            "FirstExpression/SecondExpression"
+        ]
+    if node.operator not in (*_VERIFY_OPERATOR_PYTHON_OPS, "Contains"):
+        return [
+            f"{prefix}# TODO: VerifyExpressionWithOperator with "
+            f"unconfirmed Operator {node.operator!r} — refusing to guess"
+        ]
+    for label, value in (
+        ("AlternativeVerificationTitle", node.alternative_verification_title),
+        ("OutputMessageFormat", node.output_message_format),
+        ("KeepScreenshots", node.keep_screenshots),
+        ("ScreenshotsPath", node.screenshots_path),
+    ):
+        if value is not None:
+            return [
+                f"{prefix}# TODO: VerifyExpressionWithOperator with {label} "
+                f"set ({_describe_expr_for_comment(value)}) — refusing to "
+                "guess"
+            ]
+    for label, value in (
+        (
+            "TakeScreenshotInCaseOfFailingAssertion",
+            node.take_screenshot_in_case_of_failing_assertion,
+        ),
+        (
+            "TakeScreenshotInCaseOfSucceedingAssertion",
+            node.take_screenshot_in_case_of_succeeding_assertion,
+        ),
+    ):
+        if value not in (None, "False"):
+            return [
+                f"{prefix}# TODO: VerifyExpressionWithOperator with {label} "
+                f"{value!r} — only the confirmed \"False\" value is "
+                "implemented, refusing to guess"
+            ]
+    todo: list[str] = []
+    first = _render_value_or_todo(node.first_expression, prefix, todo)
+    second = _render_value_or_todo(node.second_expression, prefix, todo)
+    target = (
+        _render_value_or_todo(node.result, prefix, todo)
+        if node.result is not None
+        else None
+    )
+    if todo:
+        return todo
+    if node.operator == "Contains":
+        cond = (
+            f"{VB_CSTR_HELPER_NAME}({second}) in {VB_CSTR_HELPER_NAME}({first})"
+        )
+    else:
+        python_op = _VERIFY_OPERATOR_PYTHON_OPS[node.operator]
+        cond = (
+            f"(lambda _t: _t[0] {python_op} _t[1])"
+            f"({VB_CMP_HELPER_NAME}({first}, {second}))"
+        )
+    lines = [f"{prefix}_verify_result = {cond}"]
+    if target is not None:
+        lines.append(f"{prefix}{target} = _verify_result")
+    if node.continue_on_failure != "True":
+        lines.append(f"{prefix}if not _verify_result:")
+        lines.append(
+            f"{INDENT * (indent + 1)}raise Exception("
+            '"VerifyExpressionWithOperator failed")'
         )
     return lines
 

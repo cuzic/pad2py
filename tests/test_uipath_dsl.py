@@ -92,6 +92,7 @@ from dump_daemon.uipath_dsl import (
     CheckTrueNode,
     CheckFalseNode,
     VerifyExpressionNode,
+    VerifyExpressionWithOperatorNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -1230,6 +1231,60 @@ def test_verify_expression_with_result_bound():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, VerifyExpressionNode)
     assert node.result == VbExpr(text="Passed")
+
+
+def test_verify_expression_with_operator_equality_vb_expressions():
+    """知見281: `uta:VerifyExpressionWithOperator`(`VerifyExpression`
+    (知見278)の姉妹活動、discovery-fresh-pass-12が深掘り——タグ名限定
+    GitHub検索で約3684件ヒット)。実機`psri981/Group8-300-762`の
+    `TestCases/TestGetAndAddCrewInfo.xaml`で確認した構成——
+    `FirstExpression`/`SecondExpression`はVB式(`[OutputProducers]`/
+    `["Antoine Fuqua"]`)、`Operator="Equality"`。"""
+    xml = (
+        f"<uta:VerifyExpressionWithOperator {_TESTING_XMLNS} "
+        'AlternativeVerificationTitle="{x:Null}" KeepScreenshots="{x:Null}" '
+        'OutputMessageFormat="{x:Null}" Result="{x:Null}" '
+        'ScreenshotsPath="{x:Null}" ContinueOnFailure="True" '
+        'DisplayName="Verify Expression with Operator" Operator="Equality" '
+        'TakeScreenshotInCaseOfFailingAssertion="False" '
+        'TakeScreenshotInCaseOfSucceedingAssertion="False">'
+        "<uta:VerifyExpressionWithOperator.FirstExpression>"
+        '<InArgument x:TypeArguments="x:String">[OutputDirector]</InArgument>'
+        "</uta:VerifyExpressionWithOperator.FirstExpression>"
+        "<uta:VerifyExpressionWithOperator.SecondExpression>"
+        '<InArgument x:TypeArguments="x:String">[&quot;Antoine Fuqua&quot;]'
+        "</InArgument>"
+        "</uta:VerifyExpressionWithOperator.SecondExpression>"
+        "</uta:VerifyExpressionWithOperator>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, VerifyExpressionWithOperatorNode)
+    assert node.first_expression == VbExpr(text="OutputDirector")
+    assert node.second_expression == VbExpr(text='"Antoine Fuqua"')
+    assert node.operator == "Equality"
+    assert node.continue_on_failure == "True"
+    assert node.result is None
+
+
+def test_verify_expression_with_operator_greater_than():
+    """知見281: 実機`matheus-tam/CICD_Demo`の`TestCase.xaml`で確認した
+    構成——`Operator="GreaterThan"`。"""
+    xml = (
+        f"<uta:VerifyExpressionWithOperator {_TESTING_XMLNS} "
+        'ContinueOnFailure="True" Operator="GreaterThan">'
+        "<uta:VerifyExpressionWithOperator.FirstExpression>"
+        '<InArgument x:TypeArguments="x:Int32">[2]</InArgument>'
+        "</uta:VerifyExpressionWithOperator.FirstExpression>"
+        "<uta:VerifyExpressionWithOperator.SecondExpression>"
+        '<InArgument x:TypeArguments="x:Int32">[1]</InArgument>'
+        "</uta:VerifyExpressionWithOperator.SecondExpression>"
+        "</uta:VerifyExpressionWithOperator>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, VerifyExpressionWithOperatorNode)
+    assert node.first_expression == VbExpr(text="2")
+    assert node.second_expression == VbExpr(text="1")
+    assert node.operator == "GreaterThan"
 
 
 def test_create_directory_properties():

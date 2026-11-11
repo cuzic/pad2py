@@ -4034,3 +4034,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`2件)、
      リポジトリ全体で全2494件通過(本活動の3件分の純増)。discovery-
      fresh-pass-11の全4候補がこれで完結。
+
+237. **(完了、2026-11-10)** `uta:VerifyExpressionWithOperator`を
+     新規実装(知見281)——discovery-fresh-pass-12が`VerifyExpression`
+     (知見278)の姉妹活動として深掘りし、`Operator`列挙型の5つの
+     実機確認済み値(`Equality`/`Inequality`/`GreaterThan`/
+     `LessThan`/`Contains`)を報告。独立検証で実機サンプルの多くが
+     C#式言語のTestCaseプロジェクト(`CSharpValue`、知見129で既に
+     対象外と確認済み)であることを発見したが、既存の汎用パーサーが
+     安全に`# TODO`へ倒すことを確認、VB式の実機サンプルも別途
+     確認(`Equality`/`GreaterThan`)。既存の`VB_CMP_HELPER_NAME`
+     (`Switch`等で確立済み)を4演算子で再利用、`Contains`のみ
+     文字列包含判定を追加。`VerifyExpressionNode`の`ContinueOnFailure`
+     ベースのソフトアサーション機構を継承。回帰テスト追加
+     (`tests/test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`
+     4件)、リポジトリ全体で全2500件通過(本活動の6件分の純増)。

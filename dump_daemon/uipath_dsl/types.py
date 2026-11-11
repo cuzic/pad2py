@@ -3568,6 +3568,55 @@ class VerifyExpressionNode:
 
 
 @dataclass
+class VerifyExpressionWithOperatorNode:
+    """`<uta:VerifyExpressionWithOperator FirstExpression="..."
+    SecondExpression="..." Operator="..." ContinueOnFailure="..."
+    Result="..." .../>`(知見281、discovery-fresh-pass-12が`uta:
+    VerifyExpression`(知見278)の姉妹活動として深掘りした、`UiPath.
+    Testing.Activities`パッケージ、タグ名限定GitHub検索で約3684件
+    ヒット)。`VerifyExpressionNode`と同じ`ContinueOnFailure`ベースの
+    ソフトアサーション機構だが、単一のブール式ではなく`FirstExpression`
+    /`SecondExpression`を`Operator`で比較する2項版。
+
+    実機4件(`psri981/Group8-300-762`の`TestCases/
+    TestGetAndAddCrewInfo.xaml`で`Operator="Equality"`+VB式
+    `[OutputProducers]`/`["Antoine Fuqua"]`の両方を確認、`matheus-tam/
+    CICD_Demo`の`TestCase.xaml`で`Operator="GreaterThan"`+VB式
+    `[2]`/`[1]`、`mouyang2001/rpa-group-12`の`TestCases/
+    TestCase_OCR_Set2_Mitech.xaml`で`Operator="Contains"`——C#式
+    言語プロジェクト(`CSharpValue`、知見129で既に確認済みの対象外
+    範囲、`FirstExpression`/`SecondExpression`が`None`になり自然に
+    `# TODO`へ倒れる)、公式`UiPath/uipathcli`の`examples/projects/
+    calculator/AddTwoNumbersTest.xaml`でも`Operator="Equality"`
+    (こちらもC#式)を確認)で、実機で確認できた`Operator`値は
+    `Equality`/`GreaterThan`/`Contains`に加え、discovery-fresh-
+    pass-12のタグスコープ検索で`Inequality`(9件)/`LessThan`(6件)の
+    ヒットも確認済み——いずれも.NET比較演算子の標準的な意味論のため
+    (`Equality`/`Inequality`/`GreaterThan`/`LessThan`は`VerifyExpression
+    WithOperator`と同じソフトアサーション機構内で使われる単純な比較、
+    `Contains`は`FirstExpression.Contains(SecondExpression)`という
+    .NET `String.Contains()`の確定済み意味論)5値とも対応する。
+
+    比較は既存の`VB_CMP_HELPER_NAME`(`_vb_cmp`、`Switch`の値アーム
+    (知見136)等で既に確立済み)を`Equality`/`Inequality`/
+    `GreaterThan`/`LessThan`で再利用し、`Contains`のみ`VB_CSTR_HELPER_
+    NAME`経由の文字列包含判定(`second in first`)で対応する。"""
+
+    first_expression: Expr = None
+    second_expression: Expr = None
+    operator: str | None = None
+    continue_on_failure: str | None = None
+    result: Expr = None
+    alternative_verification_title: Expr = None
+    output_message_format: Expr = None
+    keep_screenshots: Expr = None
+    screenshots_path: Expr = None
+    take_screenshot_in_case_of_failing_assertion: str | None = None
+    take_screenshot_in_case_of_succeeding_assertion: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
 class CreateDirectoryNode:
     """`<ui:CreateDirectory Path="..." ContinueOnError="..."
     Output="..." />`(知見235、`CopyFile`/`MoveFile`/`CreateFile`の
@@ -5931,6 +5980,7 @@ Node = (
     | CheckTrueNode
     | CheckFalseNode
     | VerifyExpressionNode
+    | VerifyExpressionWithOperatorNode
     | CreateDirectoryNode
     | MergeDataTableNode
     | FormatValueNode

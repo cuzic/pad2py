@@ -115,6 +115,7 @@ from dump_daemon.uipath_dsl import (
     CheckTrueNode,
     CheckFalseNode,
     VerifyExpressionNode,
+    VerifyExpressionWithOperatorNode,
     CreateDirectoryNode,
     MergeDataTableNode,
     FormatValueNode,
@@ -9635,6 +9636,98 @@ def test_verify_expression_with_alternative_verification_title_is_todo_not_guess
     )
     code = generate_python(wf)
     assert "# TODO: VerifyExpression with AlternativeVerificationTitle set" in code
+    _compiles(code)
+
+
+def test_verify_expression_with_operator_all_confirmed_operators_exec():
+    """知見281: `uta:VerifyExpressionWithOperator`——discovery-fresh-
+    pass-12が実機で確認した5つの`Operator`値
+    (`Equality`/`Inequality`/`GreaterThan`/`LessThan`/`Contains`)を
+    `exec()`経由で全て確認する。`Equality`/`Inequality`/`GreaterThan`/
+    `LessThan`は既存の`VB_CMP_HELPER_NAME`(`Switch`の値アーム等で
+    既に確立済み)を再利用、`Contains`のみ.NET`String.Contains()`の
+    確定済み意味論(`FirstExpression.Contains(SecondExpression)`)。"""
+    cases = [
+        ("Equality", 2, 2, True),
+        ("Equality", 2, 3, False),
+        ("Inequality", 2, 3, True),
+        ("Inequality", 2, 2, False),
+        ("GreaterThan", 2, 1, True),
+        ("GreaterThan", 1, 2, False),
+        ("LessThan", 1, 2, True),
+        ("LessThan", 2, 1, False),
+        ("Contains", "hello world", "world", True),
+        ("Contains", "hello world", "xyz", False),
+    ]
+    for operator, a, b, expected in cases:
+        wf = _wrap(
+            [
+                VerifyExpressionWithOperatorNode(
+                    first_expression=VbExpr(text="a"),
+                    second_expression=VbExpr(text="b"),
+                    operator=operator,
+                    continue_on_failure="True",
+                    result=VbExpr(text="passed"),
+                )
+            ]
+        )
+        code = generate_python(wf)
+        assert "# TODO" not in code
+        _compiles(code)
+        namespace: dict[str, object] = {}
+        exec(
+            code.replace("def Test():", "def Test(a, b):") + "\n    return passed",
+            namespace,
+        )  # noqa: S102 - テスト対象は信頼できる自作コード
+        assert namespace["Test"](a, b) is expected, f"{operator}({a!r}, {b!r})"
+
+
+def test_verify_expression_with_operator_raises_when_continue_on_failure_not_true():
+    wf = _wrap(
+        [
+            VerifyExpressionWithOperatorNode(
+                first_expression=VbExpr(text="a"),
+                second_expression=VbExpr(text="b"),
+                operator="GreaterThan",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code.replace("def Test():", "def Test(a, b):"), namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    namespace["Test"](2, 1)
+    with pytest.raises(Exception, match="VerifyExpressionWithOperator failed"):
+        namespace["Test"](1, 2)
+
+
+def test_verify_expression_with_operator_with_missing_properties_is_todo():
+    wf = _wrap(
+        [VerifyExpressionWithOperatorNode(first_expression=None, second_expression=None)]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: VerifyExpressionWithOperator with missing FirstExpression/"
+        "SecondExpression" in code
+    )
+    _compiles(code)
+
+
+def test_verify_expression_with_operator_with_unconfirmed_operator_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            VerifyExpressionWithOperatorNode(
+                first_expression=VbExpr(text="a"),
+                second_expression=VbExpr(text="b"),
+                operator="GreaterThanOrEqual",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        "# TODO: VerifyExpressionWithOperator with unconfirmed Operator" in code
+    )
     _compiles(code)
 
 

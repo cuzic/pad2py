@@ -13462,6 +13462,58 @@ discovery-fresh-pass-11が報告した全4候補(`uta:VerifyExpression`
 `SavePresentationAsPdf`/`ReplaceShapeWithMedia`)、または新規の発見
 パスが必要。
 
+## 281. `uta:VerifyExpressionWithOperator`を新規実装——discovery-fresh-pass-12が5つの実機確認済みOperator値を裏取りし、C#式言語のTestCaseプロジェクトという実機サンプルの偏りを発見した上で既存のVerifyExpressionと既存のVB_CMP_HELPER_NAMEを再利用して実装
+
+知見280で`ui:GetXMLNodeAttributes`を実装し discovery-fresh-pass-11の
+全候補が完結したのを受け、新たに起動した無制限の12回目発見パス
+(discovery-fresh-pass-12)の報告が戻った。報告は`uta:
+VerifyExpressionWithOperator`(知見278の`uta:VerifyExpression`の
+姉妹活動)を最有力候補として挙げ、前回保留していた`Operator`列挙型の
+未確認問題を解消する4つの新しい値(`Contains`/`GreaterThan`/
+`LessThan`/`Inequality`)を実機確認済みと報告した——エージェントの
+報告は常に独立検証する方針(知見265の`AnchorBase`教訓)に従い、
+自分でも裏取りした。
+
+公式`UiPath/uipathcli`+`mouyang2001/rpa-group-12`の実機サンプルを
+独立に取得したところ、いずれも`FirstExpression`/`SecondExpression`
+が`<CSharpValue>`要素でラップされていることを発見した——これは
+C#式言語のTestCaseプロジェクト(UiPath Test Manager/Studio Test
+Automationフレームワークが新規TestCaseを既定でC#式言語プロジェクト
+として作成する傾向があるため)という本調査既知の対象外範囲
+(知見129、`CSharpValue`/`CSharpReference`はVB式専用の本トランス
+パイラのパーサーでは意図的に非対応)に該当する——幸い既存の
+`_in_argument_property_expr`汎用パーサーは`CSharpValue`要素を
+安全に`None`へ倒す(属性`Value`を持たないため)ため、クラッシュせず
+正しく`# TODO`へ落ちることを確認した。VB式言語の実機サンプルも
+別途取得——`psri981/Group8-300-762`の`TestCases/
+TestGetAndAddCrewInfo.xaml`で`Operator="Equality"`+VB式
+`[OutputProducers]`/`["Antoine Fuqua"]`、`matheus-tam/CICD_Demo`の
+`TestCase.xaml`で`Operator="GreaterThan"`+VB式`[2]`/`[1]`を確認——
+`Operator`の値自体(`Equality`/`GreaterThan`/`Contains`/
+`Inequality`/`LessThan`)は実機のXAML属性として確実に実在すると
+確認した上で、各値の意味論は.NET比較演算子の標準的な定義(曖昧さが
+無い)のため、VB式での確認が取れた2値以外も実装対象とした。
+
+比較は既存の`VB_CMP_HELPER_NAME`(`_vb_cmp`、`Switch`の値アーム等で
+既に確立済み)+`(lambda _t: _t[0] {op} _t[1])(_vb_cmp(first, second))`
+という既存パターンを`Equality`/`Inequality`/`GreaterThan`/
+`LessThan`で再利用し、`Contains`のみ.NET`String.Contains()`の確定済み
+意味論(`FirstExpression.Contains(SecondExpression)`)に対応する
+文字列包含判定(`second in first`)を追加した。`VerifyExpressionNode`
+(知見278)が確立した`ContinueOnFailure`ベースのソフトアサーション
+機構(`"True"`なら例外を投げず続行、`Result`捕捉時はブール値を代入)
+をそのまま継承する。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`4件、うち1件は5つの`Operator`値全てについて
+真/偽両方のケースを`exec()`経由で確認)、リポジトリ全体で全2500件
+通過(28件skip、本活動の6件分の純増)。
+
+discovery-fresh-pass-12が報告した残りの候補(`uasf:
+DownloadFileFromUrl`・`umab:ReplyToMailX`/`ForwardMailX`・`uta:
+AttachDocument`——後者はOrchestrator関連の意味論判断が必要)は未実装
+のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
