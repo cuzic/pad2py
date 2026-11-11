@@ -13286,6 +13286,40 @@ Contains("Error")`、プレーンな文字列メソッド——型未確認の�
 test_uipath_codegen.py`6件)、リポジトリ全体で全2474件通過(28件
 skip、本活動の8件分の純増)。
 
+## 277. `ui:Beep`を新規実装——`Console.Beep()`の固定トーンではなく「Windows既定のビープ音を再生する」という公式ドキュメントの説明に正確に対応する`winsound.MessageBeep()`を選んだ
+
+知見276で`ui:InvokeVBScript`を実装した直後の次ティックとして、
+discovery-fresh-pass-10が報告した最も安価な候補`ui:Beep`
+(タグ名限定GitHub検索で約13件ヒット)に着手した。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機2件
+(`kckustomac/rpa-devops`の`Main.xaml`、`anza-lab/
+LPL--Server4-latest-codes`の`LPL TID Letters_Automation Project/
+LMS Workflows/LMS portal login.xaml`)いずれも`<ui:Beep />`
+(`Break`/`Continue`/`Return`と同じ属性無しの自己終了タグ)に完全
+一致。
+
+公式ドキュメント(WebSearch経由確認)で「Windowsのサウンド設定の
+既定のビープ音(Default Beep)に関連付けられた音を再生する」と
+確認——これは固定の周波数/長さのトーンを生成する.NETの`Console.
+Beep()`(既定800Hz・200ms)とは異なる動作のため、最初に想定した
+`winsound.Beep(freq, dur)`は不正確なマッピングだったと判明し、
+代わりに`winsound.MessageBeep()`(Python公式ドキュメント確認済み
+——引数省略時の既定`MB_OK`が「既定のビープ音(Default Beep)」を
+再生する、まさに公式ドキュメントの説明と一致)を採用した。
+
+`winsound`はWindows専用標準ライブラリで本サンドボックスには無いため、
+既存の`InvokePowerShell`/`KillProcess`(知見169/186/276)と同じ
+「生成コードの文字列アサーションのみで確認する(`exec()`は行わない)」
+テスト規約に従った。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`2件)、リポジトリ全体で全2477件通過(28件
+skip、本活動の3件分の純増)。discovery-fresh-pass-10が報告した
+残りの候補(`ui:CopyPasteSlide`・`ui:SavePresentationAsPdf`・
+`ui:ReplaceShapeWithMedia`、いずれも個別の検証が必要な複雑度)は
+未実装のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

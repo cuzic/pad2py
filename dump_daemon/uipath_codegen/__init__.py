@@ -73,6 +73,7 @@ from ..uipath_dsl.types import (
     StopTimerNode,
     ResetTimerNode,
     ResumeTimerNode,
+    BeepNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -652,6 +653,11 @@ def _collect_imports(body: list[str]) -> list[str]:
         imports.append("import platform")
     if any("getpass.getuser(" in line or "getpass.getpass(" in line for line in body):
         imports.append("import getpass")
+    # `winsound`(`Beep`→`winsound.MessageBeep()`変換先、知見277——
+    # Windows専用標準ライブラリ、本トランスパイラの対象実行環境
+    # (Windows)では常に利用可能)も同様。
+    if any("winsound.MessageBeep(" in line for line in body):
+        imports.append("import winsound")
     # `base64`(`Convert.ToBase64String`→`base64.b64encode(...)`変換先、
     # 知見130)も同様。
     if any("base64.b64encode(" in line for line in body):
@@ -885,6 +891,8 @@ def _generate_node(
         return _generate_reset_timer(node, indent)
     if isinstance(node, ResumeTimerNode):
         return _generate_resume_timer(node, indent)
+    if isinstance(node, BeepNode):
+        return _generate_beep(node, indent)
     if isinstance(node, ParallelNode):
         return _generate_parallel(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, AppendLineNode):
@@ -9694,6 +9702,16 @@ def _generate_resume_timer(node: ResumeTimerNode, indent: int) -> list[str]:
     if todo:
         return todo
     return [f"{prefix}{timer}.resume()"]
+
+
+def _generate_beep(node: BeepNode, indent: int) -> list[str]:
+    """知見277: `ui:Beep`——公式ドキュメント確認済みの「Windowsの
+    サウンド設定の既定のビープ音(Default Beep)を再生する」動作に
+    対応する`winsound.MessageBeep()`(引数省略時の既定`MB_OK`が
+    「既定のビープ音」を再生する)。"""
+    prefix = INDENT * indent
+    lines = [f"{prefix}winsound.MessageBeep()"]
+    return _with_scope_child_display_name(node, lines, prefix)
 
 
 # 知見250: `ui:GetIMAPMailMessages`——`email.message.Message`

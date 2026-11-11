@@ -51,6 +51,7 @@ from dump_daemon.uipath_dsl import (
     StopTimerNode,
     ResetTimerNode,
     ResumeTimerNode,
+    BeepNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -1790,6 +1791,29 @@ def test_start_timer_with_no_timer_is_todo():
     wf = _wrap([StartTimerNode(timer=None)])
     code = generate_python(wf)
     assert "# TODO: StartTimer with no Timer captured" in code
+    _compiles(code)
+
+
+def test_beep_generates_winsound_message_beep():
+    """知見277: `ui:Beep`——公式ドキュメント確認済みの「Windowsの
+    サウンド設定の既定のビープ音を再生する」動作に対応する`winsound.
+    MessageBeep()`(`Console.Beep()`の固定周波数/長さトーンとは異なる、
+    既定`MB_OK`が既定のビープ音を再生する)。`winsound`はWindows専用
+    標準ライブラリで本サンドボックスには無いため、既存の`InvokePowerShell`
+    /`KillProcess`と同じ文字列アサーションのみの規約に従う。"""
+    wf = _wrap([BeepNode()])
+    code = generate_python(wf)
+    assert "import winsound" in code
+    assert "winsound.MessageBeep()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_beep_display_name_becomes_a_comment():
+    wf = _wrap([BeepNode(display_name="Play beep")])
+    code = generate_python(wf)
+    assert "# Play beep" in code
+    assert "winsound.MessageBeep()" in code
     _compiles(code)
 
 

@@ -3982,3 +3982,15 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      テスト規約に従った。回帰テスト追加(`tests/test_uipath_dsl.py`
      2件・`tests/test_uipath_codegen.py`6件)、リポジトリ全体で
      全2474件通過(本活動の8件分の純増)。
+
+233. **(完了、2026-11-10)** `ui:Beep`を新規実装(知見277)——
+     discovery-fresh-pass-10最安の候補、タグ名限定検索で約13件
+     ヒット。`Break`/`Continue`/`Return`と同じ属性無しの自己終了
+     タグ。公式ドキュメント確認——「Windows既定のビープ音を再生する」
+     という説明が.NETの`Console.Beep()`(固定トーン)とは異なる動作
+     のため、`winsound.Beep()`ではなく`winsound.MessageBeep()`
+     (既定`MB_OK`)を採用。`winsound`はWindows専用のため既存の
+     `InvokePowerShell`/`KillProcess`と同じ文字列アサーションのみの
+     テスト規約に従った。回帰テスト追加(`tests/test_uipath_dsl.py`
+     1件・`tests/test_uipath_codegen.py`2件)、リポジトリ全体で
+     全2477件通過(本活動の3件分の純増)。

@@ -449,6 +449,28 @@ class ResumeTimerNode:
 
 
 @dataclass
+class BeepNode:
+    """`<ui:Beep />`(知見277、discovery-fresh-pass-10で発見、`Break`/
+    `Continue`/`Return`と同じ属性無しの自己終了タグ、タグ名限定GitHub
+    検索で約13件ヒット)。ground-truth(`marcelocruzrpa/uipath-ai-skills`)
+    ・実機2件(`kckustomac/rpa-devops`の`Main.xaml`、`anza-lab/
+    LPL--Server4-latest-codes`の`LPL TID Letters_Automation Project/
+    LMS Workflows/LMS portal login.xaml`)いずれも`<ui:Beep />`に完全
+    一致。
+
+    公式ドキュメント(WebSearch経由確認、`beep`ページ)で「Windowsの
+    サウンド設定の既定のビープ音(Default Beep)に関連付けられた音を
+    再生する」と確認済み——固定の周波数/長さのトーンを生成する.NETの
+    `Console.Beep()`(既定800Hz・200ms)とは異なる、Windows既定の
+    通知音を再生する動作のため、`winsound.Beep(freq, dur)`ではなく
+    `winsound.MessageBeep()`(引数省略時の既定`MB_OK`が「既定のビープ音
+    (Default Beep)」を再生する、Python公式ドキュメント確認済み)が
+    正確に対応する。"""
+
+    display_name: str | None = None
+
+
+@dataclass
 class IfElseIfBlockNode:
     """`<ui:IfElseIfBlock BlockType="ElseIf" Condition="..."
     DisplayName="...">`(知見239、`ui:IfElseIfV2.ElseIfs`
@@ -5657,6 +5679,7 @@ Node = (
     | StopTimerNode
     | ResetTimerNode
     | ResumeTimerNode
+    | BeepNode
     | IfElseIfV2Node
     | AddLogFieldsNode
     | RemoveLogFieldsNode

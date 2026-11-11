@@ -27,6 +27,7 @@ from dump_daemon.uipath_dsl import (
     StopTimerNode,
     ResetTimerNode,
     ResumeTimerNode,
+    BeepNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -4330,6 +4331,16 @@ def test_resume_timer_properties():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ResumeTimerNode)
     assert node.timer == VbExpr(text="Timer11")
+
+
+def test_beep_properties():
+    """知見277: `ui:Beep`(discovery-fresh-pass-10で発見、`Break`/
+    `Continue`/`Return`と同じ属性無しの自己終了タグ、タグ名限定GitHub
+    検索で約13件ヒット)。実機`kckustomac/rpa-devops`の`Main.xaml`で
+    確認した構成——`<ui:Beep />`に完全一致。"""
+    xml = f"<ui:Beep {_UI_XMLNS} />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, BeepNode)
 
 
 def test_if_else_if_v2_simple_if_else():

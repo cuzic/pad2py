@@ -31,6 +31,7 @@ from .types import (
     StopTimerNode,
     ResetTimerNode,
     ResumeTimerNode,
+    BeepNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -3558,6 +3559,7 @@ _DISPATCH = {
     (UI_NS, "ResumeTimer"): lambda elem: ResumeTimerNode(
         timer=_attr_expr(elem, "Timer"), display_name=_attr(elem, "DisplayName")
     ),
+    (UI_NS, "Beep"): lambda elem: BeepNode(display_name=_attr(elem, "DisplayName")),
     (UI_NS, "IfElseIfV2"): _parse_if_else_if_v2,
     (UI_NS, "AddLogFields"): _parse_add_log_fields,
     (UI_NS, "RemoveLogFields"): _parse_remove_log_fields,
