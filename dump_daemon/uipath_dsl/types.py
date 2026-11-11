@@ -4638,6 +4638,64 @@ class SavePresentationFileAsNode:
 
 
 @dataclass
+class InsertSlideNode:
+    """`<ui:InsertSlide Presentation="..." InsertType="End"
+    InsertPosition="..." InsertedAtPosition="..." LayoutName="..."
+    SlideMasterName="..." />`(知見275、discovery-fresh-pass-10で発見、
+    `ui:PowerPointApplicationScope`配下で使われるPowerPoint第2波活動の
+    最初の1件、タグ名限定GitHub検索で8件ヒット)。実機4件
+    (公式`UiPath-Services/StudioTemplates`の`CreatePowerPointPresentation`
+    テンプレート、公式`UiPathJapan/StudioXTemplates`、`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`、
+    `starmanfrommars/Robotic-Process-Automation-Lab`)全てで完全に
+    同一の構成——`InsertType="End"`(唯一の確認値、`InsertPosition`は
+    常に`{x:Null}`——`End`以外の挿入位置指定の実例は実機未確認)、
+    `LayoutName="Title and Content"`(唯一の確認値)、`SlideMasterName=
+    "(default)"`(唯一の確認値)、`InsertedAtPosition`(出力、新しい
+    スライドの1始まり番号——公式サンプルのAnnotationTextに「新しい
+    スライド番号を返す」と明記、`InsertTextInPresentationNode.
+    slide_index`の1始まり推定と整合)。
+
+    `python-pptx`の`Presentation.slide_layouts`(実機確認済みの単一
+    既定マスター構成でのみ動作が確認された便利プロパティ、`prs.
+    slide_masters[0].slide_layouts`と同じ内容)から`LayoutName`に
+    一致するレイアウトを探し、`Presentation.slides.add_slide(layout)`
+    (常に末尾に追加——`InsertType="End"`の確認済み唯一値と正確に
+    対応)で新規スライドを作成する。"""
+
+    presentation: Expr = None
+    insert_type: str | None = None
+    layout_name: Expr = None
+    slide_master_name: str | None = None
+    inserted_at_position: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class DeleteSlideNode:
+    """`<ui:DeleteSlide Presentation="..." DeletePosition="..." />`
+    (知見275、タグ名限定GitHub検索で2件ヒットだが、公式
+    `UiPath-Services/StudioTemplates`テンプレート内でも使われている
+    実質3件目の確認——本調査最小の属性構成)。実機2件(`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`・
+    `starmanfrommars/Robotic-Process-Automation-Lab`)で`DeletePosition`
+    (1始まりの整数リテラル、`InsertTextInPresentationNode.slide_index`
+    と同じ1始まり規約と整合)+`Presentation`のみの構成を確認。
+
+    `python-pptx`に公開APIの削除機能が無いため、コミュニティで広く
+    知られる標準的なイディオム(`Presentation.slides._sldIdLst`から
+    対象の`sldId`要素を取り出し、対応する関係(`r:id`)を`Presentation.
+    part.drop_rel()`で解除してから`_sldIdLst`自体からも除去する)を
+    注入ヘルパー関数として実装する(`WordReplacePictureNode`(知見263)
+    と同じ「`python-pptx`/`python-docx`の高レベルAPIに無い操作をOOXML
+    直接操作で補う」設計判断クラス)。"""
+
+    presentation: Expr = None
+    delete_position: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class WordReplaceTextNode:
     """`<ui:ReplaceTextInDocument>`/`<ui:WordReplaceText>`(知見121、
     `WordApplicationScope`配下の子活動)。実機で2つの異なるタグ名を確認
@@ -5692,6 +5750,8 @@ Node = (
     | FindAndReplaceTextInPresentationNode
     | InsertTextInPresentationNode
     | SavePresentationFileAsNode
+    | InsertSlideNode
+    | DeleteSlideNode
     | WordReplaceTextNode
     | WordAppendTextNode
     | WordSaveAsNode

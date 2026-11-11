@@ -3953,3 +3953,19 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_codegen.py`7件、うち2件は実際の`.pptx`に対する
      `exec()`確認)、リポジトリ全体で全2460件通過(本活動の8件分の
      純増)。
+
+231. **(完了、2026-11-10)** `ui:InsertSlide`/`ui:DeleteSlide`を新規
+     実装(知見275)——discovery-fresh-pass-10が報告したPowerPoint
+     第2波候補のうち最有力の2件。実機4件全てで`InsertSlide`が同一
+     構成(`InsertType="End"`+`LayoutName="Title and Content"`+
+     `SlideMasterName="(default)"`)、`DeleteSlide`は`DeletePosition`
+     +`Presentation`のみ。`InsertSlide`は`Presentation.slide_layouts`
+     から名前一致レイアウトを探し`add_slide()`、`DeleteSlide`は
+     `python-pptx`に公開APIが無いため`WordReplacePicture`(知見263)と
+     同じ「OOXML直接操作で補う」設計判断で注入ヘルパー
+     `_pptx_delete_slide`を実装。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`4件、
+     うち1件は実際の`.pptx`への`exec()`往復確認)、リポジトリ全体で
+     全2466件通過(本活動の6件分の純増)。`CopyPasteSlide`/
+     `SavePresentationAsPdf`/`ReplaceShapeWithMedia`/`InvokeVBScript`/
+     `Beep`は未実装のまま残る。

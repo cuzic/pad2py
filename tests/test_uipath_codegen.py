@@ -226,6 +226,8 @@ from dump_daemon.uipath_dsl import (
     FindAndReplaceTextInPresentationNode,
     InsertTextInPresentationNode,
     SavePresentationFileAsNode,
+    InsertSlideNode,
+    DeleteSlideNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -11460,6 +11462,98 @@ def test_save_presentation_file_as_with_missing_properties_is_todo():
     wf = _wrap([SavePresentationFileAsNode(presentation=None, file_path=None)])
     code = generate_python(wf)
     assert "# TODO: SavePresentationFileAs with missing Presentation/FilePath" in code
+    _compiles(code)
+
+
+def test_insert_slide_and_delete_slide_full_round_trip_exec(tmp_path):
+    """知見275: `InsertSlideNode`+`DeleteSlideNode`——実機4件とも
+    `InsertType="End"`+`LayoutName="Title and Content"`という確認済み
+    構成を実際の`python-pptx`で`exec()`経由で確認する。`InsertedAt
+    Position`(1始まり)の正しさと、`DeleteSlide`が`InsertTextIn
+    Presentation`で書き込んだ新スライドのタイトルを保持したまま
+    元のスライドだけを削除することを確認する。"""
+    import pptx
+
+    tmpl_path = str(tmp_path / "tmpl.pptx")
+    out_path = str(tmp_path / "out.pptx")
+    prs = pptx.Presentation()
+    layout = prs.slide_layouts[1]
+    s = prs.slides.add_slide(layout)
+    s.shapes.title.text = "Original Slide One"
+    prs.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            PowerPointApplicationScopeNode(
+                presentation_path=tmpl_path,
+                scope_var="PowerPoint",
+                create_if_not_exists="False",
+                auto_save="False",
+                body=[
+                    InsertSlideNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        insert_type="End",
+                        layout_name=Literal(value="Title and Content"),
+                        slide_master_name="(default)",
+                        inserted_at_position=VbExpr(text="slideNum"),
+                    ),
+                    InsertTextInPresentationNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        shape_name=Literal(value="Title 1"),
+                        slide_index=VbExpr(text="slideNum"),
+                        text=Literal(value="New Slide Title"),
+                    ),
+                    DeleteSlideNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        delete_position=Literal(value="1"),
+                    ),
+                    SavePresentationFileAsNode(
+                        presentation=VbExpr(text="PowerPoint"),
+                        file_path=Literal(value=out_path),
+                    ),
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_pptx_delete_slide" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]()
+
+    prs_out = pptx.Presentation(out_path)
+    assert len(prs_out.slides) == 1
+    assert prs_out.slides[0].shapes.title.text == "New Slide Title"
+
+
+def test_insert_slide_with_unconfirmed_insert_type_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InsertSlideNode(
+                presentation=VbExpr(text="p"),
+                insert_type="Beginning",
+                layout_name=Literal(value="Title and Content"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InsertSlide with InsertType" in code
+    _compiles(code)
+
+
+def test_insert_slide_with_missing_properties_is_todo():
+    wf = _wrap([InsertSlideNode(presentation=None, layout_name=None)])
+    code = generate_python(wf)
+    assert "# TODO: InsertSlide with missing Presentation/LayoutName" in code
+    _compiles(code)
+
+
+def test_delete_slide_with_missing_properties_is_todo():
+    wf = _wrap([DeleteSlideNode(presentation=None, delete_position=None)])
+    code = generate_python(wf)
+    assert "# TODO: DeleteSlide with missing Presentation/DeletePosition" in code
     _compiles(code)
 
 

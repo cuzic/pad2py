@@ -195,6 +195,8 @@ from dump_daemon.uipath_dsl import (
     FindAndReplaceTextInPresentationNode,
     InsertTextInPresentationNode,
     SavePresentationFileAsNode,
+    InsertSlideNode,
+    DeleteSlideNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -4925,6 +4927,46 @@ def test_power_point_application_scope_full_body():
     assert isinstance(save_as, SavePresentationFileAsNode)
     assert save_as.presentation == VbExpr(text="ReportTemplatePPT")
     assert save_as.file_path == VbExpr(text='string.Format("C:\\Report_{0}", today)')
+
+
+def test_insert_slide_properties():
+    """知見275: `ui:InsertSlide`(discovery-fresh-pass-10で発見、
+    `ui:PowerPointApplicationScope`第2波活動の1件、タグ名限定GitHub
+    検索で8件ヒット)。実機4件(公式`UiPath-Services/StudioTemplates`
+    テンプレート含む)全てで完全に同一の構成を確認——`InsertType="End"`
+    +`LayoutName="Title and Content"`+`SlideMasterName="(default)"`、
+    `InsertedAtPosition`は新しいスライドの1始まり番号を返す出力。"""
+    xml = (
+        f"<ui:InsertSlide {_UI_XMLNS} "
+        'DisplayName="Add New Slide" InsertPosition="{x:Null}" '
+        'InsertType="End" InsertedAtPosition="[Saved.Values(Of Int32)'
+        '(&quot;Added Slide Number&quot;)]" LayoutName="Title and Content" '
+        'Presentation="[PowerPoint]" SlideMasterName="(default)" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InsertSlideNode)
+    assert node.presentation == VbExpr(text="PowerPoint")
+    assert node.insert_type == "End"
+    assert node.layout_name == Literal(value="Title and Content")
+    assert node.slide_master_name == "(default)"
+    assert node.inserted_at_position == VbExpr(
+        text='Saved.Values(Of Int32)("Added Slide Number")'
+    )
+
+
+def test_delete_slide_properties():
+    """知見275: `ui:DeleteSlide`(本調査最小の属性構成——`Presentation`
+    +`DeletePosition`のみ)。実機`Apress/Robotic-Process-Automation-
+    Using-UiPath-StudioX`で確認した構成。"""
+    xml = (
+        f"<ui:DeleteSlide {_UI_XMLNS} "
+        'DeletePosition="1" DisplayName="Delete Slide" '
+        'Presentation="[ReportTemplatePPT]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, DeleteSlideNode)
+    assert node.presentation == VbExpr(text="ReportTemplatePPT")
+    assert node.delete_position == Literal(value="1")
 
 
 def test_word_replace_text_alternate_tag_name():

@@ -13188,6 +13188,58 @@ discovery-fresh-pass-9が報告したこのファミリーの第2波候補
 /`SavePresentationAsPdf`、いずれも実機1件のみでの確認——今回実装した
 4活動より確証度が低い)は未実装のまま残る。
 
+## 275. `ui:InsertSlide`/`ui:DeleteSlide`を新規実装——discovery-fresh-pass-10が報告したPowerPoint第2波活動のうち確度が最も高い2件、`DeleteSlide`はOOXML直接操作の注入ヘルパーで対応した
+
+知見274で`PowerPointApplicationScope`ファミリーの第1波を実装した
+直後の次ティックとして、discovery-fresh-pass-10が報告した第2波候補
+のうち最も確度が高い`ui:InsertSlide`/`ui:DeleteSlide`に着手した
+(`ui:CopyPasteSlide`は異なるプレゼンテーション間でのスライド複製が
+必要でOOXMLの関係ID/画像パーツ周りの複雑さが大きいため、`ui:
+SavePresentationAsPdf`はPDF変換のマッピング先が未確定のため、
+`ui:ReplaceShapeWithMedia`は`python-pptx`側のプレースホルダー置換
+APIの検証が必要なため、いずれも今回は見送り、個別ティックで検証
+すべき候補として残した)。
+
+実機4件(公式`UiPath-Services/StudioTemplates`の
+`CreatePowerPointPresentation`テンプレート、公式`UiPathJapan/
+StudioXTemplates`、`Apress/Robotic-Process-Automation-Using-UiPath-
+StudioX`、`starmanfrommars/Robotic-Process-Automation-Lab`)全てで
+`ui:InsertSlide`が完全に同一の構成(`InsertType="End"`+`LayoutName=
+"Title and Content"`+`SlideMasterName="(default)"`、唯一の確認値)
+であることを確認——公式サンプルのAnnotationTextが「新しいスライド
+番号を返す」と明記しており、既存の`InsertTextInPresentationNode.
+slide_index`の1始まり推定と整合することも確認した。`ui:DeleteSlide`
+は実機2件(`Apress`・`starmanfrommars`)+公式テンプレート内の使用例
+で`DeletePosition`(1始まり整数)+`Presentation`のみという本調査
+最小の属性構成を確認。
+
+`InsertSlide`は`Presentation.slide_layouts`(実機確認済みの単一既定
+マスター構成でのみ動作確認)から`LayoutName`一致レイアウトを探し、
+`Presentation.slides.add_slide(layout)`(常に末尾に追加、`InsertType=
+"End"`の確認済み唯一値と正確に対応)で実装。`DeleteSlide`は
+`python-pptx`に公開APIの削除機能が無いため、`WordReplacePictureNode`
+(知見263)と同じ「高レベルAPIに無い操作をOOXML直接操作で補う」設計
+判断クラスで、コミュニティで広く知られる標準的なイディオム
+(`Presentation.slides._sldIdLst`から対象の`sldId`要素を取り出し、
+対応する関係を`Presentation.part.drop_rel()`で解除してから
+`_sldIdLst`自体からも除去する)を注入ヘルパー関数`_pptx_delete_slide`
+として実装した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`4件、うち1件は実際の`.pptx`ファイルに対して
+`exec()`経由で`InsertSlide`→`InsertTextInPresentation`→`DeleteSlide`
+→`SavePresentationFileAs`の順にスコープ全体を実行し、新規挿入した
+スライドのタイトルが保持されたまま元のスライドだけが正しく削除
+されることを確認)、リポジトリ全体で全2466件通過(28件skip、本活動
+の6件分の純増)。
+
+discovery-fresh-pass-10が報告した残りの候補(`ui:CopyPasteSlide`・
+`ui:SavePresentationAsPdf`・`ui:ReplaceShapeWithMedia`・`ui:
+InvokeVBScript`(COM不要、`subprocess.run(["cscript.exe", ...])`で
+対応可能と再検証済み)・`ui:Beep`(文字列アサーションのみのテスト
+手法が既存の`InvokePowerShell`/`KillProcess`テストに前例あり))は
+いずれも次ティック以降の候補として残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

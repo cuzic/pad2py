@@ -210,6 +210,8 @@ from .types import (
     FindAndReplaceTextInPresentationNode,
     InsertTextInPresentationNode,
     SavePresentationFileAsNode,
+    InsertSlideNode,
+    DeleteSlideNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -3008,6 +3010,26 @@ def _parse_save_presentation_file_as(elem: etree._Element) -> SavePresentationFi
     )
 
 
+def _parse_insert_slide(elem: etree._Element) -> InsertSlideNode:
+    return InsertSlideNode(
+        presentation=_attr_expr(elem, "Presentation"),
+        insert_type=_attr_or_none(elem, "InsertType"),
+        layout_name=_attr_expr(elem, "LayoutName"),
+        slide_master_name=_attr_or_none(elem, "SlideMasterName"),
+        inserted_at_position=_attr_expr(elem, "InsertedAtPosition")
+        or _in_argument_property_expr(elem, "InsertedAtPosition"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_delete_slide(elem: etree._Element) -> DeleteSlideNode:
+    return DeleteSlideNode(
+        presentation=_attr_expr(elem, "Presentation"),
+        delete_position=_attr_expr(elem, "DeletePosition"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 def _parse_word_replace_text(elem: etree._Element) -> WordReplaceTextNode:
     return WordReplaceTextNode(
         search=_attr_expr(elem, "Search"),
@@ -3683,6 +3705,8 @@ _DISPATCH = {
     ),
     (UI_NS, "InsertTextInPresentation"): _parse_insert_text_in_presentation,
     (UI_NS, "SavePresentationFileAs"): _parse_save_presentation_file_as,
+    (UI_NS, "InsertSlide"): _parse_insert_slide,
+    (UI_NS, "DeleteSlide"): _parse_delete_slide,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,
     (UI_NS, "WordReplaceText"): _parse_word_replace_text,
     (WORD_NS, "WordApplicationScope"): _parse_word_application_scope,

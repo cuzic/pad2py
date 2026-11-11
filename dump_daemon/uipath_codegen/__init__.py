@@ -246,6 +246,8 @@ from ..uipath_dsl.types import (
     FindAndReplaceTextInPresentationNode,
     InsertTextInPresentationNode,
     SavePresentationFileAsNode,
+    InsertSlideNode,
+    DeleteSlideNode,
     WordReplaceTextNode,
     WordAppendTextNode,
     WordSaveAsNode,
@@ -755,6 +757,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # パーツの`._blob`直接上書き、知見263)も同様。
     if any(f"{_WORD_REPLACE_PICTURE_HELPER_NAME}(" in line for line in body):
         imports.append(_WORD_REPLACE_PICTURE_HELPER_SOURCE.rstrip("\n"))
+    # `_pptx_delete_slide`(`DeleteSlide`→OOXMLの`_sldIdLst`直接操作、
+    # 知見275)も同様。
+    if any(f"{_PPTX_DELETE_SLIDE_HELPER_NAME}(" in line for line in body):
+        imports.append(_PPTX_DELETE_SLIDE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -1130,6 +1136,10 @@ def _generate_node(
         return _generate_insert_text_in_presentation(node, indent)
     if isinstance(node, SavePresentationFileAsNode):
         return _generate_save_presentation_file_as(node, indent)
+    if isinstance(node, InsertSlideNode):
+        return _generate_insert_slide(node, indent)
+    if isinstance(node, DeleteSlideNode):
+        return _generate_delete_slide(node, indent)
     if isinstance(node, SendMailNode):
         return _generate_send_mail(node, indent)
     if isinstance(node, SendOutlookMailNode):
@@ -8246,6 +8256,95 @@ def _generate_save_presentation_file_as_body(
     if todo:
         return todo
     return [f"{prefix}{presentation}.save({file_path})"]
+
+
+def _generate_insert_slide(node: InsertSlideNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_insert_slide_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_insert_slide_body(node: InsertSlideNode, indent: int) -> list[str]:
+    """知見275: `InsertType="End"`(確認済みの唯一値)のみ対応——
+    `Presentation.slide_layouts`から`LayoutName`に一致するレイアウトを
+    探し、`Presentation.slides.add_slide(layout)`(常に末尾に追加)で
+    新規スライドを作成する。`SlideMasterName`は確認済みの唯一値
+    `"(default)"`のみ対応(複数マスター構成は実機未確認)。"""
+    prefix = INDENT * indent
+    if node.presentation is None or node.layout_name is None:
+        return [
+            f"{prefix}# TODO: InsertSlide with missing Presentation/LayoutName"
+        ]
+    if node.insert_type not in (None, "End"):
+        return [
+            f"{prefix}# TODO: InsertSlide with InsertType "
+            f"{node.insert_type!r} — only the confirmed \"End\" value is "
+            "implemented, refusing to guess"
+        ]
+    if node.slide_master_name not in (None, "(default)"):
+        return [
+            f"{prefix}# TODO: InsertSlide with SlideMasterName "
+            f"{node.slide_master_name!r} — only the confirmed "
+            "\"(default)\" value is implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    presentation = _render_value_or_todo(node.presentation, prefix, todo)
+    layout_name = _render_value_or_todo(node.layout_name, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_layout = next(_l for _l in {presentation}.slide_layouts "
+        f"if _l.name == {VB_CSTR_HELPER_NAME}({layout_name}))",
+        f"{prefix}{presentation}.slides.add_slide(_layout)",
+    ]
+    if node.inserted_at_position is not None:
+        todo2: list[str] = []
+        inserted_at_position = _render_value_or_todo(
+            node.inserted_at_position, prefix, todo2
+        )
+        if todo2:
+            return todo2
+        lines.append(f"{prefix}{inserted_at_position} = len({presentation}.slides)")
+    return lines
+
+
+# 知見275: `ui:DeleteSlide`——`python-pptx`に公開APIの削除機能が無いため、
+# コミュニティで広く知られる標準的なイディオム(`WordReplacePicture`
+# (知見263)と同じ「高レベルAPIに無い操作をOOXML直接操作で補う」設計
+# 判断クラス)を注入ヘルパー関数として実装する。
+_PPTX_DELETE_SLIDE_HELPER_NAME = "_pptx_delete_slide"
+_PPTX_DELETE_SLIDE_HELPER_SOURCE = '''\
+def _pptx_delete_slide(prs, index):
+    ns_r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xml_slides = prs.slides._sldIdLst
+    slides = list(xml_slides)
+    rid = slides[index].get("{%s}id" % ns_r)
+    prs.part.drop_rel(rid)
+    xml_slides.remove(slides[index])
+'''
+
+
+def _generate_delete_slide(node: DeleteSlideNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_delete_slide_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_delete_slide_body(node: DeleteSlideNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.presentation is None or node.delete_position is None:
+        return [
+            f"{prefix}# TODO: DeleteSlide with missing Presentation/DeletePosition"
+        ]
+    todo: list[str] = []
+    presentation = _render_value_or_todo(node.presentation, prefix, todo)
+    delete_position = _render_value_or_todo(node.delete_position, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{_PPTX_DELETE_SLIDE_HELPER_NAME}({presentation}, "
+        f"round({VB_CDBL_HELPER_NAME}({delete_position})) - 1)"
+    ]
 
 
 def _generate_word_application_scope(
