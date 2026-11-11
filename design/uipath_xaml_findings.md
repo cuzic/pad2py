@@ -12762,6 +12762,56 @@ test_uipath_codegen.py`8件)、リポジトリ全体で全2406件通過
 `VBProject`注入+`Application.Run()`が必要、より高リスク・高複雑度
 と事前に分類済み)のみが残る最後の候補となった。
 
+## 267. `ui:InvokeVBA`を調査し見送った——`ExcelApplicationScope`の既存`openpyxl`近似が構造的にVBAマクロ実行に対応できないことを実機2件で再確認した
+
+10回目発見パスの最後の未着手候補`ui:InvokeVBA`(タグ名限定GitHub
+検索で113件ヒット)に着手しようとしたが、実機2件(`YenLinWu/
+RPA_UiPath`の`Excel VBA x UiPath/Merge Cells/Merge Cells.xaml`、
+`GSA/AP-Email-Notifications`の`Initiate Run Macro.xaml`)を取得して
+構造を確認した結果、見送った。
+
+確認した構成——`CodeFilePath`(VBAコードを含むテキストファイルの
+パス、動的VB式・リテラルパスの両方確認)、`EntryMethodName`(呼び出す
+VBAのSub/Function名、動的式・リテラルの両方確認)、
+`EntryMethodParameters`(任意、引数のVB配列リテラル)、`OutputValue`
+(出力、実機2件とも`{x:Null}`)——いずれも**`ExcelApplicationScope`
+配下の子活動**として現れる(2件とも例外なし)。
+
+本活動は意味論上、外部テキストファイルのVBAコードをターゲットの
+Excelワークブックの`VBProject`へ動的に注入し、指定した
+Sub/Functionを`Application.Run()`で呼び出す——これには**ライブの
+Excel COMプロセス**(`win32com.client.Dispatch("Excel.Application")`)
+が必須で、VBAマクロ実行機能自体が存在しない。
+
+しかし本トランスパイラの`ExcelApplicationScopeNode`(知見97)は
+ユーザー決定済みの方針により`openpyxl`(ファイルベース、Excel
+プロセス不要)で近似している——`openpyxl`にはVBAコード注入/実行の
+機能が一切存在しない。つまり`InvokeVBA`を実装するには、この活動が
+子として現れる`ExcelApplicationScope`自体を(他の全ての子活動
+——`ExcelReadRange`/`WriteRange`/`ReadCell`/`WriteCell`等——が
+前提する`openpyxl`ベースの近似から)ライブCOMベースへ切り替える
+必要があり、既存の全Excel子活動のコード生成を壊さずに実現する
+方法が無い——「新しい活動を1つ追加する」という範囲を超えた、
+スコープ全体のアーキテクチャ変更になる。
+
+これは既にメモリに記録されていた`ui:ExecuteMacro`(知見256の調査
+パスで発見、「ライブExcel COMが必要、本プロジェクト初のopenpyxl
+非対応Excel活動になり同じスコープ内でバックエンドが混在する、
+より高複雑度のため後回し」と判断済み・未実装のまま)と**全く
+同じ構造的な非互換性**——`DatabaseTransaction.UseTransaction=True`
+(知見231、「既存の子書き込み活動の実装方法とアーキテクチャ的に
+非互換」)と同じ判断クラスとして見送った。でっち上げた基盤の上に
+実装しない、という本セッション一貫した方針どおり。
+
+本ティックはコード変更無し(調査のみ)。これにより10回目発見パスの
+全候補(`uas:GetUsernamePasswordX`・`GetEnvironmentFolder`・
+`GetProcesses`・`ReadPDFWithOCR`完了、`InvokeVBA`見送り)が完結し、
+Excel/Word/マウスキーボード網羅性向上の調査パス(知見256以来)+
+10回目発見パスの残り候補、両方のバックログが本ティックで実質
+完了した——継続する場合は新規の発見パス(開発対象を限定しない、
+または`ExcelApplicationScope`のライブCOM対応という大きめの
+アーキテクチャ投資)が必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
