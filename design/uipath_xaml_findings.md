@@ -12271,6 +12271,71 @@ test_uipath_codegen.py`7件)、リポジトリ全体で全2333件通過
 (`WordAppendText`・`WordSaveAs`等)・マウスキーボード系
 (`ui:SetFocus`等)の候補は次のティックで継続実装する。
 
+## 258. `ui:WordAppendText`/`ui:WordSaveAs`/`ui:WordReadText`を新規実装——知見121の`WordApplicationScope`が実は別の実機直列化規約(専用名前空間+別属性名)では一度もパースできていなかった既存バグを独立検証で発見・修正した
+
+Excel/Word/マウスキーボード網羅性向上の調査パス(知見256/257と同じ)で
+Word classic系ランキング1位だった`ui:WordAppendText`(GitHub検索で
+143件ヒット)に着手し、独立に実機2件(`starmanfrommars/
+Robotic-Process-Automation-Lab`の`Lab 6/Main.xaml`、`Apress/
+Robotic-Process-Automation-Using-UiPath-StudioX`の
+`Chapter_6-WordAutomationExercise/Main.xaml`)を取得・検証したところ、
+知見121で実装済みの`WordApplicationScopeNode`自体に重大な既存ギャップ
+があることを発見した。
+
+**発見した既存ギャップ**: 知見121の実機ground-truth(`UiPath/skills`
+公式リポジトリの`word-scope-file-path`テストタスク)は`xmlns:ui=
+"http://schemas.uipath.com/workflow/activities"`(汎用`UI_NS`)+
+`FileName`属性だったが、今回独立に取得した実機2件は両方とも
+`xmlns:p="http://schemas.uipath.com/workflow/activities/word"`
+(`UiPath.Word.Activities`専用のスキーマURI、新規`WORD_NS`定数)+
+`FilePath`属性という**全く別の直列化規約**を使っていた——プレフィックス
+が違うだけ(名前空間URIは同じ)ではなく、URIそのものが異なる。
+既存のディスパッチ登録は`(UI_NS, "WordApplicationScope")`のみだった
+ため、**この直列化規約の実機XAMLでは`WordApplicationScope`自体が
+丸ごと`UnknownActivityNode`に落ち、配下の子活動(`WordReplaceText`
+含む)も一切パースされていなかった**——知見121で実装済みのはずの
+Word自動化機能が、実機で遭遇する頻度の高い方の直列化規約では
+最初から一度も動いていなかったことになる。
+
+独立検証でこれを発見できたのは、知見248(win32credの誤情報)・
+知見244(render.pyの既存バグ)と同じ「実装前に実機XAMLを自分で
+取得・確認する」という確立済みの方針を徹底した結果——新規活動
+(`WordAppendText`)を実機で確認しようとして、その親スコープである
+`WordApplicationScope`自体が想定通りにパースできているかを検証
+したところ、名前空間とプロパティ要素形の両方がground-truthと
+食い違っていることに気づいた。
+
+**修正**: `WORD_NS`定数を新設し、`WordApplicationScope`/
+`WordReplaceText`を`UI_NS`/`WORD_NS`の両方でディスパッチ登録
+(どちらの直列化規約でも正しくパースできるようにする、既存の
+`UI_NS`登録は削除せず維持)。`_parse_word_application_scope`の
+`file_name`抽出も`_attr(elem, "FileName") or _attr(elem, "FilePath")
+or ""`へ拡張し、両方の属性名を試す。
+
+**新規実装**: `ui:WordAppendText`(`Text`のみ、`NewLine`は実機2件とも
+現れず公式ドキュメント確認済みの既定`True`のみ対応、`python-docx`の
+`Document.add_paragraph(text)`が正確に対応)・`ui:WordSaveAs`
+(`FilePath`のみ、`SaveAsFileType`/`ReplaceExisting`は実機2件とも
+現れず公式ドキュメント確認済みの既定のみ対応——`WordApplicationScope`
+のスコープ末尾の無条件`.save(file_name)`は本活動の有無にかかわらず
+継続実行される、元のテンプレートファイルも最終内容で上書きされる
+副作用を明示的に受け入れる既知の限界として docstring に記録)・
+`ui:WordReadText`(`Text`出力、`"\n".join(p.text for p in
+document.paragraphs)`で近似)。
+
+実際の`python-docx`で生成した`.docx`テンプレートに対して、
+`WordApplicationScope`配下に`WordReplaceText`→`WordAppendText`→
+`WordReadText`→`WordSaveAs`を連鎖させた実際のXAML(`WORD_NS`
+直列化規約)を`parse_workflow_file()`→`generate_python()`→`exec()`
+の全経路で動作確認した——プレースホルダ置換・段落追記・全文読取・
+別名保存のすべてが正しく機能することを確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`4件・`tests/
+test_uipath_codegen.py`10件)、リポジトリ全体で全2347件通過
+(28件skip、本活動の14件分の純増)。残るWord classic系
+(`WordInsertDataTable`・`WordAddImage`・`WordReplacePicture`)・
+マウスキーボード系(`ui:SetFocus`等)の候補は次のティックで継続実装。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

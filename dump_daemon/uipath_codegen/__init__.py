@@ -228,6 +228,9 @@ from ..uipath_dsl.types import (
     WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WordAppendTextNode,
+    WordSaveAsNode,
+    WordReadTextNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -1080,6 +1083,9 @@ def _generate_node(
             ExcelWriteRangeNode,
             ExcelAppendRangeNode,
             WordReplaceTextNode,
+            WordAppendTextNode,
+            WordSaveAsNode,
+            WordReadTextNode,
         ),
     ):
         return _generate_unresolved_activity(node, indent)
@@ -7574,6 +7580,24 @@ def _generate_word_application_scope(
                     child, _generate_word_replace_text_in_scope(child, indent, var), prefix
                 )
             )
+        elif isinstance(child, WordAppendTextNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_word_append_text_in_scope(child, indent, var), prefix
+                )
+            )
+        elif isinstance(child, WordSaveAsNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_word_save_as_in_scope(child, indent, var), prefix
+                )
+            )
+        elif isinstance(child, WordReadTextNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child, _generate_word_read_text_in_scope(child, indent, var), prefix
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.file_name!r})")
@@ -7605,6 +7629,78 @@ def _generate_word_replace_text_in_scope(
         f"{inner2}if {VB_CSTR_HELPER_NAME}({search}) in _r.text:",
         f"{INDENT * (indent + 3)}_r.text = _r.text.replace("
         f"{VB_CSTR_HELPER_NAME}({search}), {VB_CSTR_HELPER_NAME}({replace}))",
+    ]
+
+
+# 知見258: `ui:WordAppendText`——実機2件とも`NewLine`属性は現れず、
+# 公式ドキュメント確認済みの既定`True`(テキストの前に新しい段落を
+# 挿入する)のみ対応する。`python-docx`の`Document.add_paragraph(text)`
+# が正確に対応する。
+def _generate_word_append_text_in_scope(
+    node: WordAppendTextNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.text is None:
+        return [f"{prefix}# TODO: Word Append Text with no Text captured"]
+    if node.new_line not in (None, "True"):
+        return [
+            f"{prefix}# TODO: Word Append Text with NewLine set "
+            f"{node.new_line!r} — only the confirmed default (True) is "
+            "implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{scope_var}.add_paragraph({VB_CSTR_HELPER_NAME}({text}))"]
+
+
+# 知見258: `ui:WordSaveAs`——実機2件とも`SaveAsFileType`/
+# `ReplaceExisting`属性は現れず、公式ドキュメント確認済みの既定
+# (`"XmlDocument"`=.docx、`True`)のみ対応する。スコープ末尾の無条件
+# `.save(file_name)`は本活動の有無にかかわらず継続して実行される
+# (`WordApplicationScopeNode`のdocstring参照、既知の限界として明示的に
+# 受け入れる)。
+def _generate_word_save_as_in_scope(
+    node: WordSaveAsNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.file_path is None:
+        return [f"{prefix}# TODO: Word Save As with no FilePath captured"]
+    if node.save_as_file_type not in (None, "XmlDocument"):
+        return [
+            f"{prefix}# TODO: Word Save As with SaveAsFileType set "
+            f"{node.save_as_file_type!r} — only the confirmed default "
+            '("XmlDocument"/.docx) is implemented, refusing to guess'
+        ]
+    if node.replace_existing not in (None, "True"):
+        return [
+            f"{prefix}# TODO: Word Save As with ReplaceExisting set "
+            f"{node.replace_existing!r} — only the confirmed default (True) "
+            "is implemented, refusing to guess"
+        ]
+    todo: list[str] = []
+    file_path = _render_value_or_todo(node.file_path, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{scope_var}.save({file_path})"]
+
+
+# 知見258: `ui:WordReadText`——`"\n".join(p.text for p in
+# document.paragraphs)`でドキュメント全文を近似する(表組み等の
+# 非段落コンテンツは捕捉しない既知の限界)。
+def _generate_word_read_text_in_scope(
+    node: WordReadTextNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.text is None:
+        return [f"{prefix}# TODO: Word Read Text with no output Text captured"]
+    try:
+        target = render_expr(node.text)
+    except NotImplementedError as e:
+        return _todo_value(prefix, str(e))
+    return [
+        f'{prefix}{target} = "\\n".join(_p.text for _p in {scope_var}.paragraphs)'
     ]
 
 

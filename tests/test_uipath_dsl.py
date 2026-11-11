@@ -177,6 +177,9 @@ from dump_daemon.uipath_dsl import (
     WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WordAppendTextNode,
+    WordSaveAsNode,
+    WordReadTextNode,
     WriteCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
@@ -4440,6 +4443,79 @@ def test_word_replace_text_alternate_tag_name():
     assert isinstance(node, WordReplaceTextNode)
     assert node.search == VbExpr(text="a")
     assert node.replace == VbExpr(text="b")
+
+
+_WORD_XMLNS = (
+    'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+    'xmlns:p="http://schemas.uipath.com/workflow/activities/word" '
+    'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"'
+)
+
+
+def test_word_application_scope_under_word_namespace_with_file_path_attribute():
+    """知見258: Excel/Word/マウスキーボード網羅性向上の調査パスで発見した、
+    知見121のground-truth(`UI_NS`+`FileName`属性)とは別の実機2件
+    (`starmanfrommars/Robotic-Process-Automation-Lab`・`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`)の直列化規約
+    ——専用スキーマURI(`WORD_NS`)+`FilePath`属性。これを確認できる
+    までは`WordApplicationScope`配下の`WordAppendText`/`WordSaveAs`/
+    `WordReadText`が実機では一度も正しくパースされていなかった
+    (名前空間不一致で丸ごと`UnknownActivityNode`へ落ちていた)。"""
+    xml = (
+        f"<p:WordApplicationScope {_WORD_XMLNS} "
+        'DisplayName="Use Word File" FilePath="[docPath]">'
+        "<p:WordApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="ui:WordDocument">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="ui:WordDocument" Name="WordDocumentScope" />'
+        "</ActivityAction.Argument>"
+        '<p:WordAppendText DisplayName="Append Text" Text="." />'
+        "</ActivityAction>"
+        "</p:WordApplicationScope.Body>"
+        "</p:WordApplicationScope>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordApplicationScopeNode)
+    assert node.file_name == "[docPath]"
+    assert len(node.body) == 1
+    assert isinstance(node.body[0], WordAppendTextNode)
+
+
+def test_word_append_text_properties():
+    """知見258: `ui:WordAppendText`(実機2件で確認、143件ヒット)。
+    `starmanfrommars/Robotic-Process-Automation-Lab`の実機XAMLで
+    確認した構成——`Text`のみ、`NewLine`は現れない(公式ドキュメント
+    確認済みの既定`True`)。"""
+    xml = f'<p:WordAppendText {_WORD_XMLNS} DisplayName="Append Text" Text="." />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordAppendTextNode)
+    assert node.text == Literal(value=".")
+    assert node.new_line is None
+    assert node.display_name == "Append Text"
+
+
+def test_word_save_as_properties():
+    """知見258: `ui:WordSaveAs`(実機2件で確認、65件ヒット)。拡張子
+    無しのパス文字列を確認済み。"""
+    xml = (
+        f"<p:WordSaveAs {_WORD_XMLNS} "
+        'DisplayName="Save Document As" FilePath="[outputPath]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordSaveAsNode)
+    assert node.file_path == VbExpr(text="outputPath")
+    assert node.save_as_file_type is None
+    assert node.replace_existing is None
+
+
+def test_word_read_text_properties():
+    """知見258: `ui:WordReadText`(実機2件で確認、67件ヒット)。`Text`
+    は出力(ドキュメント全文)。"""
+    xml = f'<p:WordReadText {_WORD_XMLNS} DisplayName="Read Text" Text="[extractedText]" />'
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordReadTextNode)
+    assert node.text == VbExpr(text="extractedText")
 
 
 def test_send_outlook_mail_and_set_to_clipboard(main_wf):

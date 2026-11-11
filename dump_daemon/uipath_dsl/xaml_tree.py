@@ -192,6 +192,9 @@ from .types import (
     WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WordAppendTextNode,
+    WordSaveAsNode,
+    WordReadTextNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -249,6 +252,17 @@ SYSTEM_TEXT_NS = (
 # 名前空間(`.Text`サブパッケージが無い、`UiPath.Activities.System`
 # 直下)——同じ`UiPath.System.Activities`アセンブリ内の別パッケージ。
 SYSTEM_NS = "clr-namespace:UiPath.Activities.System;assembly=UiPath.System.Activities"
+# 知見258: `UiPath.Word.Activities`——知見121実装時の実機ground-truth
+# (`UiPath/skills`の`word-scope-file-path`テストタスク)は`ui:`の
+# 汎用カタログ名前空間(`UI_NS`)+`FileName`属性だったが、独立に発見した
+# 実機2件(`starmanfrommars/Robotic-Process-Automation-Lab`・
+# `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`)は
+# 専用スキーマURI(別名`p:`)+`FilePath`属性という別の直列化規約
+# ——同じCLRクラスがStudio/プロジェクトの種類によって異なるXAML
+# 名前空間URIで直列化される実例(知見237/253の`uast:`/`uas:`とは違い、
+# こちらは「別名前空間」ではなく「本当に異なるURI文字列」)。両方を
+# ディスパッチ登録する。
+WORD_NS = "http://schemas.uipath.com/workflow/activities/word"
 
 
 def _split_tag(tag: str) -> tuple[str | None, str]:
@@ -2678,7 +2692,12 @@ def _parse_excel_application_scope(elem: etree._Element) -> ExcelApplicationScop
 
 def _parse_word_application_scope(elem: etree._Element) -> WordApplicationScopeNode:
     """知見121: `ui:WordApplicationScope`。`_parse_excel_application_scope`
-    と完全に同じ構造パーサー(`ActivityAction`+`DelegateInArgument`)。"""
+    と完全に同じ構造パーサー(`ActivityAction`+`DelegateInArgument`)。
+
+    知見258: ファイルパス属性名は`FileName`(`UI_NS`配下の実機
+    ground-truthで確認済み)/`FilePath`(`WORD_NS`配下の実機2件で確認済み)
+    の両方が実在する——属性名自体は名前空間と1:1に対応するとは限らない
+    ため、どちらの名前空間でディスパッチされても両方の属性名を試す。"""
     body_elem = _find_property_element(elem, "Body")
     action = _find_activity_action(body_elem) if body_elem is not None else None
     scope_var = "WordDocumentScope"
@@ -2690,7 +2709,9 @@ def _parse_word_application_scope(elem: etree._Element) -> WordApplicationScopeN
                 scope_var = _attr(d, "Name") or scope_var
         body = _unwrap_body_sequence(action)
     return WordApplicationScopeNode(
-        file_name=_attr(elem, "FileName") or "", scope_var=scope_var, body=body
+        file_name=_attr(elem, "FileName") or _attr(elem, "FilePath") or "",
+        scope_var=scope_var,
+        body=body,
     )
 
 
@@ -2698,6 +2719,31 @@ def _parse_word_replace_text(elem: etree._Element) -> WordReplaceTextNode:
     return WordReplaceTextNode(
         search=_attr_expr(elem, "Search"),
         replace=_attr_expr(elem, "Replace"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_word_append_text(elem: etree._Element) -> WordAppendTextNode:
+    return WordAppendTextNode(
+        text=_attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text"),
+        new_line=_attr_or_none(elem, "NewLine"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_word_save_as(elem: etree._Element) -> WordSaveAsNode:
+    return WordSaveAsNode(
+        file_path=_attr_expr(elem, "FilePath")
+        or _in_argument_property_expr(elem, "FilePath"),
+        save_as_file_type=_attr_or_none(elem, "SaveAsFileType"),
+        replace_existing=_attr_or_none(elem, "ReplaceExisting"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_word_read_text(elem: etree._Element) -> WordReadTextNode:
+    return WordReadTextNode(
+        text=_attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -3260,6 +3306,11 @@ _DISPATCH = {
     (UI_NS, "WordApplicationScope"): _parse_word_application_scope,
     (UI_NS, "ReplaceTextInDocument"): _parse_word_replace_text,
     (UI_NS, "WordReplaceText"): _parse_word_replace_text,
+    (WORD_NS, "WordApplicationScope"): _parse_word_application_scope,
+    (WORD_NS, "WordReplaceText"): _parse_word_replace_text,
+    (WORD_NS, "WordAppendText"): _parse_word_append_text,
+    (WORD_NS, "WordSaveAs"): _parse_word_save_as,
+    (WORD_NS, "WordReadText"): _parse_word_read_text,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,

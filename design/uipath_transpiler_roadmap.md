@@ -3694,3 +3694,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      test_uipath_codegen.py`7件)、リポジトリ全体で全2333件通過
      (本活動の9件分の純増)。残るWord classic・マウスキーボード系の
      候補は次のティックで継続実装。
+
+216. **(完了、2026-11-10)** `ui:WordAppendText`/`ui:WordSaveAs`/
+     `ui:WordReadText`を新規実装(知見258)——同時に知見121の
+     `WordApplicationScope`の既存バグも発見・修正した。独立検証で
+     実機2件が知見121のground-truth(`UI_NS`+`FileName`属性)とは
+     別の直列化規約(専用`WORD_NS`+`FilePath`属性)を使うことを発見
+     ——この規約では`WordApplicationScope`自体が丸ごと
+     `UnknownActivityNode`に落ち、配下の子活動も一切パースされて
+     いなかった。`WORD_NS`定数を新設し両方の名前空間でディスパッチ
+     登録、`file_name`抽出も両方の属性名を試すよう修正。新規3活動
+     は`WordAppendText`(`Text`のみ、`python-docx`の
+     `add_paragraph()`)・`WordSaveAs`(`FilePath`のみ、スコープ末尾の
+     無条件保存は継続実行される既知の限界をdocstringに明記)・
+     `WordReadText`(`Text`出力、全段落の`"\n".join()`で近似)。
+     `parse_workflow_file()`→`generate_python()`→`exec()`の全経路
+     で4活動連鎖の動作確認済み。回帰テスト追加(`tests/
+     test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`10件)、
+     リポジトリ全体で全2347件通過(本活動の14件分の純増)。残る
+     Word classic(`WordInsertDataTable`等)・マウスキーボード系
+     (`ui:SetFocus`等)の候補は次のティックで継続実装。

@@ -4152,7 +4152,15 @@ class WordApplicationScopeNode:
     合わせて`python-docx`(ファイルベース、Wordプロセス不要)を選んだため
     無視する——ライブWordアプリケーションを実際に表示/非表示にする挙動は
     再現しない(既知の限界、`ExcelApplicationScope`のライブマクロ実行
-    未対応と同種)。"""
+    未対応と同種)。
+
+    知見258: Excel/Word/マウスキーボード網羅性向上の調査パスで、独立に
+    発見した実機2件(`starmanfrommars/Robotic-Process-Automation-Lab`・
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`)が
+    `WORD_NS`(専用スキーマURI)+`FilePath`属性という、知見121の
+    ground-truth(`UI_NS`+`FileName`属性)とは別の直列化規約を使うことを
+    発見した——両方を実機確認済みとしてディスパッチ登録し、`file_name`
+    は両方の属性名を試す。"""
 
     file_name: str
     scope_var: str = "WordDocumentScope"
@@ -4174,6 +4182,68 @@ class WordReplaceTextNode:
 
     search: Expr = None
     replace: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class WordAppendTextNode:
+    """`<ui:WordAppendText Text="..." />`(知見258、`WordApplicationScope`
+    配下の子活動、`WORD_NS`限定——GitHub検索で143件ヒット)。実機2件
+    (`starmanfrommars/Robotic-Process-Automation-Lab`・`Apress/
+    Robotic-Process-Automation-Using-UiPath-StudioX`)で確認した構成は
+    `Text`のみ(両サンプルとも`NewLine`属性は現れず、公式ドキュメント
+    確認済みの既定`True`——「テキストの前に新しい段落を挿入する」)。
+    `NewLine="False"`(既存段落の末尾に改行無しで追記)は実機未確認のため
+    `# TODO`へ倒す。`python-docx`の`Document.add_paragraph(text)`
+    (新しい段落を末尾に追加——`NewLine=True`の確認済み既定値に正確に
+    対応する)で実装する。"""
+
+    text: Expr = None
+    new_line: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
+class WordSaveAsNode:
+    """`<ui:WordSaveAs FilePath="..." />`(知見258、`WordApplicationScope`
+    配下の子活動、`WORD_NS`限定——GitHub検索で65件ヒット)。実機2件
+    (上記と同じ)で確認した構成は`FilePath`のみ(拡張子無しのパス
+    文字列、例`"...\\INV-2024-001"`)——`SaveAsFileType`/
+    `ReplaceExisting`属性は現れず、公式ドキュメント確認済みの既定
+    (`SaveAsFileType="XmlDocument"`=`.docx`、`ReplaceExisting=True`)
+    のみ対応する。`SaveAsFileType`が明示的に非既定値の場合、拡張子
+    自動付与の有無が未確認(公式ドキュメントに記載無し、実機でも
+    拡張子無しパスしか観測できていない)のため`# TODO`へ倒す——
+    `python-docx`の`Document.save(path)`はパス文字列をそのまま使う
+    (拡張子を自動付与しない、生のCOM `SaveAs2`と同じ挙動として
+    解釈)。`ReplaceExisting="False"`も実機未確認の意味論のため
+    `# TODO`へ倒す(`python-docx`の`save()`は常に無条件上書きのため
+    既定`True`は何もせず対応できる)。
+
+    `WordApplicationScopeNode`のスコープ末尾の無条件`.save(file_name)`
+    (元のファイルパスへの保存)は本活動の有無にかかわらず継続して実行
+    される——本活動が指定した新しいパスへの保存は`.save(file_path)`
+    として追加で実行するだけで、既存のスコープ末尾の保存を置き換え
+    たり抑制したりはしない(元のテンプレートファイルも同じ最終内容で
+    上書きされる副作用が生じる、既知の限界として明示的に受け入れる、
+    `ExcelApplicationScope`のライブマクロ実行未対応と同種の判断)。"""
+
+    file_path: Expr = None
+    save_as_file_type: str | None = None
+    replace_existing: str | None = None
+    display_name: str | None = None
+
+
+@dataclass
+class WordReadTextNode:
+    """`<ui:WordReadText Text="..." />`(知見258、`WordApplicationScope`
+    配下の子活動、`WORD_NS`限定——GitHub検索で67件ヒット)。`Text`は出力
+    (ドキュメント全文)。`python-docx`の`"\\n".join(p.text for p in
+    document.paragraphs)`で近似する——表組み等の非段落コンテンツは
+    捕捉しない既知の限界(`WordReplaceTextNode`の段落/run単位置換と
+    同種の、選んだライブラリに起因する構造的制約)。"""
+
+    text: Expr = None
     display_name: str | None = None
 
 
@@ -4850,6 +4920,9 @@ Node = (
     | ExcelApplicationScopeNode
     | WordApplicationScopeNode
     | WordReplaceTextNode
+    | WordAppendTextNode
+    | WordSaveAsNode
+    | WordReadTextNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode

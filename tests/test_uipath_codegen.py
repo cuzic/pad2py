@@ -208,6 +208,9 @@ from dump_daemon.uipath_dsl import (
     WindowStateNode,
     WordApplicationScopeNode,
     WordReplaceTextNode,
+    WordAppendTextNode,
+    WordSaveAsNode,
+    WordReadTextNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -10714,6 +10717,194 @@ def test_word_replace_text_with_missing_search_or_replace_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Word Replace Text with missing Search/Replace" in code
+    _compiles(code)
+
+
+def test_word_application_scope_under_word_namespace_full_round_trip_exec(tmp_path):
+    """知見258: Excel/Word/マウスキーボード網羅性向上の調査パスで発見した
+    実機2件の直列化規約(`WORD_NS`+`FilePath`属性)で、`WordAppendText`/
+    `WordSaveAs`/`WordReadText`の3つの新規活動を含む`WordApplicationScope`
+    全体を実際の`python-docx`で`exec()`経由で確認する——この名前空間
+    修正までは実機ではこれらの活動が丸ごと`UnknownActivityNode`へ
+    落ちていた(知見121時点のground-truthは`UI_NS`+`FileName`属性
+    だけだった)。"""
+    import docx
+
+    tmpl_path = str(tmp_path / "tmpl.docx")
+    out_path = str(tmp_path / "out.docx")
+    doc = docx.Document()
+    doc.add_paragraph("Hello {{NAME}}")
+    doc.save(tmpl_path)
+
+    xml = (
+        '<Activity x:Class="Test" '
+        'xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" '
+        'xmlns:p="http://schemas.uipath.com/workflow/activities/word" '
+        'xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        "<Sequence>"
+        f'<p:WordApplicationScope FilePath="{tmpl_path}">'
+        "<p:WordApplicationScope.Body>"
+        '<ActivityAction x:TypeArguments="ui:WordDocument">'
+        "<ActivityAction.Argument>"
+        '<DelegateInArgument x:TypeArguments="ui:WordDocument" Name="WordDocumentScope" />'
+        "</ActivityAction.Argument>"
+        "<Sequence>"
+        '<p:WordReplaceText Search="{{NAME}}" Replace="[nameVar]" />'
+        '<p:WordAppendText Text="Appended line" />'
+        '<p:WordReadText Text="[fullText]" />'
+        f'<p:WordSaveAs FilePath="{out_path}" />'
+        "</Sequence>"
+        "</ActivityAction>"
+        "</p:WordApplicationScope.Body>"
+        "</p:WordApplicationScope>"
+        "</Sequence>"
+        "</Activity>"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xaml", delete=False) as f:
+        f.write(xml)
+        path = f.name
+    try:
+        wf = parse_workflow_file(path)
+    finally:
+        os.unlink(path)
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(nameVar, fullText):")
+    ns: dict[str, object] = {}
+    exec(code2 + "\n    return fullText", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = ns["Test"]("Alice", None)
+    assert "Alice" in result
+    assert "Appended line" in result
+
+    doc_out = docx.Document(out_path)
+    texts = [p.text for p in doc_out.paragraphs]
+    assert any("Alice" in t for t in texts)
+    assert any("Appended line" in t for t in texts)
+
+
+def test_word_append_text_default_new_line_generates_real_code():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordAppendTextNode(text=Literal(value="hello"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "WordDocumentScope.add_paragraph(_vb_cstr('hello'))" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_append_text_with_no_text_is_todo():
+    wf = _wrap(
+        [WordApplicationScopeNode(file_name="letter.docx", body=[WordAppendTextNode(text=None)])]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Append Text with no Text captured" in code
+    _compiles(code)
+
+
+def test_word_append_text_with_new_line_false_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordAppendTextNode(text=Literal(value="x"), new_line="False")],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Append Text with NewLine set" in code
+    _compiles(code)
+
+
+def test_word_save_as_generates_real_code():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordSaveAsNode(file_path=Literal(value="out.docx"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "WordDocumentScope.save('out.docx')" in code
+    assert "WordDocumentScope.save('letter.docx')" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_save_as_with_no_file_path_is_todo():
+    wf = _wrap(
+        [WordApplicationScopeNode(file_name="letter.docx", body=[WordSaveAsNode(file_path=None)])]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Save As with no FilePath captured" in code
+    _compiles(code)
+
+
+def test_word_save_as_with_unconfirmed_file_type_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordSaveAsNode(
+                        file_path=Literal(value="out.docm"),
+                        save_as_file_type="MacroEnabledDocument",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Save As with SaveAsFileType set" in code
+    _compiles(code)
+
+
+def test_word_save_as_with_replace_existing_false_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordSaveAsNode(
+                        file_path=Literal(value="out.docx"), replace_existing="False"
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Save As with ReplaceExisting set" in code
+    _compiles(code)
+
+
+def test_word_read_text_generates_real_code():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordReadTextNode(text=VbExpr(text="fullText"))],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert 'fullText = "\\n".join(_p.text for _p in WordDocumentScope.paragraphs)' in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_word_read_text_with_no_output_is_todo():
+    wf = _wrap(
+        [WordApplicationScopeNode(file_name="letter.docx", body=[WordReadTextNode(text=None)])]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Read Text with no output Text captured" in code
     _compiles(code)
 
 
