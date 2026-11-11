@@ -478,6 +478,17 @@ UiPathトラック(`design/uipath_transpiler_roadmap.md`等)とは別管理。�
   モジュール接頭辞パターンで貼り付けても全て`"Unknown action, Has error"`(または無反応)に
   なった——`IfFunctionRecord`(条件式の文法として汎用的に解釈される)とは違い、`ActionRecord`は
   貼り付け時に閉じた内部カタログへ厳密一致で解決されるらしく、推測では当たらない。
+  ✅ **2026-11-10、M365インストールでCOM登録の壁が解消・知見209で実機Run検証完了**:
+  `pad2py-pad-host`にOffice本体がインストールされ、Word/Excel/PowerPointがCOM登録された。
+  Excel/Word/PowerPointそれぞれLaunch→Write→SaveAs→Read→Closeの5〜6アクションを右クリック
+  →Paste(本件で新規確立、下記注記)で貼り込み実際に`Run`実行、生成された実ファイルを
+  `pad_action_lib`で読み戻して一致を確認した(Excel/Wordは一発成功、PowerPointは
+  「新規プレゼンテーションはスライド0枚」という実機のみの新事実を踏まえ`AddPowerPointSlide`
+  追加で解消——`pad_action_lib`側は`python-pptx`も同じ挙動のため元々バグ無しと確認)。
+  **「ペーストは使えない」の訂正**: 上記🚫は**未確認のaction_idを推測で当てる**用途の話で、
+  **既にcodegenで確認済みの正しいaction_id/パラメータ名を貼り込む**用途(今回のRun検証)
+  には問題無く使える——右クリックコンテキストメニューの`Paste`項目(`type_keys("^v")`より
+  確実)を使うのが鍵だった。今後のTier3検証作業はこの手法を標準とする。
   🔍 **ユーザー提案(dll/exeのリバース解析)で前進、ただし未決着(知見76)**: `ilspycmd`で
   `Robin.Engine.dll`等を再デコンパイルし、action_id構築の一般式
   (`{AssemblyTitle}.{[Action]属性のId}[.{セレクタ名}]`)を`ActionMapperExport`のソースから
