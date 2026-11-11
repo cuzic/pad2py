@@ -916,10 +916,12 @@ A/B/C節の既知項目が3tick連続で進展無しだったため、プロジ�
   独自の上限を設けない方針)。残り(`SendEmailThroughOutlook`/`RespondToMailMessage`/
   `SaveOutlookEmailMessages`/`ProcessEmailMessages`/`RetrieveEmailsAndSaveAttachments`)は
   実際にメールを送信・変更する副作用を伴うため、ユーザーに「テストメール送信の許可」を
-  確認中(知見210時点で未回答)。許可が得られたら、`SendEmailThroughOutlook.SendEmail`→
-  一意な件名で`SubjectContains`絞り込み`RetrieveEmails`で受信確認、という
-  Excel/Word/PowerPint(知見209)と同じ「書いて読み戻す」パターンで検証する。
-  `ToContains`のBcc除外仕様(decompile確認済みだが実機未確認)も引き続き要確認。
+  確認したが、**2026-11-11、ユーザーが明示的に拒否**(「メールは送信してほしくないかなぁ」)
+  ——よって`SendEmailThroughOutlook`/`RespondToMailMessage`/`SaveOutlookEmailMessages`/
+  `ProcessEmailMessages`/`RetrieveEmailsAndSaveAttachments`の実機検証は**今後も実施しない
+  方針**(decompileベースの実装のまま、知見208の記載範囲が最終状態)。再度ユーザーから
+  明示的な許可が得られない限り、この件を再度尋ねたり実機検証を試みたりしない。
+  `ToContains`のBcc除外仕様(decompile確認済みだが実機未確認)も同様に実機確認は行わない。
 
 ## VM(`pad2py-pad-host`)使用時の協調ルール
 
