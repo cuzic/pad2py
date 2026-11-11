@@ -198,6 +198,7 @@ from .types import (
     WordSaveAsNode,
     WordReadTextNode,
     WordAddImageNode,
+    WordInsertDataTableNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -286,12 +287,27 @@ def _is_property_element(local_name: str) -> bool:
 
 def _parse_expr(raw: str | None) -> Expr:
     """属性値/テキストノードをIRの`Expr`に変換する(知見13: `[...]`角括弧なら
-    VB式、それ以外は生リテラル、`{x:Null}`/`None`は未設定)。"""
+    VB式、それ以外は生リテラル、`{x:Null}`/`None`は未設定)。
+
+    知見261: `hannannoor/supplyr-rpa`の実機XAML(`ui:WordInsertDataTable`
+    の`Text`属性)で`Text="{}{{LINE_ITEMS}}"`という実例を発見した——
+    先頭の`{}`はXAML標準の「値が`{`で始まるマークアップ拡張と誤認され
+    ないようにする」エスケープ接頭辞(`{x:Null}`等とは無関係な、WPF/
+    XAMLの一般的な構文規則)で、実際の値は`{{LINE_ITEMS}}`のみ
+    (テンプレート内の実際のプレースホルダ表記と一致、同じXAML内の
+    注釈コメントで確認済み)。この先頭エスケープを除去しないと、
+    生成コードが誤った(`{}`を含む)文字列でプレースホルダ検索し、
+    実機では一度も一致せず常に失敗する——活動固有ではない汎用的な
+    XAML構文規則のため、このヘルパー自身で対応する(`[...]`角括弧
+    判定より前に、`{x:Null}`判定の直後でチェックする)。"""
     if raw is None:
         return None
     if raw == "{x:Null}":
         return None
     stripped = raw.strip()
+    if stripped.startswith("{}"):
+        stripped = stripped[2:]
+        raw = stripped
     if stripped.startswith("[") and stripped.endswith("]"):
         return VbExpr(text=stripped[1:-1])
     return Literal(value=raw)
@@ -2785,6 +2801,19 @@ def _parse_word_add_image(elem: etree._Element) -> WordAddImageNode:
     )
 
 
+def _parse_word_insert_data_table(elem: etree._Element) -> WordInsertDataTableNode:
+    return WordInsertDataTableNode(
+        data_table=_attr_expr(elem, "DataTable")
+        or _in_argument_property_expr(elem, "DataTable"),
+        insert_relative_to=_attr_or_none(elem, "InsertRelativeTo"),
+        position=_attr_or_none(elem, "Position"),
+        text=_attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text"),
+        occurrence=_attr_or_none(elem, "Occurrence"),
+        occurrence_index=_attr_expr(elem, "OccurrenceIndex"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _SEND_OUTLOOK_MAIL_KNOWN_ATTRS = {
     "To", "Subject", "Body", "Cc", "Bcc", "Importance", "Sensitivity", "IsBodyHtml", "IsDraft",
 }
@@ -3351,6 +3380,7 @@ _DISPATCH = {
     (WORD_NS, "WordSaveAs"): _parse_word_save_as,
     (WORD_NS, "WordReadText"): _parse_word_read_text,
     (WORD_NS, "WordAddImage"): _parse_word_add_image,
+    (WORD_NS, "WordInsertDataTable"): _parse_word_insert_data_table,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,

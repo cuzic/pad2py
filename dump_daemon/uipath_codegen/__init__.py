@@ -234,6 +234,7 @@ from ..uipath_dsl.types import (
     WordSaveAsNode,
     WordReadTextNode,
     WordAddImageNode,
+    WordInsertDataTableNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -1094,6 +1095,7 @@ def _generate_node(
             WordSaveAsNode,
             WordReadTextNode,
             WordAddImageNode,
+            WordInsertDataTableNode,
         ),
     ):
         return _generate_unresolved_activity(node, indent)
@@ -7612,6 +7614,14 @@ def _generate_word_application_scope(
                     child, _generate_word_add_image_in_scope(child, indent, var), prefix
                 )
             )
+        elif isinstance(child, WordInsertDataTableNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child,
+                    _generate_word_insert_data_table_in_scope(child, indent, var),
+                    prefix,
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.file_name!r})")
@@ -7746,6 +7756,71 @@ def _generate_word_add_image_in_scope(
     if todo:
         return todo
     return [f"{prefix}{scope_var}.add_picture({image_path})"]
+
+
+# 知見261: `ui:WordInsertDataTable`——実機2件とも公式ドキュメント確認済み
+# の既定(`InsertRelativeTo="Document"`+`Position="Start"`)を使った
+# 実例は無く、`InsertRelativeTo="Text"`+`Position`(`"After"`/
+# `"Replace"`)のみ確認済み。`Text`で検索した最初の一致段落の直後に
+# `python-docx`で構築したテーブルを`addnext()`(標準的なOXML要素移動
+# イディオム)で挿入し、`Position="Replace"`の場合は元の段落を削除する。
+# プレースホルダが見つからない場合は`None`に対する属性アクセスで自然な
+# `AttributeError`を投げる(でっち上げたフォールバック無し)。
+def _generate_word_insert_data_table_in_scope(
+    node: WordInsertDataTableNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.data_table is None:
+        return [f"{prefix}# TODO: Word Insert DataTable with no DataTable captured"]
+    if node.insert_relative_to != "Text":
+        return [
+            f"{prefix}# TODO: Word Insert DataTable with InsertRelativeTo set "
+            f"{node.insert_relative_to!r} — only the confirmed \"Text\" value "
+            "is implemented, refusing to guess"
+        ]
+    if node.position not in ("After", "Replace"):
+        return [
+            f"{prefix}# TODO: Word Insert DataTable with Position set "
+            f"{node.position!r} — only the confirmed \"After\"/\"Replace\" "
+            "values are implemented, refusing to guess"
+        ]
+    if node.text is None:
+        return [f"{prefix}# TODO: Word Insert DataTable with no Text captured"]
+    if node.occurrence is not None:
+        return [
+            f"{prefix}# TODO: Word Insert DataTable with Occurrence set "
+            f"{node.occurrence!r} — multi-occurrence semantics not confirmed, "
+            "refusing to guess"
+        ]
+    if node.occurrence_index is not None:
+        return [
+            f"{prefix}# TODO: Word Insert DataTable with OccurrenceIndex set "
+            f"({_describe_expr_for_comment(node.occurrence_index)}) — "
+            "semantics not confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    rows = _render_value_or_todo(node.data_table, prefix, todo)
+    text = _render_value_or_todo(node.text, prefix, todo)
+    if todo:
+        return todo
+    lines = [
+        f"{prefix}_rows = {rows}",
+        f"{prefix}_target_p = next((_p for _p in {scope_var}.paragraphs "
+        f"if {VB_CSTR_HELPER_NAME}({text}) in _p.text), None)",
+        f"{prefix}_tbl = {scope_var}.add_table(rows=0, cols=len(_rows[0]) if _rows else 0)",
+        f"{prefix}if _rows:",
+        f"{INDENT * (indent + 1)}_hdr = _tbl.add_row().cells",
+        f"{INDENT * (indent + 1)}for _j, _h in enumerate(_rows[0].keys()):",
+        f"{INDENT * (indent + 2)}_hdr[_j].text = {VB_CSTR_HELPER_NAME}(_h)",
+        f"{INDENT * (indent + 1)}for _row in _rows:",
+        f"{INDENT * (indent + 2)}_cells = _tbl.add_row().cells",
+        f"{INDENT * (indent + 2)}for _j, _v in enumerate(_row.values()):",
+        f"{INDENT * (indent + 3)}_cells[_j].text = {VB_CSTR_HELPER_NAME}(_v)",
+        f"{prefix}_target_p._p.addnext(_tbl._tbl)",
+    ]
+    if node.position == "Replace":
+        lines.append(f"{prefix}_target_p._p.getparent().remove(_target_p._p)")
+    return lines
 
 
 def _generate_excel_write_cell_in_scope(

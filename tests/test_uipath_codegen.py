@@ -214,6 +214,7 @@ from dump_daemon.uipath_dsl import (
     WordSaveAsNode,
     WordReadTextNode,
     WordAddImageNode,
+    WordInsertDataTableNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -10990,6 +10991,216 @@ def test_word_add_image_with_unconfirmed_position_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: Word Add Image with Position set" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_after_position_inserts_table_exec(tmp_path):
+    """知見261: `ui:WordInsertDataTable`(`InsertRelativeTo="Text"`+
+    `Position="After"`)——`Text`で検索した段落の直後に`python-docx`で
+    構築したテーブルを挿入することを実際の`.docx`ファイルで`exec()`
+    経由で確認する(段落自体は`"After"`では残る)。"""
+    import docx
+
+    tmpl_path = str(tmp_path / "tmpl.docx")
+    doc = docx.Document()
+    doc.add_paragraph("Before")
+    doc.add_paragraph("Placeholder: {{LINE_ITEMS}}")
+    doc.add_paragraph("After")
+    doc.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name=tmpl_path,
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="rows"),
+                        insert_relative_to="Text",
+                        position="After",
+                        text=Literal(value="{{LINE_ITEMS}}"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(rows):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]([{"item": "Widget", "qty": 3}, {"item": "Gadget", "qty": 1}])
+
+    doc2 = docx.Document(tmpl_path)
+    assert len(doc2.tables) == 1
+    assert [[c.text for c in r.cells] for r in doc2.tables[0].rows] == [
+        ["item", "qty"],
+        ["Widget", "3"],
+        ["Gadget", "1"],
+    ]
+    paragraph_texts = [p.text for p in doc2.paragraphs]
+    assert "Placeholder: {{LINE_ITEMS}}" in paragraph_texts
+
+
+def test_word_insert_data_table_replace_position_removes_placeholder_paragraph_exec(
+    tmp_path,
+):
+    """知見261: `Position="Replace"`では挿入後に元の段落を削除する
+    ことを実際の`.docx`ファイルで`exec()`経由で確認する。"""
+    import docx
+
+    tmpl_path = str(tmp_path / "tmpl.docx")
+    doc = docx.Document()
+    doc.add_paragraph("Before")
+    doc.add_paragraph("Placeholder: <INVOICEDETAILS>")
+    doc.add_paragraph("After")
+    doc.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name=tmpl_path,
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="rows"),
+                        insert_relative_to="Text",
+                        position="Replace",
+                        text=Literal(value="<INVOICEDETAILS>"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    assert "_target_p._p.getparent().remove(_target_p._p)" in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(rows):")
+    ns: dict[str, object] = {}
+    exec(code2, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]([{"desc": "Widget"}])
+
+    doc2 = docx.Document(tmpl_path)
+    assert len(doc2.tables) == 1
+    paragraph_texts = [p.text for p in doc2.paragraphs]
+    assert "Placeholder: <INVOICEDETAILS>" not in paragraph_texts
+    assert paragraph_texts == ["Before", "After"]
+
+
+def test_word_insert_data_table_with_no_data_table_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordInsertDataTableNode(data_table=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with no DataTable captured" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_with_unconfirmed_insert_relative_to_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="dt"), insert_relative_to="Document"
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with InsertRelativeTo set" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_with_unconfirmed_position_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="dt"),
+                        insert_relative_to="Text",
+                        position="Start",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with Position set" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_with_no_text_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="dt"),
+                        insert_relative_to="Text",
+                        position="After",
+                        text=None,
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with no Text captured" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_with_occurrence_set_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="dt"),
+                        insert_relative_to="Text",
+                        position="After",
+                        text=Literal(value="x"),
+                        occurrence="First",
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with Occurrence set" in code
+    _compiles(code)
+
+
+def test_word_insert_data_table_with_occurrence_index_set_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordInsertDataTableNode(
+                        data_table=VbExpr(text="dt"),
+                        insert_relative_to="Text",
+                        position="After",
+                        text=Literal(value="x"),
+                        occurrence_index=Literal(value="1"),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Insert DataTable with OccurrenceIndex set" in code
     _compiles(code)
 
 

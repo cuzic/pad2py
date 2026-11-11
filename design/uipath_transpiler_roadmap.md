@@ -3749,3 +3749,24 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      2364件通過(本活動の6件分の純増)。残るWord classic
      (`WordInsertDataTable`・`WordReplacePicture`)・マウスキーボード系
      (`ui:GetActiveWindow`等)の候補は次のティックで継続実装。
+
+219. **(完了、2026-11-10)** `ui:WordInsertDataTable`を新規実装
+     (知見261)——タグ名限定検索で28件ヒット。実機2件とも
+     `InsertRelativeTo="Text"`+`Position`(`"After"`/`"Replace"`)が
+     唯一の確認済み使い方(公式ドキュメント既定の`"Document"`/
+     `"Start"`は実機未確認)。**独立検証で汎用XAML構文バグも発見・
+     修正**——実機1件の`Text`属性が`"{}{{LINE_ITEMS}}"`(先頭`{}`は
+     XAML標準のマークアップ拡張エスケープ接頭辞、実際の値は
+     `{{LINE_ITEMS}}`のみ)で、既存の`_parse_expr`がこれを認識せず
+     誤った文字列を捕捉していた——活動固有ではない汎用的な構文解析
+     バグのため`_parse_expr`自身を修正(知見244・258に続く3件目の
+     「独立検証で既存の一般的なバグを発見」事例)、既存テスト全件が
+     そのまま通過することを確認。`Text`で検索した段落の直後に
+     `python-docx`で構築したテーブルを`addnext()`(標準的なOXML
+     要素移動イディオム)で挿入、`Position="Replace"`では元の段落を
+     削除。実際の`.docx`で両`Position`モードを`exec()`経由で確認。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`8件)、リポジトリ全体で全2374件通過
+     (本活動の10件分の純増)。残るWord classic(`WordReplacePicture`)
+     ・マウスキーボード系(`ui:GetActiveWindow`等)の候補は次のティック
+     で継続実装。

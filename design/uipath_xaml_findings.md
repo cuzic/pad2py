@@ -12437,6 +12437,68 @@ test_uipath_codegen.py`4件)、リポジトリ全体で全2364件通過
 (`ui:GetActiveWindow`・`ui:SelectMultipleItems`)の候補は次のティック
 で継続実装。
 
+## 261. `ui:WordInsertDataTable`を新規実装——同時に、XAML標準の`{}`マークアップ拡張エスケープ接頭辞を独立検証で発見し、`_parse_expr`の汎用修正として対応した
+
+Word classic系の残り候補`ui:WordInsertDataTable`(タグ名限定GitHub
+検索で28件ヒット)に着手した。実機2件(`Apress/
+Robotic-Process-Automation-Using-UiPath-StudioX`の
+`Chapter_6-WordAutomationExercise/Main.xaml`、`hannannoor/
+supplyr-rpa`の`src/Main.xaml`)で確認した構成——`WordAddImageNode`
+(知見260)とは対照的に、公式ドキュメント確認済みの既定
+(`InsertRelativeTo="Document"`+`Position="Start"`)を使った実例は
+1件も無く、実機2件とも`InsertRelativeTo="Text"`(`Position`は
+`"Replace"`/`"After"`の両方確認)——プレースホルダ文字列に対する
+相対挿入が実務での唯一の確認済み使い方だった。
+
+**独立検証で発見した汎用XAML構文バグ**: `hannannoor`の実機サンプルの
+`Text`属性値は`"{}{{LINE_ITEMS}}"`だった——先頭の`{}`はXAML標準の
+「値が`{`で始まるマークアップ拡張と誤認されないようにする」
+エスケープ接頭辞(`{x:Null}`等の`{x:...}`拡張構文とは無関係な、
+WPF/XAMLの一般的な構文規則)で、実際の値は`{{LINE_ITEMS}}`のみ
+(同じXAML内の注釈コメント`sap2010:Annotation.AnnotationText`で
+「anchored to the {{LINE_ITEMS}} placeholder」と明記されており裏取り
+できた)。既存の`_parse_expr`はこのエスケープを認識せず、`{}`を
+含んだ文字列をそのまま`Literal`として捕捉していた——この活動固有の
+問題ではなく、どの属性値でも`{`で始まる値には同じ問題が起きる汎用的な
+構文解析バグだったため、`_parse_expr`自身に修正を加えた(`{x:Null}`
+判定の直後、`[...]`角括弧判定の前に、先頭の`{}`を検出して除去する)。
+既存のテストフィクスチャに`="{}`という実例が無いことを確認した上で
+修正し、全2364件の既存テストがそのまま通過することを確認した
+(知見244・258に続く「独立に実機XAMLを検証していたら既存の一般的な
+バグを発見した」という3件目の実例)。
+
+`InsertRelativeTo="Document"`(公式ドキュメント確認済みの既定だが
+実機未確認)・`"Bookmark"`相対モードは対応しない。`Occurrence`/
+`OccurrenceIndex`も実機2件とも現れず(複数出現時の挙動が未確認)、
+明示的に設定されている場合は`# TODO`へ倒す。`DataTable`は実機1件
+(`hannannoor`)で単純な`[dt_POLines]`形(本プロジェクト既存のdict行
+DataTable表現)を確認、もう1件は`Invoice_Details.Table("Table1")`
+という「Modern Excel」ハンドルAPI呼び出し(`render_expr`未対応、
+個別に`# TODO`へ倒れる、活動自体の実装には影響しない)。
+
+`Text`で検索した最初の一致段落(`WordReplaceTextNode`と同じ段落
+テキスト全体への部分文字列検索)の直後に、`python-docx`の
+`Document.add_table()`で構築したテーブル(`DataTable`のdict行を
+ヘッダー行+データ行として展開、公式ドキュメント確認済みの
+「DataTable column headers are used as the table header row」と
+一致)を`paragraph._p.addnext(table._tbl)`(python-docxコミュニティで
+広く使われる標準的なOXML要素移動イディオム)で挿入する。
+`Position="Replace"`の場合は挿入後に元の段落を削除する
+(`paragraph._p.getparent().remove(paragraph._p)`)。プレースホルダが
+見つからない場合は`None`に対する属性アクセスで自然な
+`AttributeError`を投げる(でっち上げたフォールバック無し、
+`GetRowItem`/`UpdateRowItem`と同じ方針)。
+
+実際の`.docx`テンプレートに対して`exec()`経由で両方の`Position`
+モード(`"After"`=挿入後も元の段落が残る、`"Replace"`=元の段落が
+削除される)の動作を確認した。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`8件)、リポジトリ全体で全2374件通過
+(28件skip、本活動の10件分の純増)。残るWord classic系
+(`WordReplacePicture`)・マウスキーボード系(`ui:GetActiveWindow`・
+`ui:SelectMultipleItems`)の候補は次のティックで継続実装。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -183,6 +183,7 @@ from dump_daemon.uipath_dsl import (
     WordSaveAsNode,
     WordReadTextNode,
     WordAddImageNode,
+    WordInsertDataTableNode,
     WriteCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
@@ -4591,6 +4592,48 @@ def test_word_add_image_properties_with_omitted_defaults():
     assert isinstance(node, WordAddImageNode)
     assert node.insert_relative_to is None
     assert node.position is None
+
+
+def test_word_insert_data_table_properties_with_replace_position():
+    """知見261: `ui:WordInsertDataTable`(実機2件で確認、28件ヒット)。
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の実機
+    XAMLで確認した構成——`InsertRelativeTo="Text"`+`Position=
+    "Replace"`、`DataTable`は「Modern Excel」ハンドルAPI呼び出し
+    (`render_expr`未対応、VbExprとしてはそのまま捕捉される)。"""
+    xml = (
+        f"<p:WordInsertDataTable {_WORD_XMLNS} "
+        'Bookmark="{x:Null}" OccurrenceIndex="{x:Null}" '
+        'DataTable="[Invoice_Details.Table(&quot;Table1&quot;)]" '
+        'DisplayName="Insert DataTable in Document" '
+        'InsertRelativeTo="Text" Position="Replace" '
+        'Text="&lt;INVOICEDETAILS&gt;" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordInsertDataTableNode)
+    assert node.data_table == VbExpr(text='Invoice_Details.Table("Table1")')
+    assert node.insert_relative_to == "Text"
+    assert node.position == "Replace"
+    assert node.text == Literal(value="<INVOICEDETAILS>")
+    assert node.occurrence is None
+    assert node.occurrence_index is None
+
+
+def test_word_insert_data_table_with_curly_brace_escaped_text():
+    """知見261: `hannannoor/supplyr-rpa`の実機XAMLで発見した、XAML標準の
+    `{}`マークアップ拡張エスケープ接頭辞(`Text="{}{{LINE_ITEMS}}"`、
+    実際の値は`{{LINE_ITEMS}}`のみ)——`_parse_expr`の汎用修正で対応
+    できることを確認する(`ui:WordInsertDataTable`専用のロジックでは
+    ない)。"""
+    xml = (
+        f"<p:WordInsertDataTable {_WORD_XMLNS} "
+        'DataTable="[dt_POLines]" DisplayName="Insert DataTable in Document" '
+        'InsertRelativeTo="Text" Position="After" Text="{}{{LINE_ITEMS}}" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordInsertDataTableNode)
+    assert node.text == Literal(value="{{LINE_ITEMS}}")
+    assert node.data_table == VbExpr(text="dt_POLines")
+    assert node.position == "After"
 
 
 def test_send_outlook_mail_and_set_to_clipboard(main_wf):

@@ -4277,6 +4277,53 @@ class WordAddImageNode:
 
 
 @dataclass
+class WordInsertDataTableNode:
+    """`<ui:WordInsertDataTable DataTable="..." InsertRelativeTo="Text"
+    Position="..." Text="..." />`(知見261、`WordApplicationScope`配下の
+    子活動、`WORD_NS`限定——GitHub検索で28件ヒット)。実機2件
+    (`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の
+    `Chapter_6-WordAutomationExercise/Main.xaml`、`hannannoor/
+    supplyr-rpa`の`src/Main.xaml`)で確認した構成——`WordAddImageNode`
+    (知見260)とは対照的に、公式ドキュメント確認済みの既定
+    (`InsertRelativeTo="Document"`+`Position="Start"`)を使った実例は
+    1件も無く、実機2件とも`InsertRelativeTo="Text"`(`Position`は
+    `"Replace"`/`"After"`の両方確認)——プレースホルダ文字列に対する
+    相対挿入が実務での唯一の確認済み使い方。`DataTable`は実機1件
+    (`hannannoor`)で単純な`[dt_POLines]`形(本プロジェクト既存の
+    dict行DataTable表現)を確認、もう1件は`Invoke_Details.
+    Table("Table1")`という「Modern Excel」ハンドルAPI呼び出し
+    (`render_expr`未対応、個別に`# TODO`へ倒れる、活動自体の実装には
+    影響しない)。`Occurrence`/`OccurrenceIndex`は実機2件とも現れず
+    (公式ドキュメント確認済みの既定`"All"`/無し)——複数出現時の
+    挙動が未確認のため、明示的に設定されている場合は`# TODO`へ倒す。
+
+    `InsertRelativeTo="Document"`(公式ドキュメント確認済みの既定だが
+    実機未確認)・`"Bookmark"`相対モードは対応しない。`Text`で検索した
+    最初の一致段落(`WordReplaceTextNode`と同じ部分文字列検索、
+    段落全体のテキストに対して行う——`python-docx`に組み込みの
+    「段落を名前で検索する」API自体が存在しないため標準的なイディオム
+    を使う)の直後に`python-docx`の`Document.add_table()`で構築した
+    テーブル(`DataTable`のdict行をヘッダー行+データ行として展開、
+    公式ドキュメント確認済みの「DataTable column headers are used as
+    the table header row」と一致)を`paragraph._p.addnext(table._tbl)`
+    (python-docxコミュニティで広く使われる標準的なOXML要素移動
+    イディオム、`WordReplaceTextNode`同様の低レベルAPI直接操作)で
+    挿入する。`Position="Replace"`の場合は挿入後に元の段落を削除する
+    (`paragraph._p.getparent().remove(paragraph._p)`)。プレースホルダ
+    が見つからない場合は`None`に対する属性アクセスで自然な
+    `AttributeError`を投げる(でっち上げたフォールバック無し、
+    `GetRowItem`/`UpdateRowItem`と同じ方針)。"""
+
+    data_table: Expr = None
+    insert_relative_to: str | None = None
+    position: str | None = None
+    text: Expr = None
+    occurrence: str | None = None
+    occurrence_index: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelReadRangeNode:
     """`<ui:ExcelReadRange>`(知見115、`ExcelApplicationScope`配下の子活動、
     `ExcelWriteCellNode`と同じ「スコープと連動する」活動)。`range`は
@@ -5012,6 +5059,7 @@ Node = (
     | WordSaveAsNode
     | WordReadTextNode
     | WordAddImageNode
+    | WordInsertDataTableNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode
