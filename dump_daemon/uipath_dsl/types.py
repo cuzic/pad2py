@@ -2182,6 +2182,57 @@ class InvokePowerShellNode:
 
 
 @dataclass
+class InvokeVBScriptNode:
+    """`<ui:InvokeVBScript FileName="..." Result="..."
+    WaitForOutput="True">...</ui:InvokeVBScript>`(知見276、discovery-
+    fresh-pass-10で発見、タグ名限定GitHub検索で約30件ヒット)。公式
+    Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`リポジトリ)
+    +公式`UiPathJapan/samples`の`2019.5/InvokeVBScript`サンプルで構成を
+    確認——`FileName`(`.vbs`ファイルへのパス)、`.Arguments`
+    (`scg:List x:TypeArguments="InArgument(x:String)"`の位置引数
+    リスト、`JoinPdfNode.file_list`/`SelectMultipleItemsNode.
+    multiple_items`と同じ形、既存の汎用パーサー`_parse_property_
+    element_list()`で対応)、`Result`(出力、スクリプトの戻り値を
+    捕捉)、`WaitForOutput`(実機全件で唯一の確認値`"True"`)。
+
+    **ランタイム契約を独立検証した**(公式サンプルの実際の`sample.vbs`
+    ファイルを取得して確認)——`WScript.Arguments(0)`/`WScript.
+    Arguments(1)`で位置引数を読み、`WScript.Echo "..."`で結果文字列を
+    書き出す、標準のWindows Script Host(WSH)コンソール契約——これは
+    `MSScriptControl.ScriptControl` COMオブジェクト経由という前回の
+    推測とは異なり(未検証の推測だったため、今回のパスで裏取りし直し
+    訂正した)、`cscript.exe`への単純な`subprocess.run()`呼び出しで
+    対応できる、既存の`InvokePowerShellNode`(知見186、`subprocess.
+    run(["pwsh", ...])`)と全く同じ設計パターン。
+
+    実機(`mvillanuevas/ReporteRegulatorio`の`Procesos/Timbrado_OH.
+    xaml`等、複数回使用)で`Result`の下流アクセス(`vbsResult.Contains
+    ("Error")`、プレーンな文字列メソッド)を確認——スカラー文字列の
+    確定済み狭いアクセスのため型未確認の広いサーフェス懸念には当たら
+    ない。同サンプルで`RunInBatchMode="True"`(`cscript.exe //B`
+    ——エラーダイアログ/入力待ちプロンプトを抑制する無人実行向けの
+    確認済みフラグ、公式ドキュメントの意味論と一致)+`KillOnTimeout=
+    "False"`+`UnicodeSupport="True"`の実例も確認したが、`UnicodeSupport`
+    は`cscript.exe`側の出力エンコーディング詳細(`//U`フラグ)に相当
+    すると推定しつつも、本サンドボックスでWindows実機検証ができない
+    ため値の違いをコード生成に反映しない既知の簡略化とする(True/False
+    いずれも受け入れるが`subprocess.run()`呼び出し自体は変えない)。
+    `TimeoutMS`(実機全件で`{x:Null}`のみ確認)が設定されている場合は
+    `# TODO`へ倒す——`KillOnTimeout`自体は`TimeoutMS`無しでは意味を
+    持たないため値を問わない。"""
+
+    file_name: Expr = None
+    arguments: list[Expr] = field(default_factory=list)
+    result: Expr = None
+    wait_for_output: str | None = None
+    run_in_batch_mode: str | None = None
+    unicode_support: str | None = None
+    kill_on_timeout: str | None = None
+    timeout_ms: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class RetryScopeNode:
     """`<ui:RetryScope>`(知見187、`UiPath.System.Activities`、GitHub
     code searchで3280件ヒット——`UiPath/skills`公式リポジトリの
@@ -5670,6 +5721,7 @@ Node = (
     | DeserializeXmlNode
     | ExecuteXPathNode
     | InvokePowerShellNode
+    | InvokeVBScriptNode
     | RetryScopeNode
     | MoveFileNode
     | PathExistsNode

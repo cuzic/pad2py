@@ -118,6 +118,7 @@ from dump_daemon.uipath_dsl import (
     InputDialogNode,
     InvokeCodeNode,
     InvokePowerShellNode,
+    InvokeVBScriptNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
     ExportPdfPageAsImageNode,
@@ -3145,6 +3146,62 @@ def test_invoke_powershell_with_non_empty_parameters():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, InvokePowerShellNode)
     assert node.has_parameters is True
+
+
+def test_invoke_vbscript_with_arguments_and_batch_mode():
+    """知見276: `ui:InvokeVBScript`(discovery-fresh-pass-10で発見、
+    タグ名限定GitHub検索で約30件ヒット)。実機`mvillanuevas/
+    ReporteRegulatorio`の`Procesos/Timbrado_OH.xaml`で確認した構成
+    ——`RunInBatchMode="True"`+`KillOnTimeout="False"`+
+    `UnicodeSupport="True"`、`.Arguments`は動的VB式の位置引数リスト。"""
+    xml = (
+        f"<ui:InvokeVBScript {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" '
+        'TimeoutMS="{x:Null}" DisplayName="Invoke VBScript" '
+        'FileName=".scripts\\Hidrocarburos.vbs" KillOnTimeout="False" '
+        'Result="[vbsResult]" RunInBatchMode="True" UnicodeSupport="True" '
+        'WaitForOutput="True">'
+        "<ui:InvokeVBScript.Arguments>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="4">'
+        '<InArgument x:TypeArguments="x:String">[WorkbookPath]</InArgument>'
+        "</scg:List>"
+        "</ui:InvokeVBScript.Arguments>"
+        "</ui:InvokeVBScript>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InvokeVBScriptNode)
+    assert node.file_name == Literal(value=".scripts\\Hidrocarburos.vbs")
+    assert node.result == VbExpr(text="vbsResult")
+    assert node.arguments == [VbExpr(text="WorkbookPath")]
+    assert node.wait_for_output == "True"
+    assert node.run_in_batch_mode == "True"
+    assert node.kill_on_timeout == "False"
+    assert node.unicode_support == "True"
+    assert node.timeout_ms is None
+
+
+def test_invoke_vbscript_ground_truth_no_arguments():
+    """知見276: 公式Studio ground-truth(`marcelocruzrpa/
+    uipath-ai-skills`)の確認済み構成——`.Arguments`が空リスト。"""
+    xml = (
+        f"<ui:InvokeVBScript {_UI_XMLNS} "
+        'xmlns:scg="clr-namespace:System.Collections.Generic;'
+        'assembly=System.Private.CoreLib" '
+        'FileName="{x:Null}" KillOnTimeout="{x:Null}" Result="{x:Null}" '
+        'RunInBatchMode="{x:Null}" TimeoutMS="{x:Null}" '
+        'UnicodeSupport="{x:Null}" WaitForOutput="True">'
+        "<ui:InvokeVBScript.Arguments>"
+        '<scg:List x:TypeArguments="InArgument(x:String)" Capacity="0" />'
+        "</ui:InvokeVBScript.Arguments>"
+        "</ui:InvokeVBScript>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, InvokeVBScriptNode)
+    assert node.file_name is None
+    assert node.result is None
+    assert node.arguments == []
+    assert node.wait_for_output == "True"
 
 
 def test_retry_scope_with_empty_condition_properties():

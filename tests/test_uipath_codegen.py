@@ -146,6 +146,7 @@ from dump_daemon.uipath_dsl import (
     InputDialogNode,
     InvokeCodeNode,
     InvokePowerShellNode,
+    InvokeVBScriptNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
     ExportPdfPageAsImageNode,
@@ -6434,6 +6435,97 @@ def test_invoke_powershell_with_pipeline_output_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: InvokePowerShell with PipelineOutput bound" in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_runs_cscript_with_batch_mode_and_arguments():
+    """知見276: `ui:InvokeVBScript`(タグ名限定GitHub検索で約30件
+    ヒット)。公式サンプルの実際の`.vbs`ファイルを取得して独立検証
+    した標準WSHコンソール契約(`WScript.Arguments`/`WScript.Echo`)に
+    対応する`cscript.exe //nologo`への`subprocess.run()`呼び出しを
+    確認する——`cscript.exe`自体は本サンドボックスに無いため、既存の
+    `InvokePowerShell`/`KillProcess`と同じ「生成コードの文字列
+    アサーションのみで確認する(exec()は行わない)」規約に従う。
+    `RunInBatchMode="True"`は確認済みの`//B`フラグに対応する。"""
+    wf = _wrap(
+        [
+            InvokeVBScriptNode(
+                file_name=Literal(value=".scripts\\Hidrocarburos.vbs"),
+                arguments=[VbExpr(text="WorkbookPath")],
+                result=VbExpr(text="vbsResult"),
+                wait_for_output="True",
+                run_in_batch_mode="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert (
+        'vbsResult = subprocess.run(["cscript.exe", "//nologo", "//B", '
+        "'.scripts\\\\Hidrocarburos.vbs', _vb_cstr(WorkbookPath)], "
+        "capture_output=True, text=True, check=True).stdout" in code
+    )
+    assert "import subprocess" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_without_batch_mode_omits_flag():
+    wf = _wrap(
+        [
+            InvokeVBScriptNode(
+                file_name=Literal(value="sample.vbs"),
+                result=VbExpr(text="out"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert '"//B"' not in code
+    assert 'subprocess.run(["cscript.exe", "//nologo", \'sample.vbs\']' in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_display_name_becomes_a_comment():
+    wf = _wrap(
+        [
+            InvokeVBScriptNode(
+                file_name=Literal(value="sample.vbs"),
+                result=VbExpr(text="out"),
+                display_name="Invoke VBScript",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# Invoke VBScript" in code
+    assert "subprocess.run(" in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_with_no_file_name_is_todo():
+    wf = _wrap([InvokeVBScriptNode(file_name=None, result=VbExpr(text="out"))])
+    code = generate_python(wf)
+    assert "# TODO: InvokeVBScript with no FileName captured" in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_with_no_result_is_todo():
+    wf = _wrap([InvokeVBScriptNode(file_name=Literal(value="sample.vbs"), result=None)])
+    code = generate_python(wf)
+    assert "# TODO: InvokeVBScript with no output Result captured" in code
+    _compiles(code)
+
+
+def test_invoke_vbscript_with_timeout_ms_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            InvokeVBScriptNode(
+                file_name=Literal(value="sample.vbs"),
+                result=VbExpr(text="out"),
+                timeout_ms=Literal(value="5000"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: InvokeVBScript with TimeoutMS set" in code
     _compiles(code)
 
 

@@ -13240,6 +13240,52 @@ InvokeVBScript`(COM不要、`subprocess.run(["cscript.exe", ...])`で
 手法が既存の`InvokePowerShell`/`KillProcess`テストに前例あり))は
 いずれも次ティック以降の候補として残る。
 
+## 276. `ui:InvokeVBScript`を新規実装——discovery-fresh-pass-10が再検証した「COM不要、subprocess+cscript.exeで対応可能」という訂正済みマッピングを自分でも独立検証した上で実装した
+
+知見275で`InsertSlide`/`DeleteSlide`を実装した直後の次ティックとして、
+discovery-fresh-pass-10が報告した最有力候補`ui:InvokeVBScript`
+(タグ名限定GitHub検索で約30件ヒット)に着手した。
+
+エージェントの報告は「前回のパスでは`MSScriptControl.ScriptControl`
+COM経由と推測していたが、今回公式サンプルの実際の`.vbs`ファイルを
+取得して確認したところ、標準のWindows Script Host(WSH)コンソール
+契約(`WScript.Arguments`/`WScript.Echo`)だったため、COM不要の
+単純な`subprocess.run(["cscript.exe", ...])`で対応できる」という
+訂正だった——報告をそのまま信じず、自分でも同じ`.vbs`ファイル
+(`UiPathJapan/samples`の`2019.5/InvokeVBScript/sample.vbs`)を独立に
+取得して確認し、`WScript.Arguments(0)`/`WScript.Arguments(1)`で
+引数を読み、`WScript.Echo "..."`で結果文字列を書き出すという契約を
+再確認した——エージェントの確信度の高い主張でも独立検証する方針
+(知見265の`AnchorBase`教訓)を貫いた。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`)+公式
+`UiPathJapan/samples`で基本構成(`FileName`+`.Arguments`
+(`scg:List x:TypeArguments="InArgument(x:String)"`、既存の汎用パーサー
+`_parse_property_element_list()`で対応可能と確認)+`Result`+
+`WaitForOutput="True"`)を確認。実機`mvillanuevas/ReporteRegulatorio`
+(複数ファイルで反復使用)で`Result`の下流アクセス(`vbsResult.
+Contains("Error")`、プレーンな文字列メソッド——型未確認の広い
+サーフェス懸念には当たらない狭い確定済みアクセス)+
+`RunInBatchMode="True"`(`cscript.exe //B`——エラーダイアログ/入力
+待ちプロンプトを抑制する無人実行向けの確認済みフラグ)+
+`KillOnTimeout="False"`+`UnicodeSupport="True"`の実例を確認した。
+`UnicodeSupport`は`cscript.exe`側の出力エンコーディング詳細
+(`//U`フラグ)に相当すると推定しつつも、本サンドボックスでWindows
+実機検証ができないため値の違いをコード生成に反映しない既知の
+簡略化とした(True/False両方受け入れるが`subprocess.run()`自体は
+変えない)。`TimeoutMS`(実機全件で`{x:Null}`のみ確認)が設定されて
+いる場合は`# TODO`へ倒す。
+
+既存の`InvokePowerShellNode`(知見186、`subprocess.run(["pwsh",
+...])`)と全く同じ設計パターンで実装——`cscript.exe`自体は本
+サンドボックスに無いため、既存の`InvokePowerShell`/`KillProcess`
+(知見169)と同じ「生成コードの文字列アサーションのみで確認する
+(`exec()`は行わない)」規約に従った。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`6件)、リポジトリ全体で全2474件通過(28件
+skip、本活動の8件分の純増)。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

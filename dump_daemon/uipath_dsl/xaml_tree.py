@@ -128,6 +128,7 @@ from .types import (
     InputDialogNode,
     InvokeCodeNode,
     InvokePowerShellNode,
+    InvokeVBScriptNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
     GetProcessesNode,
@@ -1616,6 +1617,20 @@ def _parse_invoke_powershell(elem: etree._Element) -> InvokePowerShellNode:
         input=input_,
         errors=errors,
         pipeline_output=pipeline_output,
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_invoke_vbscript(elem: etree._Element) -> InvokeVBScriptNode:
+    return InvokeVBScriptNode(
+        file_name=_attr_expr(elem, "FileName"),
+        arguments=_parse_property_element_list(elem, "Arguments"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+        wait_for_output=_attr_or_none(elem, "WaitForOutput"),
+        run_in_batch_mode=_attr_or_none(elem, "RunInBatchMode"),
+        unicode_support=_attr_or_none(elem, "UnicodeSupport"),
+        kill_on_timeout=_attr_or_none(elem, "KillOnTimeout"),
+        timeout_ms=_attr_expr(elem, "TimeoutMS"),
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -3583,6 +3598,7 @@ _DISPATCH = {
     (UI_NS, "DeserializeXml"): _parse_deserialize_xml,
     (UI_NS, "ExecuteXPath"): _parse_execute_xpath,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
+    (UI_NS, "InvokeVBScript"): _parse_invoke_vbscript,
     (UI_NS, "RetryScope"): _parse_retry_scope,
     (UI_NS, "MoveFile"): _parse_move_file,
     (UI_NS, "CopyFolderX"): _parse_copy_folder_x,

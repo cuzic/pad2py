@@ -167,6 +167,7 @@ from ..uipath_dsl.types import (
     InputDialogNode,
     InvokeCodeNode,
     InvokePowerShellNode,
+    InvokeVBScriptNode,
     InvokeWorkflowFileNode,
     JoinPdfNode,
     GetProcessesNode,
@@ -980,6 +981,8 @@ def _generate_node(
         return _generate_execute_xpath(node, indent)
     if isinstance(node, InvokePowerShellNode):
         return _generate_invoke_powershell(node, indent)
+    if isinstance(node, InvokeVBScriptNode):
+        return _generate_invoke_vbscript(node, indent)
     if isinstance(node, RetryScopeNode):
         return _generate_retry_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, GetOcrTextNode):
@@ -5294,6 +5297,53 @@ def _generate_invoke_powershell_body(node: InvokePowerShellNode, indent: int) ->
     if todo:
         return todo
     return [f'{prefix}subprocess.run(["pwsh", "-Command", {command_text}], check=True)']
+
+
+def _generate_invoke_vbscript(node: InvokeVBScriptNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_invoke_vbscript_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_invoke_vbscript_body(node: InvokeVBScriptNode, indent: int) -> list[str]:
+    """知見276: `ui:InvokeVBScript`——独立検証済みの標準WSHコンソール
+    契約(`WScript.Arguments`/`WScript.Echo`)に対応する`cscript.exe`
+    への`subprocess.run()`呼び出し。`RunInBatchMode="True"`は確認済み
+    の`//B`フラグ(エラーダイアログ/入力待ちプロンプトを抑制)に対応
+    する。"""
+    prefix = INDENT * indent
+    if node.file_name is None:
+        return [f"{prefix}# TODO: InvokeVBScript with no FileName captured"]
+    if node.result is None:
+        return [f"{prefix}# TODO: InvokeVBScript with no output Result captured"]
+    if node.wait_for_output not in (None, "True"):
+        return [
+            f"{prefix}# TODO: InvokeVBScript with WaitForOutput "
+            f"{node.wait_for_output!r} — only the confirmed \"True\" value "
+            "is implemented, refusing to guess"
+        ]
+    if node.timeout_ms is not None:
+        return [
+            f"{prefix}# TODO: InvokeVBScript with TimeoutMS set "
+            f"({_describe_expr_for_comment(node.timeout_ms)}) — refusing "
+            "to guess"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    args = [_render_value_or_todo(a, prefix, todo) for a in node.arguments]
+    if todo:
+        return todo
+    argv = ['"cscript.exe"', '"//nologo"']
+    if node.run_in_batch_mode == "True":
+        argv.append('"//B"')
+    argv.append(file_name)
+    argv.extend(f"{VB_CSTR_HELPER_NAME}({a})" for a in args)
+    argv_literal = ", ".join(argv)
+    return [
+        f"{prefix}{target} = subprocess.run([{argv_literal}], "
+        "capture_output=True, text=True, check=True).stdout"
+    ]
 
 
 # 知見187: `ui:RetryScope`。公式REFrameworkテンプレート

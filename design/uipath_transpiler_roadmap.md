@@ -3969,3 +3969,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      全2466件通過(本活動の6件分の純増)。`CopyPasteSlide`/
      `SavePresentationAsPdf`/`ReplaceShapeWithMedia`/`InvokeVBScript`/
      `Beep`は未実装のまま残る。
+
+232. **(完了、2026-11-10)** `ui:InvokeVBScript`を新規実装(知見276)
+     ——discovery-fresh-pass-10最有力候補、タグ名限定検索で約30件
+     ヒット。公式サンプルの実際の`.vbs`ファイルを独立に取得し標準
+     WSHコンソール契約(`WScript.Arguments`/`WScript.Echo`)を再確認
+     ——前回の推測(`MSScriptControl.ScriptControl` COM経由)は誤り
+     で、既存の`InvokePowerShellNode`(知見186)と同じ設計パターンの
+     `subprocess.run(["cscript.exe", ...])`で対応できると訂正。
+     `RunInBatchMode="True"`は確認済みの`//B`フラグに対応。既存の
+     `InvokePowerShell`/`KillProcess`と同じ文字列アサーションのみの
+     テスト規約に従った。回帰テスト追加(`tests/test_uipath_dsl.py`
+     2件・`tests/test_uipath_codegen.py`6件)、リポジトリ全体で
+     全2474件通過(本活動の8件分の純増)。
