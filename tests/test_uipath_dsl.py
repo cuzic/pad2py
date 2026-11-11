@@ -23,6 +23,10 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    StartTimerNode,
+    StopTimerNode,
+    ResetTimerNode,
+    ResumeTimerNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -4160,6 +4164,44 @@ def test_return_properties():
     xml = f"<ui:Return {_UI_XMLNS} />"
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, ReturnNode)
+
+
+def test_start_timer_properties():
+    """知見271: `ui:StartTimer`(discovery-fresh-pass-9で発見、タグ名
+    限定GitHub検索で14件ヒット)。実機`paulsamuel-w-e/UiPath-Projects`
+    の`SimpleWorkflow/Main.xaml`で確認した構成——`Timer`属性1個のみ。"""
+    xml = f"<ui:StartTimer {_UI_XMLNS} DisplayName=\"Start Timer\" Timer=\"[start_time]\" />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, StartTimerNode)
+    assert node.timer == VbExpr(text="start_time")
+    assert node.display_name == "Start Timer"
+
+
+def test_stop_timer_properties():
+    """知見271: `ui:StopTimer`。実機`paulsamuel-w-e/UiPath-Projects`で
+    確認した構成——`StartTimer`と同じ変数を参照する。"""
+    xml = f"<ui:StopTimer {_UI_XMLNS} DisplayName=\"Stop Timer\" Timer=\"[start_time]\" />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, StopTimerNode)
+    assert node.timer == VbExpr(text="start_time")
+
+
+def test_reset_timer_properties():
+    """知見271: `ui:ResetTimer`。実機`WasserstromPAteam/
+    GPO-Roster-Avendra`で確認した構成——`Timer11`という変数名。"""
+    xml = f"<ui:ResetTimer {_UI_XMLNS} DisplayName=\"Reset Timer\" Timer=\"[Timer11]\" />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ResetTimerNode)
+    assert node.timer == VbExpr(text="Timer11")
+
+
+def test_resume_timer_properties():
+    """知見271: `ui:ResumeTimer`。ground-truth(`marcelocruzrpa/
+    uipath-ai-skills`)で確認した構成——`Timer`属性1個のみ。"""
+    xml = f"<ui:ResumeTimer {_UI_XMLNS} DisplayName=\"Resume Timer\" Timer=\"[Timer11]\" />"
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ResumeTimerNode)
+    assert node.timer == VbExpr(text="Timer11")
 
 
 def test_if_else_if_v2_simple_if_else():

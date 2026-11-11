@@ -3894,3 +3894,18 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `tests/test_uipath_codegen.py`2件)、リポジトリ全体で全2431件
      通過(本活動の4件分の純増)。discovery-fresh-pass-8の全候補が
      これで完結。
+
+227. **(完了、2026-11-10)** `ui:StartTimer`/`ui:StopTimer`/
+     `ui:ResetTimer`/`ui:ResumeTimer`を新規実装(知見271)——
+     discovery-fresh-pass-9の最有力候補、4活動を一括実装。公式
+     ground-truth+実機2件で`Timer`属性1個のみの構成、下流アクセス
+     (`.Elapsed.TotalSeconds`/`.ElapsedMilliseconds`)を確認。公式
+     ドキュメント+フォーラムで`System.Diagnostics.Stopwatch`への
+     1:1対応(`StartTimer`=`Restart()`、`StopTimer`=`Stop()`、
+     `ResetTimer`=`Reset()`、`ResumeTimer`=停止中への`Start()`)を
+     確認し、`_ImapMailMessage`と同じ設計判断で薄いラッパー`_Timer`
+     /`_TimeSpan`として実装。`render.py`の既存の汎用メンバーアクセス
+     機構(未知セグメントの素通し)がPascalCase属性名をそのまま通す
+     ため、`render.py`側の変更は一切不要だった。回帰テスト追加
+     (`tests/test_uipath_dsl.py`4件・`tests/test_uipath_codegen.py`
+     3件)、リポジトリ全体で全2438件通過(本活動の7件分の純増)。

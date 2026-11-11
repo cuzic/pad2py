@@ -69,6 +69,10 @@ from ..uipath_dsl.types import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    StartTimerNode,
+    StopTimerNode,
+    ResetTimerNode,
+    ResumeTimerNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -721,6 +725,12 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 属性アクセス先、知見253)も同様。
     if any(f"{_WIN32_CREDENTIAL_HELPER_NAME}(" in line for line in body):
         imports.append(_WIN32_CREDENTIAL_HELPER_SOURCE.rstrip("\n"))
+    # `_Timer`/`_TimeSpan`(`StartTimer`→`.Elapsed`/`.ElapsedMilliseconds`
+    # 属性アクセス先、知見271)も同様——`_Timer()`自体が`time.monotonic()`
+    # を使うため`import time`も併せて注入する。
+    if any(f"{_TIMER_HELPER_NAME}(" in line for line in body):
+        imports.append("import time")
+        imports.append(_TIMER_HELPER_SOURCE.rstrip("\n"))
     # `_word_replace_picture`(`WordReplacePicture`→Alt Text検索+画像
     # パーツの`._blob`直接上書き、知見263)も同様。
     if any(f"{_WORD_REPLACE_PICTURE_HELPER_NAME}(" in line for line in body):
@@ -840,6 +850,14 @@ def _generate_node(
         return [f"{prefix}continue"]
     if isinstance(node, ReturnNode):
         return [f"{prefix}return"]
+    if isinstance(node, StartTimerNode):
+        return _generate_start_timer(node, indent)
+    if isinstance(node, StopTimerNode):
+        return _generate_stop_timer(node, indent)
+    if isinstance(node, ResetTimerNode):
+        return _generate_reset_timer(node, indent)
+    if isinstance(node, ResumeTimerNode):
+        return _generate_resume_timer(node, indent)
     if isinstance(node, ParallelNode):
         return _generate_parallel(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, AppendLineNode):
@@ -9070,6 +9088,105 @@ def _generate_get_outlook_mail_messages_body(
     else:
         lines.append(f"{prefix}{target} = list(_items)")
     return lines
+
+
+# 知見271: `ui:StartTimer`/`ui:StopTimer`/`ui:ResetTimer`/
+# `ui:ResumeTimer`——`System.Diagnostics.Stopwatch`に相当する薄い
+# ラッパークラス`_Timer`を注入する(`_ImapMailMessage`と同じ「実機
+# 確認済みの下流アクセスのみに絞った薄いラッパー」設計判断)。実機確認
+# 済みの下流アクセスは`.Elapsed.TotalSeconds`(`ToString()`経由)と
+# `.ElapsedMilliseconds`(数値比較)の2種類のみ——`_Timer.Elapsed`が
+# 返す`_TimeSpan`も同様に`.TotalSeconds`のみ露出する最小限のラッパー。
+# `StartTimer`(「新規作成またはゼロへリセットして再起動」、`Stopwatch.
+# Restart()`相当)は常に新しい`_Timer()`インスタンスで変数を置き換える
+# ことで両方の意味(新規/再起動)を1つのコードパスで満たす——`_Timer()`
+# の初期状態自体が「ゼロから計測開始中」のため。
+_TIMER_HELPER_NAME = "_Timer"
+_TIMER_HELPER_SOURCE = '''\
+class _TimeSpan:
+    def __init__(self, seconds):
+        self._seconds = seconds
+
+    @property
+    def TotalSeconds(self):
+        return self._seconds
+
+
+class _Timer:
+    def __init__(self):
+        self._elapsed = 0.0
+        self._start = time.monotonic()
+
+    def stop(self):
+        if self._start is not None:
+            self._elapsed += time.monotonic() - self._start
+            self._start = None
+
+    def reset(self):
+        self._elapsed = 0.0
+        self._start = None
+
+    def resume(self):
+        if self._start is None:
+            self._start = time.monotonic()
+
+    def _current_seconds(self):
+        if self._start is not None:
+            return self._elapsed + (time.monotonic() - self._start)
+        return self._elapsed
+
+    @property
+    def Elapsed(self):
+        return _TimeSpan(self._current_seconds())
+
+    @property
+    def ElapsedMilliseconds(self):
+        return self._current_seconds() * 1000.0
+'''
+
+
+def _generate_start_timer(node: StartTimerNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.timer is None:
+        return [f"{prefix}# TODO: StartTimer with no Timer captured"]
+    todo: list[str] = []
+    timer = _render_value_or_todo(node.timer, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{timer} = {_TIMER_HELPER_NAME}()"]
+
+
+def _generate_stop_timer(node: StopTimerNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.timer is None:
+        return [f"{prefix}# TODO: StopTimer with no Timer captured"]
+    todo: list[str] = []
+    timer = _render_value_or_todo(node.timer, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{timer}.stop()"]
+
+
+def _generate_reset_timer(node: ResetTimerNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.timer is None:
+        return [f"{prefix}# TODO: ResetTimer with no Timer captured"]
+    todo: list[str] = []
+    timer = _render_value_or_todo(node.timer, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{timer}.reset()"]
+
+
+def _generate_resume_timer(node: ResumeTimerNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.timer is None:
+        return [f"{prefix}# TODO: ResumeTimer with no Timer captured"]
+    todo: list[str] = []
+    timer = _render_value_or_todo(node.timer, prefix, todo)
+    if todo:
+        return todo
+    return [f"{prefix}{timer}.resume()"]
 
 
 # 知見250: `ui:GetIMAPMailMessages`——`email.message.Message`

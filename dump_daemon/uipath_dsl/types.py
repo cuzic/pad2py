@@ -377,6 +377,78 @@ class ReturnNode:
 
 
 @dataclass
+class StartTimerNode:
+    """`<ui:StartTimer Timer="..." />`(知見271、discovery-fresh-pass-9で
+    発見、タグ名限定GitHub検索で14件ヒット)。公式ドキュメント
+    (WebSearch経由確認)「新しいタイマーを作成するか、引数として渡された
+    既存のタイマーを再起動する」——`System.Diagnostics.Stopwatch.
+    Restart()`(経過時間をゼロへリセットして計測を開始)に相当する。
+
+    実機2件(`paulsamuel-w-e/UiPath-Projects`の`SimpleWorkflow/
+    Main.xaml`、`WasserstromPAteam/GPO-Roster-Avendra`の
+    `GPO Roster Avendra_Performer/Google Address API Workflows/
+    Download_Processed Output.xaml`)で確認した構成——`Timer`
+    (`ui:Timer`型の変数、属性は唯一この1個のみ、ground-truth
+    (`marcelocruzrpa/uipath-ai-skills`)でも同一)。下流アクセスは
+    `start_time.Elapsed.TotalSeconds.ToString()`
+    (`paulsamuel-w-e`実機)・`Timer11.ElapsedMilliseconds>600000`
+    (`WasserstromPAteam`実機、`If`条件での数値比較)の2種類のみ
+    実機確認済み——狭い確定済みサーフェスのため`StopTimerNode`/
+    `ResetTimerNode`/`ResumeTimerNode`と共有する薄いラッパークラス
+    `_Timer`(`.Elapsed`/`.ElapsedMilliseconds`のみ露出)として実装
+    する(`_ImapMailMessage`と同じ設計判断クラス)。"""
+
+    timer: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class StopTimerNode:
+    """`<ui:StopTimer Timer="..." />`(知見271、`StartTimer`の対、
+    タグ名限定GitHub検索で8件ヒット)。公式ドキュメント「`StartTimer`で
+    開始したタイマーを停止する」——`Stopwatch.Stop()`(経過時間の
+    累積を止めるが値は保持する)に相当する。実機
+    (`paulsamuel-w-e/UiPath-Projects`)で`Timer="[start_time]"`の
+    構成を確認。"""
+
+    timer: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ResetTimerNode:
+    """`<ui:ResetTimer Timer="..." />`(知見271、タグ名限定GitHub検索で
+    6件ヒット)。公式ドキュメント/フォーラム確認——「タイマーをゼロに
+    戻す」——`Stopwatch.Reset()`(経過時間をゼロへリセットし、かつ
+    計測も停止する)に相当する。実機(`WasserstromPAteam/
+    GPO-Roster-Avendra`)で`Timer="[Timer11]"`、`If`条件
+    `Timer11.ElapsedMilliseconds&gt;600000`で10分超過を判定した直後に
+    呼ばれる構成を確認。"""
+
+    timer: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ResumeTimerNode:
+    """`<ui:ResumeTimer Timer="..." />`(知見271、タグ名限定GitHub検索で
+    4件ヒット)。公式ドキュメント/フォーラム確認——「渡されたタイマーを
+    再開する」(`ResetTimer`で止めた後も経過時間をゼロのまま返し続け
+    ないようにするための活動、とフォーラムで説明)——`Stopwatch.
+    Start()`を既に停止中のインスタンスへ呼ぶ(経過時間をリセットせず
+    計測を再開する)動作に相当する——`StartTimer`(常にゼロへリセット
+    して再起動)とは意味論上明確に異なる。ground-truthで同じ
+    `Timer`属性1個のみの構成を確認(実機での使用例は本調査では
+    `StartTimer`/`StopTimer`/`ResetTimer`より少なく、タグ名限定検索
+    4件のみだったが、4活動が常に同じ実機ファイル群に揃って出現する
+    (ノイズではない)ことと、公式ドキュメント・ground-truthの構成が
+    他3兄弟と完全に一致することから実装対象とした)。"""
+
+    timer: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class IfElseIfBlockNode:
     """`<ui:IfElseIfBlock BlockType="ElseIf" Condition="..."
     DisplayName="...">`(知見239、`ui:IfElseIfV2.ElseIfs`
@@ -5254,6 +5326,10 @@ Node = (
     | BreakNode
     | ContinueNode
     | ReturnNode
+    | StartTimerNode
+    | StopTimerNode
+    | ResetTimerNode
+    | ResumeTimerNode
     | IfElseIfV2Node
     | AddLogFieldsNode
     | RemoveLogFieldsNode

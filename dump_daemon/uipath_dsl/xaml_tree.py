@@ -27,6 +27,10 @@ from .types import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    StartTimerNode,
+    StopTimerNode,
+    ResetTimerNode,
+    ResumeTimerNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -3391,6 +3395,18 @@ _DISPATCH = {
     (UI_NS, "Break"): lambda elem: BreakNode(),
     (UI_NS, "Continue"): lambda elem: ContinueNode(),
     (UI_NS, "Return"): lambda elem: ReturnNode(display_name=_attr(elem, "DisplayName")),
+    (UI_NS, "StartTimer"): lambda elem: StartTimerNode(
+        timer=_attr_expr(elem, "Timer"), display_name=_attr(elem, "DisplayName")
+    ),
+    (UI_NS, "StopTimer"): lambda elem: StopTimerNode(
+        timer=_attr_expr(elem, "Timer"), display_name=_attr(elem, "DisplayName")
+    ),
+    (UI_NS, "ResetTimer"): lambda elem: ResetTimerNode(
+        timer=_attr_expr(elem, "Timer"), display_name=_attr(elem, "DisplayName")
+    ),
+    (UI_NS, "ResumeTimer"): lambda elem: ResumeTimerNode(
+        timer=_attr_expr(elem, "Timer"), display_name=_attr(elem, "DisplayName")
+    ),
     (UI_NS, "IfElseIfV2"): _parse_if_else_if_v2,
     (UI_NS, "AddLogFields"): _parse_add_log_fields,
     (UI_NS, "RemoveLogFields"): _parse_remove_log_fields,

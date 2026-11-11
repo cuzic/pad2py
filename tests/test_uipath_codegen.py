@@ -47,6 +47,10 @@ from dump_daemon.uipath_dsl import (
     BreakNode,
     ContinueNode,
     ReturnNode,
+    StartTimerNode,
+    StopTimerNode,
+    ResetTimerNode,
+    ResumeTimerNode,
     IfElseIfBlockNode,
     IfElseIfV2Node,
     AddLogFieldsNode,
@@ -1670,6 +1674,71 @@ def test_return_generates_python_return_and_exits_early():
     with contextlib.redirect_stdout(stdout2):
         namespace["Test"](False)
     assert stdout2.getvalue().splitlines() == ["after"]
+
+
+def test_timer_family_start_stop_reset_resume_exec():
+    """知見271: `ui:StartTimer`/`ui:StopTimer`/`ui:ResetTimer`/
+    `ui:ResumeTimer`——`System.Diagnostics.Stopwatch`相当の`_Timer`
+    ラッパーを`exec()`経由で実際に動かし、`Stopwatch.Stop()`
+    (経過時間を保持したまま停止)/`.Reset()`(ゼロへリセットして停止)
+    /`.Start()`相当の`resume()`(ゼロへリセットせず計測を再開)という
+    3者の意味論の違いを確認する。"""
+    wf = _wrap(
+        [
+            StartTimerNode(timer=VbExpr(text="t")),
+            StopTimerNode(timer=VbExpr(text="t")),
+        ]
+    )
+    code = generate_python(wf)
+    assert "import time" in code
+    assert "class _Timer" in code
+    assert "t = _Timer()" in code
+    assert "t.stop()" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return t.Elapsed.TotalSeconds, t.ElapsedMilliseconds", namespace)  # noqa: S102 - 信頼できる自作コード
+    seconds, millis = namespace["Test"]()
+    assert seconds >= 0.0
+    assert millis == pytest.approx(seconds * 1000.0)
+
+
+def test_timer_reset_zeroes_but_resume_continues_without_resetting_exec():
+    wf = _wrap(
+        [
+            StartTimerNode(timer=VbExpr(text="t")),
+            StopTimerNode(timer=VbExpr(text="t")),
+            ResetTimerNode(timer=VbExpr(text="t")),
+        ]
+    )
+    code = generate_python(wf)
+    assert "t.reset()" in code
+    _compiles(code)
+    namespace: dict[str, object] = {}
+    exec(code + "\n    return t.Elapsed.TotalSeconds", namespace)  # noqa: S102 - 信頼できる自作コード
+    assert namespace["Test"]() == 0.0
+
+    wf2 = _wrap(
+        [
+            StartTimerNode(timer=VbExpr(text="t")),
+            StopTimerNode(timer=VbExpr(text="t")),
+            ResumeTimerNode(timer=VbExpr(text="t")),
+        ]
+    )
+    code2 = generate_python(wf2)
+    assert "t.resume()" in code2
+    _compiles(code2)
+    namespace2: dict[str, object] = {}
+    exec(code2 + "\n    return t._start is not None", namespace2)  # noqa: S102 - 信頼できる自作コード
+    assert namespace2["Test"]() is True
+
+
+def test_start_timer_with_no_timer_is_todo():
+    wf = _wrap([StartTimerNode(timer=None)])
+    code = generate_python(wf)
+    assert "# TODO: StartTimer with no Timer captured" in code
+    _compiles(code)
 
 
 def test_repeat_number_of_times_x_runs_exact_count_regardless_of_start_at():

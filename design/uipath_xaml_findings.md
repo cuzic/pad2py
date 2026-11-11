@@ -12971,6 +12971,67 @@ discovery-fresh-pass-8の全候補(`ReadColumn`/`ReadRow`/
 `GetExchangeMailMessages`/Orchestratorキューファミリーは赤旗判断で
 見送り)がこれで完結した——継続する場合は新規の発見パスが必要。
 
+## 271. `ui:StartTimer`/`ui:StopTimer`/`ui:ResetTimer`/`ui:ResumeTimer`を新規実装——discovery-fresh-pass-9の最有力候補、`System.Diagnostics.Stopwatch`相当の薄いラッパー`_Timer`として4活動を一括実装した
+
+知見270で`ParallelForEach`を実装し discovery-fresh-pass-8の全候補が
+完結したのを受け、新たに起動した無制限の9回目発見パス
+(discovery-fresh-pass-9)の報告が戻った。報告は4つの候補
+(PowerPoint自動操作ファミリー・Timerファミリー・`ui:InvokeVBScript`
+・`ui:Beep`)を挙げたが、エージェントの報告は常に独立検証する方針
+(知見265の`AnchorBase`教訓)に従い、最も確度が高くコード変更量が
+少ないTimerファミリーをまず自分で裏取りした。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`リポジトリ)
+で4活動とも`Timer`属性1個のみの構成を確認。実機2件
+(`paulsamuel-w-e/UiPath-Projects`の`SimpleWorkflow/Main.xaml`、
+`WasserstromPAteam/GPO-Roster-Avendra`の`GPO Roster Avendra_
+Performer/Google Address API Workflows/Download_Processed
+Output.xaml`)で、エージェントが報告した下流アクセス2件——
+`start_time.Elapsed.TotalSeconds.ToString()`・
+`Timer11.ElapsedMilliseconds>600000`(`If`条件)——を完全一致で再確認
+した。
+
+WebSearchで公式ドキュメント+フォーラムを確認し、4活動の正確な意味論
+を`System.Diagnostics.Stopwatch`のAPIへ1:1対応させた——
+`StartTimer`(「新規作成または既存タイマーを再起動」)=
+`Stopwatch.Restart()`(経過時間をゼロへリセットして計測開始)、
+`StopTimer`=`Stopwatch.Stop()`(経過時間を保持したまま計測停止)、
+`ResetTimer`(「タイマーをゼロに戻す」)=`Stopwatch.Reset()`
+(ゼロへリセットしかつ計測も停止)、`ResumeTimer`(「リセット後も
+ゼロを返し続けないようにするための活動」とフォーラムで説明)=
+停止中のインスタンスへの`Stopwatch.Start()`(ゼロへリセットせず
+計測を再開)——`StartTimer`とは意味論上明確に異なると判明。
+
+実装は`_ImapMailMessage`(知見250)と同じ「実機確認済みの下流アクセス
+のみに絞った薄いラッパークラス」設計判断を踏襲し、`_Timer`
+(`.Elapsed`→`_TimeSpan`オブジェクト、`.ElapsedMilliseconds`のみ露出)
+を注入する。`StartTimer`のコード生成は`{timer} = _Timer()`のみ——
+新しい`_Timer()`インスタンスの初期状態自体が「ゼロから計測開始中」の
+ため、「新規作成」「再起動」の両方の意味を1つのコードパスで満たせる、
+という単純化に気づいた。既存の`render.py`の汎用メンバーアクセス機構
+(`.ToString`等の確認済み安全メンバー名のみ末尾翻訳、未知のセグメント
+はそのまま素通し)が`.Elapsed`/`.TotalSeconds`/`.ElapsedMilliseconds`
+というPascalCase属性名をPythonオブジェクトの属性アクセスとして
+そのまま通してくれるため、`render.py`側の変更は一切不要だった
+(`_Timer`/`_TimeSpan`のプロパティ名を実機確認済みのVB名と1:1で
+揃えるだけで済む)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`4件・`tests/
+test_uipath_codegen.py`3件、うち2件は`exec()`経由で実際に
+`stop()`後に経過時間が凍結されること・`resume()`後に経過時間が
+リセットされずに計測再開されること・`reset()`後にゼロへ戻ることを
+確認)、リポジトリ全体で全2438件通過(28件skip、本活動の7件分の
+純増)。
+
+discovery-fresh-pass-9は他に新しい活動ファミリー候補
+(`UiPath.PowerPoint.Activities`——`python-pptx`という新規オプション
+依存が必要、`PowerPointApplicationScope`+3〜4子活動のまとまった
+投資になるため次ティック以降に先送り)、`ui:InvokeVBScript`
+(`MSScriptControl.ScriptControl` COM経由と推測されるが未検証)、
+`ui:Beep`(トリビアル、`winsound`はWindows限定のためLinuxサンドボックス
+でのテスト方法を要検討)を報告——いずれも次ティック以降の候補として
+保留。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
