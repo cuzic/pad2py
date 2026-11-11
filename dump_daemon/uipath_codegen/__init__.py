@@ -131,6 +131,8 @@ from ..uipath_dsl.types import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    FindAndReplaceNode,
+    ChangeCaseNode,
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
@@ -1072,6 +1074,10 @@ def _generate_node(
         )
     if isinstance(node, ExtractTextNode):
         return _generate_extract_text(node, indent)
+    if isinstance(node, FindAndReplaceNode):
+        return _generate_find_and_replace(node, indent)
+    if isinstance(node, ChangeCaseNode):
+        return _generate_change_case(node, indent)
     if isinstance(node, SplitTextNode):
         return _generate_split_text(node, indent)
     if isinstance(node, CombineTextNode):
@@ -6729,6 +6735,78 @@ def _generate_extract_text_body(node: ExtractTextNode, indent: int) -> list[str]
         )
     lines.append(f"{prefix}{target} = _et_source[_et_start_idx:_et_end_idx]")
     return lines
+
+
+def _generate_find_and_replace(node: FindAndReplaceNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_find_and_replace_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_find_and_replace_body(node: FindAndReplaceNode, indent: int) -> list[str]:
+    """知見279: `uast:FindAndReplace`(単独活動、`ModifyText`配下専用の
+    `FindAndReplaceTextModificationNode`(知見224)とは別のクラス)。
+    `_generate_find_and_replace_text_modification_line`が確立した
+    `re.sub(re.escape(search), lambda _m: replace, source, flags=
+    re.IGNORECASE)`(プレーンな文字列検索、置換文字列は`lambda`経由で
+    逆参照記法誤解釈を防ぐ)をそのまま再利用する。"""
+    prefix = INDENT * indent
+    if (
+        node.source is None
+        or node.value_to_find is None
+        or node.replace_with is None
+        or node.result is None
+    ):
+        return [
+            f"{prefix}# TODO: FindAndReplace with missing Source/ValueToFind/"
+            "ReplaceWith/Result"
+        ]
+    if node.match_case not in (None, "True", "False"):
+        return [
+            f"{prefix}# TODO: FindAndReplace with unrecognized MatchCase "
+            f"({node.match_case!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    source = _render_value_or_todo(node.source, prefix, todo)
+    value_to_find = _render_value_or_todo(node.value_to_find, prefix, todo)
+    replace_with = _render_value_or_todo(node.replace_with, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    flags = "" if node.match_case == "True" else ", flags=re.IGNORECASE"
+    return [
+        f"{prefix}{target} = re.sub(re.escape({VB_CSTR_HELPER_NAME}({value_to_find})), "
+        f"lambda _m: {VB_CSTR_HELPER_NAME}({replace_with}), "
+        f"{VB_CSTR_HELPER_NAME}({source}){flags})"
+    ]
+
+
+def _generate_change_case(node: ChangeCaseNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_change_case_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_change_case_body(node: ChangeCaseNode, indent: int) -> list[str]:
+    """知見279: `uast:ChangeCase`(単独活動、`ModifyText`配下専用の
+    `ToUpperLowerTextModificationNode`(知見224)とは別のクラス)。
+    `.lower()`/`.upper()`への変換をそのまま再利用する——実機2件で
+    `"LowerCase"`/`"UpperCase"`の両方を独立確認。"""
+    prefix = INDENT * indent
+    if node.source is None or node.result is None:
+        return [f"{prefix}# TODO: ChangeCase with missing Source/Result"]
+    if node.change_case_options not in ("LowerCase", "UpperCase"):
+        return [
+            f"{prefix}# TODO: ChangeCase with unrecognized ChangeCaseOptions "
+            f"({node.change_case_options!r}) — refusing to guess"
+        ]
+    todo: list[str] = []
+    source = _render_value_or_todo(node.source, prefix, todo)
+    target = _render_value_or_todo(node.result, prefix, todo)
+    if todo:
+        return todo
+    method = "lower" if node.change_case_options == "LowerCase" else "upper"
+    return [f"{prefix}{target} = {VB_CSTR_HELPER_NAME}({source}).{method}()"]
 
 
 # 知見249: `uast:SplitText`/`uast:CombineText`——実機2件(`SplitText`の

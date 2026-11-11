@@ -86,6 +86,8 @@ from dump_daemon.uipath_dsl import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    FindAndReplaceNode,
+    ChangeCaseNode,
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
@@ -1042,6 +1044,47 @@ def test_extract_text_properties():
     assert node.match_case == "False"
     assert node.ignore_duplicates == "False"
     assert node.extract_base_url_only == "False"
+
+
+def test_find_and_replace_standalone_properties():
+    """知見279: `uast:FindAndReplace`(単独活動、discovery-fresh-
+    pass-11で発見——`ModifyText`配下専用の`FindAndReplaceText
+    Modification`(知見224)とは別のクラス)。実機`wan-chee-tin/
+    hr-offer-letter-automation`の`Framework/Process.xaml`で確認した
+    構成——同じ変数(`EmailBody`)へ`Source`/`Result`を往復させる
+    文字列テンプレート置換パターン。"""
+    xml = (
+        f"<uast:FindAndReplace {_SYSTEM_TEXT_XMLNS} "
+        'DisplayName="Find and Replace - Full Name" MatchCase="False" '
+        'ReplaceWith="[CandidateFullName]" Result="[EmailBody]" '
+        'Source="[EmailBody]" ValueToFind="_FullName" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, FindAndReplaceNode)
+    assert node.source == VbExpr(text="EmailBody")
+    assert node.value_to_find == Literal(value="_FullName")
+    assert node.replace_with == VbExpr(text="CandidateFullName")
+    assert node.match_case == "False"
+    assert node.result == VbExpr(text="EmailBody")
+
+
+def test_change_case_standalone_properties_with_upper_case():
+    """知見279: `uast:ChangeCase`(単独活動、discovery-fresh-pass-11が
+    `ChangeCaseOptions`属性名で再発見——`ModifyText`配下専用の
+    `ToUpperLowerTextModification`(知見224)とは別のクラス)。実機
+    `RajdipDuttaa/ACME_Data_Extraction`の`PDFExtraction.xaml`で確認
+    した構成——`ChangeCaseOptions="UpperCase"`(`itsdevdeep/
+    CPQ-Automation`で確認済みの`"LowerCase"`とは別の値を独立確認)。"""
+    xml = (
+        f"<uast:ChangeCase {_SYSTEM_TEXT_XMLNS} "
+        'ChangeCaseOptions="UpperCase" DisplayName="Change Case: Client ID" '
+        'Result="[str_ClientID]" Source="[str_ClientID]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ChangeCaseNode)
+    assert node.source == VbExpr(text="str_ClientID")
+    assert node.change_case_options == "UpperCase"
+    assert node.result == VbExpr(text="str_ClientID")
 
 
 def test_split_text_properties():

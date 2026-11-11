@@ -3335,6 +3335,75 @@ class ExtractTextNode:
 
 
 @dataclass
+class FindAndReplaceNode:
+    """`<uast:FindAndReplace Source="..." ValueToFind="..."
+    ReplaceWith="..." MatchCase="..." Result="..." />`(知見279、
+    discovery-fresh-pass-11で発見、`UiPath.Activities.System.Text`
+    (`uast:`)名前空間の単独活動——`ModifyText`配下専用の子活動
+    `FindAndReplaceTextModificationNode`(知見224、`UiPath.Core.
+    Activities.TextModifications`、別の名前空間)とは**別のクラス**
+    (タグ名は同じ"FindAndReplace"でも別パッケージ)。タグ名限定GitHub
+    検索で多数の実機ヒット、本調査最多クラス)。
+
+    ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機
+    (`wan-chee-tin/hr-offer-letter-automation`の`HR Offer Letter
+    Automation/Performer_OfferLetterAutomation/Framework/Process.xaml`
+    ——同じ変数(`EmailBody`)へ`Source`/`Result`を往復させながら
+    `FindAndReplace`を8回連続で呼ぶ「文字列テンプレート置換」の定番
+    パターンを確認)で`Source`+`ValueToFind`(実機確認済みは静的
+    リテラルのみ、`_FullName`等のプレースホルダ文字列)+`ReplaceWith`
+    (静的リテラル・動的VB式の両方確認)+`MatchCase`(ground-truth/
+    実機とも唯一の確認値`"False"`)+`Result`(ground-truthには無いが
+    実機で常に使用——知見197/230と同種の「ground-truthは網羅的で
+    ない」実例)の構成を確認。
+
+    `FindAndReplaceTextModificationNode`(知見224)が確立した
+    `re.sub(re.escape(search), lambda _m: replace, source, flags=
+    re.IGNORECASE)`をそのまま再利用する——プレーンな文字列検索
+    (正規表現ではない)、`MatchCase`省略時/`"False"`時は大文字小文字
+    を区別しない、置換文字列は`lambda`経由(`\\1`等の逆参照記法誤解釈
+    を防ぐ)。"""
+
+    source: Expr = None
+    value_to_find: Expr = None
+    replace_with: Expr = None
+    match_case: str | None = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
+class ChangeCaseNode:
+    """`<uast:ChangeCase Source="..." ChangeCaseOptions="..."
+    Result="..." />`(知見279、discovery-fresh-pass-11で発見、
+    `UiPath.Activities.System.Text`(`uast:`)名前空間の単独活動——
+    `ModifyText`配下専用の子活動`ToUpperLowerTextModificationNode`
+    (知見224、`UiPath.Core.Activities.TextModifications`、別の
+    名前空間)とは**別のクラス**。知見220で見送った際は「タグ名限定
+    検索で7件のみ」だったが、discovery-fresh-pass-11が`ChangeCase
+    Options`という別の確認用属性名で再検索して9件ヒットを再発見、
+    さらに実機3件を確認した。
+
+    ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機2件
+    (`itsdevdeep/CPQ-Automation`の`Add PL Attributes.xaml`で
+    `ChangeCaseOptions="LowerCase"`、`RajdipDuttaa/
+    ACME_Data_Extraction`の`PDFExtraction.xaml`で`ChangeCaseOptions=
+    "UpperCase"`——両方の値を独立に実機確認)で`Source`+
+    `ChangeCaseOptions`+`Result`の構成を確認。
+
+    `ToUpperLowerTextModificationNode`(知見224)が確立した
+    `.lower()`/`.upper()`への変換をそのまま再利用する——`UseCurrentCulture`
+    (カルチャ依存の大文字小文字変換)オプションは実機で一度も確認
+    できず常にPythonの`str.lower()`/`str.upper()`(カルチャ非依存)を
+    使う判断も継承する。"""
+
+    source: Expr = None
+    change_case_options: str | None = None
+    result: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class GetLastDownloadedFileNode:
     """`<ui:GetLastDownloadedFile DownloadFolder="..." File="..."
     Timeout="..." IgnoreFiles="...">`(知見233、公式表示名「Wait for
@@ -5823,6 +5892,8 @@ Node = (
     | BulkInsertNode
     | DatabaseTransactionNode
     | ExtractTextNode
+    | FindAndReplaceNode
+    | ChangeCaseNode
     | GetLastDownloadedFileNode
     | CheckTrueNode
     | CheckFalseNode

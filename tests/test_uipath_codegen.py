@@ -109,6 +109,8 @@ from dump_daemon.uipath_dsl import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    FindAndReplaceNode,
+    ChangeCaseNode,
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
@@ -9133,6 +9135,101 @@ def test_extract_text_with_ignore_duplicates_true_is_todo_not_guessed():
     wf = _wrap([_extract_text_node(ignore_duplicates="True")])
     code = generate_python(wf)
     assert "# TODO: ExtractText with IgnoreDuplicates set ('True')" in code
+    _compiles(code)
+
+
+def test_find_and_replace_standalone_chained_template_substitution_exec():
+    """知見279: `uast:FindAndReplace`(単独活動)。実機`wan-chee-tin/
+    hr-offer-letter-automation`相当の「同じ変数へ`Source`/`Result`を
+    往復させながら複数回連続で呼ぶ文字列テンプレート置換」パターンを
+    `exec()`経由で確認する。既存の`FindAndReplaceTextModification`
+    (知見224)が確立した`re.sub`+`lambda`置換+`MatchCase`既定の
+    大文字小文字不区別をそのまま再利用する。"""
+    wf = _wrap(
+        [
+            FindAndReplaceNode(
+                source=VbExpr(text="body"),
+                value_to_find=Literal(value="_FullName"),
+                replace_with=VbExpr(text="name"),
+                match_case="False",
+                result=VbExpr(text="body"),
+            ),
+            FindAndReplaceNode(
+                source=VbExpr(text="body"),
+                value_to_find=Literal(value="_Employer"),
+                replace_with=VbExpr(text="employer"),
+                match_case="False",
+                result=VbExpr(text="body"),
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(body, name, employer):")
+    code2 += "\n    return body"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert (
+        namespace["Test"]("Dear _fullname, welcome to _Employer.", "Alice", "ACME")
+        == "Dear Alice, welcome to ACME."
+    )
+
+
+def test_find_and_replace_standalone_with_missing_properties_is_todo():
+    wf = _wrap([FindAndReplaceNode(source=None, value_to_find=None, replace_with=None)])
+    code = generate_python(wf)
+    assert (
+        "# TODO: FindAndReplace with missing Source/ValueToFind/"
+        "ReplaceWith/Result" in code
+    )
+    _compiles(code)
+
+
+def test_change_case_standalone_lower_and_upper_exec():
+    """知見279: `uast:ChangeCase`(単独活動)。実機2件で独立確認した
+    `"LowerCase"`/`"UpperCase"`の両方を`exec()`経由で確認する。"""
+    wf = _wrap(
+        [
+            ChangeCaseNode(
+                source=VbExpr(text="a"), change_case_options="LowerCase",
+                result=VbExpr(text="a_lower"),
+            ),
+            ChangeCaseNode(
+                source=VbExpr(text="b"), change_case_options="UpperCase",
+                result=VbExpr(text="b_upper"),
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(a, b):")
+    code2 += "\n    return a_lower, b_upper"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    assert namespace["Test"]("ACME CORP", "client123") == ("acme corp", "CLIENT123")
+
+
+def test_change_case_standalone_with_unrecognized_options_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ChangeCaseNode(
+                source=VbExpr(text="a"),
+                change_case_options="TitleCase",
+                result=VbExpr(text="out"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ChangeCase with unrecognized ChangeCaseOptions" in code
+    _compiles(code)
+
+
+def test_change_case_standalone_with_missing_properties_is_todo():
+    wf = _wrap([ChangeCaseNode(source=None, result=None)])
+    code = generate_python(wf)
+    assert "# TODO: ChangeCase with missing Source/Result" in code
     _compiles(code)
 
 

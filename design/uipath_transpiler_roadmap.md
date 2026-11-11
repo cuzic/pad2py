@@ -4007,3 +4007,17 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      なため対象外。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
      `tests/test_uipath_codegen.py`5件)、リポジトリ全体で全2484件
      通過(本活動の7件分の純増)。
+
+235. **(完了、2026-11-10)** `uast:FindAndReplace`/`uast:ChangeCase`
+     (単独活動)を新規実装(知見279)——discovery-fresh-pass-11が
+     報告した最安の2候補。`ModifyText`配下専用の同名子活動
+     (`FindAndReplaceTextModification`/`ToUpperLowerTextModification`、
+     知見224)とは別の名前空間・別クラスであることを確認。実機
+     (`wan-chee-tin/hr-offer-letter-automation`の8回連続文字列
+     テンプレート置換、`itsdevdeep/CPQ-Automation`+`RajdipDuttaa/
+     ACME_Data_Extraction`の`LowerCase`/`UpperCase`両値)で構成確認。
+     既存のコード生成ロジック(`re.sub`+`lambda`置換、`.lower()`/
+     `.upper()`)をそのまま新しい単独活動へ移植、新規ロジック不要。
+     回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`5件)、リポジトリ全体で全2491件通過
+     (本活動の7件分の純増)。

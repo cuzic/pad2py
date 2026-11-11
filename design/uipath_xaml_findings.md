@@ -13371,6 +13371,49 @@ VerifyExpressionWithOperator`・`uast:FindAndReplace`(standalone版)
 ・`uast:ChangeCase`(standalone版)・`ui:GetXMLNodeAttributes`)は
 未実装のまま残る。
 
+## 279. `uast:FindAndReplace`/`uast:ChangeCase`(単独活動)を新規実装——discovery-fresh-pass-11が報告した最安の2候補、`ModifyText`配下専用の同名子活動とは別クラスであることを確認した上で既存のコード生成ロジックをそのまま再利用した
+
+知見278で`uta:VerifyExpression`を実装した直後の次ティックとして、
+discovery-fresh-pass-11が報告した最も安価な残り候補2件
+`uast:FindAndReplace`/`uast:ChangeCase`(いずれも単独活動、
+`UiPath.Activities.System.Text`(`uast:`)名前空間)に着手した。
+
+**重要な区別**: これらは`ui:ModifyText`(知見224)配下専用の子活動
+`FindAndReplaceTextModificationNode`/`ToUpperLowerTextModificationNode`
+(いずれも別の名前空間`UiPath.Core.Activities.TextModifications`)とは
+**別のクラス**——タグ名の末尾は同じでも、パッケージが異なる独立した
+単独活動として存在する(知見220で`ChangeCase`を一度「7件のみ」で
+見送った際に見落としていた区別——discovery-fresh-pass-11が
+`ChangeCaseOptions`という別の確認用属性名で再検索し直して発見した)。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機
+(`FindAndReplace`: `wan-chee-tin/hr-offer-letter-automation`の
+`Framework/Process.xaml`、同じ変数`EmailBody`へ`Source`/`Result`を
+8回連続で往復させる文字列テンプレート置換パターン。`ChangeCase`:
+`itsdevdeep/CPQ-Automation`で`"LowerCase"`、`RajdipDuttaa/
+ACME_Data_Extraction`で`"UpperCase"`——両方の値を独立に実機確認)で
+構成を確認——`FindAndReplace`は`Source`+`ValueToFind`+`ReplaceWith`+
+`MatchCase`+`Result`、`ChangeCase`は`Source`+`ChangeCaseOptions`+
+`Result`。両方とも`Result`がground-truthには無いが実機で常に使用
+(知見197/230と同種の「ground-truthは網羅的でない」実例)。
+
+実装は既存のコード生成ロジックを一切変更せず再利用——
+`FindAndReplaceTextModificationNode`が確立した`re.sub(re.escape(
+search), lambda _m: replace, source, flags=re.IGNORECASE)`、
+`ToUpperLowerTextModificationNode`が確立した`.lower()`/`.upper()`
+への変換、いずれもそのまま新しい単独活動のコード生成関数へ移植した
+だけで新規ロジックは不要だった。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`5件、うち2件は`exec()`経由で実際の文字列
+テンプレート置換の連鎖・`LowerCase`/`UpperCase`両方のケース変換を
+確認)、リポジトリ全体で全2491件通過(28件skip、本活動の7件分の
+純増)。
+
+discovery-fresh-pass-11が報告した残りの候補(`uta:
+VerifyExpressionWithOperator`・`ui:GetXMLNodeAttributes`)は未実装
+のまま残る。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

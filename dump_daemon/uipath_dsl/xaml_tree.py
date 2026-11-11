@@ -90,6 +90,8 @@ from .types import (
     BulkInsertNode,
     DatabaseTransactionNode,
     ExtractTextNode,
+    FindAndReplaceNode,
+    ChangeCaseNode,
     GetLastDownloadedFileNode,
     CheckTrueNode,
     CheckFalseNode,
@@ -2172,6 +2174,28 @@ def _parse_extract_text(elem: etree._Element) -> ExtractTextNode:
     )
 
 
+def _parse_find_and_replace(elem: etree._Element) -> FindAndReplaceNode:
+    return FindAndReplaceNode(
+        display_name=_attr(elem, "DisplayName"),
+        source=_attr_expr(elem, "Source") or _in_argument_property_expr(elem, "Source"),
+        value_to_find=_attr_expr(elem, "ValueToFind")
+        or _in_argument_property_expr(elem, "ValueToFind"),
+        replace_with=_attr_expr(elem, "ReplaceWith")
+        or _in_argument_property_expr(elem, "ReplaceWith"),
+        match_case=_attr_or_none(elem, "MatchCase"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
+def _parse_change_case(elem: etree._Element) -> ChangeCaseNode:
+    return ChangeCaseNode(
+        display_name=_attr(elem, "DisplayName"),
+        source=_attr_expr(elem, "Source") or _in_argument_property_expr(elem, "Source"),
+        change_case_options=_attr_or_none(elem, "ChangeCaseOptions"),
+        result=_attr_expr(elem, "Result") or _in_argument_property_expr(elem, "Result"),
+    )
+
+
 def _parse_split_text(elem: etree._Element) -> SplitTextNode:
     return SplitTextNode(
         display_name=_attr(elem, "DisplayName"),
@@ -3682,6 +3706,8 @@ _DISPATCH = {
     (UI_NS, "BulkInsert"): _parse_bulk_insert,
     (UI_NS, "DatabaseTransaction"): _parse_database_transaction,
     (SYSTEM_TEXT_NS, "ExtractText"): _parse_extract_text,
+    (SYSTEM_TEXT_NS, "FindAndReplace"): _parse_find_and_replace,
+    (SYSTEM_TEXT_NS, "ChangeCase"): _parse_change_case,
     (SYSTEM_TEXT_NS, "SplitText"): _parse_split_text,
     (SYSTEM_TEXT_NS, "CombineText"): _parse_combine_text,
     (SYSTEM_NS, "GetUsernamePasswordX"): _parse_get_username_password_x,
