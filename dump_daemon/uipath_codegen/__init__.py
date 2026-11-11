@@ -224,6 +224,7 @@ from ..uipath_dsl.types import (
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
+    WaitUiElementAppearNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -977,6 +978,8 @@ def _generate_node(
         return _generate_select_multiple_items(node, indent)
     if isinstance(node, UiElementExistsNode):
         return _generate_ui_element_exists(node, indent)
+    if isinstance(node, WaitUiElementAppearNode):
+        return _generate_wait_ui_element_appear(node, indent)
     if isinstance(node, DatabaseConnectNode):
         return _generate_database_connect(node, indent)
     if isinstance(node, DatabaseDisconnectNode):
@@ -5846,6 +5849,48 @@ def _generate_ui_element_exists_body(node: UiElementExistsNode, indent: int) -> 
         return todo
     lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
     lines.append(f"{prefix}{target} = {rendered.expr}.exists()")
+    return lines
+
+
+# 知見264: `ui:WaitUiElementAppear`(DisplayName「Find Element」)。
+# `pywinauto`の`WindowSpecification.wait(...)`(文字列条件+秒単位の
+# `timeout`引数、公式ドキュメント確認済みの既定30秒をそのまま使う)が
+# 直接対応する——`WaitVisible`/`WaitActive`は条件文字列への単純な
+# 追加のため、実機未確認の`"True"`値も含めて両方対応する(値自体の
+# 意味論に不確実性が無いケース、`AlterIfDisabled`等とは違う判断)。
+def _generate_wait_ui_element_appear(
+    node: WaitUiElementAppearNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_wait_ui_element_appear_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_wait_ui_element_appear_body(
+    node: WaitUiElementAppearNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Find Element with no selector captured"]
+    if node.found_element is not None:
+        return [
+            f"{prefix}# TODO: Find Element with FoundElement bound "
+            f"({_describe_expr_for_comment(node.found_element)}) — typed "
+            "UiElement output not modeled, refusing to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Find Element selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    condition = "exists"
+    if _literal_str(node.wait_visible) == "True":
+        condition += " visible"
+    if _literal_str(node.wait_active) == "True":
+        condition += " active"
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(f"{prefix}{rendered.expr}.wait({condition!r}, timeout=30)")
     return lines
 
 

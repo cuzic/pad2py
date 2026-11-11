@@ -174,6 +174,7 @@ from dump_daemon.uipath_dsl import (
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
+    WaitUiElementAppearNode,
     UnknownActivityNode,
     VbExpr,
     WhileNode,
@@ -735,6 +736,46 @@ def test_ui_element_exists_selector_and_output_binding():
     assert isinstance(node, UiElementExistsNode)
     assert "Notepad" in node.selector
     assert node.exists == VbExpr(text="notepadOpened")
+
+
+def test_wait_ui_element_appear_standalone_properties():
+    """知見264: `ui:WaitUiElementAppear`(DisplayNameは「Find Element」、
+    タグ名限定GitHub検索で746件ヒット)。実機`piyushagarwal08/JU-Notes`
+    の`UiPath/BlankProcess1/Flowchart.xaml`で確認した構成——
+    `ui:AnchorBase`配下ではない完全な単独使用例。"""
+    xml = (
+        f"<ui:WaitUiElementAppear {_UI_XMLNS} "
+        'FoundElement="{x:Null}" WaitActive="{x:Null}" WaitVisible="{x:Null}" '
+        "DisplayName=\"Find Element 'FOOTER'\">"
+        "<ui:WaitUiElementAppear.Target>"
+        "<ui:Target Selector=\"&lt;webctrl tag='FOOTER' /&gt;\" />"
+        "</ui:WaitUiElementAppear.Target>"
+        "</ui:WaitUiElementAppear>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WaitUiElementAppearNode)
+    assert "FOOTER" in node.selector
+    assert node.found_element is None
+    assert node.wait_active is None
+    assert node.wait_visible is None
+
+
+def test_wait_ui_element_appear_with_wait_active_and_visible_false():
+    """知見264: `HarshadRanganathan/uipath-learning`の実機XAMLで確認した
+    構成——`WaitActive`/`WaitVisible`が明示的な`"False"`。"""
+    xml = (
+        f"<ui:WaitUiElementAppear {_UI_XMLNS} "
+        'FoundElement="{x:Null}" WaitActive="False" WaitVisible="False" '
+        "DisplayName=\"Anchor Find Element 'push button Close'\">"
+        "<ui:WaitUiElementAppear.Target>"
+        "<ui:Target Selector=\"&lt;wnd cls='Notepad' /&gt;&lt;ctrl name='Close' /&gt;\" />"
+        "</ui:WaitUiElementAppear.Target>"
+        "</ui:WaitUiElementAppear>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WaitUiElementAppearNode)
+    assert node.wait_active == Literal(value="False")
+    assert node.wait_visible == Literal(value="False")
 
 
 def test_database_connect_and_disconnect():

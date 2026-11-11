@@ -12602,6 +12602,58 @@ test_uipath_codegen.py`3件)、リポジトリ全体で全2388件通過
 偽陽性と判明)——マウスキーボード系は候補が尽きたため、継続する
 場合は新規発見パスが必要。
 
+## 264. `ui:WaitUiElementAppear`を新規実装——マウスキーボード系の2回目発見パスで見つかった、本調査史上最強クラスの実務需要信号(746件ヒット)
+
+マウスキーボード系候補が尽きたため起動した2回目の専用調査パスで
+見つかった`ui:WaitUiElementAppear`(DisplayName「Find Element」、
+タグ名限定GitHub検索で746件ヒット——本調査でこれまで見た最も強い
+実務需要信号の1つ)に着手した。調査エージェントは`marcelocruzrpa/
+uipath-ai-skills`の`UIAutomation.Activities/25.10`ground-truthが
+Modern(`N*`)+Computer Vision記述子系(`Cv*WithDescriptor`/
+`CVScope`)活動ばかりで、本物の`UiPath.Core.Activities`フォルダが
+存在しないことを発見した——catalog自体からは新規候補が得られず、
+ドメイン知識から候補名をブレインストーミングしてヒット数を個別に
+検証する手法に切り替えた結果だった。
+
+実機2件以上(`piyushagarwal08/JU-Notes`の`UiPath/BlankProcess1/
+Flowchart.xaml`——`ui:AnchorBase`配下ではない完全な単独使用例、
+`HarshadRanganathan/uipath-learning`の`Selectors/
+Notepad_Basic_Recording_Selector.xaml`)で確認した構成——
+`FoundElement`(出力、実機確認した全件で`{x:Null}`——型付き`UiElement`
+変数を一切束縛しない、`GetFileInfoX`等で問題になった型付きオブジェクト
+のダウンストリーム利用リスクが実機で一度も確認できなかった)、
+`WaitActive`/`WaitVisible`(実機確認した全件で`{x:Null}`または
+`"False"`——`"True"`の実例は確認できていない)、`.Target.Selector`
+(`Click`/`Hover`等と同じ既存の`ui:Target`構造、新規パース処理不要)。
+
+公式ドキュメント(WebSearch経由確認)で「対象のUI要素が画面に出現する
+までポーリングする」が基本動作、`WaitVisible`/`WaitActive`はそれぞれ
+「可視になるまで」「アクティブになるまで」待機を追加すると確認した
+——`WaitVisible`/`WaitActive`の`"True"`実例自体は実機未確認だが、
+意味論に不確実性が無く対応する`pywinauto`マッピングも単純な文字列
+連結のため(`AlterIfDisabled`等の過去の判断とは違う)、両方の値に
+対応した。`pywinauto`の`WindowSpecification.wait(...)`(文字列条件+
+秒単位の`timeout`引数)が直接対応する——`Target.TimeoutMS`は実機
+確認した全件で値未設定の空`InArgument`形だったため捕捉対象に含めず、
+公式ドキュメント確認済みの既定30秒をそのままハードコードした。
+
+`pywinauto`自身がこのLinuxサンドボックスでは`win32api`無しで深い
+階層のimportに失敗するため、`SelectItemNode`/`SelectMultipleItemsNode`
+系の既存前例どおり文字列/コンパイルのみの検証(`exec()`は行わない)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`6件)、リポジトリ全体で全2396件通過
+(28件skip、本活動の8件分の純増)。調査エージェントは`ui:AnchorBase`
+(310件ヒット、`WaitUiElementAppear`を`.AnchorProvider`として使う
+スコープ活動、実機2件で`ContextAnchor`デリゲート引数が一度も子
+活動から参照されず単純に無視できそうと報告)を次の候補として記録、
+`ui:ClickImage`/`ui:ClickText`(画面上の画像テンプレートマッチング
+方式、本トランスパイラのセレクタ/ハンドルベースの自動化戦略とは
+根本的に異なるアーキテクチャのため見送り)・`ui:DragDrop`
+(54件ヒットだが実機確認の結果全て無関係なWPFライブラリの新たな
+偽陽性と判明、`ui:Pick`/`PickBranch`と同種のリストに追加)も
+確認した。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

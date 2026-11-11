@@ -204,6 +204,7 @@ from dump_daemon.uipath_dsl import (
     CatchArm,
     TypeIntoNode,
     UiElementExistsNode,
+    WaitUiElementAppearNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -8114,6 +8115,68 @@ def test_ui_element_exists_with_unmappable_selector_is_todo():
     )
     code = generate_python(wf)
     assert "# TODO: Element Exists selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_with_known_selector_generates_wait_call():
+    wf = _wrap([WaitUiElementAppearNode(selector=_ELEMENT_EXISTS_SELECTOR)])
+    code = generate_python(wf)
+    assert ".wait('exists', timeout=30)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_with_wait_visible_and_active_true():
+    """知見264: `WaitVisible`/`WaitActive`が`"True"`の場合——実機未確認
+    だが意味論に不確実性が無いため、両方対応する。"""
+    wf = _wrap(
+        [
+            WaitUiElementAppearNode(
+                selector=_ELEMENT_EXISTS_SELECTOR,
+                wait_visible=Literal(value="True"),
+                wait_active=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert ".wait('exists visible active', timeout=30)" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_display_name_becomes_a_comment():
+    wf = _wrap(
+        [WaitUiElementAppearNode(selector=_ELEMENT_EXISTS_SELECTOR, display_name="Find Element")]
+    )
+    code = generate_python(wf)
+    assert "# Find Element" in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_with_no_selector_is_todo():
+    wf = _wrap([WaitUiElementAppearNode(selector=None)])
+    code = generate_python(wf)
+    assert "# TODO: Find Element with no selector captured" in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_with_found_element_bound_is_todo():
+    wf = _wrap(
+        [
+            WaitUiElementAppearNode(
+                selector=_ELEMENT_EXISTS_SELECTOR, found_element=VbExpr(text="elem")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Find Element with FoundElement bound" in code
+    _compiles(code)
+
+
+def test_wait_ui_element_appear_with_unmappable_selector_is_todo():
+    wf = _wrap([WaitUiElementAppearNode(selector="<wnd idx='2' />")])
+    code = generate_python(wf)
+    assert "# TODO: Find Element selector had no mappable attributes" in code
     _compiles(code)
 
 

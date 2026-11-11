@@ -2780,6 +2780,51 @@ class UiElementExistsNode:
 
 
 @dataclass
+class WaitUiElementAppearNode:
+    """`<ui:WaitUiElementAppear>`(知見264、DisplayNameは「Find Element」、
+    `UiPath.Core.Activities.WaitUiElementAppear`、タグ名限定GitHub検索で
+    746件ヒット——マウスキーボード系の2回目発見パスで最も強い実務需要の
+    信号)。`selector`は`ui:WaitUiElementAppear.Target`配下の`ui:Target`
+    要素の`Selector`属性(`ClickNode`等と同じ構造)。
+
+    実機2件以上(`piyushagarwal08/JU-Notes`の`UiPath/BlankProcess1/
+    Flowchart.xaml`——`ui:AnchorBase`配下ではない完全な単独使用例、
+    `HarshadRanganathan/uipath-learning`の`Selectors/
+    Notepad_Basic_Recording_Selector.xaml`)で確認した構成——
+    `FoundElement`(出力、実機確認した全件で`{x:Null}`——`UiElement`型の
+    出力変数を一切束縛しない、`GetFileInfoX`等で問題になった型付き
+    オブジェクトのダウンストリーム利用が実機で一度も確認できなかった
+    ため、確認済みの範囲内で安全に無視できる)、`WaitActive`/
+    `WaitVisible`(実機確認した全件で`{x:Null}`または`"False"`——
+    `"True"`の実例は確認できていない)。公式ドキュメント(WebSearch経由
+    確認)によれば「対象のUI要素が画面に出現するまでポーリングする」が
+    基本動作で、`WaitVisible`/`WaitActive`はそれぞれ「可視になるまで」
+    「アクティブになるまで」待機を追加する。`Target.TimeoutMS`の既定値
+    は公式ドキュメント確認済みで30000ms(=30秒)——実機確認した全件とも
+    `<ui:Target.TimeoutMS><InArgument x:TypeArguments="x:Int32" /></...>`
+    という値未設定の空`InArgument`形だったため、非既定の`TimeoutMS`値
+    自体は実機未確認——本活動では捕捉対象に含めず、確認済みの既定
+    30秒をそのままハードコードする。
+
+    `pywinauto`の`WindowSpecification.wait(...)`(文字列条件+秒単位の
+    `timeout`引数、インストール済みの実`pywinauto`ソースで確認済みの
+    標準API)が直接対応する——条件文字列は`'exists'`(既定)に
+    `WaitVisible=True`時は`' visible'`、`WaitActive=True`時は
+    `' active'`を追加で組み合わせる。`"True"`の実例自体は実機未確認
+    だが、公式ドキュメントの説明(「可視/アクティブになるまで待機を
+    追加する」)が曖昧さ無く、対応する`pywinauto`マッピングも単純な
+    文字列連結のため機械的に対応できる——`AlterIfDisabled`等の過去の
+    判断とは違い、値自体の意味論に不確実性が無いケースとして両方の
+    値に対応する。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    found_element: Expr = None
+    wait_active: Expr = None
+    wait_visible: Expr = None
+
+
+@dataclass
 class DatabaseConnectNode:
     """`<ui:DatabaseConnect>`(知見114、`UiPath.Database.Activities`、Tier A
     からTier B「Database活動」への着手第1件)。`marcelocruzrpa/
@@ -5080,6 +5125,7 @@ Node = (
     | SelectItemNode
     | SelectMultipleItemsNode
     | UiElementExistsNode
+    | WaitUiElementAppearNode
     | DatabaseConnectNode
     | DatabaseDisconnectNode
     | ExecuteQueryNode

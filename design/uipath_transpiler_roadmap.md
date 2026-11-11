@@ -3808,3 +3808,25 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      知見256以来のExcel/Word classic系調査パスの既知候補はこれで
      全完了・見送り判断済み——マウスキーボード系は候補が尽きたため
      継続には新規発見パスが必要。
+
+222. **(完了、2026-11-10)** `ui:WaitUiElementAppear`を新規実装
+     (知見264)——マウスキーボード系の2回目発見パスで発見、タグ名
+     限定検索で746件ヒット(本調査史上最強クラスの実務需要信号)。
+     `marcelocruzrpa/uipath-ai-skills`のUIAutomation ground-truthが
+     Modern/CV記述子系ばかりで新規候補が得られず、ドメイン知識から
+     候補名をブレインストーミングする手法に切り替えて発見。実機2件
+     以上で`FoundElement`(常に`{x:Null}`、型付きオブジェクトリスク
+     無し)・`WaitActive`/`WaitVisible`(`{x:Null}`/`"False"`確認済み、
+     `"True"`は実機未確認だが意味論に不確実性が無いため両方対応)・
+     `.Target.Selector`(既存の`ui:Target`構造を再利用)を確認。
+     `pywinauto`の`WindowSpecification.wait(...)`(文字列条件+秒単位の
+     `timeout`引数)が直接対応(`TimeoutMS`は実機全件未設定のため公式
+     ドキュメント確認済みの既定30秒をハードコード)。回帰
+     テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+     test_uipath_codegen.py`6件)、リポジトリ全体で全2396件通過
+     (本活動の8件分の純増)。調査エージェントは`ui:AnchorBase`
+     (310件ヒット、`WaitUiElementAppear`をAnchorProviderとして使う
+     スコープ活動)を次の候補として記録、`ui:ClickImage`/
+     `ui:ClickText`(画像テンプレートマッチング方式、アーキテクチャ
+     不一致で見送り)・`ui:DragDrop`(54件だが全て無関係なWPF、新規
+     偽陽性)も確認・記録した。

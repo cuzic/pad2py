@@ -188,6 +188,7 @@ from .types import (
     TryCatchNode,
     TypeIntoNode,
     UiElementExistsNode,
+    WaitUiElementAppearNode,
     UnknownActivityNode,
     VariableDecl,
     VbExpr,
@@ -1931,6 +1932,17 @@ def _parse_ui_element_exists(elem: etree._Element) -> UiElementExistsNode:
     )
 
 
+def _parse_wait_ui_element_appear(elem: etree._Element) -> WaitUiElementAppearNode:
+    selector = _target_selector(elem)
+    return WaitUiElementAppearNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        found_element=_attr_expr(elem, "FoundElement"),
+        wait_active=_attr_expr(elem, "WaitActive"),
+        wait_visible=_attr_expr(elem, "WaitVisible"),
+    )
+
+
 def _parse_database_connect(elem: etree._Element) -> DatabaseConnectNode:
     return DatabaseConnectNode(
         connection_string=_attr_expr(elem, "ConnectionString"),
@@ -3336,6 +3348,7 @@ _DISPATCH = {
     (UI_NS, "SelectItem"): _parse_select_item,
     (UI_NS, "SelectMultipleItems"): _parse_select_multiple_items,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
+    (UI_NS, "WaitUiElementAppear"): _parse_wait_ui_element_appear,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,
     (UI_NS, "DatabaseDisconnect"): _parse_database_disconnect,
     (UI_NS, "ExecuteQuery"): _parse_execute_query,
