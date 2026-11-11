@@ -121,6 +121,7 @@ from dump_daemon.uipath_dsl import (
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
+    ReadPDFWithOCRNode,
     GetOutlookMailMessagesNode,
     MarkMailAsReadXNode,
     DeleteMailXNode,
@@ -3777,6 +3778,167 @@ def test_get_ocr_text_with_extract_words_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: GetOCRText with ExtractWords set" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_all_range_processes_every_page_exec(tmp_path):
+    """知見266: `ui:ReadPDFWithOCR`——`GetOcrTextNode`(知見180)と同じ
+    `OCREngine`デリゲート構造を再利用し、`pymupdf`(知見209確認済みの
+    `pdf-render`プラグイン)の`Pixmap.pil_image()`で各ページを
+    ラスタライズして`pytesseract.image_to_string()`へ渡すことを、実際
+    の`pymupdf`で生成した`.pdf`ファイル+モックした`pytesseract`で
+    `exec()`経由で確認する(実`tesseract`バイナリ自体は本サンドボックス
+    に無いため、`GetOcrTextNode`の既存前例どおり`pytesseract`自身は
+    モックする——`pymupdf`側のページ選択/ラスタライズ処理は本物)。"""
+    import unittest.mock
+
+    import pymupdf
+
+    pdf_path = str(tmp_path / "test.pdf")
+    doc = pymupdf.open()
+    doc.new_page()
+    doc.new_page()
+    doc.new_page()
+    doc.save(pdf_path)
+
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value=pdf_path),
+                range=Literal(value="All"),
+                text=VbExpr(text="result"),
+                engine_tag="GoogleOCR",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "pymupdf.open(" in code
+    assert "pytesseract.image_to_string(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    with unittest.mock.patch(
+        "pytesseract.image_to_string", side_effect=lambda img, **kw: f"PAGE[{img.size}]"
+    ):
+        ns: dict[str, object] = {}
+        exec(code + "\n    return result", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+        result = ns["Test"]()
+    assert result.count("PAGE") == 3
+
+
+def test_read_pdf_with_ocr_single_page_range_and_language_and_dpi_exec(tmp_path):
+    import unittest.mock
+
+    import pymupdf
+
+    pdf_path = str(tmp_path / "test.pdf")
+    doc = pymupdf.open()
+    doc.new_page()
+    doc.new_page()
+    doc.save(pdf_path)
+
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value=pdf_path),
+                range=Literal(value="2"),
+                text=VbExpr(text="result"),
+                engine_tag="GoogleOCR",
+                language=Literal(value="eng"),
+                image_dpi=Literal(value="300"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO" not in code
+    _compiles(code)
+    with unittest.mock.patch(
+        "pytesseract.image_to_string",
+        side_effect=lambda img, **kw: f"lang={kw.get('lang')}",
+    ):
+        ns: dict[str, object] = {}
+        exec(code + "\n    return result", ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+        result = ns["Test"]()
+    assert result == "lang=eng"
+
+
+def test_read_pdf_with_ocr_with_non_google_ocr_engine_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value="x.pdf"),
+                text=VbExpr(text="result"),
+                engine_tag="MicrosoftOCR",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with OCREngine" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_with_no_file_name_is_todo():
+    wf = _wrap(
+        [ReadPDFWithOCRNode(file_name=None, text=VbExpr(text="result"), engine_tag="GoogleOCR")]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with no FileName captured" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_with_no_text_is_todo():
+    wf = _wrap(
+        [ReadPDFWithOCRNode(file_name=Literal(value="x.pdf"), text=None, engine_tag="GoogleOCR")]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with no output Text captured" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_with_unconfirmed_range_format_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value="x.pdf"),
+                text=VbExpr(text="result"),
+                engine_tag="GoogleOCR",
+                range=Literal(value="7-12"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with unconfirmed Range" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_with_dynamic_range_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value="x.pdf"),
+                text=VbExpr(text="result"),
+                engine_tag="GoogleOCR",
+                range=VbExpr(text="dynRange"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with dynamic (non-literal) Range" in code
+    _compiles(code)
+
+
+def test_read_pdf_with_ocr_with_extract_words_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            ReadPDFWithOCRNode(
+                file_name=Literal(value="x.pdf"),
+                text=VbExpr(text="result"),
+                engine_tag="GoogleOCR",
+                extract_words="True",
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: ReadPDFWithOCR with ExtractWords set" in code
     _compiles(code)
 
 

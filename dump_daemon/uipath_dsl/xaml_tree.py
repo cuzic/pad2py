@@ -103,6 +103,7 @@ from .types import (
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
+    ReadPDFWithOCRNode,
     GetOutlookMailMessagesNode,
     MarkMailAsReadXNode,
     DeleteMailXNode,
@@ -1262,6 +1263,53 @@ def _parse_get_ocr_text(elem: etree._Element) -> GetOcrTextNode:
         filter_region=filter_region,
         text=_in_argument_property_expr(elem, "Text"),
         words_info=_attr_expr(elem, "WordsInfo"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
+def _parse_read_pdf_with_ocr(elem: etree._Element) -> ReadPDFWithOCRNode:
+    engine_tag: str | None = None
+    language: Expr = None
+    scale: str | None = None
+    profile: str | None = None
+    allowed_characters: Expr = None
+    denied_characters: Expr = None
+    invert: str | None = None
+    compute_skew_angle: str | None = None
+    extract_words: str | None = None
+    filter_region: Expr = None
+    engine_prop = _find_property_element(elem, "OCREngine")
+    if engine_prop is not None:
+        func_children = _activity_children(engine_prop)
+        if func_children:
+            engine_children = _activity_children(func_children[0])
+            if engine_children:
+                engine_elem = engine_children[0]
+                _, engine_tag = _split_tag(engine_elem.tag)
+                language = _attr_expr(engine_elem, "Language")
+                scale = _attr_or_none(engine_elem, "Scale")
+                profile = _attr_or_none(engine_elem, "Profile")
+                allowed_characters = _attr_expr(engine_elem, "AllowedCharacters")
+                denied_characters = _attr_expr(engine_elem, "DeniedCharacters")
+                invert = _attr_or_none(engine_elem, "Invert")
+                compute_skew_angle = _attr_or_none(engine_elem, "ComputeSkewAngle")
+                extract_words = _attr_or_none(engine_elem, "ExtractWords")
+                filter_region = _attr_expr(engine_elem, "FilterRegion")
+    return ReadPDFWithOCRNode(
+        file_name=_attr_expr(elem, "FileName"),
+        range=_attr_expr(elem, "Range"),
+        text=_attr_expr(elem, "Text") or _in_argument_property_expr(elem, "Text"),
+        image_dpi=_attr_expr(elem, "ImageDpi"),
+        engine_tag=engine_tag,
+        language=language,
+        scale=scale,
+        profile=profile,
+        allowed_characters=allowed_characters,
+        denied_characters=denied_characters,
+        invert=invert,
+        compute_skew_angle=compute_skew_angle,
+        extract_words=extract_words,
+        filter_region=filter_region,
         display_name=_attr(elem, "DisplayName"),
     )
 
@@ -3318,6 +3366,7 @@ _DISPATCH = {
     (UI_NS, "RenameFolderX"): _parse_rename_folder,
     (UI_NS, "CreateFile"): _parse_create_file,
     (UI_NS, "GetOCRText"): _parse_get_ocr_text,
+    (UI_NS, "ReadPDFWithOCR"): _parse_read_pdf_with_ocr,
     (UI_NS, "SaveImage"): _parse_save_image,
     (UI_NS, "TakeScreenshot"): _parse_take_screenshot,
     (UI_NS, "LoadImage"): _parse_load_image,

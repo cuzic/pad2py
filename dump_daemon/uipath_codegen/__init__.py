@@ -142,6 +142,7 @@ from ..uipath_dsl.types import (
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
+    ReadPDFWithOCRNode,
     GetOutlookMailMessagesNode,
     MarkMailAsReadXNode,
     DeleteMailXNode,
@@ -924,6 +925,8 @@ def _generate_node(
         return _generate_retry_scope(node, indent, invoke_resolver, out_arg_resolver)
     if isinstance(node, GetOcrTextNode):
         return _generate_get_ocr_text(node, indent)
+    if isinstance(node, ReadPDFWithOCRNode):
+        return _generate_read_pdf_with_ocr(node, indent)
     if isinstance(node, SaveImageNode):
         return _generate_save_image(node, indent)
     if isinstance(node, TakeScreenshotNode):
@@ -3990,6 +3993,128 @@ def _generate_get_ocr_text_body(node: GetOcrTextNode, indent: int) -> list[str]:
         lines.append(f"{prefix}_img = {rendered.expr}.capture_as_image()")
     lang_kwarg = f", lang={language}" if language is not None else ""
     lines.append(f"{prefix}{target} = pytesseract.image_to_string(_img{lang_kwarg})")
+    return lines
+
+
+# 知見266: `ui:ReadPDFWithOCR`——`GetOcrTextNode`(知見180)と同じ
+# `OCREngine`/`ActivityFunc`デリゲート構造を再利用し、`pymupdf`
+# (知見209確認済みの`pdf-render`プラグイン)の`Pixmap.pil_image()`で
+# 各ページをラスタライズして`pytesseract.image_to_string()`へ渡す。
+def _generate_read_pdf_with_ocr(node: ReadPDFWithOCRNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_read_pdf_with_ocr_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_read_pdf_with_ocr_body(node: ReadPDFWithOCRNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    if node.engine_tag != "GoogleOCR":
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with OCREngine "
+            f"{node.engine_tag!r} — only the Tesseract-backed GoogleOCR "
+            "engine is confirmed, refusing to guess other engines"
+        ]
+    if node.file_name is None:
+        return [f"{prefix}# TODO: ReadPDFWithOCR with no FileName captured"]
+    if node.text is None:
+        return [f"{prefix}# TODO: ReadPDFWithOCR with no output Text captured"]
+    if node.scale not in (None, "1"):
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with non-default Scale "
+            f"({node.scale!r}) — image preprocessing not modeled, refusing "
+            "to guess"
+        ]
+    if node.profile is not None:
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with Profile set "
+            f"({node.profile!r}) — image preprocessing not modeled, "
+            "refusing to guess"
+        ]
+    if node.allowed_characters is not None:
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with AllowedCharacters set "
+            f"({_describe_expr_for_comment(node.allowed_characters)}) — "
+            "character whitelisting not modeled, refusing to guess"
+        ]
+    if node.denied_characters is not None:
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with DeniedCharacters set "
+            f"({_describe_expr_for_comment(node.denied_characters)}) — "
+            "character blacklisting not modeled, refusing to guess"
+        ]
+    if node.invert not in (None, "False"):
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with non-default Invert "
+            f"({node.invert!r}) — image preprocessing not modeled, refusing "
+            "to guess"
+        ]
+    if node.compute_skew_angle not in (None, "False"):
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with non-default "
+            f"ComputeSkewAngle ({node.compute_skew_angle!r}) — image "
+            "preprocessing not modeled, refusing to guess"
+        ]
+    if node.extract_words not in (None, "False"):
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with ExtractWords set "
+            f"({node.extract_words!r}) — per-word output not modeled, "
+            "refusing to guess"
+        ]
+    if node.filter_region is not None:
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with FilterRegion set "
+            f"({_describe_expr_for_comment(node.filter_region)}) — region "
+            "filtering not modeled, refusing to guess"
+        ]
+    range_literal = _literal_str(node.range)
+    if node.range is not None and range_literal is None:
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with dynamic (non-literal) "
+            f"Range ({_describe_expr_for_comment(node.range)}) — only "
+            '"All" or a static single page number are confirmed, refusing '
+            "to guess"
+        ]
+    if range_literal not in (None, "All") and not range_literal.isdigit():
+        return [
+            f"{prefix}# TODO: ReadPDFWithOCR with unconfirmed Range "
+            f'{range_literal!r} — only "All" or a static single page '
+            "number are confirmed, refusing to guess"
+        ]
+    todo: list[str] = []
+    file_name = _render_value_or_todo(node.file_name, prefix, todo)
+    target = _render_value_or_todo(node.text, prefix, todo)
+    language = (
+        _render_value_or_todo(node.language, prefix, todo)
+        if node.language is not None
+        else None
+    )
+    image_dpi = (
+        _render_value_or_todo(node.image_dpi, prefix, todo)
+        if node.image_dpi is not None
+        else None
+    )
+    if todo:
+        return todo
+    dpi_expr = (
+        f"round({VB_CDBL_HELPER_NAME}({image_dpi}))" if image_dpi is not None else "150"
+    )
+    lang_kwarg = f", lang={language}" if language is not None else ""
+    inner = INDENT * (indent + 1)
+    lines = [f"{prefix}_rpwo_doc = pymupdf.open({file_name})"]
+    if range_literal in (None, "All"):
+        lines.append(f"{prefix}_rpwo_pages = range(len(_rpwo_doc))")
+    else:
+        lines.append(f"{prefix}_rpwo_pages = [{int(range_literal) - 1}]")
+    lines.extend(
+        [
+            f"{prefix}_rpwo_parts = []",
+            f"{prefix}for _rpwo_idx in _rpwo_pages:",
+            f"{inner}_rpwo_pix = _rpwo_doc[_rpwo_idx].get_pixmap(dpi={dpi_expr})",
+            f"{inner}_rpwo_parts.append(pytesseract.image_to_string("
+            f"_rpwo_pix.pil_image(){lang_kwarg}))",
+            f'{prefix}{target} = "\\n".join(_rpwo_parts)',
+        ]
+    )
     return lines
 
 

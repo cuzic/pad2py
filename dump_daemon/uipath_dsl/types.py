@@ -1389,6 +1389,64 @@ class GetOcrTextNode:
 
 
 @dataclass
+class ReadPDFWithOCRNode:
+    """`<ui:ReadPDFWithOCR>`(知見266、`GetOcrTextNode`(知見180)と同じ
+    `OCREngine`/`ActivityFunc`デリゲート構造を再利用する活動、タグ名
+    限定GitHub検索で273件ヒット——10回目発見パスの最後の未着手候補)。
+    実機6件(`piyushagarwal08/JU-Notes`・`vajrang-b/UiPathIn30Days`
+    複数件・`PacktPublishing/Robotic-Process-Automation-RPA-for-
+    Developers`・`spritlesoftware/Uipath-RPA-AutomationProjects`)で
+    確認した構成——`FileName`(入力PDFパス)、`Range`(`"All"`または
+    単一ページ番号の静的リテラル、例`"6"`/`"2"`——公式ドキュメント確認
+    済みでは`"7-12"`等のハイフン範囲・`"2-5, 7, 15-End"`等の複合範囲も
+    存在するが実機では一度も確認できず`ExtractPdfPageRangeNode`
+    (知見200)と同じ「確認済みの単純な形のみ対応」判断)、`Text`
+    (出力)、`ImageDpi`(実機確認済みの値は常に`"150"`、省略時は
+    `ExportPdfPageAsImageNode`(知見209)と同じ既定値150を採用する
+    ——本トランスパイラ独自の推定であり公式の既定値確認ではない)、
+    `DegreeOfParallelism`(並列度のパフォーマンスヒント、最終的な
+    テキスト出力の正しさには影響しないため捕捉対象に含めない)。
+
+    `OCREngine`は`GetOcrTextNode`と全く同じ`ActivityFunc`デリゲート
+    構造(`Argument`は常にキャプチャした`Image`)で別のOCR活動を保持
+    する——実機6件中5件で`ui:GoogleOCR`(DisplayName「Tesseract OCR」、
+    知見180で確認済みの`pytesseract`マッピング)、残り2件
+    (`piyushagarwal08`・`spritlesoftware`)で`ui:MicrosoftOCR`
+    (知見180で既に別エンジンとして確認済み、Tesseractとは異なる
+    OCRエンジンのため未対応)——`GoogleOCR`以外のタグは`GetOcrTextNode`
+    と同じ理由で`# TODO`へ倒す。埋め込まれた`ui:GoogleOCR`自体の
+    サブ属性(`Language`/`Scale`/`Profile`/`AllowedCharacters`/
+    `DeniedCharacters`/`Invert`/`ComputeSkewAngle`/`ExtractWords`/
+    `FilterRegion`)は実機確認した全件で確認済みの既定値のみのため、
+    `GetOcrTextNode`と同じ決定境界をそのまま再利用する。
+
+    `pymupdf`(`pdf-render`プラグイン、知見209で既に確認済みの依存)の
+    `Pixmap.pil_image()`(PILの`Image`オブジェクトへ直接変換する公式
+    API、インストール済みの実`pymupdf`で動作確認済み)で各ページを
+    ラスタライズし、`GetOcrTextNode`が確立した`pytesseract.
+    image_to_string()`へそのまま渡す——複数ページの結果は`"\n"`で
+    連結する(ページ区切りの直列化規約は公式ドキュメント・実機いずれ
+    にも記載が無いため、`WordReadTextNode`(知見258)の段落結合と同じ
+    本トランスパイラ独自の推定)。"""
+
+    file_name: Expr = None
+    range: Expr = None
+    text: Expr = None
+    image_dpi: Expr = None
+    engine_tag: str | None = None
+    language: Expr = None
+    scale: str | None = None
+    profile: str | None = None
+    allowed_characters: Expr = None
+    denied_characters: Expr = None
+    invert: str | None = None
+    compute_skew_angle: str | None = None
+    extract_words: str | None = None
+    filter_region: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class AddDataRowNode:
     """`<ui:AddDataRow>`(知見181、GitHub code searchで2120件ヒット
     ——`BuildDataTable`(既存)の直後に続く定番パターンとして極めて
@@ -5082,6 +5140,7 @@ Node = (
     | SaveImageNode
     | TakeScreenshotNode
     | GetOcrTextNode
+    | ReadPDFWithOCRNode
     | AddDataRowNode
     | RemoveDataRowNode
     | GetRowItemNode

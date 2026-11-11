@@ -3830,3 +3830,26 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      `ui:ClickText`(画像テンプレートマッチング方式、アーキテクチャ
      不一致で見送り)・`ui:DragDrop`(54件だが全て無関係なWPF、新規
      偽陽性)も確認・記録した。
+
+223. **(完了、2026-11-10)** `ui:ReadPDFWithOCR`を新規実装(知見266)
+     ——Excel/Word/マウスキーボード網羅性向上の調査パス完了を受け、
+     10回目発見パス最後の未着手候補(PDF+OCR系)へ復帰。タグ名限定
+     検索で273件ヒット。`GetOcrTextNode`(知見180)と全く同じ
+     `OCREngine`/`ActivityFunc`デリゲート構造を再利用——実機6件中
+     4件が`GoogleOCR`(Tesseract、知見180確認済みマッピング)、
+     2件が`MicrosoftOCR`(知見180で既に別エンジンと確認済み、
+     `GetOcrTextNode`と同じ決定境界で未対応)。`Range`は実機確認
+     できた`"All"`・単一ページ番号の静的リテラルのみ対応
+     (公式ドキュメントのハイフン範囲/複合範囲は実機未確認のため
+     `# TODO`)。`pymupdf`(知見209確認済みの`pdf-render`プラグイン)
+     の`Pixmap.pil_image()`で各ページをラスタライズし
+     `pytesseract.image_to_string()`へ渡す——複数ページは`"\n"`で
+     連結(本トランスパイラ独自の推定と明記)。`tesseract`バイナリ
+     自体は本サンドボックスに無いため`pytesseract`はモックしたが、
+     `pymupdf`側のページ選択/ラスタライズ処理は実際の`.pdf`ファイルで
+     `exec()`経由の本物の動作確認を行った(`GetOcrTextNode`自身より
+     一段深い検証)。回帰テスト追加(`tests/test_uipath_dsl.py`2件・
+     `tests/test_uipath_codegen.py`8件)、リポジトリ全体で全2406件
+     通過(本活動の10件分の純増)。10回目発見パスの全候補のうち
+     `InvokeVBA`(ライブExcel COM注入が必要、高リスク)のみが残る
+     最後の候補。

@@ -12701,6 +12701,67 @@ APIが無い——座標ベースの幾何学的近傍探索を新規に実装�
 ——継続する場合は新規インフラ投資(幾何学的近傍探索、画像テンプレート
 マッチング)の判断が必要。
 
+## 266. `ui:ReadPDFWithOCR`を新規実装——ユーザー要望による調査パス完了を受け、10回目発見パスの最後の未着手候補(PDF+OCR系)へ復帰
+
+Excel/Word/マウスキーボード網羅性向上の調査パス(知見256〜265)が
+完了したため、10回目発見パスで未着手のまま残っていた最後の候補
+`ui:ReadPDFWithOCR`(タグ名限定GitHub検索で273件ヒット)に着手した。
+
+実機6件(`piyushagarwal08/JU-Notes`・`vajrang-b/UiPathIn30Days`
+複数件・`PacktPublishing/Robotic-Process-Automation-RPA-for-
+Developers`・`spritlesoftware/Uipath-RPA-AutomationProjects`)で
+確認した構成——`FileName`(入力PDFパス)、`Range`(確認できた実例は
+`"All"`・単一ページ番号の静的リテラル`"6"`/`"2"`のみ——公式ドキュメント
+(WebSearch経由確認)には`"7-12"`等のハイフン範囲・`"2-5, 7, 15-End"`
+等の複合範囲も記載されているが実機では一度も確認できず、
+`ExtractPdfPageRangeNode`(知見200)と同じ「確認済みの単純な形のみ
+対応」判断を継承)、`Text`(出力)、`ImageDpi`(実機確認済みの値は
+常に`"150"`——`ExportPdfPageAsImageNode`(知見209)と同じ確認済み
+値、省略時はこの値を既定として採用)、`DegreeOfParallelism`
+(常に`"-1"`、最終テキスト出力の正しさに影響しない並列度ヒントの
+ため捕捉対象に含めない)。
+
+`OCREngine`は`GetOcrTextNode`(知見180)と全く同じ`ActivityFunc`
+デリゲート構造(`Argument`は常にキャプチャした`Image`)で別のOCR
+活動を保持する——実機6件中4件で`ui:GoogleOCR`(DisplayName「Tesseract
+OCR」、知見180で確認済みの`pytesseract`マッピング)、残り2件
+(`piyushagarwal08`・`spritlesoftware`)で`ui:MicrosoftOCR`
+(知見180で既に「Tesseractとは別のエンジン、未対応」と確認済み)——
+同じ6件中4:2という比率で`GoogleOCR`が優勢だったため、
+`GetOcrTextNode`と同じ決定境界(`GoogleOCR`以外は`# TODO`)を
+そのまま再利用した。埋め込まれた`ui:GoogleOCR`自体のサブ属性も
+実機確認した全件で`GetOcrTextNode`と同じ確認済みの既定値のみ
+だったため、同じサブ属性ごとの決定境界(`Scale`/`Profile`/
+`AllowedCharacters`/`DeniedCharacters`/`Invert`/`ComputeSkewAngle`/
+`ExtractWords`/`FilterRegion`)をそのまま再利用した。
+
+`pymupdf`(`pdf-render`プラグイン、知見209で既に確認済みの依存)の
+`Pixmap.pil_image()`(PILの`Image`オブジェクトへ直接変換する公式
+API、インストール済みの実`pymupdf`で動作確認済み)で各ページを
+ラスタライズし、`GetOcrTextNode`が確立した`pytesseract.
+image_to_string()`へそのまま渡す——複数ページの結果は`"\n"`で連結
+する(ページ区切りの直列化規約は公式ドキュメント・実機いずれにも
+記載が無いため、`WordReadTextNode`(知見258)の段落結合と同じ本
+トランスパイラ独自の推定であることをdocstringに明記)。
+
+実`tesseract`バイナリ自体は本サンドボックスに無いため(確認済み、
+`which tesseract`で検出不可)、`GetOcrTextNode`の既存前例どおり
+`pytesseract.image_to_string()`自身は`unittest.mock.patch`で
+モックしたが、`pymupdf`側のページ選択/ラスタライズ処理(`"All"`時の
+全ページ処理、単一ページ番号指定時の0始まりインデックス変換、
+`Language`/`ImageDpi`のキーワード引渡し)は実際に`pymupdf`で生成
+した`.pdf`ファイルに対して`exec()`経由で本物の動作を確認した——
+`GetOcrTextNode`自身の既存テストより一段深い検証(pymupdf部分は
+モック無しの実動作確認)ができた。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`8件)、リポジトリ全体で全2406件通過
+(28件skip、本活動の10件分の純増)。10回目発見パスの全候補
+(`uas:GetUsernamePasswordX`・`GetEnvironmentFolder`・`GetProcesses`・
+`ReadPDFWithOCR`・`InvokeVBA`)のうち、`InvokeVBA`(ライブExcel COM
+`VBProject`注入+`Application.Run()`が必要、より高リスク・高複雑度
+と事前に分類済み)のみが残る最後の候補となった。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

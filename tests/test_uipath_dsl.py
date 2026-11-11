@@ -93,6 +93,7 @@ from dump_daemon.uipath_dsl import (
     GenerateDataTableNode,
     GetAttributeNode,
     GetOcrTextNode,
+    ReadPDFWithOCRNode,
     GetOutlookMailMessagesNode,
     MarkMailAsReadXNode,
     DeleteMailXNode,
@@ -2446,6 +2447,63 @@ def test_get_ocr_text_with_microsoft_ocr_engine():
     node = parse_activity(etree.fromstring(xml))
     assert isinstance(node, GetOcrTextNode)
     assert node.engine_tag == "MicrosoftOCR"
+
+
+def test_read_pdf_with_ocr_with_google_ocr_engine_and_all_range():
+    """知見266: `ui:ReadPDFWithOCR`(タグ名限定GitHub検索で273件ヒット
+    ——10回目発見パスの最後の未着手候補)。実機`vajrang-b/
+    UiPathIn30Days`で確認した構成——`OCREngine`配下は`GetOcrTextNode`
+    (知見180)と同じ`ActivityFunc`デリゲート構造。"""
+    xml = (
+        f"<ui:ReadPDFWithOCR {_UI_XMLNS} "
+        'DegreeOfParallelism="-1" DisplayName="Read PDF With OCR" '
+        'FileName="SamplePdf.pdf" ImageDpi="150" Range="All" '
+        'Text="[OcrOutput]">'
+        "<ui:ReadPDFWithOCR.OCREngine>"
+        '<ActivityFunc x:TypeArguments="sd:Image, scg:IEnumerable(scg:KeyValuePair(sd1:Rectangle, x:String))">'
+        "<ActivityFunc.Argument>"
+        '<DelegateInArgument x:TypeArguments="sd:Image" Name="Image" />'
+        "</ActivityFunc.Argument>"
+        '<ui:GoogleOCR ComputeSkewAngle="False" DisplayName="Tesseract OCR" '
+        'ExtractWords="False" Image="[Image]" NoopExecution="False" />'
+        "</ActivityFunc>"
+        "</ui:ReadPDFWithOCR.OCREngine>"
+        "</ui:ReadPDFWithOCR>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadPDFWithOCRNode)
+    assert node.engine_tag == "GoogleOCR"
+    assert node.file_name == Literal(value="SamplePdf.pdf")
+    assert node.range == Literal(value="All")
+    assert node.image_dpi == Literal(value="150")
+    assert node.text == VbExpr(text="OcrOutput")
+    assert node.extract_words == "False"
+    assert node.compute_skew_angle == "False"
+
+
+def test_read_pdf_with_ocr_with_microsoft_ocr_engine_and_single_page_range():
+    """知見266: `piyushagarwal08/JU-Notes`の実機XAMLで確認した構成——
+    `ui:MicrosoftOCR`(知見180で既に別エンジンとして確認済み)+
+    `Range`が単一ページ番号の静的リテラル。"""
+    xml = (
+        f"<ui:ReadPDFWithOCR {_UI_XMLNS} "
+        'DegreeOfParallelism="-1" DisplayName="Read PDF With OCR" '
+        'FileName="C:\\Scan.pdf" ImageDpi="150" Range="6" Text="[show]">'
+        "<ui:ReadPDFWithOCR.OCREngine>"
+        '<ActivityFunc x:TypeArguments="sd:Image, scg:IEnumerable(scg:KeyValuePair(sd:Rectangle, x:String))">'
+        "<ActivityFunc.Argument>"
+        '<DelegateInArgument x:TypeArguments="sd:Image" Name="Image" />'
+        "</ActivityFunc.Argument>"
+        '<ui:MicrosoftOCR ComputeSkewAngle="False" DisplayName="Microsoft OCR" '
+        'ExtractWords="False" Image="[Image]" Text="[show]" />'
+        "</ActivityFunc>"
+        "</ui:ReadPDFWithOCR.OCREngine>"
+        "</ui:ReadPDFWithOCR>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, ReadPDFWithOCRNode)
+    assert node.engine_tag == "MicrosoftOCR"
+    assert node.range == Literal(value="6")
 
 
 def test_add_data_row_properties():
