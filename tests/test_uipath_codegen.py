@@ -245,6 +245,7 @@ from dump_daemon.uipath_dsl import (
     AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
+    GetXMLNodeAttributesNode,
     WriteLineNode,
     parse_workflow_file,
 )
@@ -6296,6 +6297,47 @@ def test_deserialize_xml_then_execute_xpath_pipeline():
         namespace["Test"]("<Status><name>Processed</name></Status>")
         == "Processed"
     )
+
+
+def test_get_xml_node_attributes_exposes_name_and_value_exec():
+    """知見280: `ui:GetXMLNodeAttributes`——`DeserializeXml`→
+    `ExecuteXPath`→`GetXMLNodeAttributes`の実機確認済み連鎖
+    (`fc205/DependencyViewer`相当、`attribute.Name`/`attribute.Value`
+    という.NET `XAttribute`の確定済み狭いアクセスパターン)を`exec()`
+    経由で確認する——`lxml`の`Element.attrib.items()`の各ペアを
+    `.Name`/`.Value`のみを持つ薄いラッパー`_XAttribute`でラップする。"""
+    wf = _wrap(
+        [
+            DeserializeXmlNode(
+                xml_string=VbExpr(text="xml_str"),
+                xml_document=VbExpr(text="doc"),
+            ),
+            GetXMLNodeAttributesNode(
+                attributes=VbExpr(text="attrs"),
+                existing_xml_node=VbExpr(text="doc"),
+            ),
+        ]
+    )
+    code = generate_python(wf)
+    assert "class _XAttribute" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    code2 = code.replace("def Test():", "def Test(xml_str):")
+    code2 += "\n    return {a.Name: a.Value for a in attrs}"
+    namespace: dict[str, object] = {}
+    exec(code2, namespace)  # noqa: S102 - テスト対象は信頼できる自作コード
+    result = namespace["Test"]('<dependency id="foo" version="1.2.3" />')
+    assert result == {"id": "foo", "version": "1.2.3"}
+
+
+def test_get_xml_node_attributes_with_missing_properties_is_todo():
+    wf = _wrap([GetXMLNodeAttributesNode(attributes=None, existing_xml_node=None)])
+    code = generate_python(wf)
+    assert (
+        "# TODO: GetXMLNodeAttributes with missing Attributes/"
+        "ExistingXMLNode" in code
+    )
+    _compiles(code)
 
 
 def test_execute_xpath_prefers_xml_string_when_both_set():

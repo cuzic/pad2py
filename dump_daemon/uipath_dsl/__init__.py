@@ -222,6 +222,7 @@ from .types import (
     AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
+    GetXMLNodeAttributesNode,
     WriteLineNode,
 )
 from .xaml_tree import parse_activity, parse_workflow_file
@@ -438,6 +439,7 @@ __all__ = [
     "AppendCsvFileNode",
     "DeserializeXmlNode",
     "ExecuteXPathNode",
+    "GetXMLNodeAttributesNode",
     "WriteLineNode",
     "parse_activity",
     "parse_workflow_file",

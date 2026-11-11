@@ -213,6 +213,7 @@ from dump_daemon.uipath_dsl import (
     AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
+    GetXMLNodeAttributesNode,
     WriteLineNode,
     parse_activity,
     parse_workflow_file,
@@ -3188,6 +3189,24 @@ def test_execute_xpath_properties():
     assert node.existing_xml == VbExpr(text="ResultAsXMLDocument")
     assert node.xpath_expression == Literal(value="string(//Status/name)")
     assert node.result == VbExpr(text="statusName")
+
+
+def test_get_xml_node_attributes_properties():
+    """知見280: `ui:GetXMLNodeAttributes`(discovery-fresh-pass-11で
+    発見、`DeserializeXml`/`ExecuteXPath`と同じ`UiPath.WebAPI.
+    Activities`名前空間、タグ名限定GitHub検索で5件ヒットのみだが実機
+    2件で確認済み)。実機`fc205/DependencyViewer`の
+    `ProcessPackage.xaml`で確認した構成——`Attributes`(出力)+
+    `ExistingXMLNode`(入力)の2属性のみ。"""
+    xml = (
+        f"<ui:GetXMLNodeAttributes {_UI_XMLNS} "
+        'DisplayName="Get XML Node Attributes" '
+        'Attributes="[aDependencyAttributes]" ExistingXMLNode="[dependency]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, GetXMLNodeAttributesNode)
+    assert node.attributes == VbExpr(text="aDependencyAttributes")
+    assert node.existing_xml_node == VbExpr(text="dependency")
 
 
 def test_invoke_powershell_properties():

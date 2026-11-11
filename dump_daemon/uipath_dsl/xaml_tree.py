@@ -229,6 +229,7 @@ from .types import (
     AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
+    GetXMLNodeAttributesNode,
     WriteLineNode,
 )
 
@@ -1593,6 +1594,16 @@ def _parse_execute_xpath(elem: etree._Element) -> ExecuteXPathNode:
         or _in_argument_property_expr(elem, "XPathExpression"),
         result=_attr_expr(elem, "Result")
         or _in_argument_property_expr(elem, "Result"),
+    )
+
+
+def _parse_get_xml_node_attributes(elem: etree._Element) -> GetXMLNodeAttributesNode:
+    return GetXMLNodeAttributesNode(
+        display_name=_attr(elem, "DisplayName"),
+        attributes=_attr_expr(elem, "Attributes")
+        or _in_argument_property_expr(elem, "Attributes"),
+        existing_xml_node=_attr_expr(elem, "ExistingXMLNode")
+        or _in_argument_property_expr(elem, "ExistingXMLNode"),
     )
 
 
@@ -3649,6 +3660,7 @@ _DISPATCH = {
     (UI_NS, "AppendCsvFile"): _parse_append_csv_file,
     (UI_NS, "DeserializeXml"): _parse_deserialize_xml,
     (UI_NS, "ExecuteXPath"): _parse_execute_xpath,
+    (UI_NS, "GetXMLNodeAttributes"): _parse_get_xml_node_attributes,
     (UI_NS, "InvokePowerShell"): _parse_invoke_powershell,
     (UI_NS, "InvokeVBScript"): _parse_invoke_vbscript,
     (UI_NS, "RetryScope"): _parse_retry_scope,

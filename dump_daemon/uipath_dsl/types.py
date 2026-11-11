@@ -2162,6 +2162,38 @@ class ExecuteXPathNode:
 
 
 @dataclass
+class GetXMLNodeAttributesNode:
+    """`<ui:GetXMLNodeAttributes Attributes="..." ExistingXMLNode="..." />`
+    (知見280、discovery-fresh-pass-11で発見、`UiPath.WebAPI.Activities`
+    名前空間だがタグは`ui:`(`DeserializeXml`/`ExecuteXPath`と同じ、
+    知見228)、タグ名限定GitHub検索で5件ヒットのみだが実機2件で確認
+    済み)。ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機2件
+    (`GSA/RPA-OSS`の`FAS RPA Processes/FAS PSS New Offer-New Template/
+    ReadXML-New.xaml`、`fc205/DependencyViewer`の`ProcessPackage.xaml`)
+    で`ExistingXMLNode`(`sxl:XElement`型の入力——`ExecuteXPath`
+    (知見228)の`.xpath()`戻り値がそのまま渡される実例、`lxml`の
+    `_Element`相当)+`Attributes`(出力、`scg:IEnumerable(sxl:
+    XAttribute)`型と実機で明示的に型宣言されている変数で確認)の
+    2属性のみの構成を確認。
+
+    下流アクセスを`fc205/DependencyViewer`で確認——`Attributes`を
+    `ui:ForEach x:TypeArguments="sxl:XAttribute"`で反復し、各要素の
+    `.Name`(`attribute.Name = "id"`という文字列比較)+`.Value`
+    (`attribute.Value`)にアクセスする——.NET `XAttribute`の確定済み
+    狭いアクセスパターン(型未確認の広いサーフェス懸念には当たらない)。
+    `lxml`の`Element.attrib.items()`(キー・値のペアを返す、`DeserializeXml`
+    /`ExecuteXPath`と同じ既存の確認済み依存)の各ペアを、`.Name`/
+    `.Value`のみを持つ薄いラッパークラス`_XAttribute`(`_ImapMailMessage`
+    (知見250)と同じ設計判断クラス)でラップする。姉妹活動`ui:
+    GetXMLNodes`(子要素ノード自体を返す版)は実機ヒットが無く
+    (ground-truthと合成サンプル生成リポジトリのみ)未対応。"""
+
+    display_name: str | None = None
+    attributes: Expr = None
+    existing_xml_node: Expr = None
+
+
+@dataclass
 class InvokePowerShellNode:
     """`<ui:InvokePowerShell>`(知見186、GitHub code searchで337件
     ヒット——`UiPath/skills`公式リポジトリのStudio実機ground-truth
@@ -5858,6 +5890,7 @@ Node = (
     | AppendCsvFileNode
     | DeserializeXmlNode
     | ExecuteXPathNode
+    | GetXMLNodeAttributesNode
     | InvokePowerShellNode
     | InvokeVBScriptNode
     | RetryScopeNode

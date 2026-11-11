@@ -4021,3 +4021,16 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
      test_uipath_codegen.py`5件)、リポジトリ全体で全2491件通過
      (本活動の7件分の純増)。
+
+236. **(完了、2026-11-10)** `ui:GetXMLNodeAttributes`を新規実装
+     (知見280)——discovery-fresh-pass-11最後の候補、タグ名限定5件
+     ヒットのみだが実機2件(`GSA/RPA-OSS`・`fc205/DependencyViewer`)
+     で確認。`ExistingXMLNode`(入力、`ExecuteXPath`の`.xpath()`
+     戻り値がそのまま渡される)+`Attributes`(出力)の2属性のみ。
+     下流アクセス(`attribute.Name`/`.Value`)に絞った薄いラッパー
+     `_XAttribute`を`lxml`の`Element.attrib.items()`に対して注入
+     (`_ImapMailMessage`と同じ設計判断クラス)。姉妹活動`GetXMLNodes`
+     は実機ヒットゼロのため見送り。回帰テスト追加(`tests/
+     test_uipath_dsl.py`1件・`tests/test_uipath_codegen.py`2件)、
+     リポジトリ全体で全2494件通過(本活動の3件分の純増)。discovery-
+     fresh-pass-11の全4候補がこれで完結。

@@ -265,6 +265,7 @@ from ..uipath_dsl.types import (
     AppendCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
+    GetXMLNodeAttributesNode,
     WriteLineNode,
 )
 from ..uipath_dsl.xaml_tree import parse_workflow_file
@@ -771,6 +772,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 知見275)も同様。
     if any(f"{_PPTX_DELETE_SLIDE_HELPER_NAME}(" in line for line in body):
         imports.append(_PPTX_DELETE_SLIDE_HELPER_SOURCE.rstrip("\n"))
+    # `_XAttribute`(`GetXMLNodeAttributes`→`.Name`/`.Value`属性アクセス
+    # 先、知見280)も同様。
+    if any(f"{_XATTRIBUTE_HELPER_NAME}(" in line for line in body):
+        imports.append(_XATTRIBUTE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -990,6 +995,8 @@ def _generate_node(
         return _generate_deserialize_xml(node, indent)
     if isinstance(node, ExecuteXPathNode):
         return _generate_execute_xpath(node, indent)
+    if isinstance(node, GetXMLNodeAttributesNode):
+        return _generate_get_xml_node_attributes(node, indent)
     if isinstance(node, InvokePowerShellNode):
         return _generate_invoke_powershell(node, indent)
     if isinstance(node, InvokeVBScriptNode):
@@ -5252,6 +5259,50 @@ def _generate_execute_xpath_body(node: ExecuteXPathNode, indent: int) -> list[st
             return todo
         tree_expr = existing_xml
     return [f"{prefix}{result} = {tree_expr}.xpath({xpath_expression})"]
+
+
+# 知見280: `ui:GetXMLNodeAttributes`——実機確認済みの下流アクセス
+# (`attribute.Name`/`attribute.Value`、.NET `XAttribute`の確定済み狭い
+# サーフェス)に絞った最小限の薄いラッパークラスを注入する
+# (`_ImapMailMessage`(知見250)と同じ設計判断クラス)。`lxml`の
+# `Element.attrib.items()`(キー・値のペア、`DeserializeXml`/
+# `ExecuteXPath`(知見228)と同じ既存の確認済み依存)の各ペアをラップ
+# する。
+_XATTRIBUTE_HELPER_NAME = "_XAttribute"
+_XATTRIBUTE_HELPER_SOURCE = '''\
+class _XAttribute:
+    def __init__(self, name, value):
+        self.Name = name
+        self.Value = value
+'''
+
+
+def _generate_get_xml_node_attributes(
+    node: GetXMLNodeAttributesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_get_xml_node_attributes_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_get_xml_node_attributes_body(
+    node: GetXMLNodeAttributesNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.attributes is None or node.existing_xml_node is None:
+        return [
+            f"{prefix}# TODO: GetXMLNodeAttributes with missing Attributes/"
+            "ExistingXMLNode"
+        ]
+    todo: list[str] = []
+    target = _render_value_or_todo(node.attributes, prefix, todo)
+    existing_xml_node = _render_value_or_todo(node.existing_xml_node, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{target} = [{_XATTRIBUTE_HELPER_NAME}(_k, _v) for _k, _v in "
+        f"{existing_xml_node}.attrib.items()]"
+    ]
 
 
 # 知見186: `ui:InvokePowerShell`。`PowerShellProcess="PowerShellCore"`

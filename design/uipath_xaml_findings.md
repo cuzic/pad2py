@@ -13414,6 +13414,54 @@ discovery-fresh-pass-11が報告した残りの候補(`uta:
 VerifyExpressionWithOperator`・`ui:GetXMLNodeAttributes`)は未実装
 のまま残る。
 
+## 280. `ui:GetXMLNodeAttributes`を新規実装——discovery-fresh-pass-11最後の候補、タグ名限定5件という本調査最少クラスのヒット数でも実機2件で確認が取れたため実装、姉妹活動`ui:GetXMLNodes`は実機ヒットゼロのため見送り
+
+知見279で`uast:FindAndReplace`/`uast:ChangeCase`を実装した直後の
+次ティックとして、discovery-fresh-pass-11が報告した最後の候補
+`ui:GetXMLNodeAttributes`(`DeserializeXml`/`ExecuteXPath`(知見228)
+と同じ`UiPath.WebAPI.Activities`名前空間、タグ名限定GitHub検索で
+5件ヒットのみ)に着手した。
+
+公式Studio ground-truth(`marcelocruzrpa/uipath-ai-skills`)+実機2件
+(`GSA/RPA-OSS`の`FAS RPA Processes/FAS PSS New Offer-New Template/
+ReadXML-New.xaml`、`fc205/DependencyViewer`の`ProcessPackage.xaml`)
+で`ExistingXMLNode`(入力、`ExecuteXPath`の`.xpath()`戻り値がそのまま
+渡される実例、`sxl:XElement`型)+`Attributes`(出力、`scg:
+IEnumerable(sxl:XAttribute)`型と明示的に型宣言された変数で確認)の
+2属性のみの構成を確認。下流アクセスを`fc205/DependencyViewer`で
+確認——`Attributes`を`ui:ForEach x:TypeArguments="sxl:XAttribute"`で
+反復し、各要素の`.Name`(`attribute.Name = "id"`という文字列比較)+
+`.Value`(`attribute.Value`)にアクセスする——.NET `XAttribute`の
+確定済み狭いアクセスパターンのため型未確認の広いサーフェス懸念には
+当たらない。
+
+`lxml`の`Element.attrib.items()`(キー・値のペア、`DeserializeXml`/
+`ExecuteXPath`と同じ既存の確認済み依存)の各ペアを、`.Name`/
+`.Value`のみを持つ薄いラッパークラス`_XAttribute`(`_ImapMailMessage`
+(知見250)と同じ設計判断クラス)でラップする——実機確認済みの
+`version="[1.2.3]"`のような角括弧付き文字列をそのまま値として保持し、
+下流の`.Trim({"["c,"]"c})`で角括弧を除去する実例も確認した。
+
+姉妹活動`ui:GetXMLNodes`(子要素ノード自体を返す版)はdiscovery-
+fresh-pass-11が調査したがground-truthと合成サンプル生成リポジトリ
+(`AutoFor/uipath-ir-builder`)のみで実機ヒットがゼロだったため見送り
+対象として引き継ぎ、今回も実装しなかった。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`2件、うち1件は`DeserializeXml`→
+`GetXMLNodeAttributes`の実機確認済み連鎖を`exec()`経由で実際の
+`lxml`要素に対して実行し`.Name`/`.Value`のペアが正しく取得できる
+ことを確認)、リポジトリ全体で全2494件通過(28件skip、本活動の3件
+分の純増)。
+
+discovery-fresh-pass-11が報告した全4候補(`uta:VerifyExpression`
+(知見278)・`uast:FindAndReplace`/`uast:ChangeCase`(知見279)・
+`ui:GetXMLNodeAttributes`、本知見)がこれで完結した——継続する場合は
+`uta:VerifyExpressionWithOperator`(別途のOperator列挙型確認が必要
+なため対象外のまま)、PowerPoint三候補(`CopyPasteSlide`/
+`SavePresentationAsPdf`/`ReplaceShapeWithMedia`)、または新規の発見
+パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造
