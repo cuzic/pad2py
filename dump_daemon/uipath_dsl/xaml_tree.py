@@ -200,6 +200,7 @@ from .types import (
     WordReadTextNode,
     WordAddImageNode,
     WordInsertDataTableNode,
+    WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -2829,6 +2830,16 @@ def _parse_word_insert_data_table(elem: etree._Element) -> WordInsertDataTableNo
     )
 
 
+def _parse_word_replace_picture(elem: etree._Element) -> WordReplacePictureNode:
+    return WordReplacePictureNode(
+        picture_alt_text=_attr_expr(elem, "PictureAltText")
+        or _in_argument_property_expr(elem, "PictureAltText"),
+        picture_path=_attr_expr(elem, "PicturePath")
+        or _in_argument_property_expr(elem, "PicturePath"),
+        display_name=_attr(elem, "DisplayName"),
+    )
+
+
 _SEND_OUTLOOK_MAIL_KNOWN_ATTRS = {
     "To", "Subject", "Body", "Cc", "Bcc", "Importance", "Sensitivity", "IsBodyHtml", "IsDraft",
 }
@@ -3397,6 +3408,7 @@ _DISPATCH = {
     (WORD_NS, "WordReadText"): _parse_word_read_text,
     (WORD_NS, "WordAddImage"): _parse_word_add_image,
     (WORD_NS, "WordInsertDataTable"): _parse_word_insert_data_table,
+    (WORD_NS, "WordReplacePicture"): _parse_word_replace_picture,
     (UI_NS, "SendOutlookMail"): _parse_send_outlook_mail,
     (UI_NS, "GetOutlookMailMessages"): _parse_get_outlook_mail_messages,
     (UI_NS, "GetIMAPMailMessages"): _parse_get_imap_mail_messages,

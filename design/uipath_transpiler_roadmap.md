@@ -3790,3 +3790,21 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (`WordReplacePicture`)の候補は次のティックで継続実装、
      マウスキーボード系は知見255の候補が尽きたため新規発見パスが
      必要。
+
+221. **(完了、2026-11-10)** `ui:WordReplacePicture`を新規実装
+     (知見263)——タグ名限定検索で25件ヒット、知見256以来のExcel/
+     Word classic系調査パスの最後の既知候補。`PictureAltText`/
+     `PicturePath`の2属性のみ(他の共通属性は実機3件とも現れず)。
+     公式ドキュメント確認済み:「一致するすべての画像を置換」
+     「大文字小文字を区別しない」。`python-docx`にはAlt Text検索/
+     画像置換の高レベルAPIが無いため、OOXMLの`<wp:docPr descr>`→
+     `<pic:blipFill><a:blip r:embed>`という低レベル構造を直接操作
+     する標準的なイディオム(画像パーツの`._blob`直接上書き)を
+     新規注入ヘルパー関数`_word_replace_picture()`として実装。実際の
+     画像ファイル2枚・`.docx`で`exec()`経由の大文字小文字不区別
+     マッチ+バイト列置換を確認。回帰テスト追加(`tests/
+     test_uipath_dsl.py`2件・`tests/test_uipath_codegen.py`3件)、
+     リポジトリ全体で全2388件通過(本活動の5件分の純増)。
+     知見256以来のExcel/Word classic系調査パスの既知候補はこれで
+     全完了・見送り判断済み——マウスキーボード系は候補が尽きたため
+     継続には新規発見パスが必要。

@@ -4365,6 +4365,40 @@ class WordInsertDataTableNode:
 
 
 @dataclass
+class WordReplacePictureNode:
+    """`<ui:WordReplacePicture PictureAltText="..." PicturePath="..." />`
+    (知見263、`WordApplicationScope`配下の子活動、`WORD_NS`限定——
+    GitHub検索で25件ヒット)。実機3件(`Apress/Robotic-Process-
+    Automation-Using-UiPath-StudioX`の`Chapter_6-
+    WordAutomationExercise/Main.xaml`、`starmanfrommars/Robotic-
+    Process-Automation-Lab`の`Lab 7/Main.xaml`、`ashimariyam/
+    Employee_Onboarding_UiPath`の`Get picture.xaml`)で確認した構成——
+    `PictureAltText`(検索対象の画像Alt Text、静的リテラル・動的
+    `CurrentRow("col").ToString`形の両方確認)+`PicturePath`(置換
+    画像のファイルパス、動的VB式・リテラルパスの両方確認)の2属性
+    のみ——`ContinueOnError`等の他の共通属性は3件とも一度も現れ
+    なかった(公式ドキュメントにも記載が無い、本活動には存在しない
+    属性と判断)。
+
+    公式ドキュメント確認済みの意味論——「一致するAlt Textを持つ
+    すべての画像を置換する」(1件目限定ではない)「大文字小文字を
+    区別しない」。`python-docx`にはAlt Text検索/画像置換のための
+    高レベルAPIが存在しないため(OOXMLの`<wp:docPr descr="..." />`
+    (大文字小文字を区別しないAlt Text)→`<pic:blipFill><a:blip
+    r:embed="rIdN">`(画像パーツへのリレーションシップID)という
+    低レベル構造を直接操作する必要がある——python-docxコミュニティで
+    広く使われる標準的なイディオム(画像パーツの`._blob`を直接
+    上書きする、公開APIには存在しない内部属性)を、新規注入ヘルパー
+    関数`_word_replace_picture(doc, alt_text, picture_path)`として
+    実装する(`_ImapMailMessage`(知見250)と同じ「確認済みの狭い
+    アクセスパターンに絞った薄いラッパー」判断、今回は関数形)。"""
+
+    picture_alt_text: Expr = None
+    picture_path: Expr = None
+    display_name: str | None = None
+
+
+@dataclass
 class ExcelReadRangeNode:
     """`<ui:ExcelReadRange>`(知見115、`ExcelApplicationScope`配下の子活動、
     `ExcelWriteCellNode`と同じ「スコープと連動する」活動)。`range`は
@@ -5102,6 +5136,7 @@ Node = (
     | WordReadTextNode
     | WordAddImageNode
     | WordInsertDataTableNode
+    | WordReplacePictureNode
     | ExcelReadRangeNode
     | ExcelWriteRangeNode
     | ExcelAppendRangeNode

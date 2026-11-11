@@ -12555,6 +12555,53 @@ test_uipath_codegen.py`8件)、リポジトリ全体で全2383件通過
 (`WordReplacePicture`)の候補、およびマウスキーボード系の新規発見パス
 (知見255の候補が尽きたため)は次のティックで継続実装。
 
+## 263. `ui:WordReplacePicture`を新規実装——`python-docx`に無いAlt Text検索/画像置換を、OOXML低レベル構造を直接操作する注入ヘルパー関数として実装した
+
+Excel/Word/マウスキーボード網羅性向上の調査パス(知見256以来)で
+最後に残っていたWord classic系の候補`ui:WordReplacePicture`
+(タグ名限定GitHub検索で25件ヒット)に着手した。実機3件
+(`Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の
+`Chapter_6-WordAutomationExercise/Main.xaml`、`starmanfrommars/
+Robotic-Process-Automation-Lab`の`Lab 7/Main.xaml`、
+`ashimariyam/Employee_Onboarding_UiPath`の`Get picture.xaml`)で
+確認した構成——`PictureAltText`(静的リテラル・動的`CurrentRow
+("col").ToString`形の両方確認)+`PicturePath`(動的VB式・リテラル
+パスの両方確認)の2属性のみ——他の共通属性(`ContinueOnError`等)は
+実機3件とも一度も現れず、公式ドキュメントにも記載が無いため本活動
+自体に存在しない属性と判断した。
+
+公式ドキュメント確認済みの意味論——「一致するAlt Textを持つすべての
+画像を置換する」(1件目限定ではない)・「大文字小文字を区別しない」。
+`python-docx`にはAlt Text検索/画像置換のための高レベルAPIが存在
+しないため、OOXMLの`<wp:docPr descr="...">`(Alt Text)→
+`<pic:blipFill><a:blip r:embed="rIdN">`(画像パーツへのリレーション
+シップID)という低レベル構造を直接操作する必要がある——
+python-docxコミュニティで広く使われる標準的なイディオム(画像パーツ
+の`._blob`を直接上書きする、公開APIには存在しない内部属性)を、
+新規注入ヘルパー関数`_word_replace_picture(doc, alt_text,
+picture_path)`として実装した(`_ImapMailMessage`(知見250)と同じ
+「確認済みの狭いアクセスパターンに絞った薄いラッパー」判断、今回は
+クラスではなく関数形)。
+
+実際に`PIL`で生成したテスト用画像2枚・`python-docx`で`Alt Text`を
+設定した`.docx`テンプレートに対して`exec()`経由で動作確認した——
+`PictureAltText="signature"`(小文字)が実際のOOXML`descr="SIGNATURE"`
+(大文字)と大文字小文字を区別せず一致し、画像パーツの生バイトが
+正しく新しい画像に置き換わることを確認した(置換後のファイルを
+再読み込みして画像パーツのバイト列を直接比較)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`2件・`tests/
+test_uipath_codegen.py`3件)、リポジトリ全体で全2388件通過
+(28件skip、本活動の5件分の純増)。知見256以来のExcel/Word classic系
+網羅性向上調査パスの既知候補はこれで全て完了・見送り判断済み
+(Excel: `ReadRange`/`WriteRange`/`ReadCell`/`WriteCell`完了、
+`ExecuteMacro`/`GetSheets`は見送り。Word: `WordAppendText`/
+`WordSaveAs`/`WordReadText`/`WordAddImage`/`WordInsertDataTable`/
+`WordReplacePicture`完了。マウスキーボード系: `SelectMultipleItems`
+完了、`GetActiveWindow`は見送り、`SetFocus`は知見164の既存実装の
+偽陽性と判明)——マウスキーボード系は候補が尽きたため、継続する
+場合は新規発見パスが必要。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

@@ -216,6 +216,7 @@ from dump_daemon.uipath_dsl import (
     WordReadTextNode,
     WordAddImageNode,
     WordInsertDataTableNode,
+    WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -11317,6 +11318,97 @@ def test_word_insert_data_table_with_occurrence_index_set_is_todo_not_guessed():
     )
     code = generate_python(wf)
     assert "# TODO: Word Insert DataTable with OccurrenceIndex set" in code
+    _compiles(code)
+
+
+def test_word_replace_picture_replaces_matching_alt_text_exec(tmp_path):
+    """知見263: `ui:WordReplacePicture`——OOXMLの`<wp:docPr descr>`
+    (Alt Text、公式ドキュメント確認済みで大文字小文字を区別しない)
+    検索+画像パーツの`._blob`直接上書きを実際の`.docx`/画像ファイルで
+    `exec()`経由で確認する。"""
+    import docx
+    from docx.oxml.ns import qn
+    from PIL import Image
+
+    img1 = str(tmp_path / "sig1.png")
+    img2 = str(tmp_path / "sig2.png")
+    Image.new("RGB", (5, 5), color="red").save(img1)
+    Image.new("RGB", (5, 5), color="blue").save(img2)
+
+    tmpl_path = str(tmp_path / "tmpl.docx")
+    doc = docx.Document()
+    doc.add_paragraph("before")
+    shape = doc.add_picture(img1)
+    shape._inline.find(qn("wp:docPr")).set("descr", "SIGNATURE")
+    doc.add_paragraph("after")
+    doc.save(tmpl_path)
+
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name=tmpl_path,
+                body=[
+                    WordReplacePictureNode(
+                        picture_alt_text=Literal(value="signature"),
+                        picture_path=Literal(value=img2),
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "_word_replace_picture(" in code
+    assert "# TODO" not in code
+    _compiles(code)
+    ns: dict[str, object] = {}
+    exec(code, ns)  # noqa: S102 - テスト対象は信頼できる自作コード
+    ns["Test"]()
+
+    doc2 = docx.Document(tmpl_path)
+    shape2 = doc2.inline_shapes[0]
+    blip2 = (
+        shape2._inline.find(qn("a:graphic"))
+        .find(qn("a:graphicData"))
+        .find(qn("pic:pic"))
+        .find(qn("pic:blipFill"))
+        .find(qn("a:blip"))
+    )
+    rid2 = blip2.get(qn("r:embed"))
+    part2 = doc2.part.rels[rid2].target_part
+    with open(img2, "rb") as f:
+        expected = f.read()
+    assert part2.blob == expected
+
+
+def test_word_replace_picture_with_no_alt_text_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[WordReplacePictureNode(picture_alt_text=None)],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Replace Picture with no PictureAltText captured" in code
+    _compiles(code)
+
+
+def test_word_replace_picture_with_no_picture_path_is_todo():
+    wf = _wrap(
+        [
+            WordApplicationScopeNode(
+                file_name="letter.docx",
+                body=[
+                    WordReplacePictureNode(
+                        picture_alt_text=Literal(value="x"), picture_path=None
+                    )
+                ],
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Word Replace Picture with no PicturePath captured" in code
     _compiles(code)
 
 

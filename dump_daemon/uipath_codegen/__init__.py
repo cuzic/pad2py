@@ -236,6 +236,7 @@ from ..uipath_dsl.types import (
     WordReadTextNode,
     WordAddImageNode,
     WordInsertDataTableNode,
+    WordReplacePictureNode,
     WorkflowFile,
     WriteCsvFileNode,
     DeserializeXmlNode,
@@ -709,6 +710,10 @@ def _collect_imports(body: list[str]) -> list[str]:
     # 属性アクセス先、知見253)も同様。
     if any(f"{_WIN32_CREDENTIAL_HELPER_NAME}(" in line for line in body):
         imports.append(_WIN32_CREDENTIAL_HELPER_SOURCE.rstrip("\n"))
+    # `_word_replace_picture`(`WordReplacePicture`→Alt Text検索+画像
+    # パーツの`._blob`直接上書き、知見263)も同様。
+    if any(f"{_WORD_REPLACE_PICTURE_HELPER_NAME}(" in line for line in body):
+        imports.append(_WORD_REPLACE_PICTURE_HELPER_SOURCE.rstrip("\n"))
     return imports
 
 
@@ -1099,6 +1104,7 @@ def _generate_node(
             WordReadTextNode,
             WordAddImageNode,
             WordInsertDataTableNode,
+            WordReplacePictureNode,
         ),
     ):
         return _generate_unresolved_activity(node, indent)
@@ -7705,6 +7711,14 @@ def _generate_word_application_scope(
                     prefix,
                 )
             )
+        elif isinstance(child, WordReplacePictureNode):
+            lines.extend(
+                _with_scope_child_display_name(
+                    child,
+                    _generate_word_replace_picture_in_scope(child, indent, var),
+                    prefix,
+                )
+            )
         else:
             lines.extend(_generate_node(child, indent, invoke_resolver, out_arg_resolver))
     lines.append(f"{prefix}{var}.save({node.file_name!r})")
@@ -7904,6 +7918,59 @@ def _generate_word_insert_data_table_in_scope(
     if node.position == "Replace":
         lines.append(f"{prefix}_target_p._p.getparent().remove(_target_p._p)")
     return lines
+
+
+# 知見263: `ui:WordReplacePicture`——`python-docx`にはAlt Text検索/
+# 画像置換のための高レベルAPIが存在しないため、OOXMLの
+# `<wp:docPr descr="...">`(Alt Text、公式ドキュメント確認済みで
+# 大文字小文字を区別しない)→`<pic:blipFill><a:blip r:embed="rIdN">`
+# (画像パーツへのリレーションシップID)という低レベル構造を直接
+# 操作するイディオム(python-docxコミュニティで広く使われる、
+# 画像パーツの`._blob`を直接上書きする——公開APIには存在しない内部
+# 属性)を注入ヘルパー関数として実装する。公式ドキュメント確認済みの
+# 「一致するすべての画像を置換する」(1件目限定ではない)を再現する。
+_WORD_REPLACE_PICTURE_HELPER_NAME = "_word_replace_picture"
+_WORD_REPLACE_PICTURE_HELPER_SOURCE = '''\
+def _word_replace_picture(doc, alt_text, picture_path):
+    ns_wp = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ns_pic = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+    ns_r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    with open(picture_path, "rb") as f:
+        new_blob = f.read()
+    for shape in doc.inline_shapes:
+        docPr = shape._inline.find("{%s}docPr" % ns_wp)
+        if (docPr.get("descr") or "").lower() != alt_text.lower():
+            continue
+        blip = (
+            shape._inline.find("{%s}graphic" % ns_a)
+            .find("{%s}graphicData" % ns_a)
+            .find("{%s}pic" % ns_pic)
+            .find("{%s}blipFill" % ns_pic)
+            .find("{%s}blip" % ns_a)
+        )
+        rid = blip.get("{%s}embed" % ns_r)
+        doc.part.rels[rid].target_part._blob = new_blob
+'''
+
+
+def _generate_word_replace_picture_in_scope(
+    node: WordReplacePictureNode, indent: int, scope_var: str
+) -> list[str]:
+    prefix = INDENT * indent
+    if node.picture_alt_text is None:
+        return [f"{prefix}# TODO: Word Replace Picture with no PictureAltText captured"]
+    if node.picture_path is None:
+        return [f"{prefix}# TODO: Word Replace Picture with no PicturePath captured"]
+    todo: list[str] = []
+    alt_text = _render_value_or_todo(node.picture_alt_text, prefix, todo)
+    picture_path = _render_value_or_todo(node.picture_path, prefix, todo)
+    if todo:
+        return todo
+    return [
+        f"{prefix}{_WORD_REPLACE_PICTURE_HELPER_NAME}("
+        f"{scope_var}, {VB_CSTR_HELPER_NAME}({alt_text}), {picture_path})"
+    ]
 
 
 def _generate_excel_write_cell_in_scope(

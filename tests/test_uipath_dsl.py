@@ -185,6 +185,7 @@ from dump_daemon.uipath_dsl import (
     WordReadTextNode,
     WordAddImageNode,
     WordInsertDataTableNode,
+    WordReplacePictureNode,
     WriteCsvFileNode,
     DeserializeXmlNode,
     ExecuteXPathNode,
@@ -4662,6 +4663,37 @@ def test_word_insert_data_table_with_curly_brace_escaped_text():
     assert node.text == Literal(value="{{LINE_ITEMS}}")
     assert node.data_table == VbExpr(text="dt_POLines")
     assert node.position == "After"
+
+
+def test_word_replace_picture_properties():
+    """知見263: `ui:WordReplacePicture`(実機3件で確認、25件ヒット)。
+    `Apress/Robotic-Process-Automation-Using-UiPath-StudioX`の実機
+    XAMLで確認した構成——`PictureAltText`/`PicturePath`のみ。"""
+    xml = (
+        f"<p:WordReplacePicture {_WORD_XMLNS} "
+        'DisplayName="Replace Picture" PictureAltText="&lt;SIGNATURE&gt;" '
+        'PicturePath="C:\\BookSamples\\Chapter_06\\Input\\Signature.png" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordReplacePictureNode)
+    assert node.picture_alt_text == Literal(value="<SIGNATURE>")
+    assert node.picture_path == Literal(
+        value="C:\\BookSamples\\Chapter_06\\Input\\Signature.png"
+    )
+
+
+def test_word_replace_picture_with_dynamic_values():
+    """知見263: `ashimariyam/Employee_Onboarding_UiPath`の実機XAMLで
+    確認した構成——`PicturePath`が動的VB式(`CurrentRow(...).ToString`)。"""
+    xml = (
+        f"<p:WordReplacePicture {_WORD_XMLNS} "
+        'DisplayName="Replace Picture" PictureAltText="NEWCANDIDATE" '
+        'PicturePath="[CurrentRow(&quot;PictureFIlePath&quot;).ToString]" />'
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, WordReplacePictureNode)
+    assert node.picture_alt_text == Literal(value="NEWCANDIDATE")
+    assert node.picture_path == VbExpr(text='CurrentRow("PictureFIlePath").ToString')
 
 
 def test_send_outlook_mail_and_set_to_clipboard(main_wf):
