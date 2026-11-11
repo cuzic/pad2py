@@ -188,6 +188,7 @@ from dump_daemon.uipath_dsl import (
     SaveImageNode,
     SelectFileNode,
     SelectItemNode,
+    SelectMultipleItemsNode,
     SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -7943,6 +7944,121 @@ def test_select_item_with_delay_before_and_delay_after_generates_time_sleep():
             SelectItemNode(
                 selector=_SELECT_ITEM_SELECTOR,
                 item=Literal(value="x"),
+                delay_before=Literal(value="200"),
+                delay_after=Literal(value="300"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    sleeps = [ln for ln in code.splitlines() if "time.sleep(" in ln]
+    assert len(sleeps) == 2
+    assert "_vb_num('200')" in sleeps[0]
+    assert "_vb_num('300')" in sleeps[1]
+    _compiles(code)
+
+
+def test_select_multiple_items_with_known_selector_generates_select_loop():
+    """知見262: `ui:SelectMultipleItems`——`MultipleItems`のVB配列リテラル
+    (`JoinPDFNode`知見201と同じ`ArrayLiteral`→Python`list`変換)の
+    各要素に対して`pywinauto`の`.select()`を順に呼ぶ。"""
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                multiple_items=VbExpr(text='{"Saab","Opel"}'),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "for _item in ['Saab', 'Opel']:" in code
+    assert ".select(_vb_cstr(_item))" in code
+    assert "# WARNING:" in code
+    assert "# TODO" not in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_no_selector_is_todo():
+    wf = _wrap(
+        [SelectMultipleItemsNode(selector=None, multiple_items=VbExpr(text="{1}"))]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items with no selector captured" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_no_multiple_items_is_todo():
+    wf = _wrap(
+        [SelectMultipleItemsNode(selector=_SELECT_ITEM_SELECTOR, multiple_items=None)]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items with no MultipleItems captured" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_unmappable_selector_is_todo():
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector="<wnd idx='2' />", multiple_items=VbExpr(text="{1}")
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items selector had no mappable attributes" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_continue_on_error_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                multiple_items=VbExpr(text="{1}"),
+                continue_on_error=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items with ContinueOnError set" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_alter_if_disabled_false_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                multiple_items=VbExpr(text="{1}"),
+                alter_if_disabled=Literal(value="False"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items with AlterIfDisabled set" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_add_to_selection_set_is_todo_not_guessed():
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                multiple_items=VbExpr(text="{1}"),
+                add_to_selection=Literal(value="True"),
+            )
+        ]
+    )
+    code = generate_python(wf)
+    assert "# TODO: Select Multiple Items with AddToSelection set" in code
+    _compiles(code)
+
+
+def test_select_multiple_items_with_delay_before_and_delay_after_generates_time_sleep():
+    wf = _wrap(
+        [
+            SelectMultipleItemsNode(
+                selector=_SELECT_ITEM_SELECTOR,
+                multiple_items=VbExpr(text="{1}"),
                 delay_before=Literal(value="200"),
                 delay_after=Literal(value="300"),
             )

@@ -174,6 +174,7 @@ from .types import (
     SaveImageNode,
     SelectFileNode,
     SelectItemNode,
+    SelectMultipleItemsNode,
     SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -1906,6 +1907,20 @@ def _parse_select_item(elem: etree._Element) -> SelectItemNode:
     )
 
 
+def _parse_select_multiple_items(elem: etree._Element) -> SelectMultipleItemsNode:
+    selector = _target_selector(elem)
+    return SelectMultipleItemsNode(
+        selector=selector,
+        display_name=_attr(elem, "DisplayName"),
+        multiple_items=_attr_expr(elem, "MultipleItems"),
+        add_to_selection=_attr_expr(elem, "AddToSelection"),
+        alter_if_disabled=_attr_expr(elem, "AlterIfDisabled"),
+        continue_on_error=_attr_expr(elem, "ContinueOnError"),
+        delay_before=_attr_expr(elem, "DelayBefore"),
+        delay_after=_attr_expr(elem, "DelayAfter"),
+    )
+
+
 def _parse_ui_element_exists(elem: etree._Element) -> UiElementExistsNode:
     selector = _target_selector(elem)
     return UiElementExistsNode(
@@ -3308,6 +3323,7 @@ _DISPATCH = {
     (UI_NS, "SelectFile"): _parse_select_file,
     (UI_NS, "SelectFolder"): _parse_select_folder,
     (UI_NS, "SelectItem"): _parse_select_item,
+    (UI_NS, "SelectMultipleItems"): _parse_select_multiple_items,
     (UI_NS, "UiElementExists"): _parse_ui_element_exists,
     (UI_NS, "DatabaseConnect"): _parse_database_connect,
     (UI_NS, "DatabaseDisconnect"): _parse_database_disconnect,

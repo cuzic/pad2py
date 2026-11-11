@@ -12499,6 +12499,62 @@ test_uipath_codegen.py`8件)、リポジトリ全体で全2374件通過
 (`WordReplacePicture`)・マウスキーボード系(`ui:GetActiveWindow`・
 `ui:SelectMultipleItems`)の候補は次のティックで継続実装。
 
+## 262. `ui:SelectMultipleItems`を新規実装——`ui:GetActiveWindow`は実機2件とも`uix:`Modern UI Automation/未確認の`Saved.Values`機構と不可分と判明し見送った
+
+マウスキーボード系の候補`ui:GetActiveWindow`(20件ヒット)に先に着手
+しようとしたが、実機2件(`Apress/Robotic-Process-Automation-Using-
+UiPath-StudioX`の`Chapter_4_WindowOperationsExercise/Main.xaml`、
+`syedmuneeb033/UIPathWebAutomation`の`Main.xaml`)を取得・検証した
+ところ、いずれも既存の見送り方針と衝突することが判明した——1件目は
+`ApplicationWindow="[Saved.Values(Of Window)("ActiveWindow")]"`
+(StudioXの「後で使うために保存」辞書機構、未モデル化)を使い、かつ
+`uix:NApplicationCard`/`ueab:SequenceX`(知見230/237で既に見送り済みの
+Modern UI Automation/Modern Excel名前空間)に埋め込まれていた。2件目
+は`ApplicationWindow="{x:Null}"`(未設定)で、スコープ内部が
+`uix:NClick`/`uix:TargetAnchorable`(同じくUIAutomation Next、
+知見237で全面見送り済み)を直接使っていた。本活動の出力(`ApplicationWindow`)
+自体も型付き`Window`オブジェクトで、確認済みの実機消費パターンは
+いずれも未モデル化の仕組みと不可分——`GetFileInfoX`/`ui:Pick`
+(知見237/255)と同じ「でっち上げた基盤の上に実装しない」判断により
+見送った。
+
+代わりに同じマウスキーボード系の`ui:SelectMultipleItems`
+(`SelectItemNode`(知見112)の複数選択版、タグ名限定GitHub検索で
+11件ヒット——本調査で最も著者多様性が薄い実装済み活動の1つ、
+独立した実在著者はPacktPublishing書籍サンプル(同一書籍の別章で
+近似重複)とcecilioalvarez(同一人物の2リポジトリ)の実質2名のみ)に
+着手した。評価の薄さは正直に記録するが、属性構成自体は
+`SelectItemNode`の確認済みパターンへの単純な拡張で曖昧さが無いため
+実装した。
+
+ground-truth+実機2件で確認した構成——`MultipleItems`(選択する
+ラベルのVB配列リテラル、`["Saab","Opel"]`/`["Castellano",
+"Euskera"]`——`JoinPDFNode`(知見201)の`FileList`と同じ`ArrayLiteral`
+AST→Python`list`変換がそのまま使える)、`.Target`(`SelectItemNode`と
+同じ`ui:Target`/セレクタ構造、実機2件とも`webctrl tag='SELECT'
+type='select-multiple'`というHTML複数選択要素)、`AddToSelection`/
+`AlterIfDisabled`/`ContinueOnError`/`DelayAfter`/`DelayBefore`
+(ground-truth+実機2件とも全件`{x:Null}`)。
+
+`AddToSelection`(公式ドキュメント確認済み:「既存の選択に追加するか、
+先にリストボックスの選択をクリアするか」を制御)は実機・ground-truth
+いずれも未設定のままで、未設定時の既定挙動が公式ドキュメントに明記
+されていない——明示的に設定されている場合は`# TODO`へ倒す
+(`SelectItemNode.alter_if_disabled`とは違い、こちらは真の既定値が
+未確認)。`SelectItemNode`と同じ`pywinauto`の汎用`.select()`アクセサ
+(「`Select Item`の裏の実装APIは未確認」という既存の警告コメントを
+継承)を`MultipleItems`の各要素に対して順に呼ぶ——複数回の`.select()`
+呼び出しが選択を累積するか置き換えるかは未確認の追加の近似として
+警告コメントへ明示的に記録した。`pywinauto`自身がこのLinuxサンドボックス
+では`win32api`無しで深い階層のimportに失敗するため、`SelectItemNode`
+系の既存前例どおり文字列/コンパイルのみの検証(`exec()`は行わない)。
+
+回帰テスト追加(`tests/test_uipath_dsl.py`1件・`tests/
+test_uipath_codegen.py`8件)、リポジトリ全体で全2383件通過
+(28件skip、本活動の9件分の純増)。残るWord classic系
+(`WordReplacePicture`)の候補、およびマウスキーボード系の新規発見パス
+(知見255の候補が尽きたため)は次のティックで継続実装。
+
 ## 今後の調査候補(未着手)
 - **(解決)** ~~ドラッグ&ドロップ専用ゾーンへのアクティビティ追加~~ → 知見20で
   `drag_activity_from_panel()`ヘルパーにより解決し、`Parallel`の単一ブランチ構造

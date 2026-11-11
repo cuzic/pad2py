@@ -2709,6 +2709,47 @@ class SelectItemNode:
 
 
 @dataclass
+class SelectMultipleItemsNode:
+    """`<ui:SelectMultipleItems>`(知見262、`SelectItemNode`(知見112)の
+    複数選択版、タグ名限定GitHub検索で11件ヒット——本調査で最も著者多様性
+    が薄い実装済み活動の1つ、独立した実在著者は2名のみ(`PacktPublishing`
+    の書籍サンプル4件は同一書籍の別章で近似重複、`cecilioalvarez`の
+    2リポジトリは同一人物)。
+
+    `MultipleItems`(選択するラベルのVB配列リテラル、実機確認済み
+    `["Saab","Opel"]`/`["Castellano","Euskera"]`——`JoinPDFNode`
+    (知見201)の`FileList`と同じ`ArrayLiteral`AST→Python`list`変換が
+    そのまま使える)、`.Target`(`SelectItemNode`と同じ`ui:Target`/
+    セレクタ構造、実機2件とも`webctrl tag='SELECT' type=
+    'select-multiple'`というHTML複数選択要素)、`AddToSelection`/
+    `AlterIfDisabled`/`ContinueOnError`/`DelayAfter`/`DelayBefore`
+    (ground-truth+実機2件とも全件`{x:Null}`)。
+
+    `AddToSelection`(公式ドキュメント確認済み:「既存の選択に追加する
+    か、先にリストボックスの選択をクリアするか」を制御)は実機・
+    ground-truthいずれも未設定のままで、未設定時の既定挙動が公式
+    ドキュメントに明記されていない——明示的に設定されている場合は
+    `# TODO`へ倒す(`SelectItemNode.alter_if_disabled`とは違い、
+    こちらは真の既定値が未確認のため)。
+
+    `SelectItemNode`と同じ`pywinauto`の汎用`.select()`アクセサ
+    (「`Select Item`の裏の実装APIは未確認、`SimulateClick`相当と
+    推定」という既存の警告コメントを継承)を、`MultipleItems`の各
+    要素に対して順に呼ぶ——複数回の`.select()`呼び出しが選択を累積
+    するか置き換えるかは未確認の追加の近似(既知の限界として明示的に
+    警告コメントへ記録する)。"""
+
+    selector: str | None = None
+    display_name: str | None = None
+    multiple_items: Expr = None
+    add_to_selection: Expr = None
+    alter_if_disabled: Expr = None
+    continue_on_error: Expr = None
+    delay_before: Expr = None
+    delay_after: Expr = None
+
+
+@dataclass
 class UiElementExistsNode:
     """`<ui:UiElementExists>`(知見113、DisplayNameは「Element Exists」)。
     `selector`は`ui:UiElementExists.Target`配下の`ui:Target`要素の
@@ -5003,6 +5044,7 @@ Node = (
     | GetTextNode
     | SelectFileNode
     | SelectItemNode
+    | SelectMultipleItemsNode
     | UiElementExistsNode
     | DatabaseConnectNode
     | DatabaseDisconnectNode

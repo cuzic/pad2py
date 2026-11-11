@@ -160,6 +160,7 @@ from dump_daemon.uipath_dsl import (
     SaveImageNode,
     SelectFileNode,
     SelectItemNode,
+    SelectMultipleItemsNode,
     SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -687,6 +688,33 @@ def test_select_item_selector_and_alter_if_disabled():
     assert node.delay_before is None
     assert node.delay_after is None
     assert node.continue_on_error is None
+
+
+def test_select_multiple_items_properties():
+    """知見262: `ui:SelectMultipleItems`(`SelectItemNode`の複数選択版、
+    タグ名限定GitHub検索で11件ヒット)。実機`cecilioalvarez/uipath001`
+    の`web1.xaml`で確認した構成——`MultipleItems`はVB配列リテラル、
+    `.Target`は`SelectItemNode`と同じ構造。"""
+    xml = (
+        f"<ui:SelectMultipleItems {_UI_XMLNS} "
+        'AddToSelection="{x:Null}" AlterIfDisabled="{x:Null}" '
+        'ContinueOnError="{x:Null}" DelayAfter="{x:Null}" DelayBefore="{x:Null}" '
+        "DisplayName=\"Select Multiple Items 'SELECT'\" "
+        'MultipleItems="[{&quot;Saab&quot;,&quot;Opel&quot; }]">'
+        "<ui:SelectMultipleItems.Target>"
+        "<ui:Target Selector=\"&lt;webctrl name='cars' tag='SELECT' /&gt;\" />"
+        "</ui:SelectMultipleItems.Target>"
+        "</ui:SelectMultipleItems>"
+    )
+    node = parse_activity(etree.fromstring(xml))
+    assert isinstance(node, SelectMultipleItemsNode)
+    assert "cars" in node.selector
+    assert node.multiple_items == VbExpr(text='{"Saab","Opel" }')
+    assert node.add_to_selection is None
+    assert node.alter_if_disabled is None
+    assert node.continue_on_error is None
+    assert node.delay_before is None
+    assert node.delay_after is None
 
 
 def test_ui_element_exists_selector_and_output_binding():

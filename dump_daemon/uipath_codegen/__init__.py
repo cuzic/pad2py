@@ -211,6 +211,7 @@ from ..uipath_dsl.types import (
     SaveImageNode,
     SelectFileNode,
     SelectItemNode,
+    SelectMultipleItemsNode,
     SendHotkeyNode,
     SendMailNode,
     SendOutlookMailNode,
@@ -967,6 +968,8 @@ def _generate_node(
         return _generate_select_folder(node, indent)
     if isinstance(node, SelectItemNode):
         return _generate_select_item(node, indent)
+    if isinstance(node, SelectMultipleItemsNode):
+        return _generate_select_multiple_items(node, indent)
     if isinstance(node, UiElementExistsNode):
         return _generate_ui_element_exists(node, indent)
     if isinstance(node, DatabaseConnectNode):
@@ -5717,6 +5720,86 @@ def _generate_select_item_body(node: SelectItemNode, indent: int) -> list[str]:
     if delay_before is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
     lines.append(f"{prefix}{rendered.expr}.select({VB_CSTR_HELPER_NAME}({item}))")
+    if delay_after is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_after}) / 1000.0)")
+    return lines
+
+
+# 知見262: `ui:SelectMultipleItems`(`SelectItemNode`の複数選択版)。
+# `MultipleItems`(VB配列リテラル→Python `list`)の各要素に対して
+# `SelectItemNode`と同じ`pywinauto`の汎用`.select()`アクセサを順に
+# 呼ぶ——複数回の`.select()`呼び出しが選択を累積するか置き換えるかは
+# 未確認の近似(警告コメントで明示する)。`AddToSelection`は公式
+# ドキュメント確認済みの意味(既存選択への追加/先にクリア)はあるが
+# 未設定時の既定挙動が不明のため、明示的に設定されている場合は
+# `# TODO`へ倒す。
+def _generate_select_multiple_items(node: SelectMultipleItemsNode, indent: int) -> list[str]:
+    prefix = INDENT * indent
+    lines = _generate_select_multiple_items_body(node, indent)
+    return _with_scope_child_display_name(node, lines, prefix)
+
+
+def _generate_select_multiple_items_body(
+    node: SelectMultipleItemsNode, indent: int
+) -> list[str]:
+    prefix = INDENT * indent
+    if not node.selector:
+        return [f"{prefix}# TODO: Select Multiple Items with no selector captured"]
+    if node.multiple_items is None:
+        return [f"{prefix}# TODO: Select Multiple Items with no MultipleItems captured"]
+    if node.continue_on_error is not None:
+        return [
+            f"{prefix}# TODO: Select Multiple Items with ContinueOnError set "
+            f"({_describe_expr_for_comment(node.continue_on_error)}) — "
+            "error-continuation mapping not confirmed, refusing to guess"
+        ]
+    if _literal_str(node.alter_if_disabled) not in (None, "True"):
+        return [
+            f"{prefix}# TODO: Select Multiple Items with AlterIfDisabled set "
+            f"({node.alter_if_disabled!r}) — UiPath docs only confirm the "
+            "True-like default, refusing to guess how to reproduce False "
+            "with pywinauto's select()"
+        ]
+    if node.add_to_selection is not None:
+        return [
+            f"{prefix}# TODO: Select Multiple Items with AddToSelection set "
+            f"({_describe_expr_for_comment(node.add_to_selection)}) — "
+            "unset-default behavior not confirmed by UiPath docs, refusing "
+            "to guess"
+        ]
+    rendered = selector_text_to_pywinauto(node.selector)
+    if rendered.expr == 'Desktop(backend="uia")':
+        return [
+            f"{prefix}# TODO: Select Multiple Items selector had no mappable "
+            f"attributes: {node.selector}"
+        ]
+    todo: list[str] = []
+    delay_before = (
+        _render_value_or_todo(node.delay_before, prefix, todo)
+        if node.delay_before is not None
+        else None
+    )
+    delay_after = (
+        _render_value_or_todo(node.delay_after, prefix, todo)
+        if node.delay_after is not None
+        else None
+    )
+    multiple_items = _render_value_or_todo(node.multiple_items, prefix, todo)
+    if todo:
+        return todo
+    lines = [f"{prefix}# WARNING: {w}" for w in rendered.warnings]
+    lines.append(
+        f"{prefix}# WARNING: exact UI Automation API behind 'Select Multiple "
+        "Items' not independently confirmed — using pywinauto's generic "
+        "select() accessor once per item; whether repeated select() calls "
+        "accumulate or replace the selection is also unconfirmed"
+    )
+    if delay_before is not None:
+        lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_before}) / 1000.0)")
+    lines.append(f"{prefix}for _item in {multiple_items}:")
+    lines.append(
+        f"{INDENT * (indent + 1)}{rendered.expr}.select({VB_CSTR_HELPER_NAME}(_item))"
+    )
     if delay_after is not None:
         lines.append(f"{prefix}time.sleep({VB_NUM_HELPER_NAME}({delay_after}) / 1000.0)")
     return lines

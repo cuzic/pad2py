@@ -3770,3 +3770,23 @@ GitHub上の実機保存済みXAMLを直接確認する経路で解決した—�
      (本活動の10件分の純増)。残るWord classic(`WordReplacePicture`)
      ・マウスキーボード系(`ui:GetActiveWindow`等)の候補は次のティック
      で継続実装。
+
+220. **(完了、2026-11-10)** `ui:SelectMultipleItems`を新規実装
+     (知見262)——タグ名限定検索で11件ヒット。先に調査した
+     `ui:GetActiveWindow`(20件ヒット)は実機2件とも`uix:`Modern UI
+     Automation/未確認の`Saved.Values`機構と不可分と判明し見送った
+     (`GetFileInfoX`/`ui:Pick`と同じ判断)。`SelectItemNode`
+     (知見112)の複数選択版——`MultipleItems`(VB配列リテラル、
+     `JoinPDFNode`知見201と同じ`ArrayLiteral`→`list`変換)の各要素に
+     対して`SelectItemNode`と同じ`pywinauto`の汎用`.select()`
+     アクセサを順に呼ぶ。`AddToSelection`(既存選択への追加/先に
+     クリアを制御、未設定時の既定挙動が公式ドキュメント未記載)は
+     明示的に設定されている場合`# TODO`へ倒す。複数回の`.select()`
+     呼び出しが累積するか置き換えるかも未確認の近似として警告
+     コメントへ明示。実在する独立著者が実質2名のみという薄い証拠を
+     正直に記録。回帰テスト追加(`tests/test_uipath_dsl.py`1件・
+     `tests/test_uipath_codegen.py`8件)、リポジトリ全体で全2383件
+     通過(本活動の9件分の純増)。残るWord classic
+     (`WordReplacePicture`)の候補は次のティックで継続実装、
+     マウスキーボード系は知見255の候補が尽きたため新規発見パスが
+     必要。
